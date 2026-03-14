@@ -1,0 +1,529 @@
+Title: N4MC: Neural 4D Mesh Compression
+
+URL Source: https://arxiv.org/pdf/2602.20312v1
+
+Published Time: Wed, 25 Feb 2026 01:10:57 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# N4MC: Neural 4D Mesh Compression 
+
+## Guodong Chen Northeastern University 
+
+chen.guod@northeastern.edu 
+
+## Huanshuo Dong University of Science and Technology of China 
+
+bingo000@mail.ustc.edu.cn 
+
+## Mallesham Dasari Northeastern University 
+
+m.dasari@northeastern.edu Playback in VR headset       
+
+> Mobile decoding
+> Decoded 4D meshes using N4MC (ours)
+> TSDF tensor 𝑇 𝑠𝑡𝑎𝑟𝑡 TSDF tensor 𝑇 𝑒𝑛𝑑
+> Keyframe Keyframe
+
+# …
+
+> Encoder
+> Encoder
+
+Decoder    
+
+> Embedded feature 𝐹 𝑠𝑡𝑎𝑟𝑡 Embedded feature 𝐹 𝑒𝑛𝑑
+
+3D Interpolation   
+
+> Interpolated meshes
+> Centers Centers
+> Latent Code Latent Code
+
+Figure 1. N4MC is the first neural 4D mesh compression framework. It first converts 4D meshes into a modified version of Truncated Signed Distance Function (TSDF) tensors and compresses them through an auto-encoder-decoder pair. A volume tracking-based trans-former model exploits temporal redundancy by learning 3D interpolation across frames. N4MC produces lightweight, sequence-specific models optimized for each mesh sequence, enabling real-time decoding on desktops. N4MC also provides a Unity plugin for mobile devices (e.g., Meta Quest 3) decoding and playback. 
+
+## Abstract 
+
+We present N4MC, the first 4D neural compression frame-work to efficiently compress time-varying mesh sequences by exploiting their temporal redundancy. Unlike prior neu-ral mesh compression methods that treat each mesh frame independently, N4MC takes inspiration from inter-frame compression in 2D video codecs, and learns motion com-pensation in long mesh sequences. Specifically, N4MC con-verts consecutive irregular mesh frames into regular 4D tensors to provide a uniform and compact representation. These tensors are then condensed using an auto-decoder, which captures both spatial and temporal correlations for redundancy removal. To enhance temporal coherence, we introduce a transformer-based interpolation model that pre-dicts intermediate mesh frames conditioned on latent em-beddings derived from tracked volume centers, eliminat-ing motion ambiguities. Extensive evaluations show that N4MC outperforms state-of-the-art in rate-distortion per-formance, while enabling real-time decoding of 4D mesh sequences. The implementation of our method is available at: https://github.com/frozzzen3/N4MC .
+
+## 1. Introduction 
+
+Triangle meshes are among the most established and widely adopted representations of 3D geometry in AR/VR, robotics, and digital twin systems. As 3D capture and re-construction technologies mature, the scale and complexity of these meshes have grown rapidly, with high-resolution models easily reaching millions of vertices per frame and hundreds of frames in time-varying (dynamic) sequences. 1
+
+> arXiv:2602.20312v1 [cs.CV] 23 Feb 2026
+
+This surge in data volume poses fundamental challenges for storage and transmission without compromising quality. We propose N4MC, a neural framework that compresses long time-varying 3D mesh sequences by learning to inter-polate geometry over time rather than explicitly encoding every frame. N4MC achieves high compression ratios while maintaining high visual fidelity by exploiting temporal re-dundancy across consecutive mesh frames. Traditional mesh compression methods like TFAN [33] and EdgeBreaker [48] achieve excellent compression on a per-frame basis. While these methods are popular even to-day, they do not exploit the temporal redundancy between consecutive frames, resulting in high data rates for long mesh sequences. Recent methods [1, 30, 31, 60] and MPEG standards such as IC [4], MESHGRID [49], and FAMC [32] explored exploiting spatial and temporal correlations be-tween frames, but focus mainly on meshes with consistent topology. Even proposals like Apple’s VSMC [31] adopted for MPEG’s V-DMC standard [41], depends on temporally consistent re-meshing that is often impractical. Deforma-tion methods [22, 26, 53, 54] morph a reference mesh into target frames, but struggle with non-rigid motions and self-contact issues. Latest work TVMC [7] uses volume center affinity to exploit temporal redundancy but struggles with non-rigid motions, leading to deformation breakdowns. Neural methods have shown strong potential for 3D geometry compression. For example, neural progressive meshes [10] combine multiresolution and level of detail (LoD) concepts for scalable reconstruction. DMGC [66] predicts mesh vertices and connectivity with graph-based models often struggle with large vertex counts. Similarly, methods such as NeCGS [47], Squeeze3D [11], and oth-ers [17] explore implicit and generative representations to achieve compact encodings of static meshes. While these approaches yield impressive compression for individual models, they do not exploit the temporal redundancy inher-ent in time-varying mesh sequences. N4MC is designed to compress long time-varying mesh sequences, addressing the limitations of per-frame and topology-constrained methods. N4MC stores 4D geometry in a compact latent space through a series of learning stages. First, explicit meshes are converted into implicit 4D tensors to provide a uniform volumetric representation of the geom-etry. Second, these tensors are encoded into compact latent embeddings using a trained autoencoder that captures spa-tial and temporal correlations jointly. Third, we introduce volume tracking across the mesh sequence to estimate con-sistent and stable volume centers that serve as motion pri-ors to resolve temporal ambiguities. Finally, a lightweight transformer predicts intermediate-frame embeddings condi-tioned on key-frame features and volume priors, enabling temporal super-resolution in the latent domain. We evaluate N4MC on a diverse suite of 4D mesh se-quences, including real and synthetic data and both single-object and multi-object scenes. Extensive qualitative and quantitative experiments show that N4MC outperforms state-of-the-art compression performance while maintain-ing high visual quality. Notably, N4MC can efficiently han-dle mesh sequences of over 100 frames, while most existing time-varying mesh compression methods are limited to only 5 to 10 frames per group in inter-frame prediction. Our main contributions are: 1. We propose the first neural framework explicitly de-signed for 4D mesh compression, introducing a tensor-based latent interpolation paradigm that leverages spa-tiotemporal correlations across mesh sequences to achieve extreme mesh compression efficiency. 2. We introduce explicit volume center priors to guide in-terpolation, which accelerates model convergence and helps the transformer to remain lightweight. 3. We provide an N4MC Unity plugin implementation that enables decoding and playback on VR headsets such as Meta Quest 3 and Android smartphones. 
+
+## 2. Related Work 
+
+Static mesh compression. Static mesh compression uti-lizes intra-frame redundancy and performs quantization to compress each mesh independently [12, 14, 33, 48, 58, 59]. These methods usually reorder the mesh structure to enable efficient lossless compression. However, much of this work (e.g., Draco [14], TFAN [33]), operate purely on individ-ual frames and lacks inter-frame prediction, making it less efficient for compressing time-varying scene meshes. Several lossy compression methods based on implicit mesh representations have been proposed as promising al-ternatives [47, 57]. These methods convert explicit 3D meshes into implicit representations such as Signed Dis-tance Fields (SDFs) and Truncated Signed Distance Fields (TSDFs), and then compress the resulting TSDF tensors. These methods too treat TSDF tensors independently and do not exploit the temporal redundancy in consecutive time-varying mesh frames. 
+
+Dynamic & time-varying mesh compression. Dynamic mesh compression usually encodes a sequence of meshes by storing a base mesh and a displacement field, which is feasible because of their constant topology [31, 39]. How-ever, dynamic mesh compression depends on topology con-sistency across the input mesh sequence. To relax this con-straint for time-varying meshes, Apple VSMC [31] intro-duces a time-consistent re-meshing method. Nevertheless, its instability often leads to inaccurate inter-frame corre-spondences, making the representation of inter-frame dif-ferences between time-varying meshes still challenging. In contrast, time-varying mesh compression deals with mesh sequences where both the geometry and the topology 2TSDF -Def generation  Volume tracking 
+
+auto -encoder and auto -decoder pair  3D  interpolation 
+
+TSDF tensor s 𝑻 
+
+# …
+
+Input 4D meshes 𝑴 
+
+> Encoder
+> De coder
+
+# …  
+
+> 𝑻 1𝑻 𝑛
+> 𝑭 1𝑭 𝑛
+
+Embedded Features 𝑭 
+
+Volume centers 𝑪 
+
+> Latent
+> Mapping
+
+Latent codes 𝒁   
+
+> Keyframe 𝑴 1
+> Keyframe 𝑴 𝑛
+> 𝑭 1
+> 𝑭 𝑛
+> De coder
+> 𝑭 2
+> 𝑭 𝑛 −1
+
+# …Transformer 
+
+> Interpolated meshes  ෡𝑴 Figure 2. N4MC overview. N4MC enables neural 4D mesh compression with 4 modules: (1) A TSDF-Def generation module (top left); (2) A trained auto-encoder and auto-decoder pair to condense TSDF-Def tensors (bottom left); (3) A volume tracking module and a latent code mapping network to generate interpolation priors (top right); (4) A light-weight transformer model for 3D interpolation (bottom right).
+
+evolve over time (typically captured from the real-world depth sensors) [7, 13, 18–20, 22–24, 26, 34, 40, 64], mak-ing it a more complex problem to solve. A common strategy in the prior work is to transform time-varying meshes into dynamic meshes through deformation or registration. How-ever, such methods are prone to visible distortion and can fail under non-rigid motion, limiting their applicability in real-world meshes extracted from depth sensor data. 
+
+Neural mesh compression. Neural methods achieved re-markable progress in 2D video compression [8, 9, 35, 63]. Building on this, recent neural methods explored 3D data compression, both in explicit [27, 66] and implicit represen-tations such as SDFs, or volumetric occupancy grids [36, 38, 43, 44, 47, 55, 62, 67], including emerging radiance fields [5, 6, 56]. Sequeeze3D [11] uses pretrained encoders and generative models to store 3D data in a compact la-tent code. Neural progressive meshes [10] learns LoD while DMGC [66] predicts vertices and connectivity with graph-based models. However, all of these methods mainly tar-get individual mesh frame compression, limiting their effi-ciency in long mesh sequences. NeCGS [47] is the most closely related to our work, which converts 3D meshes into an enhanced variation of TSDF called TSDF-Def tensors and trains an auto-decoder to compress them into compact embedded features. How-ever, NeCGS is not designed to exploit temporal redun-dancy in long mesh sequences, and it only captures lim-ited random redundancy among embedded features due to the restricted capacity of its auto-decoder. Compared with these methods, our method extends interpolation to 3D meshes, enabling efficient compression of long mesh se-quences (e.g., over 100 frames) by fully exploiting temporal redundancy between adjacent frames. 
+
+## 3. Proposed Method: N4MC 
+
+3.1. Preliminary 
+
+N4MC builds on recent shape extracting methods [50, 51] and NeCGS [47], which first converts mesh frames into 4D TSDF-Def tensors and then trains an auto-decoder to com-press TSDF-Def tensors into compact embedded features. 
+
+TSDF-Def. Inspired from NeCGS [47], N4MC adopts an enhanced signed distance representation called TSDF-Def, which embeds both geometric structure and local deforma-tion within a unified volumetric tensor. Specifically, a 3D mesh is represented as a 4D tensor T ∈ Rk×k×k×4, where k denotes the voxel grid resolution. The last dimension con-sists of one TSDF value, representing the signed distance from this grid point to the mesh surface, and a correspond-3ing deformation vector (∆ x, ∆y, ∆z), representing the de-formation of this grid point in 3D space. 
+
+3.2. N4MC Overview 
+
+Fig. 2 shows an overview of N4MC which consists of four main components: (1) a TSDF-Def generation mod-ule, which converts an N -frame 3D mesh sequence M =
+
+{Mi}Ni=1 into a series of TSDF-Def tensors T = {Ti}Ni=1 .(2) a trained auto-encoder Eθ (·) and auto-decoder Dψ (·)
+
+pair, which compresses TSDF tensors into compact embed-ded features. (3) a volume tracking module, which tracks volume centers C = {Ci}Ni=1 across the sequence and uses a latent code mapping network fω (·) to generate pri-ors that guide the transformer model and reduce ambigu-ity. (4) a light-weight transformer model, which predicts intermediate frame embedded features using key frame fea-tures and latent codes derived from the tracked volume cen-ters. During decoding, the highly compressed latent vec-tors, together with the lightweight auto-decoder and trans-former model, enable efficient streaming and reconstruction of high-quality mesh sequences. 
+
+3.3. Latent Codes Generation 
+
+Generating stable and expressive latent codes for time-varying 3D meshes is fundamentally challenging. Mesh sequences often exhibit irregular topology, varying surface visibility, non-uniform motion, and fine-grained local defor-mations, all of which make it difficult to derive a compact representation that remains consistent across time. 
+
+Auto-encoder. To obtain latent codes that are both com-pact and temporally coherent, we introduce a 3D convo-lutional auto-encoder designed specifically for TSDF-Def tensors. The encoder Eθ (·) employs a ConvNeXt3D [28] backbone to extract spatially structured volumetric features from the input TSDF-Def tensors T:
+
+F = Eθ (T), (1) where F ∈ Rk′×k′×k′×d is the reconstructed TSDF-Def tensors. N4MC is designed for time-varying mesh se-quences, where all the meshes have similar motion patterns despite variations in topology and connectivity. This auto-encoder enforces structural consistency across frames so that embedded features F = {Fi}Ni=1 of temporally adja-cent meshes remain semantically aligned and predictable. 
+
+Auto-decoder. N4MC employs a quantization-aware auto-decoder that compresses 4D TSDF-Def tensors into low-dimensional latent embeddings. For a TSDF-Def ten-sor T, the corresponding input for the auto-decoder is the embedded features F ∈ Rk′×k′×k′×d from auto-decoder, where k′ < k , and d is the channel number. We adopt a joint loss function consists of L1 loss and the Structure Similar-ity Index (SSIM) to simultaneously optimize the embedded feature F and the spatial consistency of decoded TSDF-Def tensors ˆT. The loss function can be written as follows: 
+
+L = λL1 LL1 + λmask Lmask + λssim Lssim , (2) where 
+
+LL1 = ∥ ˆT − T∥1, (3) 
+
+Lmask = ∥M · ( ˆT − T)∥1, (4) 
+
+Lssim = 1 − SSIM ( ˆT, T), (5) and M = ( |V [..., 0] | < α ) selects the near-surface mask, where the TSDF value is below a threshold α.For reconstruction, the decoder Dψ (·) uses 3D PixelShuffle[52] between the convolution and activation layers to progressively upsample F back to the original TSDF-Def space. Because the decoder is also streamed, quantized 3D convolutions are applied in both the projec-tion and decoding stages to enable model quantization to reduce model size. The decoding process is as follow: 
+
+ˆT = DQ(ψ)(Q(F)) , (6) where ˆT ∈ Rk×k×k×4 is the reconstructed TSDF-Def ten-sors, and Q(·) is the differentiable quantization operator. Here, while the compressed latent features capture local ge-ometric structure, they do not, on their own, provide ex-plicit cues about how different regions of the mesh move over time. This lack of explicit motion structure poses two key challenges for interpolation: (1) adjacent regions may deform in complex, nonlinear ways that cannot be inferred from spatial features alone, (2) without stable motion an-chors, the interpolation model may produce temporally in-consistent predictions, especially across long sequences. 
+
+Volume Tracking and Volume Centers. To obtain mean-ingful motion cues that can serve as priors for interpolation, we apply volume tracking [15, 16] to the input 3D mesh sequences in order to get representative volume centers 
+
+C = {Ci}Ni=1 , where each Ci = {c1, c 2, . . . , c p}, c j ∈ R3
+
+traces the spatial trajectory of a localized volume across all 
+
+N frames. Here p specifies the total number of tracked cen-ters. Because of the tracked feature of volume centers, they can capture non-rigid motion dynamics. Fig. 3 shows the extraction of the intermediate volume center from the input meshes. Regarding how volume tracking works, we refer readers to Sec. 6 in the supplementary material. 
+
+Volume Center-guided Motion Priors. We then design a volume center-guided latent mapping network to embed geometric motion information into compact latent codes for transformer conditioning. We choose every n frame as a key frame, and the remaining n − 1 frames are interpolated. Specifically, given a sequence of tracked volume centers 
+
+C = {Ci}Ni=1 , we select every n-th frame as a key frame 4Tracked    
+
+> Deformation
+> Interpolation
+> Volume tracking Volume tracking Figure 3. Cross-section illustration of N4MC’s volume tracking on input 4D mesh frames to obtain sets of volume centers (orange), and conversion of keyframe meshes (gray) into TSDF-Def tensors. For better visualization, we show the (4 ×8×8) intermediate cross-sections of the TSDF tensors. N4MC leverages the tracked volume centers to extract priors for interpolation, to guide the interpolation for regions such as the hands and basketball.
+
+and interpolate the intermediate n − 1 frames. For each in-terpolation group {Cs, Ct, Ce}, representing the start, tar-get, and end frames, we encode their corresponding volume centers using a PointNet-style [46] encoder Φ( ·) to obtain global descriptors: 
+
+Zs = Φ( Cs), zt = Φ( Ct), ze = Φ( Ce). (7) To capture non-rigid motion movements, we then calculate a temporal delta feature ∆zes = 12 (ze − zs). Each interme-diate frame is associated with a normalized temporal index 
+
+α ∈ [0 , 1] , which is embedded using a sinusoidal time en-coder Γ( α) following [61]. The final latent representation 
+
+zlatent is then obtained by concatenating the geometric and temporal features and passing them through an MLP with GELU activations and Layer Normalization: 
+
+zlatent = fω ([ zs, ze, zt, ∆zes , Γ( α)]) , (8) where fω (·) denotes MLP network. A learnable scale pa-rameter σ stabilizes training, and light Gaussian noise is added in training to improve robustness and exploration. 
+
+3.4. 3D Mesh Interpolation 
+
+The final stage of N4MC is the 3D mesh interpolation model. Specifically, every n frame in M = {Mi}Ni=1 is se-lected as a key frame, and the intermediate (n − 1) frames are interpolated via our interpolation transformer, as illus-trated in Fig. 3. 
+
+Network Architecture. We design a cross-attention transformer that jointly models temporal interpolation and latent-conditioned deformation synthesis. Given the em-bedded feature tensors of the start and end key mesh frames, 
+
+Fs, Fe ∈ Rk′×k′×k′×d, and the latent codes Z = zte-1 
+
+> t=s+1
+
+,the network predicts intermediate embedded features ˆFt for 
+
+t = s + 1 , . . . , e − 1.We first lift each input mesh feature into a high-dimensional voxel feature space to preserve spatial detail, and then apply a linear projection to obtain a compact transformer embedding for efficient processing. Coordi-nate embeddings and sinusoidal time embeddings are in-jected to preserve spatial–temporal awareness. The en-coded start–end features are concatenated and processed by a lightweight Transformer Encoder to obtain global mem-ory tokens that serve as long-range structural context. For each interpolated timestep t, the network constructs a FiLM-conditioned query [45] that combines the latent de-formation code zt and time embedding. A small MLP gen-erates a coarse prior feature from (Fs, Fe, t ), which is mod-ulated by FiLM scaling (γt, β t) predicted from the latent-conditioned MLP. This prior is further refined via a cross-attention Transformer Decoder, attending to the start–end memory features to synthesize temporally consistent in-termediate representations. The final output is produced through a residual prediction head and mapped back to the voxel feature space, forming ˆFt ∈ Rk′×k′×k′×d. Similar to auto-decoder design, in order to further reduce compu-tational overhead and model size, all linear layers in the transformer are replaced with quantized linear layers. This design enables efficient inference and memory compression without significantly degrading interpolation quality. For each interpolated timestep t, the interpolation pro-cess can be formally expressed as: 
+
+ˆFt = IQ(ϕ)Q[( Fs, Fe, zt, t )] , (9) where IQ(ϕ) denotes the quantized cross-attention trans-former parameterized by ϕ, Fs and Fe are the voxelized features of key frames, zt is the latent deformation code as-sociated with timestep t, and t ∈ (0 , 1) represents the nor-malized interpolation ratio. The model learns to synthesize temporally coherent intermediate representations ˆFt condi-tioned on both structural and latent cues. 
+
+Loss Function. The interpolation transformer is trained using the same loss function as the quantization-aware auto-decoder described in Sec. 3.3, ensuring consistency between the decoded and interpolated TSDF-Def tensors. Specifically, the loss jointly optimizes the L1, masked L1, and SSIM terms between the decoded TSDF-Def tensors of the interpolated frames and their ground truth counter-parts. This ensures that the interpolated embeddings not only preserve geometric fidelity but also maintain temporal and structural consistency across the entire mesh sequence. 
+
+3.5. Overall Compression and Decompression 
+
+During compression, each frame Mi is first converted into its corresponding TSDF-Def tensor Ti using the TSDF-Def generation module described in Sec. 3.3. Zlatent is then generated as described in Sec. 3.3. The encoder 5Dancer  GT        
+
+> N4MC (ours)
+> NeCGS
+> draco
+> KLT
+> TVMC
+> GT
+> N4MC (ours)
+> NeCGS
+> draco
+> KLT
+> TVMC
+> Basketball player
+> GT
+> N4MC (ours)
+> NeCGS
+> draco
+> KLT
+> TVMC
+> GT
+> N4MC (ours)
+> NeCGS
+> draco
+> KLT
+> TVMC
+> Mitch
+> thomas
+> GT N4MC (ours) necgs Draco KLT TVMC
+> GT GT GT
+
+Figure 4. Qualitative comparison of our N4MC with baselines at a bitrate around 4 Mbps. For image-based SSIM and PSNR evaluation, lighting effects are disabled, and vertex normals are converted to RGB colors before rendering. The ”Dancer” and ”Basketball player” sequences appear green, while ”Mitch” and ”Thomas” show pink due to their different orientations. We show a front-facing perspective on people here for all datasets for fair evaluation. To save space, we show full meshes for ”Dancer” dataset and only ground truth with zoomed-in regions for ”Basketball player”, ”Mitch”, and ”Thomas”. N4MC outperforms all the baselines with very high quality. 
+
+Eθ (·) then transforms Ti into compact embedded features 
+
+Fi = Eθ (Ti), which are subsequently quantized through 
+
+Q(·) to obtain Q(Fi). Only the embedded features of key frames and intermediate corresponding latent codes zlatent 
+
+are stored. Entropy coding is applied to further compress the embedded features, latent codes and sequence-specific models into bitstreams. We adopt Huffman codec [25] but other advanced coding methods can be used. At decompression time, the decoder reconstructs the full mesh sequence from the compressed embedded features 
+
+F and latent codes Z. The quantized transformer IQ(ϕ)
+
+interpolates the intermediate embedded features ˆFt from key frame embeddings and latent deformation codes using Equation 9. The reconstructed embedded features are then passed through the quantized auto-decoder DQ(ψ)(·) to re-cover the full-resolution TSDF-Def tensors: 
+
+ˆTt = DQ(ψ)( ˆFt). (10) Finally, the Deformable Marching Cubes algorithm [47] ex-tracts the corresponding 3D mesh ˆMt from ˆTt:
+
+ˆMt = DMC ( ˆTt), t = 1 , . . . , N. (11) 
+
+## 4. Experiments 
+
+Datasets. We evaluate N4MC on a diverse suite of 4D mesh sequences covering real, synthetic, single-object, and multi-object scenarios. Our primary benchmarks include four complex time-varying mesh sequences from the MPEG V-DMC standard [39]: ”Dancer”, ”Basketball player”, ”Mitch”, and ”Thomas”, each with 300 frames [65]. In addition, we construct a ”Mixed” dataset by synchroniz-ing and combining 4 of these sequences to further evalu-ate N4MC’s scalability and robustness in complex multi-object scenarios. We also evaluate N4MC on two addi-tional sources: (1) our own custom captured sequences fea-turing everyday human activities and object interactions, and (2) high-variability synthetically generated data from Thingi10K [68]. Results on these additional datasets are provided in supplementary material in Sec. 8. 
+
+Baselines. We compare N4MC with several recent mesh compression methods/tools, including both static mesh compression and classical algorithmic time-varying mesh compression, explicitly and implicitly, for a comprehen-sive comparison. We use the official implementation for 6Table 1. Quantitative comparison with N4MC and baselines in terms of decoding time, D2-PSNR, image-based SSIM, and PSNR with a similar bitrate around 4 Mbps. The best results are shown in orange, and the second-best in yellow. Corresponding qualitative (visual) comparisons are shown in Fig. 4.                                                                                                          
+
+> Dancer Basketball Player Mitch Thomas
+> Method Time [ms] ↓D2-PSNR ↑SSIM ↑PSNR ↑Bitrate D2-PSNR ↑SSIM ↑PSNR ↑Bitrate D2-PSNR ↑SSIM ↑PSNR ↑Bitrate D2-PSNR ↑SSIM ↑PSNR ↑Bitrate Draco [14] 2.22 54.308 0.913 24.08 3.986 57.577 0.904 23.755 4.046 63.696 0.948 27.1 4.108 63.677 0.952 28.07 4.161 KLT [57] 24.40 58.166 0.9490 28.027 4.064 58.511 0.9431 27.792 4.036 62.469 0.9450 28.344 4.091 62.026 0.9518 29.494 3.870 TVMC [7] 11.29 65.527 0.9388 30.2838 4.237 61.840 0.8795 25.889 4.438 72.807 0.9639 34.37 4.664 71.064 0.9639 34.328 4.195 NeCGS [47] 37.39 62.065 0.9458 26.405 3.480 61.228 0.9540 29.764 3.656 69.256 0.9647 32.337 4.298 67.157 0.9670 33.051 3.520
+> N4MC (Ours) 38.63 67.276 0.9712 33.567 4.514 66.107 0.9671 33.188 4.311 73.129 0.9779 37.274 4.430 72.759 0.9791 37.811 4.269
+
+those methods with source code releases for and use a re-implemented version otherwise. Specifically, we compare against NeCGS [47], TVMC [7], Draco [14], and Google KLT [57] 
+
+Metrics. We evaluate the quality of decoded meshes us-ing both the image-based and geometry-based Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index Measure (SSIM) metrics. Following the MPEG stan-dard [42], D2-PSNR is widely used in mesh compression to assess geometric accuracy, but for time-varying meshes without explicit correspondence, nearest-neighbor match-ing is typically adopted, which limits the reliability of PSNR in reflecting true perceptual quality. To complement this, we compute image-based PNSR and SSIM metrics from four viewpoints. To enhance the accuracy and per-ceptual relevance of SSIM, we disable lighting effects and convert vertex normals into RGB colors before rendering, ensuring consistent visual comparison across frames. 
+
+Results. In Fig. 5, we compare N4MC with all baselines in terms of SSIM versus Bitrates at an evaluation frame rate of 30 FPS. For N4MC and NeCGS [47], we vary the TSDF-Def resolution among 64, 128, 256, adjusting the embedded feature dimensions to (4 , 4, 4, 64) , (8 , 8, 8, 16) ,and (8 , 8, 8, 32) , respectively. We further control the trans-former dimension Λ with values of 16, 24, and 32 to balance model capacity and size. The larger Λ, the more expres-sive but heavier the model becomes. For TVMC [7] and Draco [14], we vary the quantization parameter qp between 4 to 14 to generate rate-distortion curves. As shown in Fig. 5, N4MC consistently outperforms these baselines. It achieves higher compression effi-ciency than NeCGS [47] while achieving comparable quality with the help of 3D mesh interpolation. Com-pared with TVMC [7] and the static mesh compressor Draco [14], N4MC delivers substantially higher visual qual-ity at similar bitrates (around 4 Mbps). For the ”Basketball Player” dataset, we observed a noticeable quality drop in TVMC [7]. This is because the Basketball Player dataset exhibits larger motion variations compared with others, leading to greater distortions for deformation-based meth-
+
+(a) RD performance and compari-son on ”Dancer” mesh. 
+
+(b) RD performance and compari-son on ”Basketball player” mesh. 
+
+(c) RD performance and compari-son on ”Mitch” mesh. 
+
+(d) RD performance and compari-son on ”Thomas” mesh. 
+
+Figure 5. Objective rate–distortion (RD) performance comparison of image-based SSIM versus bitrate on MPEG sequences. To get the target bitrates, for TVMC [7] and Draco [14], the quantization parameter qp is varied from 4 to 14. For NeCGS [47] and our N4MC, TSDF-Def resolutions of 64, 128, and 256 are used. For KLT [57], 16, 32, and 128 basis vectors are employed. 
+
+ods such as TVMC [7], particularly in terms of the image-based metric SSIM. Nevertheless, it still maintains a rela-tively high D2-PSNR, as shown in Tab. 1. This observation further justifies our use of both D2-PSNR and image-based SSIM and PSNR for a more comprehensive evaluation. To further evaluate reconstruction fidelity, we present qualitative results for four datasets at approximately 4 Mbps in Fig. 4. As shown, N4MC produces noticeably fewer dis-tortions and better preserves fine geometric details such as facial expressions and thin structures. Quantitative compar-isons summarized in Tab. 1, which shows decoding time, D2-PSNR, SSIM, PSNR, and bitrate, demonstrate that, un-der similar bitrate conditions, N4MC achieves the highest reconstruction quality among all compared methods. We also compare the per-frame decoding time of N4MC 7Table 2. Ablation study at different resolutions, evaluated in terms of D2-PNSR, image-based SSIM, PSNR, and decoding time.                      
+
+> Resolution ( k)D2-PSNR ↑SSIM ↑PSNR ↑Bitrate Time [ms] ↓
+> 64 54.986 0.9296 24.721 2.024 4.097 128 59.633 0.9511 29.278 2.308 7.371 256 66.107 0.9671 33.188 4.311 38.537
+
+Table 3. Ablation on group size and total frame number .                                     
+
+> nND2-PSNR ↑SSIM ↑PSNR ↑Bitrate Time [ms] ↓
+> 5100 68.225 0.9622 31.847 2.442 6.935 10 100 67.632 0.9610 31.494 2.071 6.417 15 100 67.040 0.9597 31.129 1.968 6.227 5200 67.635 0.9608 31.480 2.283 7.112 5300 64.484 0.9517 29.521 1.842 6.868
+
+with all baselines on RTX 4090 GPU. As shown in Tab. 1, Draco [14] achieves the fastest decoding speed, requiring only about 2 ms per frame for single human objects. In contrast, both N4MC and NeCGS [47] take longer due to the processes of constructing voxel grids and applying the Marching Cubes algorithm [29]. Nonetheless, this still shows a real-time decoding performance of over 24 FPS. More visual results are reported in Sec. 8 in the supplemen-tary material and in supplementary video .
+
+Ablations. In Fig. 5, we present rate-distortion results of N4MC with the resolution k of 64, 128, and 256 with the auto-decoder structure adjusted accordingly. Lower resolu-tions adopt a simpler architecture, and vice versa. The quan-titative and qualitative comparisons of N4MC on ”Dancer” dataset are shown in Tab. 2 and Fig. 6, respectively. In-creasing the TSDF-Def resolution effectively enhances the quality of decoded meshes, preserving finer structures de-tails after decoding, as shown in Fig. 6. However, it also leads to longer decoding times and higher bitrates. We also conduct experiments to investigate how the group size n and the total number of frames N affect decod-ing performance. As shown in Tab. 3, increasing the group size or the total number of frames leads to a decrease in de-coding quality. A larger group size n slightly reduces the interpolation time per frame, thereby lowering the decoding time per frame. In contrast, increasing the total number of frames has no significant impact on decoding time. To further evaluate the scalability and robustness of N4MC in complex multi-object scenarios, we compare it with all baselines on the “Mixed” dataset, which consists of four 4D mesh sequences. As shown in Tab. 4, to achieve a similar quality, Draco [14] and TVMC [7] exhibit signifi-cantly higher bitrate, as their performance heavily depends on the geometric properties of the input meshes, such as the number of vertices. In contrast, N4MC maintains high    
+
+> (a) gt (b) 64 (c) 128 (d) 256
+
+Figure 6. Qualitative comparisons of N4MC with different TSDF-Def resolutions of 64, 128, and 256. Table 4. Quantitative comparison on the Mixed dataset at similar quality levels to illustrate bitrate differences.                                
+
+> Method Time [ms] ↓D2-PSNR ↑SSIM ↑PSNR ↑Bitrate Draco [14] 9.10 57.597 0.899 27.437 14.487 KLT [57] 24.7 61.450 0.9424 30.479 10.737 TVMC [7] 36.457 60.385 0.8820 27.366 9.847 NeCGS [47] 6.89 61.739 0.9440 30.555 4.931
+> N4MC (Ours) 7.33 61.121 0.9399 29.898 2.469
+
+reconstruction quality with relatively low bitrate require-ments. This is because, although the “Mixed” dataset fea-tures more geometrically complex content, it is converted into TSDF tensors with the same shape, which N4MC can process robustly and efficiently. 
+
+N4MC Decoder on Mobile Devices. We evaluate the de-coding performance of our low-resolution N4MC model on three mobile devices, Meta Quest 3, Pixel 9, and Xiaomi 12S Pro (Tab. 5). The decoding time consists of two parts: model inference, which reconstructs 4D tensors from the embedded features, and Marching Cubes algorithm, which extract meshes from tensors for playback. To the best of our knowledge, N4MC is the first neural 4D mesh decoder capable of running entirely on mobile devices, including a standalone VR headset (Quest 3). Due to the hardware lim-itations of mobile devices, all three devices exhibit notice-ably longer overall decoding times. 
+
+Table 5. Decoding time comparison across mobile devices.            
+
+> Meta Quest 3 Pixel 9 Xiaomi 12S Pro Overall time [ms] 346.02 144.34 156.16 Model Inference [ms] 235.29 96.28 100.95 Marching Cubes [ms] 110.73 48.06 55.21
+
+## 5. Conclusion 
+
+We present N4MC, the first neural 4D mesh compres-sion framework. We introduce sequence-specific and lightweight models that enable real-time decoding for 4D mesh sequences. N4MC also provides a Unity plugin for 8mobile devices (e.g., Meta Quest 3) decoding and play-back. In our extensive evaluation covering real, synthetic, single-object, and multi-object scenarios, we demonstrate that N4MC outperforms existing state-of-the-art baselines in both quantitative and qualitative evaluations, while main-taining a relatively fast decoding. See supplementary ma-terial for more details of N4MC and extensive evaluations. 
+
+## References 
+
+[1] Rachida Amjoun and Wolfgang Straßer. Single-rate near lossless compression of animated geometry. Computer-Aided Design , 41(10):711–718, 2009. 2 [2] Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hin-ton. Layer normalization. arXiv preprint arXiv:1607.06450 ,2016. 2 [3] Gavin Barill, Neil G Dickson, Ryan Schmidt, David IW Levin, and Alec Jacobson. Fast winding numbers for soups and clouds. ACM Transactions on Graphics (TOG) , 37(4): 1–12, 2018. 1 [4] Mika¨ el Bourges-S´ evenier. An introduction to mpeg-4 ani-mation framework extension (afx). In Proceedings. Interna-tional Conference on Image Processing , pages III–III. IEEE, 2002. 2 [5] Anpei Chen, Zexiang Xu, Andreas Geiger, Jingyi Yu, and Hao Su. Tensorf: Tensorial radiance fields. In European con-ference on computer vision , pages 333–350. Springer, 2022. 3[6] Anpei Chen, Zexiang Xu, Xinyue Wei, Siyu Tang, Hao Su, and Andreas Geiger. Dictionary fields: Learning a neural ba-sis decomposition. ACM Transactions on Graphics (TOG) ,42(4):1–12, 2023. 3 [7] Guodong Chen, Filip H´ acha, Libor V´ aˇ sa, and Mallesham Dasari. Tvmc: Time-varying mesh compression using volume-tracked reference meshes. In Proceedings of the 16th ACM Multimedia Systems Conference , pages 79–89, 2025. 2, 3, 7, 8 [8] Hao Chen, Bo He, Hanyu Wang, Yixuan Ren, Ser Nam Lim, and Abhinav Shrivastava. Nerv: Neural representations for videos. Advances in Neural Information Processing Systems ,34:21557–21568, 2021. 3 [9] Hao Chen, Matthew Gwilliam, Ser-Nam Lim, and Abhi-nav Shrivastava. Hnerv: A hybrid neural representation for videos. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10270– 10279, 2023. 3 [10] Yun-Chun Chen, Vladimir Kim, Noam Aigerman, and Alec Jacobson. Neural progressive meshes. In ACM SIGGRAPH 2023 Conference Proceedings , pages 1–9, 2023. 2, 3, 4 [11] Rishit Dagli, Yushi Guan, Sankeerth Durvasula, Moham-madreza Mofayezi, and Nandita Vijaykumar. Squeeze3d: Your 3d generation model is secretly an extreme neural com-pressor. arXiv preprint arXiv:2506.07932 , 2025. 2, 3 [12] Michael Deering. Geometry compression. In Proceedings of the 22nd annual conference on Computer graphics and interactive techniques , pages 13–20, 1995. 2 [13] Alexandros Doumanoglou, Dimitrios S Alexiadis, Dimitrios Zarpalas, and Petros Daras. Toward real-time and efficient compression of human time-varying meshes. IEEE Transac-tions on Circuits and Systems for Video Technology , 24(12): 2099–2116, 2014. 3 [14] Google Draco. Draco. https://google.github.io/ draco/ , 2018. 2, 7, 8 [15] Jan Dvoˇ r´ ak, Zuzana K´ aˇ cerekov´ a, Petr Vanˇ eˇ cek, Luk´ aˇ sHruda, and Libor V´ aˇ sa. As-rigid-as-possible volume track-ing for time-varying surfaces. Computers & Graphics , 102: 329–338, 2022. 4, 1 [16] Jan Dvoˇ r´ ak, Filip H´ acha, and Libor V´ aˇ sa. Global op-timisation for improved volume tracking of time-varying meshes. In International Conference on Computational Sci-ence , pages 113–127. Springer, 2023. 4, 1 [17] Venkataram Edavamadathil Sivaram, Tzu-Mao Li, and Ravi Ramamoorthi. Neural geometry fields for meshes. In ACM SIGGRAPH 2024 Conference Papers , New York, NY, USA, 2024. Association for Computing Machinery. 2 [18] Danillo Bracco Graziosi. Video-based dynamic mesh cod-ing. In 2021 IEEE International Conference on Image Pro-cessing (ICIP) , pages 3133–3137. IEEE, 2021. 3 [19] Seung-Ryong Han, Toshihiko Yamasaki, and Kiyoharu Aizawa. Time-varying mesh compression using an ex-tended block matching algorithm. IEEE Transactions on Cir-cuits and Systems for Video Technology , 17(11):1506–1518, 2007. [20] Seung-Ryong Han, Toshihiko Yamasaki, and Kiyoharu Aizawa. Geometry compression for time-varying meshes using coarse and fine levels of quantization and run-length encoding. In 2008 15th IEEE International Conference on Image Processing , pages 1045–1048. IEEE, 2008. 3 [21] D Hendrycks. Gaussian error linear units (gelus). arXiv preprint arXiv:1606.08415 , 2016. 1, 2 [22] Huong Hoang, Kunyao Chen, Truong Nguyen, and Pamela Cosman. Embedded deformation-based compression for human 3d dynamic meshes with changing topology. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 2252–2262, 2023. 2, 3 [23] Junhui Hou, Lap-Pui Chau, Ying He, and Nadia Magnenat-Thalmann. A novel compression framework for 3d time-varying meshes. In 2014 IEEE International Symposium on Circuits and Systems (ISCAS) , pages 2161–2164. IEEE, 2014. [24] Junhui Hou, Lap-Pui Chau, Minqi Zhang, Nadia Magnenat-Thalmann, and Ying He. A highly efficient compression framework for time-varying 3-d facial expressions. IEEE Transactions on Circuits and Systems for Video Technology ,24(9):1541–1553, 2014. 3 [25] David A Huffman. A method for the construction of minimum-redundancy codes. Proceedings of the IRE , 40(9): 1098–1101, 2007. 6 [26] Xudong Jin, Jianfeng Xu, and Kei Kawamura. Embed-ded graph representation for inter-frame coding of dynamic meshes. In ICASSP 2024-2024 IEEE International Confer-ence on Acoustics, Speech and Signal Processing (ICASSP) ,pages 4070–4074. IEEE, 2024. 2, 3 
+
+9[27] Kai Lin, Chuanmin Jia, Xinfeng Zhang, Shanshe Wang, Si-wei Ma, and Wen Gao. Dmvc: Decomposed motion mod-eling for learned video compression. IEEE Transactions on Circuits and Systems for Video Technology , 33(7):3502– 3515, 2022. 3 [28] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feicht-enhofer, Trevor Darrell, and Saining Xie. A convnet for the 2020s. In Proceedings of the IEEE/CVF conference on com-puter vision and pattern recognition , pages 11976–11986, 2022. 4, 1 [29] William E Lorensen and Harvey E Cline. Marching cubes: A high resolution 3d surface construction algorithm. In Sem-inal graphics: pioneering efforts that shaped the field , pages 347–353. 1998. 8, 2 [30] Guoliang Luo, Zhigang Deng, Xin Zhao, Xiaogang Jin, Wei Zeng, Wenqiang Xie, and Hyewon Seo. Spatio-temporal segmentation based adaptive compression of dynamic mesh sequences. ACM Transactions on Multimedia Computing, Communications, and Applications (TOMM) , 16(1):1–24, 2020. 2 [31] Khaled Mammou, Jungsun Kim, Alexis M. Tourapis, Dimitri Podborski, and David Flynn. Video and subdivision based mesh coding. In 2022 10th European Workshop on Visual Information Processing (EUVIP) , pages 1–6, 2022. 2 [32] Khaled Mamou, Titus Zaharia, and Franc ¸oise Prˆ eteux. Askinning approach for dynamic 3d mesh compression. Com-puter Animation and Virtual Worlds , 17(3-4):337–346, 2006. 2[33] Khaled Mamou, Titus Zaharia, and Franc ¸oise Prˆ eteux. Tfan: A low complexity 3d mesh compression algorithm. Com-puter Animation and Virtual Worlds , 20(2-3):343–354, 2009. 2[34] Jean-Eudes Marvie, Maja Krivoku´ ca, C´ eline Guede, Julien Ricard, Olivier Mocquard, and Franc ¸ois-Louis Tariolle. Compression of time-varying textured meshes using patch tiling and image-based tracking. In 2022 10th European Workshop on Visual Information Processing (EUVIP) , pages 1–6. IEEE, 2022. 3 [35] Fabian Mentzer, Eirikur Agustsson, Michael Tschannen, Radu Timofte, and Luc Van Gool. Practical full resolu-tion learned lossless image compression. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10629–10638, 2019. 3 [36] Lars Mescheder, Michael Oechsle, Michael Niemeyer, Se-bastian Nowozin, and Andreas Geiger. Occupancy networks: Learning 3d reconstruction in function space. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 4460–4470, 2019. 3 [37] Microsoft. as. https://azure.microsoft.com/ en- us/services/kinect- dk/ , 2022. Online; ac-cessed May 2022. 2 [38] Szilard Molnar and Levente Tamas. Variational autoencoders for 3d data processing. Artificial Intelligence Review , 57(2): 42, 2024. 3 [39] Cfp for dynamic mesh coding . MPEG, 2021. Online, ISO/IEC JTC1/SC29/WG7/N00231. 2, 6 [40] MPEG. Mpeg-pcc-tmc13. https://github.com/ MPEGGroup/mpeg-pcc-tmc13 , 2022. 3 [41] V-DMC TMM 4.0 . MPEG, 2023. ISO/IEC JTC1/SC29/WG7/N00595. 2 [42] Common test conditions for point cloud compression .MPEG 3DG, 2019. Geneva, Switzerland, ISO/IEC JTC1/SC29/WG11 N18474. 7 [43] Jeong Joon Park, Peter Florence, Julian Straub, Richard Newcombe, and Steven Lovegrove. Deepsdf: Learning con-tinuous signed distance functions for shape representation. In Proceedings of the IEEE/CVF conference on computer vi-sion and pattern recognition , pages 165–174, 2019. 3 [44] Songyou Peng, Michael Niemeyer, Lars Mescheder, Marc Pollefeys, and Andreas Geiger. Convolutional occupancy networks. In European Conference on Computer Vision ,pages 523–540. Springer, 2020. 3 [45] Ethan Perez, Florian Strub, Harm De Vries, Vincent Du-moulin, and Aaron Courville. Film: Visual reasoning with a general conditioning layer. In Proceedings of the AAAI con-ference on artificial intelligence , 2018. 5 [46] Charles R Qi, Hao Su, Kaichun Mo, and Leonidas J Guibas. Pointnet: Deep learning on point sets for 3d classification and segmentation. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 652–660, 2017. 5, 1 [47] Siyu Ren, Junhui Hou, Weiyao Lin, and Wenping Wang. Neural compression for 3d geometry sets. In Proceedings of the IEEE/CVF International Conference on Computer Vi-sion , pages 25294–25304, 2025. 2, 3, 6, 7, 8, 1 [48] Jarek Rossignac. Edgebreaker: Connectivity compression for triangle meshes. IEEE transactions on visualization and computer graphics , 5(1):47–61, 1999. 2 [49] Ioan Alexandru Salomie, Adrian Munteanu, Augustin Gavrilescu, Gauthier Lafruit, Peter Schelkens, Rudi Dek-lerck, and Jan Cornelis. Meshgrid-a compact, multiscalable and animation-friendly surface representation. IEEE trans-actions on circuits and systems for video technology , 14(7): 950–966, 2004. 2 [50] Tianchang Shen, Jun Gao, Kangxue Yin, Ming-Yu Liu, and Sanja Fidler. Deep marching tetrahedra: a hybrid repre-sentation for high-resolution 3d shape synthesis. Advances in Neural Information Processing Systems , 34:6087–6101, 2021. 3 [51] Tianchang Shen, Jacob Munkberg, Jon Hasselgren, Kangxue Yin, Zian Wang, Wenzheng Chen, Zan Gojcic, Sanja Fidler, Nicholas Sharp, and Jun Gao. Flexible isosurface extraction for gradient-based mesh optimization. ACM Transactions on Graphics (TOG) , 42(4):1–16, 2023. 3 [52] Wenzhe Shi, Jose Caballero, Ferenc Husz´ ar, Johannes Totz, Andrew P Aitken, Rob Bishop, Daniel Rueckert, and Zehan Wang. Real-time single image and video super-resolution using an efficient sub-pixel convolutional neural network. In 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , pages 1874–1883, 2016. 4, 1 [53] Olga Sorkine and Marc Alexa. As-rigid-as-possible surface modeling. In Symposium on Geometry processing , pages 109–116. Citeseer, 2007. 2 [54] Robert W Sumner, Johannes Schmid, and Mark Pauly. Em-bedded deformation for shape manipulation. In ACM sig-graph 2007 papers , pages 80–es. 2007. 2 
+
+10 [55] Towaki Takikawa, Joey Litalien, Kangxue Yin, Karsten Kreis, Charles Loop, Derek Nowrouzezahrai, Alec Jacobson, Morgan McGuire, and Sanja Fidler. Neural geometric level of detail: Real-time rendering with implicit 3d shapes. In 
+
+Proceedings of the IEEE/CVF conference on computer vi-sion and pattern recognition , pages 11358–11367, 2021. 3 [56] Towaki Takikawa, Alex Evans, Jonathan Tremblay, Thomas M¨ uller, Morgan McGuire, Alec Jacobson, and Sanja Fidler. Variable bitrate neural fields. In ACM SIGGRAPH 2022 Con-ference Proceedings , pages 1–9, 2022. 3 [57] Danhang Tang, Mingsong Dou, Peter Lincoln, Philip David-son, Kaiwen Guo, Jonathan Taylor, Sean Fanello, Cem Ke-skin, Adarsh Kowdle, Sofien Bouaziz, Shahram Izadi, and Andrea Tagliasacchi. Real-time compression and streaming of 4d performances. ACM Trans. Graph. , 37(6), 2018. 2, 7, 8[58] Gabriel Taubin and Jarek Rossignac. Geometric compression through topological surgery. ACM Transactions on Graphics (TOG) , 17(2):84–115, 1998. 2 [59] Costa Touma and Craig Gotsman. Triangle mesh compres-sion. In Proceedings-graphics interface , pages 26–34. Cana-dian Information Processing Society, 1998. 2 [60] Libor Vasa and V´ aclav Skala. Coddyac: Connectivity driven dynamic mesh compression. In 2007 3DTV Conference ,pages 1–4. IEEE, 2007. 2 [61] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. 5 [62] Peng Wang, Lingjie Liu, Yuan Liu, Christian Theobalt, Taku Komura, and Wenping Wang. Neus: Learning neural implicit surfaces by volume rendering for multi-view reconstruction. 
+
+arXiv preprint arXiv:2106.10689 , 2021. 3 [63] Chao-Yuan Wu, Nayan Singhal, and Philipp Krahenbuhl. Video compression through image interpolation. In Proceed-ings of the European conference on computer vision (ECCV) ,pages 416–431, 2018. 3 [64] Toshihiko Yamasaki and Kiyoharu Aizawa. Patch-based compression for time-varying meshes. In 2010 IEEE Inter-national conference on image processing , pages 3433–3436. IEEE, 2010. 3 [65] Qi Yang, Jo¨ el Jung, Timon Deschamps, Xiaozhong Xu, and Shan Liu. Tdmd: A database for dynamic color mesh sub-jective and objective quality explorations. arXiv preprint arXiv:2308.01499 , 2023. 6 [66] Xudong Zhao, Xinyao Zeng, Linyao Gao, Yiling Xu, and Yanfeng Wang. Dmgc: Deep triangle mesh geometry com-pression via connectivity prediction. In Proceedings of the 33rd Workshop on Network and Operating System Support for Digital Audio and Video , pages 15–21, 2023. 2, 3 [67] Zibo Zhao, Wen Liu, Xin Chen, Xianfang Zeng, Rui Wang, Pei Cheng, Bin Fu, Tao Chen, Gang Yu, and Shenghua Gao. Michelangelo: Conditional 3d shape generation based on shape-image-text aligned latent representation. Advances in neural information processing systems , 36:73969–73982, 2023. 3 [68] Qingnan Zhou and Alec Jacobson. Thingi10k: Adataset of 10,000 3d-printing models. arXiv preprint arXiv:1605.04797 , 2016. 6, 2, 3 [69] Qian-Yi Zhou, Jaesik Park, and Vladlen Koltun. Open3D: A modern library for 3D data processing. arXiv:1801.09847 ,2018. 2 
+
+11 N4MC: Neural 4D Mesh Compression 
+
+# Supplementary Material 
+
+In this supplementary material, we complete the detailed introduction of volume tracking in Sec. 6, provide addi-tional implementation details in Sec. 7 and show more eval-uation results in Sec. 8. Code and demo video are also pro-vided. 
+
+## 6. Volume Tracking 
+
+Given a time-varying mesh sequence M = {Mi}Ni=1 ,to encode long-term structural consistency, we generate a set of volume centers C = {Ci}Ni=1 , where each Ci =
+
+{c1, c 2, . . . , c p}, c j ∈ R3 traces the spatial trajectory of a localized volume across all N frames. Here p specifies the total number of tracked centers, in this paper we set 
+
+p = 2000 for all experiments. Each center represents a small volume surrounding it whose position evolves over time. To track the volume centers, we adopt As-Rigid-As-Possible Volume Tracking and set the mode to max affin-ity based tracking , as proposed in [16], to the time-varying mesh sequence M = {Mi}Ni=1 .To generate uniformly distributed centers, which ensure consistent spatial coverage of the mesh and enable sta-ble motion tracking, we first set a resolution based on the longest axis of the mesh and convert each frame into a tightly bounded regular voxel grid. We then compute the fast winding number [3] to define an indicator function (IF), which identifies the voxels enclosed by the mesh as follows: 
+
+IF (x) = 
+
+(1 ωf (x) > μ 
+
+0 ωf (x) ≤ μ , (12) where ωf (x) represents the fast winding number calculated from point x, and μ is a threshold. In this paper, we set 
+
+μ = 0 .5. The algorithm then samples p random voxels with 
+
+IF (x) = 1 and designates them as centers. Each of the remaining voxels is then connected with its nearest center, and every center is moved to its surrounding neighbors’ cen-troid iteratively. This process yields a uniformly distributed set of centers in the first frame. For subsequent frames, the previous frame’s centers are linearly extrapolated, followed by energy-based optimization to maintain uniformity and temporal smoothness, following the approach in [15, 16]. 
+
+## 7. Implementation Details 
+
+Auto-encoder-decoder Pair For the auto-encoder, it is built upon a lightweight 3D ConvNeXt [28] back-bone configured with four stages of channel dimensions 
+
+[64 , 64 , 64 , 16] . Number of blocks at each stage is set to [4 , 2, 2, 2] or [2 , 2, 2, 2] to match the resolutions of in-put TSDF-Def tensors and output embedded features. Alightweight 1×1×1 convolutional projection follows, map-ping the encoder output channels to the latent embedding dimension. The decoder mirrors the encoder’s hierarchical struc-ture but operates in reverse. Following NeCGS [47], we build the auto-decoder with a head layer, which increases the channel of its input, and L cascaded upsampling mod-ules, which progressively upscale the feature tensor. 3D PixelShuffle [52] layers are added between the convolu-tion and activation layers to achieve upscaling. Three de-coder variants are designed to support different output res-olutions: 64, 128, and 256. All three share the same en-coder and differ only in their decoder channel widths. For the 64-resolution model, the decoder channel configura-tion is [32 , 24 , 16 , 12 , 8] , for the 128-resolution model, it is [48 , 36 , 24 , 16 , 12] , and for the 256-resolution model, it is [64 , 48 , 32 , 24 , 16] . We scale this with embedded feature dimensions progressively to ensure the model is lightweight while powerful enough for 4D mesh compression. The de-coder terminates with a final 3×3×3 quantized convolution layer producing four output channels corresponding to the voxel reconstruction. We use an initial learning rate of 0.001, a cosine an-nealing learning rate scheduler with a minimum of 1e-5, a warmup proportion of 0.2 for linear warmup, and 8-bit quantization throughout quantized layers. The activation function used throughout is GELU [21]. All the experi-ments are conducted using a Lambda Vector equipped with an AMD Ryzen Threadripper 7960X 24-core 4.20 GHz CPU and an RTX 4090 GPU with 24 GB of memory. 
+
+Latent Mapping Module For simplicity, we replace MLP layers in PointNet [46] with 3 convolution layer with dimension 128 and kernel size 1, to make the output feature dimension compact. The sinusoidal time encoder uses 16 frequency bands. Each frequency contributes both sine and cosine terms, re-sulting in a 32-dimensional time embedding. The fusion MLP in the LatentMapperPointNet con-sists of three fully connected layers with GELU activa-tions, mapping a 544-dimensional input to a compact 32-dimensional latent vector. The input dimension (544) comes from concatenating four 128-dimensional Point-Net features (start, end, intermediate, and their difference) and a 32-dimensional sinusoidal time embedding derived from 16 frequency bands. The MLP layers are struc-tured as (544 , 256 , 256 , 32) , where the first two layers use 1GELU [21] activations, and the final layer outputs the la-tent code. A LayerNorm [2] operation is applied to the 32-dimensional output, followed by a learnable scaling factor (initialized to 0.1) that stabilizes training by controlling out-put magnitude. 
+
+3D interpolation Module The 3D interpolation Module begins with an input voxel encoder, which is a two-layer MLP with GELU [21] activations that maps per-voxel in-put features with 16 channels to a higher-dimensional latent space of 64 features. These voxel features are projected to a smaller transformer space of x dimensions through another two-layer QuantLinear MLP. We set x to 16, 24, and 32 for the resolutions of 64, 128, and 256, respectively. Both encoder and decoder transformers operate on this x dimen-sional latent space with 4 attention heads, a feedforward expansion ratio of 4×, and 2 encoder plus 2 decoder lay-ers each. Spatial information is injected through coordinate embeddings of the 8 × 8 × 8 voxel grid, projected via a linear layer to match the transformer dimension. Temporal context is encoded by a sinusoidal time embedding with 16 frequency bands. For conditioning, each intermediate step uses a latent vector of dimension 32, fused with the time embedding and processed by a two-layer MLP. Algorithm 1 summarizes the whole compression and de-compression process. 
+
+Algorithm 1 N4MC Compression and Decompression  
+
+> 1:
+
+procedure COMPRESS ({Mi}Ni=1 ) 
+
+> 2:
+
+Generate volume centers, denoted as C = {Ci}Ni=1  
+
+> 3:
+
+for i = 1 to N do  
+
+> 4:
+
+Ti ← TSDF-Def (Mi) ▷ Generate TSDF-Def tensor  
+
+> 5:
+
+Fi ← Eθ (Ti) ▷ Encode to embedded features  
+
+> 6:
+
+Q(Fi) ▷ Quantize features  
+
+> 7:
+
+Z = fθ (C) ▷ Generate latent codes  
+
+> 8:
+
+Entropy coding  
+
+> 9:
+
+procedure DECOMPRESS (bitstreams)  
+
+> 10:
+
+Decode bitstreams to recover F = {Fi}Ni=1 and Z 
+
+> 11:
+
+for t = 1 to N do  
+
+> 12:
+
+ˆFt ← I Q(ϕ)(F, Z, t ) ▷ Interpolate embedded features  
+
+> 13:
+
+ˆTt ← DQ(ψ)( ˆFt) ▷ Decode TSDF-Def tensor  
+
+> 14:
+
+ˆMt ← DMC ( ˆTt) ▷ Reconstruct mesh [47]  
+
+> 15:
+
+return { ˆMt}Nt=1 
+
+## 8. Additional Results 
+
+In this section, we first provide additional quantitative and qualitative results on our main benchmark, which in-cludes four MPEG mesh sequences: ”Dancer”, ”Basketball player”, ”Mitch”, and ”Thomas”. We then present quali-tative results on the ”Mixed” dataset. Next, we evaluate N4MC on our own custom captured sequences featuring everyday human activities and object interactions, as well as on high-variability synthetic data from Thingi10K [68]. Finally, we include failure cases with volume center latent mapping disabled as a supplemental ablation study. Playback results of the decoded mesh sequences for N4MC and all baselines are provided in the supplementary video. 
+
+Complete Comparison We present the full qualitative comparison results in Fig. 12, corresponding to the simpli-fied version shown in Fig. 4. The complete meshes further demonstrate that N4MC outperforms all baselines in visual quality at a similar bitrate of around 4 Mbps. The improve-ments are evident not only in the zoomed-in head region but also in other challenging areas, such as the hands in the ”Basketball player” sequence. Additional rate-distortion performance using geometry-based D2-PSNR and image-based PSNR is provided in Fig. 7 and Fig. 8, respectively. N4MC consistently achieves the best performance across both metrics, high-lighting its superior capability in 4D mesh compression. 
+
+Qualitative Results for ”Mixed” dataset To demon-strate the scalability of N4MC, we evaluate it on the ”Mixed” dataset, which consists of 4 MPEG mesh se-quences. The qualitative comparisons of N4MC and all baselines corresponding to Tab. 4 are shown in Fig. 9. For fair comparison, we set the resolution of NeCGS [47] and N4MC to 128, use a quantization parameter of qp = 7 for Draco [14], qp = 5 for TVMC [7], and 128 basis vectors for KLT [57]. These settings produce comparable reconstruc-tion quality around 60 dB D2-PSNR. With the lowest bitrate of 2.469 Mbps, N4MC achieves nearly the same visual quality as NeCGS [47] at 4.931 Mbps, while maintaining facial expressions and avoiding noticeable distortions. In contrast, KLT [57] requires over 10 Mbps to achieve a similar quality. TVMC [7] and Draco [14] still suffer from visible artifacts on faces and thin structures such as arms and hands, despite requiring more than 4× the bitrate. 
+
+Experiments on Real Captured Data To evaluate N4MC on a broader range of time-varying scene mesh sequences, we built a high-resolution capture setup with four Azure Kinect cameras [37], recording depth frames at 
+
+640 × 576 resolution and 30 FPS. Using this setup, we use Open3D [69] to convert the RGB-D images into TSDF vol-umes and then extract meshes via the Marching Cubes al-gorithm [29]. 2(a) Comparison of D2-PSNR vs. bi-trate on ”Dancer” 
+
+> (b) Comparison of D2-PSNR vs. bi-trate on ”Basketball player”
+> (c) Comparison of D2-PSNR vs. bi-trate on ”Mitch”
+> (d) Comparison of D2-PSNR vs. bi-trate on ”Thomas”
+
+Figure 7. Objective rate-distortion (RD) performance comparison of geometry-based D2-PSNR versus bitrate on four 4D mesh sequences: ”Dancer”, ”Basketball player”, ”Mitch”, and ”Thomas”. To get the target bitrates, we use the same setting as in Fig. 5. 
+
+> (a) Comparison of PSNR vs. bitrate on ”Dancer”.
+> (b) Comparison of PSNR vs. bitrate on ”Basketball player”
+> (c) Comparison of PSNR vs. bitrate on ”Mitch”
+> (d) Comparison of PSNR vs. bitrate on ”Thomas”
+
+Figure 8. Objective rate-distortion (RD) performance comparison of image-based PSNR versus bitrate on four 4D mesh sequences: ”Dancer”, ”Basketball player”, ”Mitch”, and ”Thomas”. To get the target bitrates, we use the same setting as in Fig. 5. GT  N4MC (ours)  NeCGS      
+
+> Draco KLT TVMC
+> 2.469 Mbps 4.931 Mbps
+> 14.487 Mbps 10.737 Mbps 9.847 Mbps
+
+Figure 9. Qualitative comparison of our N4MC with baselines on ”Mixed” dataset. 
+
+In Fig. 10, we present qualitative results of ground truth and N4MC decoded mesh on one of our real captured 4D mesh sequences called ”Arena”, with the setting of N4MC resolution to 128. Due to camera noise and the limited four-camera setup, the meshes directly extracted from RGB-D images (GT) exhibit noticeable distortions. Nevertheless, N4MC operates on these raw sequences without any pre-processing and still produces high-quality reconstructions, demonstrating its practicality and robustness. One remaining artifact is the noisy and jittery appearance of the floor in the N4MC results. This occurs because the floor is essentially a flat plane, and the Marching Cubes al-gorithm attempts to generate a closed and watertight surface during mesh extraction. 
+
+Experiments on Synthetic Data We evaluate N4MC on synthetic data from Thingi10K [68]. We filter meshes with vertex counts between 20,000 and 30,000 and ran-domly sample 100 of them to form a sequence for evalu-ation. Since Thingi10K contains static meshes rather than 4D mesh sequences, we disable the 3D interpolation mod-ule in N4MC during this experiment. Fig. 13 presents qualitative reconstruction results ob-tained by N4MC at a resolution of 128, achieving a com-pression ratio (CR) of 89.56. We also compare N4MC against Neural Progressive Meshes [10] on Thingi10K us-3GT  N4MC (ours) Figure 10. Qualitative comparison of our N4MC with baselines on a real captured dataset. 
+
+ing the metrics dpm (mean point-to-mesh distance) and 
+
+dnormal (average normal error), following the definitions in [10]. Since no official implementation of Neural Progres-sive Meshes is publicly available, we reference the results reported in their paper. With the interpolation module disabled, N4MC achieves a CR of 89.56, approximately 1.45 × the performance of Neural Progressive Meshes, while maintaining compara-ble reconstruction quality. The mean point-to-mesh dis-tance and average normal error increase slightly from 4.12 to 10.42, and from 7.19 ◦ to 9.26 ◦, respectively.            
+
+> Table 6. Comparisons of N4MC and Neural Progressive Meshes [10] on Thingi10K. dpm represents the mean point-to-mesh distance. dnormal represents the average normal error.
+
+Method dpm (×10 −4) ↓ dnormal ↓ CR ↑
+
+NPM [10] 4.12 7.19 ◦ 61.39 N4MC (ours) 10.42 9.26 ◦ 89.56 
+
+Failure Cases Without Volume Center Latent Mapping 
+
+In 2D image interpolation–based video compression meth-ods, obtaining appropriate latent codes is crucial for re-solving interpolation ambiguities. To analyze this effect in N4MC, we perform an additional ablation study by dis-abling the proposed volume-center latent mapping module, as shown in Fig. 11. Without this module, the transformer fails to learn meaningful intermediate representations, re-sulting in poor interpolation and incorrect mesh reconstruc-tion. GT  N4MC  N4MC w/o Latent   
+
+> Mapping
+> Figure 11. Ablation on volume center latent mapping. Without latent mapping, N4MC could fail.
+
+## 9. Additional Results of N4MC Decoder on VR headset 
+
+In Sec. 4, we’ve provided N4MC’s decoding time on mul-tiple mobile devices, including Meta Quest 3, Pixel 9, and Xiaomi 12S Pro. Here we show additional visual results of N4MC decoded meshes and the playback system in Meta Quest 3 in Fig. 14. 
+
+## 10. Limitations and Future Work 
+
+The current N4MC exhibits overfitting, as it compresses 4D meshes into two bitstreams: compressed embedding features and compressed model parameters, which results in limited generalization to unseen data. In future work, N4MC could be extended to train on larger-scale datasets and serve as a foundation model that can be deployed across diverse devices. To further reduce GPU memory usage and accelerate training, the uniform TSDF representation could be replaced with a pruned version that retains only near-surface voxels. 4Dancer 
+
+GT 
+
+N4MC (ours) 
+
+NeCGS 
+
+draco 
+
+KLT 
+
+TVMC 
+
+GT 
+
+N4MC (ours) 
+
+NeCGS 
+
+draco 
+
+KLT 
+
+TVMC 
+
+> Basketball player
+
+GT 
+
+N4MC (ours) 
+
+NeCGS 
+
+draco 
+
+KLT 
+
+TVMC 
+
+GT 
+
+N4MC (ours) 
+
+NeCGS 
+
+draco 
+
+KLT 
+
+TVMC 
+
+> Mitch thomas
+
+GT  N4MC (ours)  necgs  Draco  KLT  TVMC Figure 12. Complete qualitative comparison of our N4MC with baselines at a bitrate around 4 Mbps. 
+
+5gt N4MC Figure 13. Qualitative results of our N4MC on synthetic dataset Thingi10K [68]. Thingi10K 
+
+Thomas  Mixed  Arena4 
+
+Mitch Dancer  Basketball player 
+
+Figure 14. Decoded meshes in Meta Quest 3. 
+
+6

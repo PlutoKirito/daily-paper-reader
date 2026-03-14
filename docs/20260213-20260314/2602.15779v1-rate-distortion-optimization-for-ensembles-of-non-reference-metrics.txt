@@ -1,0 +1,464 @@
+Title: Rate-Distortion Optimization for Ensembles of Non-Reference Metrics
+
+URL Source: https://arxiv.org/pdf/2602.15779v1
+
+Published Time: Wed, 18 Feb 2026 02:05:26 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# RATE-DISTORTION OPTIMIZATION FOR ENSEMBLES OF NON-REFERENCE METRICS 
+
+# Xin Xiong SC *, Samuel Fern´ andez-Mendui˜ na SC *, Eduardo Pavez SC , Antonio Ortega SC , Neil Birkbeck G , Balu Adsumilli GSC University of Southern California, Los Angeles, CA, USA  
+
+> G
+
+# Google Inc, Mountain View, CA, USA 
+
+ABSTRACT 
+
+Non-reference metrics (NRMs) can assess the visual quality of im-ages and videos without a reference, making them well-suited for the evaluation of user-generated content. Nonetheless, rate-distortion optimization (RDO) in video coding is still mainly driven by full-reference metrics, such as the sum of squared errors, which treat the input as an ideal target. A way to incorporate NRMs into RDO is through linearization (LNRM), where the gradient of the NRM with respect to the input guides bit allocation. While this strategy improves the quality predicted by some metrics, we show that it can yield limited gains or degradations when evaluated with other NRMs. We argue that NRMs are highly non-linear predictors with locally unstable gradients that can compromise the quality of the linearization; furthermore, optimizing a single metric may exploit model-specific biases that do not generalize across quality estima-tors. Motivated by this observation, we extend the LNRM frame-work to optimize ensembles of NRMs and, to further improve ro-bustness, we introduce a smoothing-based formulation that stabilizes NRM gradients prior to linearization. Our framework is well-suited to hybrid codecs, and we advocate for its use with overfitted codecs, where it avoids iterative evaluations and backpropagation of neu-ral network–based NRMs, reducing encoder complexity relative to direct NRM optimization. We validate the proposed approach on AVC and Cool-chic, using the YouTube UGC dataset. Experiments demonstrate consistent bitrate savings across multiple NRMs with no decoder complexity overhead and, for Cool-chic, a substantial re-duction in encoding runtime compared to direct NRM optimization. 
+
+Index Terms — Hybrid codec, RDO, gradient, linearization, non-reference quality assessment, Cool-chic 
+
+1. INTRODUCTION 
+
+Non-reference metrics (NRMs) [1], which assess the perceptual quality of images and videos without a pristine reference, are im-portant for the compression of user-generated content (UGC) [2]. UGC is typically noisy due to motion blur, non-ideal exposure, and artifacts from prior compression. Once uploaded to platforms like YouTube and TikTok, UGC is re-encoded at different bitrates and resolutions to support adaptive streaming [3]. In such pipelines, where the original content is unreliable, NRMs are popular for eval-uating perceptual quality [2, 4]. Despite their widespread adoption for quality evaluation, NRMs are still rarely used as bit-allocation objectives during compression [5]. Instead, rate-distortion optimiza-tion (RDO) in hybrid (i.e., block-based) [6] and overfitted [7] codecs is mostly driven by full-reference metrics (FRMs), such as the sum of squared errors (SSE) [8], which assume the input is an ideal ref-erence. Hence, distortion converges to perfect quality (as measured 
+
+> This work was funded in part by a YouTube gift. *Equal contribution.
+
+by the FRM) as bitrate increases [5]. While appropriate for pristine content, FRMs encourage the preservation of artifacts when applied to UGC, which leads to suboptimal compression [9]. Thus, UGC setups can benefit from using NRMs in RDO. The strategy to incorporate them depends on the codec architecture. In overfitted codecs [7], the NRM can be included directly in the loss function and optimized end-to-end via gradient descent, as we show in Section 4. However, overfitted codecs require multiple evalua-tions of the RD cost during encoding. Since modern NRMs are mostly implemented as deep neural networks, their repeated eval-uation and backpropagation add substantial encoder complexity and runtime overhead [10]. For hybrid encoders, given that most NRMs map the input to a single value, obtaining per-pixel or per-block im-portance is not straightforward. As a result, RDO with NRMs for hybrid encoders may require iterative encoding, decoding, and met-ric evaluation. To address this issue, [5] proposed using the gradient of the metric evaluated at the input to guide bit allocation, a strat-egy termed linearized NRM (LNRM), which drastically reduces the complexity of accounting for NRMs in hybrid codecs. While LNRM makes NRM-based RDO computationally effi-cient, NRMs are highly non-linear mappings from images to scalars, and their input gradients may exhibit local instability, i.e., the met-ric’s response can vary sharply even for very small input changes [11]. Moreover, NRMs are imperfect quality estimators with model-specific biases, so that different NRMs produce different results for the same input. Experimentally, we observe, with both hybrid and overfitted codecs, that optimizing an LNRM derived from a specific (target) NRM often leads to significant improvements for the target NRM, while we observe marginal improvements (or even degrada-tions) for other NRMs (Figure 1). Although in some settings this might be desirable, gains that are more consistent across an ensemble of NRMs are more likely to reflect perceptual quality improvements. In this work, we address these issues along two directions. First, we extend the LNRM formulation [5] to ensembles of metrics, thereby reducing sensitivity to the choice of NRM and encouraging improvements across multiple, potentially unrelated quality predic-tors. Second, we introduce a smoothing-based optimization strategy, in which for a given NRM we average the scores obtained over small Gaussian perturbations of the input before linearization. This smoothed gradient strategy, similar to methods developed in the machine learning literature [14, 15], computes an average of slightly perturbed gradients, attenuating sharp local variations and favoring directions that remain stable under small input perturbations. This improves the reliability of the first-order linearization underlying LNRM. Our approach can be incorporated into hybrid codecs, im-proving performance not only for the target NRMs but also across an ensemble of metrics. We further argue for its use with overfitted codecs, where linearization substantially reduces encoding com-plexity relative to direct metric optimization. When combined with smoothing, further computational gains are obtained by avoiding   
+
+> arXiv:2602.15779v1 [eess.IV] 17 Feb 2026 (a) Input UGC (b) SSE (1.08 bpp) (c) QualiCLIP (1.09 bpp)
+> QualiCLIP
+> CLIP-IQA
+> MA-CLIP
+> HyperIQA
+> MUSIQ
+> BRISQUE
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Normalized score
+> (d) NRM scores
+> Input UGC
+> SSE
+> QualiCLIP
+
+Fig. 1 : (a) Synthetic UGC obtained by compressing a KODAK image [12] using JPEG [13] (with Q = 60 ). (b) Cool-chic reconstruction, optimizing for SSE (PSNR: 42 .98 dB). (c) Cool-chic reconstruction, optimizing for QualiCLIP with SSE regularization (PSNR: 42 .63 dB). (d) Normalized scores (between 0 and 1) reported by multiple NRMs. While optimizing the bit-allocation for QualiCLIP improves the quality as predicted by some metrics, it yields limited improvements or even degradations in others. iterative evaluations of the smoothed objective. We validate our framework using AVC [16] and Cool-chic [7] for several NRMs [17–19]. We test frames sampled from the YouTube UGC dataset [2], setting the RDO to optimize different NRMs using our approach, considering both ensembles of metrics and smoothed objectives. For Cool-chic, we also consider direct NRM optimization. Results in Section 4 show that our method can yield improvements in diverse NRMs, with no decoder complex-ity overhead and, for Cool-chic, a substantial reduction in runtime relative to optimizing the NRM directly. 
+
+2. PRELIMINARIES Notation. Uppercase and lowercase bold letters, such as A and a,denote matrices and vectors, respectively. The nth entry of the vector 
+
+a is an. Regular letters denote scalar values. 
+
+2.1. Rate-distortion optimization 
+
+Both hybrid [16,20] and overfitted [7] codecs aim to find parameters 
+
+θθθ that optimize a rate-distortion (RD) cost. Given x, an input with 
+
+np pixels, and ˆx(θθθ), its compressed version with parameters θθθ, full-reference RDO aims at minimizing: 
+
+J(ˆ x(θθθ)) = d(ˆ x(θθθ), x) + λ r (ˆ x(θθθ)) , (1) where d(·, ·) denotes the distortion metric, r(·) the bitrate, and λ
+
+controls the RD trade-off. For the purpose of this paper, the key difference between hybrid and overfitted codecs is the domain of the coding parameters θθθ and optimization strategy used to minimize (1). 
+
+Hybrid codecs. The parameters θθθ = [ θ1, . . . , θ nb ] ∈ Nnb take discrete values, which may represent block partitioning, prediction mode, or quantization step. Given a distortion term that splits block-wise d(ˆ x(θθθ), x) = Pnb 
+
+> i=1
+
+di(ˆ xi(θi)xi), e.g., the sum of squared errors (SSE), where xi is the ith block of the input and ˆxi(θi) its compressed version with parameters θi, we have block level RDO: 
+
+θ⋆i = arg min θi di(ˆ xi(θi), xi) + λ r (ˆ xi(θi)) .
+
+Overfitted codecs. We focus on Cool-chic [7]. The continuous pa-rameters θθθ, namely, the latent representation of the image, the en-tropy coding parameters, and the weights of the synthesis CNN, are optimized via gradient descent. Since quantization and entropy cod-ing are not differentiable [21], a differentiable approximation of the RD cost in (1) is used instead. The parameters are updated over thousands of iterations using this cost, which must be evaluated and backpropagated at every iteration. 
+
+2.2. Linearized NRM 
+
+A method to perform RDO with hybrid codecs using a NRM as dis-tortion metric was proposed in [5]. Let the NRM be b(·). Then, 
+
+θθθ⋆ = arg min 
+
+> θθθ
+
+b(ˆ x(θθθ)) + τ ∥x − ˆx∥22 + λ r (ˆ x(θθθ)) , (2) where τ controls the SSE-NRM trade-off. When the metric is dif-ferentiable and the gradients exist, a first order Taylor expansion to 
+
+b(ˆ x(θθθ)) around the input image x yields 
+
+θθθ⋆ = arg min 
+
+> θθθ
+
+∇b(x)⊤(ˆ x(θθθ) − x) + τ ∥x − ˆx∥22 + λ r (ˆ x(θθθ)) . (3) The term ∇b(x)⊤(ˆ x(θθθ) − x) is called linearized NRM (LNRM). The dependence on the compressed image is linear, which implies that the metric can be evaluated block-wise in hybrid codecs. 
+
+3. OPTIMIZATION WITH NRM 
+
+Since the gradient in (3) depends only on the input image, the NRM needs to be evaluated (and backpropagated) only once. We leverage this property to optimize efficiently for ensembles of NRMs. 
+
+3.1. Ensembles of metrics 
+
+We consider an ensemble of metrics, ℓc(x) .
+
+= Pnm 
+
+> i=1
+
+τi bi(x), where 
+
+bi(·) is the ith NRM and τi is the corresponding weight. By applying a first-order Taylor expansion around x, we obtain: 
+
+ℓc(ˆ x(θθθ)) = ℓc(x) + ∇ℓc(x)⊤(ˆ x(θθθ) − x) + o(∥ˆx(θθθ) − x∥22), (4) where the ensemble gradient satisfies ∇ℓc(x) = Pnm 
+
+> i=1
+
+τi ∇bi(x).Thus, we can optimize for an ensemble of metrics by 1) evaluating each NRM and then computing the gradient of the metric with re-spect to the input, and 2) evaluating an LNRM based on the weighted average of the gradients. LNRMs decouple NRM evaluation from the coding loop: we construct and optimize an LNRM for each input and ensemble of NRMs. As a result, evaluating the LNRM during encoding is inexpensive once the gradients are available. 
+
+Ensemble composition. Since different NRMs may capture differ-ent and weakly correlated properties of the image, one way to con-struct the ensemble is to complement these behaviors rather than re-inforce a single notion of quality. Thus, the ensemble will promote improvements that are consistent across diverse and partially inde-pendent NRMs. To this end, we analyze the correlation between the scores produced by different NRMs over a set of images. Given 0.0 0.5 1.0         
+
+> Iteration ( ×10 4)
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> MSE ( ×10  3)
+> (a) MSE vs Iteration
+> MSE
+> 0.0 0.5 1.0
+> Iteration ( ×10 4)
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> Rate (bpp)
+> (b) Rate (bpp) vs Iteration
+> Rate (bpp) 0.0001 0.0004 0.001 0.004
+> Lambda
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Score
+> (c) TOPIQ-NR
+> Warm-up
+> Final
+> 0.0001 0.0004 0.001 0.004
+> Lambda
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Score
+> (d) QualiCLIP
+> Warm-up
+> Final
+
+Fig. 2 : (a) MSE and (b) rate evolution across iterations for Cool-chic in one image. While the MSE converges fast, the decrease in rate is more gradual. (c-d) Average NRM score (50 images), showing warm-up reconstructions achieve near-final scores, justifying (9). a dataset of compressed reconstructions at various bitrates, we com-pute pairwise correlations between metric outputs. Metrics with high correlation tend to respond similarly to changes in compression pa-rameters and may provide redundant guidance during optimization. Conversely, metrics with low correlation are more likely to capture complementary properties. We show an example in Figure 3 and provide guidance on how to choose the weights τi in Section 3.4. 
+
+3.2. Smoothed LNRM 
+
+An approach to improve the robustness of the LNRM framework is to smooth the metric prior to linearization [14]. Given σ > 0,
+
+bσ (x) .
+
+= En∼N (0 ,σ 2I)
+
+b(x + n). Smoothing regularizes the metric by attenuating high-curvature components of its response surface, yielding a function with better local smoothness properties [14]. Moreover, since ∇bσ (x) = En
+
+∇b(x + n), the smoothed gradient is an average of perturbed gradients, favoring directions that remain stable under small perturbations of the input, which emphasizes fea-tures that may generalize better across multiple quality predictors. We use a Monte Carlo approximation with ns samples: 
+
+bσ (x) = 
+
+> ns
+
+X
+
+> i=1
+
+1/n s b(x + ni), with ni ∼ N (0, σ I), (5) and σ is chosen such that the noise is imperceptible for a human observer [15]. Applying the same Taylor expansion around x as in (4), we obtain a LNRM with the smoothed version of the gradient: 
+
+∇bσ (x) = 
+
+> ns
+
+X
+
+> i=1
+
+1/n s ∇b(x + ni). (6) Then, ∇bσ (x)⊤(ˆ x(θθθ) − x) is the smoothed LNRM (SLNRM). Since linearization decouples NRM evaluation from bit allocation, SLNRM still adds only limited complexity. However, the setup cost is higher for SLNRM: the initial LNRM requires only one backpropagation, while SLNRM requires ns.
+
+3.3. LNRM with overfitted codecs 
+
+LNRMs (3) can be applied to overfitted codecs. In this case, the main motivation is computational: optimizing the LNRM is much 0.2 0.0 0.2 0.4  
+
+> MDS dimension 1
+> 0.2
+> 0.0
+> 0.2
+> MDS dimension 2
+> QualiCLIP
+> MA-CLIP
+> CLIP-IQA+
+> MANIQA
+> TOPIQ-NR
+> HyperIQA
+> MUSIQ NIQE
+
+Fig. 3 : Multidimensional scaling (MDS) [22] for NRM correlation. We show di,j = 1 − | pi,j |, with pi,j the 2D projection of the rank correlation between NRMs i and j. We identify three clusters. cheaper than optimizing the corresponding NRM. We focus on the complexity of a Cool-chic encoder with ni iterations. Let nf be the number of FLOPs/px needed to compute a target NRM. Let ns be the number of smoothgrad samples. Since computing the gradient is twice as complex as evaluating the metric [5], the complexity over-head due to the NRM is 3 × ni × nf FLOPs/px, which increases to 
+
+3 × ni × nf × ns FLOPs/px when we consider smoothing. On the other hand, the complexity of evaluating the LNRM splits into two parts: computing the gradient, with complexity 3 × nf ,and evaluating the LNRM on each iteration, with complexity 2 ni
+
+FLOPs/px. For SLNRM, only the complexity of computing the gra-dient increases: we require 3 × nf × ns FLOPs/px to obtain the smoothed gradient. Hence, relying on the LNRM reduces the com-putational complexity by a factor of approximately ni. The number of iterations in Cool-chic is of the order of 10 4; hence, the LNRM can reduce complexity by orders of magnitude. Section 4 shows that complexity improvements also translate to runtime improvements. 
+
+3.4. SSE regularization 
+
+As in [5], we complement the LNRM with a SSE regularizer. To avoid modifying the Lagrangian, we constrain the SSE-based setup: 
+
+θθθ⋆ = arg min 
+
+> θθθ∈Θ
+
+∥ˆx(θθθ) − x∥22 + λ
+
+> nb
+
+X
+
+> i=1
+
+ri(ˆ xi(θi)) ,
+
+such that ∇ℓc(x)⊤(ˆ x(θθθ) − x) ≤ LNRM max , (7) where LNRM max is the maximum acceptable LNRM value. By applying Lagrangian relaxation [23], we can write: 
+
+d(x, ˆx(θθθ)) = ∥x − ˆx∥22 +
+
+> nm
+
+X
+
+> i=1
+
+τi ∇bi(x)⊤(ˆ x − x), (8) where τi can be selected by the user to control the trade-off be-tween performance among SSE and the different NRMs. To decide on the weights for each metric, we follow [5]: we split τi = α¯τi.Our choice of ¯τ varies depending on the type of codec. For hy-brid codecs, we choose ¯τi = pnp/12 ∆ /∥∇ bi(x)∥2, for all i =1, . . . , n m, since it balances the SSE and LNRM contributions to the total cost for the smallest possible quantization error [5]. Over-fitted codecs lack an explicit quantization step, so we cannot use the same relationship. Instead, we leverage the warm-up process to ob-tain estimates of both quantities. We have empirically found that MA-CLIP 
+
+> QualiCLIP
+> MANIQA
+> CLIP-IQA+
+> NIQE
+> TOPIQ-NR
+> MUSIQ
+> HyperIQA
+
+NRMs 
+
+> 20
+> 15
+> 10
+> 5
+> 0
+> 5
+> BD-Rate savings (%)
+
+(a) AVC 
+
+> SL-QualiCLIP (BD-Rate PSNR +2.93%)
+> L-QualiCLIP (BD-Rate PSNR +2.94%)
+> MA-CLIP
+> QualiCLIP
+> CLIP-IQA+
+> TOPIQ-NR
+> MANIQA
+> HyperIQA
+> MUSIQ
+> NIQE
+
+NRMs 
+
+> 60
+> 50
+> 40
+> 30
+> 20
+> 10
+> 0
+
+(b) Cool-chic 
+
+> SL-QualiCLIP (BD-Rate PSNR +1.07%)
+> L-QualiCLIP (BD-Rate PSNR +1.21%)
+
+Fig. 4 : BD-rate savings (%) relative to the baseline across different NRMs. We optimize for the SLNRM (blue bar) and LNRM (red bar) versions of QualiCLIP. Left: Results for AVC. Right: Results for Cool-chic. Optimization with SLNRM yields higher BD-rate savings than LNRM across all NRMs we evaluated with. Moreover, using SLNRM always provides better scores than the baseline regardless of the NRM. 1.0 1.5 
+
+> 32.5
+> 35.0
+> 37.5
+> AVC Score
+
+PSNR (dB)  
+
+> Baseline
+> L-QualiCLIP
+> SL-QualiCLIP
+> L-TOPIQ-NR
+> SL-TOPIQ-NR
+> 1.0 1.5
+> 0.4
+> 0.6
+
+QualiCLIP  
+
+> 1.0 1.5
+> 0.40
+> 0.45
+> 0.50
+
+TOPIQ-NR   
+
+> 1.0 1.5
+> 55.0
+> 57.5
+> 60.0
+> 62.5
+
+MUSIQ  
+
+> 1.0 1.5
+> 0.28
+> 0.30
+
+MANIQA  
+
+> 1.0 1.5
+> 0.400
+> 0.425
+> 0.450
+
+HyperIQA 0.5 1.0 1.5 
+
+Rate (bpp)   
+
+> 35
+> 40
+> C.-C. Score
+> Baseline
+> L-QualiCLIP
+> SL-QualiCLIP
+> L-TOPIQ-NR
+> SL-TOPIQ-NR
+> 0.5 1.0 1.5
+
+Rate (bpp)   
+
+> 0.4
+> 0.6
+> 0.5 1.0 1.5
+
+Rate (bpp)   
+
+> 0.4
+> 0.5
+> 0.5 1.0 1.5
+
+Rate (bpp)   
+
+> 57.5
+> 60.0
+> 62.5
+> 0.5 1.0 1.5
+
+Rate (bpp)   
+
+> 0.275
+> 0.300
+> 0.325
+> 0.5 1.0 1.5
+
+Rate (bpp) 
+
+> 0.40
+> 0.45
+
+Fig. 5 : Rate-quality curves comparing baseline, LNRM, and SLNRM evaluated across various NRMs. Top: the results for AVC; Bottom: the results for Cool-chic. In each sub-figure, the black curve represents the baseline. Other colors correspond to RDO using specific NRMs, where solid lines indicate LNRM and dashed lines indicate SLNRM. SLNRM consistently outperforms LNRM across various NRMs. the distortion term, whether SSE or NRMs, in overfitted codecs ap-proaches its final value within a few iterations (Figure 2). Thus, 
+
+¯τi = ∥x − ˆxw ∥22 / b i(ˆ xw ), (9) where ˆxw is the reconstruction at the end of the warm-up period. As a result, the user only needs to specify a single parameter α, which controls the overall trade-off between the NRMs and the SSE. These parameters can be changed to align with user requirements. 
+
+4. EMPIRICAL EVALUATION Setup. We evaluate two codecs: AVC [16] and Cool-chic [7]. We test 50 frames of 640 × 480 pixels, sampled from the YouTube UGC dataset [2]. We use 4:4:4 AVC baseline [5] with QP ∈{25 , 28 , 31 , 34 , 37 }. QP offset for color channels is 3. We use RDO to choose block partition ( 4 × 4 and 16 × 16 ) and block-level quantization step ( ∆QP = −4, −3, . . . , 3, 4). For computing ¯τ in Section 3.4, we set ∆(QP) = 2 (QP −4) /6 [24]. For Cool-chic, we use the fast training profile ( 10 4 iterations) with λ values of 0.004, 0.001, 0.0004 and 0.0001. We use an AMD 9950X3D CPU with a NVIDIA Geforce RTX 5090 (32GB VRAM). The baseline is the version of each codec optimizing the SSE during RDO. We evaluate on QualiCLIP [18], TOPIQ-NR [17], CLIP-IQA+ [25], MANIQA [26], MUSIQ [27], NIQE [1], MA-CLIP [28], and HyperIQA [29] with default settings [30]. For ensemble optimiza-tion, we analyze the NRM correlation (Figure 3) by assessing re-construction quality using SSE-RDO AVC across 5 QP values. We identify three clusters; since one cluster only has one metric (NIQE), we select a NRM from the other two (TOPIQ-NR, QualiCLIP). 
+
+Coding experiments. We evaluate LNRM and SLNRM across mul-tiple target NRMs. For smoothing, we set ns = 5 and σ = 0 .01 .Figure 4 illustrates the average BD-rate savings on various NRMs when optimizing for QualiCLIP via LNRM and SLNRM. We tune the hyperparameter α to make the BD-rate loss for PSNR com-parable across all methods, implying that the degradation in SSE is similar across all methods. Under this condition, SLNRM con-sistently achieves higher bitrate savings than LNRM, not only for the target NRM but also across other evaluated metrics. We ob-serve that the coding gains for Cool-chic are larger than those for AVC, which we attribute to the larger optimization space available on Cool-chic. For AVC (Table 1), when optimizing for a single LNRM, performance is superior when evaluated on NRMs within the same cluster (cf. Figure 3). When combining two target NRMs from the same cluster (e.g., QualiCLIP and CLIP-IQA+), we observe performance improvements on CLIP-IQA+ relative to using Quali-CLIP only; however, gains on other metrics are negligible. Con-versely, when combining metrics from different clusters (e.g., Qual-iCLIP and TOPIQ-NR), we observe performance improvements in the TOPIQ-NR cluster relative to using QualiCLIP alone. Applying smoothing to these combinations also yields broad improvements across all evaluated metrics. For Cool-chic, we extend our analysis to include direct optimization of both the NRM and its smoothed version. As shown in Figure 6, when optimizing and evaluating for QualiCLIP, directly optimizing the NRM yields the best per-formance, whereas the smoothed NRM shows a slight degradation. Yet, when evaluating NRMs from different clusters (Table 2), the smoothed NRM outperforms direct NRM optimization. These re-sults suggest that optimizing the smoothed metric directly also im-Table 1: BD-rate savings (%) relative to SSE-RDO AVC. Comparison of multiple LNRM and SLNRM pairs. SLNRM outperforms LNRM across various NRMs at comparable PSNR drops. Ensemble 1: QualiCLIP+CLIPIQA+, ensemble 2: QualiCLIP+ TOPIQ-NR. 
+
+Method PSNR QualiCLIP MA-CLIP CLIP-IQA+ TOPIQ-NR MANIQA MUSIQ HyperIQA NIQE 
+
+L-QualiCLIP 2.94 -8.81 -8.64 -7.61 0.63 -6.09 0.88 2.81 -2.47 SL-QualiCLIP 2.93 -12.09 -12.37 -10.98 -3.53 -11.06 -2.19 -0.92 -3.63 L-TOPIQ-NR 3.28 -2.51 -2.37 -4.07 -22.56 -10.85 -1.85 -6.25 -2.77 SL-TOPIQ-NR 3.26 -2.93 -3.60 -4.54 -27.20 -15.93 -3.00 -9.06 -2.33 L-Ensemble 1 2.97 -8.30 -8.66 -10.65 0.10 -5.57 1.09 1.62 -2.25 SL-Ensemble 1 3.01 -11.41 -12.33 -14.37 -4.62 -11.05 -4.01 -2.35 -3.00 L-Ensemble 2 3.01 -7.45 -6.97 -6.93 -19.49 -11.50 -1.30 -4.73 -2.86 SL-Ensemble 2 3.00 -10.49 -10.84 -10.11 -24.14 -18.35 -6.76 -9.32 -3.83 
+
+Table 2: BD-rate savings (%) relative to SSE-based Cool-chic. As with AVC, SLNRM consistently outperforms LNRM, and optimizing for the smoothed NRM outperforms optimizing for the NRM in the ensemble. When optimizing and evaluating with the same NRM, reconstructions may have no-overlapping RD curves with invalid BD-rates (dashed cases). We report the RD curves for these cases in Figure 6. 
+
+Method PSNR QualiCLIP MA-CLIP CLIP-IQA+ TOPIQ-NR MANIQA MUSIQ HyperIQA NIQE 
+
+L-QualiCLIP 1.21 -25.14 -28.59 -20.76 -5.50 -4.19 -3.14 -3.59 -5.82 SL-QualiCLIP 1.07 -38.56 -53.37 -36.01 -13.52 -11.19 -9.53 -10.07 -8.25 QualiCLIP 0.82 — — — -10.88 -10.42 -6.97 -7.27 -7.44 S-QualiCLIP 0.75 — — — -17.57 -16.50 -11.09 -15.09 -6.28 L-TOPIQ-NR 0.95 -5.66 -3.61 -5.41 -43.07 -13.34 -7.25 -14.56 -3.52 SL-TOPIQ-NR 1.07 -6.90 -15.01 -6.35 -49.24 -17.01 -14.43 -17.92 -2.41 
+
+Table 3: BD-rate savings (%) relative to SSE-RDO AVC as a func-tion of smoothing parameters ( ns and noise level σ). We optimize for SL-QualiCLIP. ns = 5 and σ = 0 .01 yields gains in all metrics. 
+
+ns, σ PSNR QualiCLIP CLIP-IQA+ MUSIQ MANIQA HyperIQA 5,0.005 2.74 -11.27 -9.65 0.32 -8.06 0.72 5,0.01 2.93 -12.09 -10.98 -2.19 -11.06 -0.92 10,0.005 2.93 -11.56 -10.45 -0.04 -7.91 0.15 10,0.01 2.89 -12.72 -11.52 -3.13 -12.72 -2.12 20,0.005 3.05 -11.67 -9.82 -0.80 -8.26 -0.37 20,0.01 2.91 -12.73 -11.47 -3.35 -11.85 -3.26 
+
+Table 4: Runtime of gradient computation and Cool-chic encoding with LNRM, SLNRM, and NRM. Gradient computation time is re-ported in milliseconds (ms), while encoding time is shown as the overhead relative to the baseline ( ≈ 50 s). Encoding with NRM in-troduces significant overhead compared to LNRM and SLNRM. 
+
+Gradient compute (ms) Cool-chic encoding overhead (%) NRMs LNRM SLNRM LNRM SLNRM NRM QualiCLIP 7 28 +2.6% +2.8% +196% TOPIQ-NR 17 63 +1.8% +2.6% +457% 
+
+proves performance in ensembles of NRMs. 
+
+Ablations (Table 3). We test smoothing parameters with QualiCLIP. We observe that ns = 5 provides a good trade-off between perfor-mance and computational overhead. Increasing ns yields marginal gains, with performance saturation beyond ns = 10 . Since the computational cost of smoothing scales linearly with ns, we adopt 
+
+ns = 5 for our experiments. We also evaluate the impact of noise intensity with σ = 0 .005 and σ = 0 .01 . The visual impact of the added noise is negligible, with PSNR values relative to the input UGC image of 46 .1 dB and 40 .1 dB, respectively. A larger σ (0.01 )leads to better coding gains across all the evaluated NRMs. 
+
+Runtime analysis (Table 4). We show the runtime for gradient com-putation and Cool-chic encoding with LNRM, SLNRM, and NRM 0.5 1.0 1.5 
+
+Rate (bpp) 
+
+> 35
+> 40
+> C.-C. Score
+
+PSNR (dB)   
+
+> Baseline
+> L-QualiCLIP
+> SL-QualiCLIP
+> QualiCLIP
+> S-QualiCLIP
+> 0.5 1.0 1.5
+
+Rate (bpp) 
+
+> 0.4
+> 0.6
+> 0.8
+
+QualiCLIP   
+
+> 0.5 1.0 1.5
+
+Rate (bpp) 
+
+> 0.5
+> 0.6
+
+CLIP-IQA+ 
+
+Fig. 6 : Rate-quality curves for Cool-chic. Using the NRM as a dis-tortion metric in RDO performs best when evaluated by the same NRM. The SLNRM outperforms the LNRM in the given metric. for five images with two λ values. The experiment is repeated twice with two random seeds. Though computing smoothed gradients with 
+
+ns = 5 increases complexity by approximately 5 times, this over-head is negligible relative to the Cool-chic encoding time (around 50 
+
+seconds per image in our setup). Hence, the difference in encoding runtime between LNRM and SLNRM is minimal. Directly optimiz-ing for NRM incurs a substantial runtime penalty, since the NRM must be evaluated at each iteration. 
+
+5. CONCLUSION 
+
+In this paper, we showed that optimizing for a single NRM leads to inconsistent behavior when evaluated with other NRMs. To address this, we proposed an RDO framework based on LNRMs that enables optimization over ensembles of metrics. Building on this formula-tion, we introduced a smoothing-based approach inspired by robust optimization, which improves performance not only on the target metric but also in other NRMs while exploiting the computational advantages of linearization. Experiments with AVC and Cool-chic on the YouTube UGC dataset demonstrate consistent bitrate savings across diverse NRMs, reduced sensitivity to the choice of NRM, and substantial encoder runtime reductions compared to direct NRM op-timization for Cool-chic, with no decoder-side overhead. While we focused on image compression, the proposed framework naturally extends to video coding by incorporating video NRMs. 6. REFERENCES 
+
+[1] A. Mittal, R. Soundararajan, and A. C. Bovik, “Making a “completely blind” image quality analyzer,” IEEE Signal Pro-cessing Letters , vol. 20, no. 3, pp. 209–212, 2013. [2] Y. Wang, S. Inguva, and B. Adsumilli, “YouTube UGC dataset for video compression research,” in Proc. IEEE Intl. Work. on Mult. Signal Process. IEEE, 2019, pp. 1–5. [3] M. Seufert, S. Egger, M. Slanina, T. Zinner, T. Hoßfeld, and P. Tran-Gia, “A survey on quality of experience of HTTP adap-tive streaming,” IEEE Comms. Surv. & Tutor. , vol. 17, no. 1, pp. 469–492, 2014. [4] E. Pavez, E. Perez, X. Xiong, A. Ortega, and B. Adsumilli, “Compression of user generated content using denoised refer-ences,” in Proc. IEEE Int. Conf. Image Process. IEEE, 2022, pp. 4188–4192. [5] S. Fern´ andez-Mendui˜ na, X. Xiong, E. Pavez, A. Ortega, N. Birkbeck, and B. Adsumilli, “Rate-distortion optimization with non-reference metrics for UGC compression,” in Proc. IEEE Int. Conf. Image Process. , 2025, pp. 2372–2377. [6] G. J. Sullivan and T. Wiegand, “Rate-distortion optimization for video compression,” IEEE Signal Process. Mag. , vol. 15, no. 6, pp. 74–90, 1998. [7] T. Ladune, P. Philippe, F. Henry, G. Clare, and T. Leguay, “Cool-chic: Coordinate-based low complexity hierarchical im-age codec,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. , 2023. [8] A. Ortega and K. Ramchandran, “Rate-distortion methods for image and video compression,” IEEE Signal Process. Mag. ,vol. 15, no. 6, pp. 23–50, Nov. 1998. [9] X. Xiong, E. Pavez, A. Ortega, and B. Adsumilli, “Rate-distortion optimization with alternative references for UGC video compression,” in Proc. IEEE Int. Conf. Acoust., Speech, and Signal Process. , 2023, pp. 1–5. [10] P. Philippe, T. Ladune, G. Clare, and F. E. Henry, “Perceptu-ally optimised cool-chic for clic 2025,” in 7th Challenge on Learned Image Compression .[11] Y. Liu, C. Yang, D. Li, J. Ding, and T. Jiang, “Defense against adversarial attacks on no-reference image quality models with gradient norm regularization,” in Proc. IEEE/CVF Conf. on Comp. Vis. and Patt. Recog. , 2024, pp. 25554–25563. [12] E. Kodak, “Kodak lossless true color image suite,” 1993. [13] G. K. Wallace, “The JPEG still picture compression standard,” 
+
+Communications of the ACM , vol. 34, no. 4, pp. 30–44, 1991. [14] J. Cohen, E. Rosenfeld, and Z. Kolter, “Certified adversarial robustness via randomized smoothing,” in Proc. Intl. Conf. Mach. Learn. PMLR, 2019, pp. 1310–1320. [15] D. Smilkov, N. Thorat, B. Kim, F. Vi´ egas, and M. Wattenberg, “Smoothgrad: removing noise by adding noise,” arXiv preprint arXiv:1706.03825 , 2017. [16] T. Wiegand, G. Sullivan, G. Bjontegaard, and A. Luthra, “Overview of the H.264/AVC video coding standard,” IEEE Trans. Circuits Syst. Video Technol. , vol. 13, no. 7, pp. 560– 576, July 2003. [17] C. Chen, J. Mo, J. Hou, H. Wu, L. Liao, W. Sun, Q. Yan, and W. Lin, “Topiq: A top-down approach from semantics to dis-tortions for image quality assessment,” IEEE Trans. Image Process. , vol. 33, pp. 2404–2418, 2024. [18] L. Agnolucci, L. Galteri, and M. Bertini, “Quality-aware image-text alignment for opinion-unaware image quality as-sessment,” arXiv preprint arXiv:2403.11176 , 2024. [19] W. Zhang, K. Ma, J. Yan, D. Deng, and Z. Wang, “Blind image quality assessment using a deep bilinear convolutional neural network,” IEEE Trans. Circuits Syst. Video Technol. , vol. 30, no. 1, pp. 36–47, 2020. [20] B. Bross, Y.-K. Wang, Y. Ye, S. Liu, J. Chen, G. J. Sullivan, and J.-R. Ohm, “Overview of the versatile video coding (VVC) standard and its applications,” IEEE Trans. Circuits Syst. Video Technol. , vol. 31, no. 10, pp. 3736–3764, 2021. [21] J. Ball´ e, V. Laparra, and E. P. Simoncelli, “End-to-end opti-mized image compression,” preprint arXiv:1611.01704 , 2016. [22] J. B. Kruskal, “Multidimensional scaling by optimizing good-ness of fit to a nonmetric hypothesis,” Psychometrika , vol. 29, no. 1, pp. 1–27, 1964. [23] H. Everett III, “Generalized Lagrange multiplier method for solving problems of optimum allocation of resources,” Opera-tions research , vol. 11, no. 3, pp. 399–417, 1963. [24] S. Ma, W. Gao, D. Zhao, and Y. Lu, “A study on the quantiza-tion scheme in H. 264/AVC and its application to rate control,” in Proc. Pac. Rim Conf. on Mult., Part III 5 . Springer, 2004, pp. 192–199. [25] J. Wang, K. C. Chan, and C. C. Loy, “Exploring clip for as-sessing the look and feel of images,” in AAAI , 2023. [26] S. Yang, T. Wu, S. Shi, S. Lao, Y. Gong, M. Cao, J. Wang, and Y. Yang, “Maniqa: Multi-dimension attention network for no-reference image quality assessment,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recog. , 2022, pp. 1191–1200. [27] J. Ke, Q. Wang, Y. Wang, P. Milanfar, and F. Yang, “Musiq: Multi-scale image quality transformer,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. , 2021, pp. 5148–5157. [28] Z. Liao, D. Wu, Z. Shi, S. Mai, H. Zhu, L. Zhu, Y. Jiang, and B. Chen, “Beyond cosine similarity magnitude-aware clip for no-reference image quality assessment,” arXiv preprint arXiv:2511.09948 , 2025. [29] S. Su, Q. Yan, Y. Zhu, C. Zhang, X. Ge, J. Sun, and Y. Zhang, “Blindly assess image quality in the wild guided by a self-adaptive hyper network,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recog. , June 2020. [30] C. Chen and J. Mo, “IQA-PyTorch: Pytorch toolbox for image quality assessment,” 2022.
