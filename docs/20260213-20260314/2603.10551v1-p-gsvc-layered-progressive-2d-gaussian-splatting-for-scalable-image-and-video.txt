@@ -1,0 +1,769 @@
+Title: P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video
+
+URL Source: https://arxiv.org/pdf/2603.10551v1
+
+Published Time: Thu, 12 Mar 2026 00:51:33 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video 
+
+# Longan Wang 
+
+National University of Singapore Singapore wanglongan@u.nus.edu 
+
+# Yuang Shi 
+
+National University of Singapore Singapore yuangshi@u.nus.edu 
+
+# Wei Tsang Ooi 
+
+National University of Singapore Singapore dcsooiwt@nus.edu.sg 
+
+## Abstract 
+
+Gaussian splatting has emerged as a competitive explicit repre-sentation for image and video reconstruction. In this work, we present P-GSVC , the first layered progressive 2D Gaussian splatting framework that provides a unified solution for scalable Gaussian representation in both images and videos. P-GSVC organizes 2D Gaussian splats into a base layer and successive enhancement lay-ers, enabling coarse-to-fine reconstructions. To effectively optimize this layered representation, we propose a joint training strategy that simultaneously updates Gaussians across layers, aligning their optimization trajectories to ensure inter-layer compatibility and a stable progressive reconstruction. P-GSVC supports scalability in terms of both quality and resolution. Our experiments show that the joint training strategy can gain up to 1.9 dB improvement in PSNR for video and 2.6 dB improvement in PSNR for image when compared to methods that perform sequential layer-wise training. Project page: https://longanwang-cs.github.io/PGSVC-webpage/. 
+
+## CCS Concepts 
+
+• Information systems → Multimedia streaming .
+
+## Keywords 
+
+Scalable Image, Scalable Video, Progressive Coding, 2D Gaussian Splatting 
+
+## 1 Introduction 
+
+Scalable image and video codecs support progressive encoding and decoding at multiple bitrates, allowing streaming of videos over fluctuating network bandwidth and displaying on heteroge-neous devices. Progressive codecs have been developed, since three decades ago, to enable such scalability [ 1 , 28 ]. By organizing the encoded bit streams into a base layer and one or more enhance-ment layers, scalable coding provides coarse reconstructions from the base layer and progressively higher quality as more layers are decoded. Classical scalable standards, such as JPEG2000 [ 28 ] for images and HEVC-SHVC [ 6] for videos, support scalability in resolution and quality. Recently, learning-based scalable codecs have emerged, replacing hand-crafted modules with end-to-end optimized neural networks and simplifying codec design. These methods typically adopt two scalability paradigms: progressive decoding of hierar-chical latent representations [ 16 , 19 , 30 ], or partitioning the neural network parameters into base and enhancement subnetworks to en-able quality scalability [ 7, 34 ]. Such approaches, however, typically require substantial computational resources and data for training. Furthermore, implicit representations complicate content editing and post-processing, and offer limited fine-grained control over 
+
+> (a) Pruned Gaussian splats
+> (b) P-GSVC
+
+Figure 1: Progressive reconstruction of (a) Pruned Gaussian splats and (b) Layered Gaussian splats (our P-GSVC ). Both columns use the same number of splats, and the quality im-proves from left to right as more splats are added. Noticeable holes appear in (a), while (b) preserves scene integrity. 
+
+bitrate and quality, which is particularly problematic for adaptive delivery over heterogeneous networks and devices [21, 24]. 3D Gaussian Splatting (3DGS) [ 13 ] has emerged as a powerful learning-based paradigm for 3D scene representation. In contrast to neural-based implicit methods such as NeRF [ 18 ], 3DGS leverages explicit Gaussian splats as primitives, enabling high-fidelity recon-struction and real-time rendering through differentiable rasteriza-tion. Recently, progressive extensions of 3DGS have been explored, enabling coarse-to-fine reconstruction [ 35 ], progressive render-ing [ 40 ], adaptive streaming [ 22 ], and scalable compression [ 8 , 23 ]. The success of Gaussian Splatting in 3D scene reconstruction has motivated the adoption of Gaussian splats as new primitives for representing 2D content, including both images and videos. For images, 2D Gaussian Splatting (2DGS) has been adopted for efficient image representation [ 39 ] and compression [ 37 ]. For videos, addi-tional compression opportunity arises from temporal redundancy, and new challenges such as dynamic content and scene transitions make video reconstruction more complex. Prior attempts use 3DGS for editable video reconstruction [ 5, 25 , 26 ], without a focus on compression. 2DGS has also been proposed for video representa-tion and compression [ 14 , 29 ] as a more lightweight alternative to 3DGS. Notably, GSVC [ 29 ] achieves the state-of-the-art quality-size trade-offs with several techniques: (i) consecutive learning, where Gaussian splats of each P-frame are initialized from the previous frame to exploit temporal redundancy; (ii) Gaussian Splat Pruning                     
+
+> arXiv:2603.10551v1 [cs.CV] 11 Mar 2026 Longan Wang, Yuang Shi, and Wei Tsang Ooi 0k 10k 20k 30k 40k 50k
+> Iteration
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Avg Grad
+> ×10 −5
+> Avg Grad
+> > 2e-05 0k 10k 20k 30k 40k 50k
+> Iteration
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Loss
+> ×10 −3
+> Loss
+> > 0.001
+> (a) Single-layer 0k 30k 60k 90k 120k 150k
+> Iteration
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Avg Grad
+> ×10 −5
+> Avg Grad
+> > 2e-05 0k 30k 60k 90k 120k 150k
+> Iteration
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Loss
+> ×10 −3
+> Loss
+> > 0.001
+> (b) Multi-layer
+
+Figure 2: Comparison of gradient and loss over iterations on single-layer and multi-layer optimization strategies: (a) Single-layer optimization in GSVC; (b) Multi-layer trained sequentially in GSVC (the targeted layer is switched at the 50k iteration and the 100k iteration, while the previously trained layers remain frozen). One can observe multi-layer training has issues of unstable convergence and suboptimal local minima. 
+
+(GSP), which removes splats with little contribution to visual qual-ity, reducing bitrate while maintaining fidelity; (iii) Gaussian Splat Augmentation (GSA), which injects new splats to capture dynamic content such as fast motion or new objects; and (iv) Dynamic Key-frame Selection (DKS), which detects scene changes and inserts new I-frames when needed. Together, these mechanisms allow GSVC to balance compression efficiency and adaptability to dynamic scenes, yielding competitive rate–distortion performance when compared to modern open-sourced implementations of codecs such as AV1 and AVC. While 2DGS is an effective representation for both image and video, extending it to scalable coding is non-trivial. Since an image can be regarded as a single-frame video, we describe the following challenges in terms of videos for generality. To motivate why progressive 2DGS representation is not straight-forward, let’s consider a naive scheme where we rank the splats by their contribution to the rendered output [ 10 , 29 ] and form the lay-ers based on the contribution: splats with higher contribution form the coarse lower fidelity layers; splats with smaller contribution serve to refine the details and form the higher layers. This approach, however, produces visible artifacts at lower layers, such as notice-able gaps in the reconstructed frames, as shown in Figure 1a. The root cause is that splats are jointly trained to overfit the highest fidelity input by design, making them highly interdependent on each other [ 21 ]. Consequently, removing any subset, even those with small contributions, can drastically degrade the overall quality. Next, consider the approach adopted in 3DGS (e.g., LapisGS [ 22 ]) for resolution scalability, where the layers are trained one-by-one incrementally. When a new layer is trained, the lower layers that it depends on is fixed (except for opacity). While this separation of Progressive Refinement Low-quality/ resolution Mid-quality/ resolution High-quality/ resolution 
+
+> Image/Video ………………
+
+Figure 3: The architecture of P-GSVC , shown with three lay-ers as an example. The base layer 𝐿 0 provides the coarse repre-sentation, while the enhancement layers Δ𝐿 1 and Δ𝐿 2 progres-sively add additional 2D Gaussian splats. By incrementally incorporating these enhancement layers, the video quality is refined progressively, yielding higher-quality/resolution reconstructions. 
+
+layers can be enforced effectively in static 3D scenes, directly extend-ing this strategy to GSVC leads to suboptimal training. Specifically, unlike static representations, videos contain substantial temporal dynamics across frames, including motion, lighting changes, and occlusions. As GSVC uses Gaussian prediction for P-frames, these dynamics increase the interdependency of the Gaussian splats, not only across the layers but also across time. As a result, constrain-ing different layers to independent objectives leads to conflicting gradients during optimization. Figure 2b illustrates such cross-layer optimization conflict , showing that a sample multi-layer training under GSVC suffers from unstable convergence and is trapped in suboptimal local minima, with a higher final loss compared to the single-layer baseline in Figure 2a. This highlights that optimizing GSVC layer-wise is more difficult than that in static 3D settings. Figure 2b also highlights another challenge in layer-wise train-ing. When we start to train a new enhancement layer at iterations 50k and 100k, the optimization objective is changed and the train-ing exhibits sharp gradient increase. Eventually, the loss stabilized but with only marginal loss reduction at the enhancement layers. This progressive instability indicates that splats learned in lower layers are poorly conditioned as the starting point for training the higher layer, and that the optimization process is sensitive to layer switching. As a result, it struggles to provide high-quality interme-diate reconstructions, undermining one of the key requirements for progressive scalability. We address the challenges of training a progressive, scalable version of GSCV in this paper. We propose Progressive Gaussian Splat Video Coding ( P-GSVC ), a progressive scalable video codec that uses 2D Gaussian splats as primitives. P-GSVC applies to scal-able image coding as well, treating the image as a single-frame video. Figure 3 shows the overview of P-GSVC , where an input video is represented by multiple layers of Gaussian splats. Just as a typical layered progressive codec, decoding only the base layer reconstructs a low-fidelity version of the input, and decoding addi-tional enhancement layers increases the fidelity. Figure 4 visualizes the rendering of the splats in each layer independently. To avoid cross-layer optimization conflicts and ensure smooth progressivity, 
+
+P-GSVC uses a joint training strategy. In each iteration, it simul-taneously optimizes two fidelity levels: one using all splats up to P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video        
+
+> (a) G0(b) ΔG1(c) ΔG2(d) G2
+
+Figure 4: Progressive procedure of layered Gaussians. ΔG1 and ΔG2 capture higher-frequency details and can be iteratively added to G0, yielding progressively refined G2.
+
+the highest layer, and another using only splats up to some layer 𝑖 .During training, we cycle the target layer 𝑖 from the base layer to the second-highest layer. This joint optimization allows splats’ opti-mization trajectories to be aligned across layers while each layer’s splats are still trained to meet the layer’s objectives. Furthermore, by cycling through 𝑖 , the gradient field remains relatively stable during transitions between optimization objectives, ensuring that both final and intermediate reconstructions converge to acceptable quality. The main contributions of this paper are summarized as follows: 
+
+• We introduce a scalable progressive representation framework for both image and video using 2DGS. 
+
+• We demonstrate the effectiveness of a joint training strategy for achieving progressivity in 2DGS. 
+
+• We evaluated P-GSVC against existing training methods for 3DGS and 2DGS, showing that P-GSVC can achieve up to 1.9 dB improvement in PSNR (over UVG video dataset) and 2.6 dB im-provement in PSNR (over DIV-HR image dataset), compared to methods that performs sequential layer-wise training. 
+
+## 2 Related Work 2.1 Scalable Coding for Image and Video 
+
+Scalable coding encodes visual content (e.g., images or videos) into a single bitstream that supports decoding of multiple versions, en-abling adaptive delivery across heterogeneous devices and varying network conditions. In scalable image coding, classical methods such as JPEG2000 [ 28 ] employ wavelet-based hierarchies to sup-port resolution and quality scalability within a single bitstream. Building upon similar principles, scalable video coding introduces temporal dependencies and inter-layer prediction across frames. Early standards such as MPEG-2 [ 1] introduced layered spatial and quality scalability using base and enhancement layers. MPEG-4 Visual [ 2] extended quality scalability through Fine Granularity Scalability (FGS), enabling progressive truncation of enhancement-layer bitstreams. The scalable extension of H.264/AVC [ 20 ] later formalized a structured and coding-efficient multi-layer framework supporting spatial, temporal, and quality scalability, which was further streamlined and extended to bit-depth and color-gamut scalability in HEVC-SHVC [ 6]. Yet despite these improvements, they have seen limited deployment in practice, in part due to the codec complexity. With the rise of deep learning, learning-based methods have emerged that simplify the pipeline through end-to-end optimization. These approaches generally follow two paradigms. One represents images or videos in the latent space, where hierarchical decoders sample at different scales to reconstruct at different quality and enable progressive decoding [ 16 , 19 , 30 ]. The other encodes an im-age or video directly into network parameters, where the base and enhancement subnetworks correspond to different quality levels, so that quality improves as more parameters are used [ 7 , 34 ]. However, both paradigms rely on implicit representations that hinder manip-ulation and the functionality of classical scalable codecs, while also incurring a high decoding cost that restricts practical deployment. In contrast, our P-GSVC leverages a more explicit primitive, 2D Gaussian splat, to achieve progressive scalability via the addition or removal of splats. 
+
+## 2.2 Gaussian Splatting for Image and Video 
+
+Gaussian splatting represents visual content with explicit 2D or 3D Gaussian primitives, where fidelity can be easily controlled by the number and parameters of Gaussian splats. For images, Gaussian-Image [ 37 ] uses 2D Gaussian splats for image representation and compression, while LIG [ 39 ] extends it for high-quality large-image representation. For videos, existing works can be categorized into 3D and 2D. For 3D Gaussian Video, VGR [ 26 ] treats a video as a sequence of static 3D scenes, reconstructing each frame indepen-dently with 3DGS. By contrast, VeGaS [ 25 ] and GaussianVideo [ 5]view the entire sequence as a continuous spatio-temporal volume, where splats evolve smoothly over time. These 3D approaches excel at video representation and editing but are not tailored for com-pression or scalable coding. In contrast, 2D Gaussian Video encodes each frame with lightweight 2DGS [ 37 ] primitives, enabling video representation and compression [ 14 , 29 ]. However, extending 2D Gaussian representation to scalable coding is not trivial, as dis-cussed in Section 1. In this work, we extend 2DGS by reorganizing Gaussian splats into a multi-layer structure, enabling progressive, scalable image and video coding. 
+
+## 2.3 Progressive Gaussian Splatting 
+
+Progressive Gaussian Splatting reconstructs content in a coarse-to-fine manner, where a subset of splats yields a low-fidelity preview, and additional splats progressively refine details. The main advan-tage of progressive Gaussian splatting is that it supports partial Longan Wang, Yuang Shi, and Wei Tsang Ooi 
+
+decoding for fast low-fidelity previews and progressive refinement toward full quality, thereby providing inherent scalability and adapt-ability to varying bandwidth and computational resources. Progres-sive Gaussian splatting was first explored in FreGS [ 35 ] and later extended for rendering (PRoGS [ 40 ]), streaming (LapisGS [ 22 ] and its dynamic extension [ 27 ]), and compression (PCGS [ 8 ]), in the context of 3DGS. In contrast, progressive coding for lightweight 2DGS, better suited to image and video transmission, has not been extensively explored. The first attempt is LIG [ 39 ], which recon-structs images by a two-layer Gaussian structure, by separately training a skeleton layer and a residual layer. While effective for large images, LIG prioritizes final reconstruction quality over scal-able coding: achieving good visual quality requires many splats for high-frequency details, so under limited bandwidth, where only a small subset can be transmitted, performance degrades signifi-cantly. Moreover, its sequential layer-wise training strategy leads to conflicting optimization objectives across layers as mentioned in Section 1. 
+
+## 3 P-GSVC 
+
+## 3.1 Problem Formulation 
+
+We first introduce the problem formulation of our progressive, scal-able Gaussian representation for both image and video. We distin-guish two terms: “layer” refers to the structural components in the layered representation, while “levels” refers to the reconstructed im-age or video formed by accumulating layers. Let F = {𝑓 1, 𝑓 2, . . . , 𝑓 𝑇 }
+
+denote the input sequence, where 𝑇 is the number of frames (for images, 𝑇 = 1). Specifically, given 𝐿 layers, our goal is to encode F
+
+into a hierarchical representation: bF = bF0 ∪
+
+Ð𝐿 ℓ=1 ΔbFℓ 
+
+, where 
+
+bF0 serves as the base layer as well as the base level, and ΔbFℓ
+
+(ℓ = 1, . . . , 𝐿 ) are the enhancement layers. For any ℓ ∈ { 1, 2, . . . , 𝐿 },the reconstruction at level ℓ is obtained by progressively adding the first ℓ enhancement layers to the base level: 
+
+bFℓ = bF0 +
+
+> ℓ
+
+∑︁ 
+
+> 𝑖 =1
+
+ΔbF𝑖 . (1) In P-GSVC , bF is represented by a set of 2D Gaussian primitives G =
+
+{G1, G2, . . . , G𝑇 } to reconstruct F while preserving scalability. Note that P-GSVC supports both scalable video ( 𝑇 > 1) and image (𝑇 = 1). 
+
+## 3.2 2D Gaussian Splats 
+
+We adopt 2D Gaussian splats [ 37 ] as the fundamental primitives in our framework. Each Gaussian splat 𝐺 is parameterized by a tuple 
+
+𝐺 = (𝝁 , 𝚺 , c′), where 𝝁 ∈ R2 denotes its center in the image plane, 
+
+𝚺 ∈ R2×2 is the covariance matrix that controls scale and orien-tation, and c′ ∈ R3 is a learned representation for the associated RGB color and opacity. To ensure that 𝚺 is positive semi-definite, Cholesky decomposition [ 12 ] is applied, representing it as 𝚺 = 𝑳𝑳 ⊤,where 𝑳 is a lower-triangular matrix parameterized by the Cholesky vector ℓ = (ℓ1, ℓ 2, ℓ 3). In total, each 2D Gaussian splat requires only eight parameters, yielding a compact and efficient representation. For rendering, the color 𝑪 𝑖 of the 𝑖 -th pixel is computed as the weighted accumulation of all splats covering that pixel: 
+
+𝑪 𝑖 =∑︁ 
+
+> 𝑛 ∈ N
+
+𝒄 ′ 
+
+> 𝑛
+
+exp  − 12 𝒅 ⊤ 
+
+> 𝑛
+
+𝚺 −1 
+
+> 𝑛
+
+𝒅 𝑛 
+
+ , (2) where N is the set of splats overlapping pixel 𝑖 , and 𝒅 𝑛 denotes the distance between the pixel center and the center of the 𝑛 -th Gaussian. In P-GSVC , we further follow the rendering scheme in GSVC [ 29 ], where an additional weight vector 𝒘 is introduced to track the con-tribution of Gaussian splats. This allows splats to be dynamically added or removed based on their contribution, enabling a trade-off between quality and size as well as enhancement of highly dy-namic content. Accordingly, the rendering formula in Equation (2) is written as: 
+
+𝑪 𝑖 =∑︁ 
+
+> 𝑛 ∈ N
+
+𝑤 𝑛 𝒄 ′ 
+
+> 𝑛
+
+exp  − 12 𝒅 ⊤ 
+
+> 𝑛
+
+𝚺 −1 
+
+> 𝑛
+
+𝒅 𝑛 
+
+ . (3) Moreover, 2DGS provides advantages for scalable coding. First, the representation itself is resolution-agnostic: a fixed set of splats can be rendered at arbitrary resolutions without retraining (though quality may degrade if the rendering resolution substantially dif-fers from the training resolution). Second, its explicit and modular structure supports scalability by allowing a subset of splats to be decoded independently. 
+
+## 3.3 Progressive Gaussian Splatting 
+
+For progressive scalability, we represent each input (either a video or an image) as a layered collection of Gaussian sets. For the base level representation bF0, each frame b𝒇 0 
+
+> 𝑡
+
+is associated with a Gauss-ian set G0 
+
+> 𝑡
+
+= {𝑮 𝑡, 1, 𝑮 𝑡, 2, . . . , 𝑮 𝑡,𝑁 0 }, where 𝑁 0 is the number of splats in the base layer for each frame. Enhancement layers ΔbFℓ
+
+(ℓ = 1, . . . , 𝐿 ) are defined similarly, with each frame represented by 
+
+ΔGℓ𝑡 = {𝑮 𝑡, 1, 𝑮 𝑡, 2, . . . , 𝑮 𝑡,𝑁 ℓ }, where 𝑁 ℓ is the number of splats in the ℓ-th layer for each frame. The layered Gaussian representation of a frame at level ℓ is then obtained by the union of the base and the first ℓ enhancement Gaussian sets: 
+
+Gℓ𝑡 = G0 
+
+> 𝑡
+
+∪
+
+> ℓ
+
+Ø
+
+> 𝑖 =1
+
+ΔG𝑖 𝑡 
+
+!
+
+. (4) Correspondingly, bFℓ is represented as Gℓ = {Gℓ
+
+> 1
+
+, . . . , Gℓ𝑇 }. Its reconstruction is obtained by rendering the Gaussian sets with the differentiable rasterizer R (·) :
+
+bFℓ = R  Gℓ  , b𝒇 ℓ𝑡 = R  Gℓ𝑡 
+
+ . (5) The operator R (·) follows the pixel-wise accumulation rule in Equa-tion (3), applied to the unioned Gaussian set Gℓ𝑡 .This layered construction enables progressive decoding: the base set G0 
+
+> 𝑡
+
+provides a coarse but complete representation, while each ΔG𝑖 𝑡 adds finer details. Thus, increasing ℓ monotonically im-proves quality without modifying previously transmitted splats. As illustrated in Figure 4, G0 yields the coarse reconstruction, 
+
+ΔG1 and ΔG2 successively refine details, and their union G2 =
+
+G0 ∪ ΔG1 ∪ ΔG2 produces the higher-quality result. P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video 0k 10k 20k 30k 40k 50k                
+
+> Iteration
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Avg Grad
+> ×10 −5
+> Avg Grad
+> > 2e-05 0k 10k 20k 30k 40k 50k
+> Iteration
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Loss
+> ×10 −3
+> Loss
+> > 0.001
+> (a) Uniformly Random Level Selection 0k 10k 20k 30k 40k 50k
+> Iteration
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Avg Grad
+> ×10 −5
+> Avg Grad
+> > 2e-05 0k 10k 20k 30k 40k 50k
+> Iteration
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Loss
+> ×10 −3
+> Loss
+> > 0.001
+> (b) Cyclic Level Selection
+
+Figure 5: Comparison of gradient and loss over iterations on randomly and cyclically joint training strategies: jointly optimizes layers (a) randomly and (b) in a cyclic order. 
+
+## 3.4 Joint Training 
+
+A baseline approach to optimizing the layered splats is sequential layer-wise training. Specifically, for level ℓ, the reconstruction is written as 
+
+bFℓ = bFℓ −1 + R  ΔGℓ  , (6) where bFℓ −1 is the reconstruction from the previous layers and 
+
+R ( ΔGℓ ) denotes the rendering of the newly introduced splats in layer ℓ. The training process proceeds by first optimizing the base set G0, then freezing its parameters, and subsequently training the enhancement sets ΔG1, ΔG2, . . . , ΔG𝐿 sequentially. This strat-egy is analogous to LIG [ 39 ], which represents large images with two Gaussian layers trained sequentially, freezing the first as the foundation for the second. However, such a layer-wise method leads to several issues. First, since different layers pursue different optimization objectives, their optimization follows distinct trajectories. When a higher layer is trained on top of already converged lower layers, the optimization must adapt to a different objective landscape, hindering conver-gence. As shown in Figure 2b, switching the target layer at the 50k and 100k iterations causes sharp fluctuations in the gradients, indicating that the model struggles to adapt to a change in the ob-jective. Compared to single-layer GSVC optimization in Figure 2a, layer-wise training converges to a higher loss value, indicating that the model is trapped in a suboptimal local minima. To optimize layered splats effectively, the two key challenges, cross-layer optimization conflict and progressive stability, should be considered. 
+
+Cross-Layer Optimization Conflicts . P-GSVC requires a co-herent multi-layer solution, yet this is challenging since different layers pursue distinct objectives: The base layer captures coarse structures, while enhancement layers refine the details. To improve the compatibility of the optimization objectives across the layers, we jointly train the layers belonging to multiple levels, rather than training them separately, allowing splats in different layers to be optimized along aligned trajectories, using a joint loss function. This process encourages splats in each layer to be compatible with each other from the outset. Given the 𝑡 -th frame 𝒇 𝑡 as an exam-ple, at each iteration, we supervise both the full reconstruction b𝒇 𝐿 𝑡 
+
+and intermediate reconstructions b𝒇 ℓ𝑡 . Formally, the loss function is defined as the sum of L2 losses across selected levels: 
+
+L𝑡 =∑︁  
+
+> ℓ∈ S
+
+L2 (b𝒇 ℓ𝑡 , 𝒇 𝑡 ) =∑︁  
+
+> ℓ∈ S
+
+1
+
+𝐻𝑊 
+
+> 𝐻𝑊
+
+∑︁ 
+
+> 𝑖 =1
+
+b𝑓 ℓ𝑡,𝑖 − 𝑓 𝑡,𝑖 2, (7) where b𝑓 ℓ𝑡,𝑖 denotes the reconstructed 𝑖 -th pixel in 𝑓 𝑡 at level ℓ, 𝐻 and 
+
+𝑊 are the spatial dimensions, and S is the set of layers optimized jointly in the current iteration. In practice, S contains both the final level and one intermediate level ℓ ∈ { 1, 2, · · · , 𝐿 − 1}. Each level is supervised against the ground truth at its corresponding resolution. This setting ensures that lower layers focus on coarse structures while higher layers refine fine details, and preventing aliasing at lower levels [39]. The loss can be written as: 
+
+L𝑡 (ℓ) = L2
+
+ b𝒇 𝐿 𝑡 , 𝒇 𝐿 𝑡 
+
+ + L 2
+
+ b𝒇 ℓ𝑡 , 𝒇 ℓ𝑡 
+
+, (8) where 𝒇 ℓ𝑡 ∈ R𝐻 ℓ ×𝑊 ℓ is the corresponding ground-truth frame down-sampled to resolution (𝐻 ℓ ,𝑊 ℓ ).
+
+Progressive Stability . For progressive scalability, intermediate reconstruction quality must remain high, ideally comparable to the non-layered version with the same number of splats. To this end, we adopt cyclic joint training, where the intermediate level is chosen in an incremental cyclic order, rather than uniformly and randomly during iterative training. A naive uniformly random level selection can lead to the same level being chosen consecutively, leading to overfitting, or a level not being chosen for some number of iterations, leading to mis-alignment with the optimization process for reconstruction of the highest level. As shown in Figure 5a, random joint training causes unstable gradients and irregular loss updates. By contrast, cyclic selection enforces a fixed periodic switching of intermediate levels, avoiding idle intervals and consecutive repetitions, and thus yields smoother optimization trajectories with more stable gradients and losses, as shown in Figure 5b. Finally, the loss at iteration 𝑘 for the 𝑡 -th frame 𝒇 𝑡 ∈ F is defined as: 
+
+L𝑡 (ℓ𝑘 ) = L2
+
+ b𝒇 𝐿 𝑡 , 𝒇 𝐿 𝑡 
+
+ + L 2
+
+ b𝒇 ℓ𝑘  
+
+> 𝑡
+
+, 𝒇 ℓ𝑘 
+
+> 𝑡
+
+, (9) where ℓ𝑘 ≡ 𝑘  mod (𝐿 − 1) denotes the intermediate level selected in cyclic order. 
+
+## 3.5 Put Everything Together 
+
+In P-GSVC , to achieve efficient 2DGS representation, we borrow the core paradigm of GSVC [ 29 ]. For videos, frame prediction ex-ploits temporal redundancy by predicting each P-frame from its predecessor; Gaussian Splat Pruning (GSP) removes splats with low contribution to balance quality and bitrate; Gaussian Splat Aug-mentation (GSA) introduces new splats to capture highly dynamic regions; and Dynamic Key-frame Selection (DKS) detects scene transitions to insert I-frames adaptively. For the image case, we treat it as a single I-frame video without temporal redundancy. The complete training procedure for resolution scalability of 
+
+P-GSVC is summarized in Algorithm 1. Longan Wang, Yuang Shi, and Wei Tsang Ooi 
+
+Algorithm 1 P-GSVC Training Pipeline 
+
+Require: Input sequence F = {𝒇 1, 𝒇 2, . . . , 𝒇 𝑇 }, number of layers 𝐿 , number of splats ( 𝑁 , 𝑁 𝑎𝑢𝑔 , 𝑁 𝑝𝑟𝑢𝑛𝑒 ), GSP configuration ( 𝑍 𝐺𝑆𝑃 , 𝐾 𝐺𝑆𝑃 ), target resolutions {( 𝐻 ℓ ,𝑊 ℓ )} 𝐿 ℓ=0. 
+
+> 1:
+
+Obtain {Fℓ }𝐿 ℓ=1 by downsampling F given {( 𝐻 ℓ ,𝑊 ℓ )} 𝐿 ℓ=0. 
+
+> 2:
+
+if 𝑇 > 1 then  
+
+> 3:
+
+Select I-frames using DKS.  
+
+> 4:
+
+end if  
+
+> 5:
+
+for 𝑡 = 1 to 𝑇 do  
+
+> 6:
+
+if 𝑇 > 1 (video) and 𝑡 is an I-frame or 𝑇 = 1 (image) then  
+
+> 7:
+
+Initialize G𝑡 = {G0 
+
+> 𝑡
+
+, ΔG1 
+
+> 𝑡
+
+, . . . , ΔG𝐿 𝑡 } with 𝑵 + 𝑵 𝑎𝑢𝑔 random Gaussian splats (uniformly spread over all layers).  
+
+> 8:
+
+else  
+
+> 9:
+
+Initialize G𝑡 = {G0 
+
+> 𝑡
+
+, ΔG1 
+
+> 𝑡
+
+, . . . , ΔG𝐿 𝑡 } with G0 
+
+> 𝑡
+
+= G0  
+
+> 𝑡 −1
+
+and ΔG𝑖 𝑡 = ΔG𝑖 𝑡 −1 for 𝑖 = 1 . . . 𝐿 . 
+
+> 10:
+
+Inject 𝑁 𝑎𝑢𝑔 random Gaussian splats (uniformly spread over all layers).  
+
+> 11:
+
+end if  
+
+> 12:
+
+while not converged, iteration 𝑘 = 0, 1, 2, . . . do  
+
+> 13:
+
+Cyclically select ℓ𝑘 : ℓ𝑘 ≡ 𝑘  mod (𝐿 − 1). 
+
+> 14:
+
+Progressively render b𝒇 ℓ𝑘  
+
+> 𝑡
+
+and b𝒇 𝐿 𝑡 by Equation (5).  
+
+> 15:
+
+Calculate joint loss by Equation (9) and update G𝑡 . 
+
+> 16:
+
+Remove 𝑵 prune · 𝑍 GSP  
+
+> 𝐾 GSP
+
+splats with minimal contribution according to 𝒘 in Equation (3) every 𝑍 GSP iteration in the first 𝐾 GSP iteration.  
+
+> 17:
+
+end while  
+
+> 18:
+
+end for Ensure: Optimized layered splats G = {G0, ΔG1, . . . , ΔG𝐿 }.We first construct a multi-resolution image ( 𝑇 = 1) or video (𝑇 > 1) sequence by downsampling the input sequence F according to the predefined target resolutions {( 𝐻 ℓ ,𝑊 ℓ )} 𝐿 ℓ=0 (Line 1). If the input is a video sequence ( 𝑇 > 1), I-frames are selected using Dynamic Key-frame Selection (Lines 2–4). For each frame 𝑓 𝑡 (Line 5–11), the initialization procedure differs depending on whether the input is a video and the current frame is an I-frame or the input is an image. If 𝑓 𝑡 is an I-frame or if the input is an image, we initialize the layered Gaussian splats 
+
+G𝑡 = {G 0 
+
+> 𝑡
+
+, ΔG1 
+
+> 𝑡
+
+, . . . , ΔG𝐿 𝑡 } with 𝑵 + 𝑵 aug random Gaussian splats (Line 6–7). Otherwise, we initialize G𝑡 using the splats from the previous frame G𝑡 −1 and inject 𝑵 aug random Gaussian splats (Line 8–10), distributed evenly across all layers. At each iteration 𝑘 (Line 12), a target resolution level ℓ𝑘 is cycli-cally selected according to ℓ𝑘 ≡ 𝑘  mod (𝐿 − 1) (Line 13). The rendered output at resolution level ℓ𝑘 is obtained via rendering of the first ℓ𝑘 Gaussian layers according to Equation (5) (Line 14). A joint loss is computed based on Equation (9), and the layered Gaussian parameters are updated accordingly (Line 15). To reduce redundancy, Gaussian splats with minimal contribution (measured by importance weight 𝑤 in Equation (3)) are periodically removed. Specifically, for every 𝑍 GSP iterations during the first 𝐾 GSP itera-tions, 𝑵 prune · 𝑍 GSP  
+
+> 𝐾 GSP
+
+splats are pruned (Line 16). The optimization continues until convergence for the current 𝑡 -th frame (Line 12–17). Finally, the optimized layered Gaussian representation is obtained as G = {G 0, ΔG1, . . . , ΔG𝐿 }.
+
+## 3.6 Quantization 
+
+We adopt the temporal-aware fine-tuning and quantization strategy of GSVC [ 29 ], while maintaining the layered structure of progres-sive splatting and employing joint optimization. For I-frames, all Gaussian parameters in both the base and enhancement layers are directly quantized. For P-frames, we quantize the parameter differences relative to the reference frame. To quantize each parameter: The position 𝝁 is stored in reduced floating-point precision [ 39 ]. Specifically, we use 16-bit float for I-frames and 12-bit for P-frames. For the Cholesky vector ℓ, we apply 𝑏 -bit asymmetric quantization [4]: 
+
+Qℓ (ℓ𝑖 ) = ˆℓ𝑖 𝛾 𝑖 + 𝛽 𝑖 
+
+ˆℓ𝑖 =
+
+
+
+clamp 
+
+ ℓ𝑖 − 𝛽 𝑖 
+
+𝛾 𝑖 
+
+, 𝐿 min , 𝐿 max 
+
+ 
+
+,𝐿 max − 𝐿 min = 2𝑏 − 1.
+
+(10) where 𝑖 ∈ { 0, 1, 2}, and 𝛾 𝑖 and 𝛽 𝑖 denote the learnable scaling and offset stored in 32-bit floating-point format. For I-frames, the base layer is quantized as unsigned integers with [𝐿 min , 𝐿 max ] = [0, 2𝑏 −
+
+1], while the enhancement layers are quantized as signed integers with [𝐿 min , 𝐿 max ] = [− 2𝑏 −1, 2𝑏 −1 − 1], where 𝑏 is set to 6. For P-frames, both the base and enhancement layers are quantized as signed integers with [𝐿 min , 𝐿 max ] = [− 2𝑏 −1, 2𝑏 −1 − 1], where 𝑏 is set to 5. For the weighted color 𝒄 , residual vector quantization (VQ) [ 33 ]is employed, stacking 𝑀 stages of VQ [11] with codebook size 𝐵 :
+
+Q𝑐 (𝒄 ′) = Í𝑀 𝑘 =1 𝑪 𝑘 [𝑖 𝑘 ],𝑖 𝑘 = arg min 𝑘 𝑪 𝑘 [𝑘 ] − 
+
+
+
+𝒄 ′ − Í𝑘 −1 
+
+> 𝑗 =1
+
+𝑪 𝑗 [𝑖 𝑗 ]
+
+ 22 , (11) where 𝑪 𝑘 ∈ R𝐵 ×3 is the 𝑘 -th codebook and 𝑖 𝑘 its index. For both I-frame and P-frames, 𝐵 is set to 6-bit. The codebooks are optimized with a commitment loss [37]. P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video 
+
+## 4 Experiments 4.1 Experimental Setup 
+
+Dataset. For image experiments, we adopt the Kodak dataset [ 9 ], which contains 24 natural images with a resolution of 768 × 512 ,and the DIV2K validation set [ 3 ], which consists of 100 high-quality images at the 2K level. These two datasets cover diverse levels of resolution for the image reconstruction scenarios. For video experiments, we use all 1080p videos from the UVG dataset [ 17 ]. Each video is standardized to 1920 × 1080 resolution, 4:2:0 chroma subsampling, 8-bit depth, and YUV color space. In our experiments, we use the first 50 frames of each video. We run two sets of experiments, one for resolution scalability and the other for quality scalability. For resolution scalability, we generate images and videos with multiple resolution levels by down-sampling the images and videos in the datasets based on the number of splats 𝑁 𝑖 , with the ratio for level 𝑙 defined as (Í𝑙 𝑖 =0 𝑁 𝑖 /𝑁 )1/2.The ground truth for evaluation at each level matches the reduced resolution of the rendered output. For quality scalability, the ground truth used for evaluation at each level is the full-resolution version. 
+
+Implementation. Our P-GSVC framework is implemented on the gsplat library [ 32 ] with CUDA-based rasterization and accu-mulated blending [ 37 ]. Gaussian parameters are optimized using the Adan optimizer [ 31 ] with an initial learning rate of 1 × 10 −3,reduced by half every 20,000 steps. We adopt three layers ( 𝐿 = 3)with splats evenly distributed across them ( 𝑵 = [ 𝑁  
+
+> 3
+
+, 𝑁  
+
+> 3
+
+, 𝑁  
+
+> 3
+
+]), and apply constant-rate coding by varying the total number of splats 𝑁 
+
+from 12k to 27k with a step of 3k. The removal ratio is set to 0.2 for the base layer and 0.4 for enhancement layers ( 𝑵 𝑎𝑢𝑔 = 𝑵 𝑝𝑟𝑢𝑛𝑒 =
+
+𝑵 ⊙ [ 0.2, 0.4, 0.4]). For I-frame, 𝑍 GSP is set to 4,000, for P-frames, 
+
+𝐾 GSP is set to 1,000. 𝑍 GSP is set to 100. Other settings of DKS, GSP, and GSA follow GSVC [ 29 ]. Training continues until convergence, defined as 100 iterations with less than 1 × 10 −7 change in joint loss, and all experiments are conducted on an NVIDIA H100 GPU. 
+
+Comparison Method. We conducted separate comparisons between our P-GSVC and three alternative methods: 
+
+• Pruning. A single full-scale Gaussian model is trained, and lower levels are obtained by pruning splats according to their contri-bution based on 𝒘 in Equation (3). This naive method serves as a naive baseline for scalable coding. 
+
+• Monolithic. Separate Gaussian models are trained independently for each level with increasing Gaussian counts. This approach is not scalable, as each level requires a separate set of splats rather than being constructed progressively. In our experiments, this serves as an upper bound in quality. 
+
+• Sequential. A layered Gaussian model is trained sequentially: pa-rameters from the lower layers are frozen and passed to the next higher layer, where enhancement splats are added and optimized. This strategy adopts the same layered structure as P-GSVC but trains layers independently without joint optimization. It is com-monly used in layered 3DGS [ 22 ] and 2DGS [ 39 ], and serves as a state-of-the-art baseline for comparison with our joint training strategy. To comprehensively demonstrate the effectiveness of P-GSVC ,we conduct three groups of experiments in image and video cases. First, we evaluate our joint training strategy on image datasets, 
+
+Table 1: Comparison of visual quality of P-GSVC and Sequen-tial method (LIG) on the Kodak and DIV-HR datasets with different numbers of splats.                                                               
+
+> Dataset Kodak DIV-HR No. Splats 5×10 37×10 39×10 35×10 47×10 49×10 4
+> PSNR ↑LIG 26.6 27.3 28.1 27.8 28.7 29.5
+> P-GSVC 28.5 29.4 30.2 30.2 31.3 32.1
+> MS-SSIM ↑LIG 0.918 0.937 0.948 0.944 0.958 0.966
+> P-GSVC 0.943 0.957 0.965 0.967 0.975 0.981
+> LPIPS ↓LIG 0.436 0.380 0.339 0.383 0.325 0.284
+> P-GSVC 0.271 0.223 0.189 0.217 0.178 0.150
+
+where the absence of temporal dependency enables an isolated com-parison with sequential layer-wise training. In particular, for the Se-quential method, we adopt LIG [ 39 ], the state-of-the-art framework for layered 2D Gaussian training on images, which also follows a sequential optimization scheme. For fairness, all methods use the same three-level configuration with equal Gaussian budgets per layer, while keeping other parameters identical. Second, we evalu-ate scalability on video datasets. Since an image can be regarded as a special case of video (a single I-frame sequence), we extend our framework to full video sequences to examine both quality and resolution scalability. We compare Pruning , Monolithic , Sequen-tial , and our P-GSVC under identical settings. Finally, we evaluate compression performance under quantization on video datasets by examining the rate-distortion trade-off, with the Monolithic 
+
+model serving as an upper bound and P-GSVC compared against the Sequential baseline. 
+
+Metrics. We evaluate reconstruction quality using Peak Signal-to-Noise Ratio (PSNR) and Multi-Scale Structural Similarity (MS-SSIM). PSNR, expressed in decibels (dB), quantifies pixel-level fi-delity by comparing signal power to reconstruction error, where higher values indicate better quality. MS-SSIM measures perceptual similarity across multiple scales with values ranging from 0 to 1, where values closer to 1 indicate better structural similarity. For the image case, we additionally employ the Learned Perceptual Image Patch Similarity (LPIPS) metric [ 36 ], which evaluates percep-tual similarity by comparing deep feature representations extracted from pretrained neural networks. LPIPS values typically range from 0 to 1, where lower values indicate higher perceptual similarity and better visual quality. For video, we additionally employ the Video Multi-Method Assessment Fusion (VMAF) metric [ 15 ], a learning-based perceptual quality model that combines multiple quality indices to predict human subjective assessment. VMAF scores typically range from 0 to 100, with higher values indicating better perceived visual quality. 
+
+## 4.2 Results and Analysis 
+
+Image. We evaluate the joint training strategy of P-GSVC on image representation tasks against the sequentially layer-wise training method on the Kodak and DIV-HR datasets. Following the setup de-scribed earlier, we compare P-GSVC against the Sequential method implemented by LIG [ 39 ]—the current state-of-the-art framework Longan Wang, Yuang Shi, and Wei Tsang Ooi MS-SSIM: 0.426  
+
+> MS-SSIM: 0.556
+> MS-SSIM: 0.984
+> Pruning
+> MS-SSIM: 0.969
+> MS-SSIM: 0.981
+> MS-SSIM: 0.984
+> Monolithic
+> MS-SSIM: 0.966
+> MS-SSIM: 0.978
+> MS-SSIM: 0.983
+> P-GSVC
+> (a) Quality Scalablility Pruning
+> 1108x622 MS-SSIM: 0.984
+> 1920x1080 MS-SSIM: 0.562
+> 1566x880 MS-SSIM: 0.437 Monolithic
+> 1108x622 MS-SSIM: 0.984
+> 1920x1080 MS-SSIM: 0.994
+> 1566x622 MS-SSIM: 0.993 P-GSVC
+> 1108x622 MS-SSIM: 0.983
+> 1920x1080 MS-SSIM: 0.991
+> 1566x622 MS-SSIM: 0.991 (b) Resolution Scalability
+
+Figure 6: A sampled frame rendering from HoneyBee at three levels, 𝐿 0, 𝐿 1, and 𝐿 2. (a) shows quality scalability, and (b) shows resolution scalability. P-GSVC eliminates the artifacts of the Pruning method, achieving results comparable to the Monolithic 
+
+method. 
+
+for layered 2D Gaussian training on images. LIG [ 39 ] adopts a lay-ered Gaussian structure by sequentially training a skeleton layer followed by residual layers. The results is summarized in Table 1. We first report on the highest-level image reconstruction per-formance on the Kodak and DIV-HR datasets, under varying total Gaussian budgets. The performance of individual layers and their progressive contributions will be further examined in the following experiments. The results show that, on both the Kodak and DIV-HR datasets, P-GSVC achieves higher PSNR and MS-SSIM across all Gaussian budgets, confirming the advantage of joint training in optimizing layered Gaussian representations. Specifically, P-GSVC improves PSNR by approximately 1.9–2.1 dB on Kodak and 2.4–2.6 dB on DIV-HR, with consistent gains in MS-SSIM and LPIPS. Overall, P-GSVC consistently outperforms LIG, demonstrating the effective-ness of our joint training strategy over the sequential layer-wise approach in image representation tasks. 
+
+Video. Since an image can be regarded as a single I-frame se-quence, we further extend our experiments to video datasets to evaluate the quality and resolution scalability of P-GSVC .We first present qualitative comparisons for the three levels’ output. As shown in Figure 6, in both quality and resolution scal-ability tasks, when only partial splats are decoded in 𝐿 0 and 𝐿 1,the Pruning method produces severe artifacts such as holes and broken structures. These missing regions directly reflect that the splats responsible for coarse structures are discarded when rank-ing solely by contribution. The contribution score only reflects the overall importance of each Gaussian but cannot disentangle whether it carries coarse structures or fine details. As a result, se-lecting only the top-contributing splats fails to preserve complete reconstructions at lower levels, leading to severely degraded visual quality. In contrast, P-GSVC organizes splats into layered structures and jointly optimizes them, leading to artifact-free intermediate reconstructions in 𝐿 0 and 𝐿 1. Moreover, when compared with the 
+
+Monolithic method, P-GSVC achieves comparable visual quality across all layers, demonstrating that it preserves scalability with a minor quality sacrifice. As Pruning produces severely degraded intermediate quality with artifacts, and thus cannot serve as a meaningful baseline, it is excluded from further experiment results below. Next, we present the experimental results on the scalability of P-GSVC in terms of PSNR, MS-SSIM, and VMAF on the UVG dataset, considering both quality scalability and resolution scalability illus-trated in Figure 7. Figure 7a reports the quality scalability results on the UVG dataset in terms of PSNR and MS-SSIM. The x-axis denotes the number of splats, which is positively correlated with model size, while the y-axis indicates reconstruction quality. The results reveal three key observations: (i) For all methods, higher layers consis-tently improve quality as more splats are added. (ii) For the Se-quential approach, the base layer achieves a similar quality to the 
+
+Monolithic method because its optimization is unconstrained by higher layers and thus follows the same training process as the upper bound. However, despite this relatively strong base layer, the enhancement layers cannot be effectively optimized due to conflicting optimization objectives across layers. As a result, the training falls into a suboptimal local minima, which is reflected in the small quality gains across layers. For example, as shown, the top quality level of the Sequential method remains far below the 𝐿 1
+
+of the Monolithic method, and the gap between 𝐿 2 exceeds 2.2 dB. (iii) In contrast, P-GSVC achieves more efficient scalability than the Sequential method. Although its base layer is weaker (< 3% lower), it shows significantly larger improvements at higher levels, with 𝐿 1 exceeding the Sequential method by about 0.5 dB and 𝐿 2 by nearly 2 dB. At the same time, the gap to Monolithic is substantially reduced, demonstrating that P-GSVC preserves scalability while incurring a smaller quality sacrifice. Figure 7b shows the resolution scalability results on the UVG dataset. In resolution scalability, each level is evaluated against ground truth at its corresponding resolution, with higher levels having higher resolutions. As a result, absolute PSNR, MS-SSIM, or P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video 5 10 15 20 25                     
+
+> Gaussian Number (k)
+> 25
+> 30
+> 35
+> 40
+> PSNR 510 15 20 25
+> Gaussian Number (k)
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> MS-SSIM 510 15 20 25
+> Gaussian Number (k)
+> 40
+> 60
+> 80
+> 100
+> VMAF Monolithic(L2)
+> Monolithic(L1)
+> Monolithic(L0)
+> Sequential(L2)
+> Sequential(L1)
+> Sequential(L0)
+> P-GSVC(L2)
+> P-GSVC(L1)
+> P-GSVC(L0)
+> (a) Quality Scalablility on UVG 510 15 20 25
+> Gaussian Number (k)
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Normalized PSNR (0–1) 510 15 20 25
+> Gaussian Number (k)
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Normalized MS-SSIM (0–1) 510 15 20 25
+> Gaussian Number (k)
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Normalized VMAF (0–1) Monolithic(L2)
+> Monolithic(L1)
+> Monolithic(L0)
+> Sequential(L2)
+> Sequential(L1)
+> Sequential(L0)
+> P-GSVC(L2)
+> P-GSVC(L1)
+> P-GSVC(L0)
+> (b) Resolution Scalability on UVG
+
+Figure 7: Scalability evaluation on the UVG dataset, comparing (a) quality and (b) resolution across Monolithic , Sequential , and 
+
+P-GSVC methods. 
+
+VMAF values are not directly comparable across levels; therefore, results are normalized within each level to [0, 1]. For a metric value 
+
+𝑚 𝑙 at level 𝑙 , we apply min-max normalization: 
+
+˜𝑚 𝑙 = 𝑚 𝑙 − 𝑚 min 
+
+> 𝑙
+
+𝑚 max  
+
+> 𝑙
+
+− 𝑚 min 
+
+> 𝑙
+
+, (12) where 𝑚 min  
+
+> 𝑙
+
+and 𝑚 max  
+
+> 𝑙
+
+denote the minimum and maximum met-ric values, respectively, computed over all evaluated methods and Gaussian configurations within level 𝑙 . In this figure, the x-axis denotes the number of splats, while the y-axis represents the nor-malized quality score. Compared with the Sequential method, our method yields substantially larger gains in the enhancement layers, achieving over 0.25 normalized VMAF gain at 𝐿 1 and nearly 0.5 at 𝐿 2,while at the same time narrowing the gap to the Monolithic . These results show that our P-GSVC achieves more effective resolution scalability than the Sequential approach. 
+
+Rate-Distortion Trade-off. Figure 8 presents the rate–distortion results on the UVG dataset, comparing our P-GSVC with the Mono-lithic and Sequential methods after quantization, while also includ-ing SHVC [ 6] in a three-level setting. In this comparison, SHVC is run with the well-optimized SHM-12.4 reference software, which gives it stronger rate–distortion performance and makes it a solid baseline for standardized scalable video coding. The Monolithic 
+
+method trains each level separately without parameter sharing. Since it does not perform layer-wise training, it does not have con-flicting cross-layer optimization objectives or stability issues when switching layers. In the quality scalability setting, it is essentially equivalent to GSVC evaluated under different Gaussian budgets. This strategy is not scalable, as each level is trained independently rather than derived from a single bitstream; in our experiments, it serves as the upper bound to quantify the quality overhead of achieving scalability in P-GSVC . On the contrary, the Sequential 
+
+method achieves scalability with parameter sharing across levels. However, its layer-wise training results in considerable overhead and performance degradation, due to conflicting optimization ob-jectives as a new layer is added. Our P-GSVC employs a layered structure in which Gaussian parameters are shared across levels to achieve scalable video. As a result, the rate-distortion curves appear piecewise, yet the gaps between adjacent levels remain very small (around 0.2 dB), demon-strating the effectiveness of joint training. Inevitably, achieving scalability introduces a quality overhead. Under our default strat-egy of evenly distributing splats across layers, the quality remains below about 1.1 dB in PSNR across all layers under the same Gauss-ian budget. The difference in quality reduces at higher quality levels as the total number of splats increases. This trend suggests that allocating more splats to enhancement layers, which focus on recon-structing high-frequency details, can further reduce the overhead while preserving scalability. While our current implementation does not match the perfor-mance of the highly optimized modern standard (e.g., SHVC), we narrow the gap between SHVC and the Sequential method, demon-strating meaningful progress toward standardized scalable coding quality. Additionally, note that P-GSVC uses an L2 loss for opti-mization, and by tuning the convergence condition, we can further improve PSNR without increasing the number of splats. 
+
+Size and Computational Cost . For a 600-frame YUV video (1920 ×1080, about 1.9 GB in raw format), encoding all three layers with P-GSVC produces an average total bitstream of about 45– 100 MB per video under the per-frame Gaussian budgets of 12k– 27k. The encoding time of our implementation of P-GSVC takes around 720 seconds per frame. Meanwhile, P-GSVC achieves real-time rendering, simultaneously reconstructing all three layers at Longan Wang, Yuang Shi, and Wei Tsang Ooi 0 10 20 30 40         
+
+> Bitrate (Mbps)
+> 25
+> 30
+> 35
+> 40
+> 45
+> PSNR 010 20 30 40
+> Bitrate (Mbps)
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> MS-SSIM 010 20 30 40
+> Bitrate (Mbps)
+> 25
+> 50
+> 75
+> 100
+> VMAF SHVC/H.265 (L2)
+> SHVC/H.265 (L1)
+> SHVC/H.265 (L0)
+> Monolithic (L2)
+> Monolithic (L1)
+> Monolithic (L0)
+> Sequential (L2)
+> Sequential (L1)
+> Sequential (L0)
+> P-GSVC (L2)
+> P-GSVC (L1)
+> P-GSVC (L0)
+
+Figure 8: Quantized rate–distortion results of P-GSVC versus baselines on UVG dataset. 
+
+a speed of about 1200 fps (2 s.f.). Although the encoding cost is prohibitively high, in offline settings such as video-on-demand, encoding is done once, and the cost is amortized over multiple viewings. Moreover, our implementation has not been optimized for speed. Profiling shows that over 90% of computation lies in iterative Gaussian optimization, which can be accelerated through parallelization on multiple GPUs (a potential 5.33 × speedup on multi-GPU reported in [ 38 ]). We are currently developing a faster version of the encoder for practical deployment. 
+
+## 5 Conclusion 
+
+In this paper, we introduced P-GSVC , the first scalable Gaussian representation framework for both images and videos, built upon progressive 2D Gaussian Splatting. We highlighted and addressed a challenge in optimizing progressive Gaussian representations, showing that incremental layer-wise training would lead to poorer quality due to cross-layer optimization conflicts. Through joint, in-cremental, and cyclic training across levels, P-GSVC demonstrates that we can achieve stable progressive reconstruction of both im-ages and videos with significant improvements over layer-wise sequential training. This work positions Gaussian splats as an alter-native primitive for encoding images and videos for adaptive media delivery, bridging between classical scalable codecs and neural-based codecs. 
+
+## References 
+
+[1] 2000. Information technology — Generic coding of moving pictures and associ-ated audio information — Part 2: Video. Also published as ITU-T Recommenda-tion H.262. [2] 2004. Information technology — Coding of audio-visual objects — Part 2: Visual. [3] Eirikur Agustsson and Radu Timofte. 2017. NTIRE 2017 Challenge on Single Image Super-Resolution: Dataset and Study. In 2017 IEEE Conference on Computer Vision and Pattern Recognition Workshops, CVPR Workshops 2017, Honolulu, HI, USA, July 21-26, 2017 . IEEE Computer Society, 1122–1131. doi:10.1109/CVPRW. 2017.150 [4] Yash Bhalgat, Jinwon Lee, Markus Nagel, Tijmen Blankevoort, and Nojun Kwak. 2020. LSQ+: Improving low-bit quantization through learnable offsets and better initialization. CoRR abs/2004.09576 (2020). arXiv:2004.09576 https://arxiv.org/ abs/2004.09576 [5] Andrew Bond, Jui-Hsien Wang, Long Mai, Erkut Erdem, and Aykut Erdem. 2025. GaussianVideo: Efficient Video Representation via Hierarchical Gaussian Splatting. CoRR abs/2501.04782 (2025). arXiv:2501.04782 doi:10.48550/ARXIV. 2501.04782 [6] Jill M. Boyce, Yan Ye, Jianle Chen, and Adarsh K. Ramasubramonian. 2016. Overview of SHVC: Scalable Extensions of the High Efficiency Video Cod-ing Standard. IEEE Trans. Circuits Syst. Video Technol. 26, 1 (2016), 20–34. doi:10.1109/TCSVT.2015.2461951 [7] Qian Cao, Dongdong Zhang, and Chengyu Sun. 2024. Quality Scalable Video Cod-ing Based on Neural Representation. In MultiMedia Modeling - 30th International Conference, MMM 2024, Amsterdam, The Netherlands, January 29 - February 2, 2024, Proceedings, Part I (Lecture Notes in Computer Science, Vol. 14554) , Stevan Rudinac, Alan Hanjalic, Cynthia C. S. Liem, Marcel Worring, Björn Þór Jónsson, Bei Liu, and Yoko Yamakata (Eds.). Springer, 396–409. doi:10.1007/978-3-031-53305-1_30 [8] Yihang Chen, Mengyao Li, Qianyi Wu, Weiyao Lin, Mehrtash Harandi, and Jianfei Cai. 2025. PCGS: Progressive Compression of 3D Gaussian Splatting. 
+
+CoRR abs/2503.08511 (2025). arXiv:2503.08511 doi:10.48550/ARXIV.2503.08511 [9] Eastman Kodak Company. 1999. Kodak Lossless True Color Image Suite. http: //r0k.us/graphics/kodak/. 24 images, true color, resolution 768 × 512 .[10] Zhiwen Fan, Kevin Wang, Kairun Wen, Zehao Zhu, Dejia Xu, and Zhangyang Wang. 2024. LightGaussian: Unbounded 3D Gaussian Compression with 15x Reduction and 200+ FPS. In Advances in Neural Information Processing Systems 38: Annual Conference on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver, BC, Canada, December 10 - 15, 2024 , Amir Globersons, Lester Mackey, Danielle Belgrave, Angela Fan, Ulrich Paquet, Jakub M. Tomczak, and Cheng Zhang (Eds.). http://papers.nips.cc/paper_files/paper/2024/hash/ fd881d3b625437354d4421818f81058f-Abstract-Conference.html [11] Robert Gray. 1984. Vector quantization. IEEE Assp Magazine 1, 2 (1984), 4–29. [12] Caroline N. Haddad. 2009. Cholesky Factorization. In Encyclopedia of Opti-mization, Second Edition , Christodoulos A. Floudas and Panos M. Pardalos (Eds.). Springer, 374–377. doi:10.1007/978-0-387-74759-0_67 [13] Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 2023. 3D Gaussian Splatting for Real-Time Radiance Field Rendering. ACM Trans. Graph. 42, 4 (2023), 139:1–139:14. doi:10.1145/3592433 [14] Inseo Lee, Youngyoon Choi, and Joonseok Lee. 2025. GaussianVideo: Efficient Video Representation and Compression by Gaussian Splatting. In IEEE/CVF Con-ference on Computer Vision and Pattern Recognition Workshops, CVPR Workshops 2025, Nashville, TN, USA, June 11-15, 2025 . Computer Vision Foundation / IEEE, 4471–4480. https://openaccess.thecvf.com/content/CVPR2025W/PBVS/html/ Lee_GaussianVideo_Efficient_Video_Representation_and_Compression_by_ Gaussian_Splatting_CVPRW_2025_paper.html [15] Zhi Li, Christos Bampis, Julie Novak, Anne Aaron, Kyle Swanson, Anush Moorthy, and JD Cock. 2018. VMAF: The journey continues. Netflix Technology Blog 25, 1 (2018). [16] Ming Lu, Zhihao Duan, Fengqing Zhu, and Zhan Ma. 2024. Deep Hierarchical Video Compression. In Thirty-Eighth AAAI Conference on Artificial Intelligence, AAAI 2024, Thirty-Sixth Conference on Innovative Applications of Artificial In-telligence, IAAI 2024, Fourteenth Symposium on Educational Advances in Artifi-cial Intelligence, EAAI 2014, February 20-27, 2024, Vancouver, Canada , Michael J. Wooldridge, Jennifer G. Dy, and Sriraam Natarajan (Eds.). AAAI Press, 8859–8867. doi:10.1609/AAAI.V38I8.28733 [17] Alexandre Mercat, Marko Viitanen, and Jarno Vanne. 2020. UVG dataset: 50/120fps 4K sequences for video codec analysis and development. In Proceedings of the 11th ACM Multimedia Systems Conference, MMSys 2020, Istanbul, Turkey, June 8-11, 2020 , Laura Toni, Ali C. Begen, Özgü Alay, and Christian Timmerer (Eds.). ACM, 297–302. doi:10.1145/3339825.3394937 [18] Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, and Ren Ng. 2022. NeRF: representing scenes as neural radiance fields for view synthesis. Commun. ACM 65, 1 (2022), 99–106. doi:10.1145/3503250 [19] Alberto Presta, Enzo Tartaglione, Attilio Fiandrotti, Marco Grangetto, and Pamela C. Cosman. 2025. Efficient Progressive Image Compression with Variance-Aware Masking. In IEEE/CVF Winter Conference on Applications of Computer Vi-sion, WACV 2025, Tucson, AZ, USA, February 26 - March 6, 2025 . IEEE, 7692–7700. doi:10.1109/WACV61041.2025.00747 [20] Heiko Schwarz, Detlev Marpe, and Thomas Wiegand. 2007. Overview of the Scalable Video Coding Extension of the H.264/AVC Standard. IEEE Trans. Circuits Syst. Video Technol. 17, 9 (2007), 1103–1120. doi:10.1109/TCSVT.2007.905532 [21] Yuang Shi. 2025. 3D Gaussian-based Immersive Media Streaming in Networked Extended Reality. In Proceedings of the 16th ACM Multimedia Systems Confer-ence, MMSys 2025, Stellenbosch, South Africa, 31 March 2025 - 4 April 2025 , Her-man Arnold Engelbrecht, Silvia Rossi, and Simon N. B. Gunkel (Eds.). ACM, 356–360. doi:10.1145/3712676.3719673 P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video 
+
+[22] Yuang Shi, Géraldine Morin, Simone Gasparini, and Wei Tsang Ooi. 2025. LapisGS: Layered Progressive 3D Gaussian Splatting for Adaptive Streaming. In Interna-tional Conference on 3D Vision, 3DV 2025, Singapore, March 25-28, 2025 . IEEE, 991–1000. doi:10.1109/3DV66043.2025.00096 [23] Yuang Shi, Géraldine Morin, Simone Gasparini, and Wei Tsang Ooi. 2026. Sketch&Patch++: Efficient Structure-Aware 3D Gaussian Representation. CoRR 
+
+abs/2601.05394 (2026). arXiv:2601.05394 doi:10.48550/ARXIV.2601.05394 [24] Yuang Shi, Ruoyu Zhao, Simone Gasparini, Géraldine Morin, and Wei Tsang Ooi. 2024. Volumetric Video Compression Through Neural-based Representation. In 
+
+Proceedings of the 16th International Workshop on Immersive Mixed and Virtual Environment Systems, MMVE 2024, Bari, Italy, April 15-18, 2024 . ACM, 85–91. doi:10.1145/3652212.3652220 [25] Weronika Smolak-Dyzewska, Dawid Malarz, Kornel Howil, Jan Kaczmarczyk, Marcin Mazur, and Przemyslaw Spurek. 2024. VeGaS: Video Gaussian Splatting. 
+
+CoRR abs/2411.11024 (2024). arXiv:2411.11024 doi:10.48550/ARXIV.2411.11024 [26] Yang-Tian Sun, Yihua Huang, Lin Ma, Xiaoyang Lyu, Yan-Pei Cao, and Xi-aojuan Qi. 2024. Splatter a Video: Video Gaussian Representation for Ver-satile Processing. In Advances in Neural Information Processing Systems 38: Annual Conference on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver, BC, Canada, December 10 - 15, 2024 , Amir Globersons, Lester Mackey, Danielle Belgrave, Angela Fan, Ulrich Paquet, Jakub M. Tomczak, and Cheng Zhang (Eds.). http://papers.nips.cc/paper_files/paper/2024/hash/ 5a461bdff86cc07e976bb6c518810398-Abstract-Conference.html [27] Yuan-Chun Sun, Yuang Shi, Cheng-Tse Lee, Mufeng Zhu, Wei Tsang Ooi, Yao Liu, Chun-Ying Huang, and Cheng-Hsin Hsu. 2025. LTS: A DASH Streaming System for Dynamic Multi-Layer 3D Gaussian Splatting Scenes. In Proceedings of the 16th ACM Multimedia Systems Conference, MMSys 2025, Stellenbosch, South Africa, March 31-April 4, 2025 . ACM. doi:10.1145/3712676.3714445 [28] David S. Taubman and Michael W. Marcellin. 2002. JPEG2000 - image compression fundamentals, standards and practice . The Kluwer international series in engi-neering and computer science, Vol. 642. Kluwer. doi:10.1007/978-1-4615-0799-4 [29] Longan Wang, Yuang Shi, and Wei Tsang Ooi. 2025. GSVC: Efficient Video Representation and Compression Through 2D Gaussian Splatting. In Proceedings of the 35th Workshop on Network and Operating System Support for Digital Audio and Video, NOSSDAV 2025, Stellenbosch, South Africa, 31 March 2025 - 4 April 2025 .ACM, 15–21. doi:10.1145/3712678.3721876 [30] Chang Wu, Guancheng Quan, Gang He, Xin-Quan Lai, Yunsong Li, Wenxin Yu, Xianmeng Lin, and Cheng Yang. 2024. QS-NeRV: Real-Time Quality-Scalable Decoding with Neural Representation for Videos. In Proceedings of the 32nd ACM International Conference on Multimedia, MM 2024, Melbourne, VIC, Australia, 28 October 2024 - 1 November 2024 , Jianfei Cai, Mohan S. Kankanhalli, Balakrishnan Prabhakaran, Susanne Boll, Ramanathan Subramanian, Liang Zheng, Vivek K. Singh, Pablo César, Lexing Xie, and Dong Xu (Eds.). ACM, 2584–2592. doi:10. 1145/3664647.3680586 [31] Xingyu Xie, Pan Zhou, Huan Li, Zhouchen Lin, and Shuicheng Yan. 2024. Adan: Adaptive Nesterov Momentum Algorithm for Faster Optimizing Deep Models. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelligence. 46, 12 (2024), 9508–9520. doi:10.1109/TPAMI.2024.3423382 [32] Vickie Ye, Ruilong Li, Justin Kerr, Matias Turkulainen, Brent Yi, Zhuoyang Pan, Otto Seiskari, Jianbo Ye, Jeffrey Hu, Matthew Tancik, and Angjoo Kanazawa. 2024. gsplat: An Open-Source Library for Gaussian Splatting. CoRR abs/2409.06765 (2024). arXiv:2409.06765 doi:10.48550/ARXIV.2409.06765 [33] Neil Zeghidour, Alejandro Luebs, Ahmed Omran, Jan Skoglund, and Marco Tagliasacchi. 2022. SoundStream: An End-to-End Neural Audio Codec. IEEE/ACM Transactions on Audio, Speech, and Language Processing. 30 (2022), 495–507. doi:10. 1109/TASLP.2021.3129994 [34] Gai Zhang, Xinfeng Zhang, and Lv Tang. 2024. Unified and Scalable Deep Image Compression Framework for Human and Machine. ACM Trans. Multim. Comput. Commun. Appl. 20, 10 (2024), 314:1–314:22. doi:10.1145/3678472 [35] Jiahui Zhang, Fangneng Zhan, Muyu Xu, Shijian Lu, and Eric P. Xing. 2024. FreGS: 3D Gaussian Splatting with Progressive Frequency Regularization. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 16-22, 2024 . IEEE, 21424–21433. doi:10.1109/CVPR52733.2024.02024 [36] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. 2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) . 586–595. [37] Xinjie Zhang, Xingtong Ge, Tongda Xu, Dailan He, Yan Wang, Hongwei Qin, Guo Lu, Jing Geng, and Jun Zhang. 2024. GaussianImage: 1000 FPS Image Representation and Compression by 2D Gaussian Splatting. In Computer Vision - ECCV 2024 - 18th European Conference, Milan, Italy, September 29-October 4, 2024, Proceedings, Part IX (Lecture Notes in Computer Science, Vol. 15067) , Ales Leonardis, Elisa Ricci, Stefan Roth, Olga Russakovsky, Torsten Sattler, and Gül Varol (Eds.). Springer, 327–345. doi:10.1007/978-3-031-72673-6_18 [38] Hexu Zhao, Haoyang Weng, Daohan Lu, Ang Li, Jinyang Li, Aurojit Panda, and Saining Xie. 2024. On scaling up 3d gaussian splatting training. In European Conference on Computer Vision . Springer, 14–36. [39] Lingting Zhu, Guying Lin, Jinnan Chen, Xinjie Zhang, Zhenchao Jin, Zhao Wang, and Lequan Yu. 2025. Large Images Are Gaussians: High-Quality Large Image Representation with Levels of 2D Gaussian Splatting. In AAAI-25, Sponsored by the Association for the Advancement of Artificial Intelligence, February 25 - March 4, 2025, Philadelphia, PA, USA , Toby Walsh, Julie Shah, and Zico Kolter (Eds.). AAAI Press, 10977–10985. doi:10.1609/AAAI.V39I10.33193 [40] Brent Zoomers, Maarten Wijnants, Ivan Molenaers, Joni Vanherck, Jeroen Put, and Nick Michiels. 2025. PRoGS: Progressive Rendering of Gaussian Splats. In 
+
+IEEE/CVF Winter Conference on Applications of Computer Vision, WACV 2025, Tucson, AZ, USA, February 26 - March 6, 2025 . IEEE, 3118–3127. doi:10.1109/ WACV61041.2025.00308
