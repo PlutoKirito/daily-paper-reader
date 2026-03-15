@@ -6,38 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-14
-- 运行时间：2026-03-14 19:13:34 UTC
+- 最新运行日期：2026-03-15
+- 运行时间：2026-03-15 19:26:01 UTC
 - 运行状态：成功
-- 本次总论文数：5
+- 本次总论文数：1
 - 精读区：0
-- 速读区：5
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦 3D/2D Gaussian Splatting 的高效压缩，探索渐进式编码与残差压缩新前沿。
-重点关注 ProGS 与 P-GSVC，它们通过分层渐进技术实现了 3D 场景与视频的高效流式传输与可扩展性。
-建议关注 3DGS
-- 详情：[/202603/14/README](/202603/14/README)
+今日聚焦快照压缩成像（SCI）技术，探索其在真实复杂退化环境下的鲁棒性表现。
+RobustSCI 框架实现了从单纯重建到深度修复的跨越，有效解决了实际应用中的图像质量瓶颈。
+推荐关注计算摄影如何通过算法优化，提升硬件在极端环境下的成像上限。
+- 详情：[/202603/15/README](/202603/15/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [ProGS: Towards Progressive Coding for 3D Gaussian Splatting](/202603/14/2603.09703v1-progs-towards-progressive-coding-for-3d-gaussian-splatting)  
+1. [RobustSCI: Beyond Reconstruction to Restoration for Snapshot Compressive Imaging under Real-World Degradations](/202603/15/2603.07489v1-robustsci-beyond-reconstruction-to-restoration-for-snapshot-compressive-imaging-under-real-world-degradations)  
    标签：评分：7.0/10、query:vcodec
-   evidence：3D高斯泼溅的渐进式编码
-2. [ARCHE: Autoregressive Residual Compression with Hyperprior and Excitation](/202603/14/2603.10188v1-arche-autoregressive-residual-compression-with-hyperprior-and-excitation)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：端到端学习型图像压缩框架
-3. [P-GSVC: Layered Progressive 2D Gaussian Splatting for Scalable Image and Video](/202603/14/2603.10551v1-p-gsvc-layered-progressive-2d-gaussian-splatting-for-scalable-image-and-video)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：用于视频重建的分层渐进高斯泼溅
-4. [Compressed-Domain-Aware Online Video Super-Resolution](/202603/14/2603.07694v1-compressed-domain-aware-online-video-super-resolution)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：利用压缩域信息进行视频处理
-5. [Attend Before Attention: Efficient and Scalable Video Understanding via Autoregressive Gazing](/202603/14/2603.12254v1-attend-before-attention-efficient-and-scalable-video-understanding-via-autoregressive-gazing)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：用于视频重建的自回归补丁选择
+   evidence：用于视频快照压缩成像与修复的深度学习
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,297 @@
+Title: RobustSCI: Beyond Reconstruction to Restoration for Snapshot Compressive Imaging under Real-World Degradations
+
+URL Source: https://arxiv.org/pdf/2603.07489v1
+
+Published Time: Tue, 10 Mar 2026 01:12:09 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# RobustSCI: Beyond Reconstruction to Restoration for Snapshot Compressive Imaging under Real-World Degradations 
+
+## Hao Wang 1,2† , Yuanfan Li 2† , Qi Zhou 2† , Zhankuo Xu 3 , Jiong Ni 2 , Xing Liu 4 , Xin Yuan 1∗
+
+> 1
+
+## Westlake University , 2Xi’an Jiaotong University 
+
+> 3
+
+## Dalian University of Technology , 4Westlake Institute for Optoelectronics 
+
+> †
+
+## These authors contributed equally to this work. *Corresponding author: yuanxin@westlake.edu.cn 
+
+## Abstract 
+
+Deep learning algorithms for video Snapshot Com-pressive Imaging (SCI) have achieved great suc-cess, yet they predominantly focus on reconstruct-ing from clean measurements. This overlooks a critical real-world challenge: the captured signal itself is often severely degraded by motion blur and low light. Consequently, existing models fal-ter in practical applications. To break this limi-tation, we pioneer the first study on robust video SCI restoration, shifting the goal from “reconstruc-tion” to “restoration”—recovering the underlying pristine scene from a degraded measurement. To facilitate this new task, we first construct a large-scale benchmark by simulating realistic, continu-ous degradations on the DAVIS 2017 dataset. Sec-ond, we propose RobustSCI, a network that en-hances a strong encoder-decoder backbone with a novel RobustCFormer block. This block introduces two parallel branches—a multi-scale deblur branch and a frequency enhancement branch—to explic-itly disentangle and remove degradations during the recovery process. Furthermore, we introduce RobustSCI-C (RobustSCI-Cascade), which inte-grates a pre-trained Lightweight Post-processing Deblurring Network to significantly boost restora-tion performance with minimal overhead. Exten-sive experiments demonstrate that our methods out-perform all SOTA models on the new degraded testbeds, with additional validation on real-world degraded SCI data confirming their practical effec-tiveness, elevating SCI from merely reconstructing what is captured to restoring what truly happened. 
+
+## 1 Introduction 
+
+Snapshot Compressive Imaging (SCI) presents a novel hard-ware paradigm for high-speed videography [Barbastathis et al. , 2019; Yuan and Pang, 2016], optically encoding a se-quence of video frames into a single 2D measurement to reduce hardware complexity and cost [Llull et al. , 2013; Yuan et al. , 2021; Yuan et al. , 2014; Cand` es et al. , 2006]. The core challenge lies in the software decoder, which must Clean MB-1 MB-2 MB-3 LL-1 LL-2 LL-3 Mix-1 Mix-2 Mix-3 
+
+> Degradation Scenarios
+> 15.0
+> 17.5
+> 20.0
+> 22.5
+> 25.0
+> 27.5
+> 30.0
+> 32.5
+> 35.0
+> PSNR (dB)
+> RevSCI
+> GAP-TV
+> GAP-CCoT
+> GAP-net
+> BIRNAT
+> ELP-Unfolding
+> PnP-FFDnet
+> EfficientSCI-B
+> STFormer
+> RobustSCI (Ours)
+> RobustSCI-C (Ours)
+
+Figure 1: PSNR performance of our methods against SOTA models across 10 scenarios (clean, 3 motion blur (MB), 3 low-light (LL), 3 mixed degradation levels) on grayscale benchmarks. Our models demonstrate superior robustness as degradation severity increases. 
+
+solve a highly ill-posed inverse problem to recover the origi-nal video frames. While significant progress has been made, existing methods operate under an implicit, idealized assump-tion: to faithfully reconstruct the optically captured signal. This assumption overlooks a critical reality: the captured signal is often degraded by motion blur and low-light noise. A perfect reconstruction of this signal yields only a blurry, noisy video, impeding real-world use. Consequently, experimental results show existing models suffer a precipitous performance drop on degraded data. For example, EfficientSCI-B, when trained under the conventional paradigm of pure reconstruc-tion, achieves a PSNR of 36.48 on the clean grayscale test set (detailed in Section 4.1); yet its PSNR plummets to 15.90 when evaluated on data degraded with the Mixed-L2 setting (see Table 1). While prior work addresses specific aspects of SCI robust-ness [Wu et al. , 2023; Zhang et al. , 2024], restoring pris-tine scenes from severely degraded measurements remains unsolved. We argue that decoupled two-stage pipelines (re-construction then restoration) suffer from error accumulation, thus motivating our synergistic, end-to-end paradigm shift from reconstruction to restoration. 
+
+> arXiv:2603.07489v1 [cs.CV] 8 Mar 2026
+
+To break this bottleneck, we pioneer the first study on ro-bust video SCI with the explicit goal of scene restoration. We redefine the problem: instead of merely reconstructing the degraded input, our objective is to surpass it and recover the underlying, pristine scene. Our key contributions are: • We construct and will release the first large-scale dataset for robust video SCI restoration by simulating realistic degradations (e.g., motion blur and low-light noise) on high-frame-rate videos from DAVIS 2017 [Pont-Tuset et al. , 2017], followed by a simulation of the SCI measure-ment process. • We propose the RobustSCI network, which enhances the efficient encoder-decoder architecture of EfficientSCI [Wang et al. , 2023] with a novel RobustCFormer block. This new block introduces two parallel restoration branches—a multi-scale deblur branch to explicitly han-dle motion blur and a frequency enhancement branch to suppress global artifacts—enabling joint reconstruction and restoration. • We further propose the RobustSCI-C (RobustSCI-Cascade) framework, which integrates a pre-trained, lightweight post-processing deblurring network based on NAFNet [Chen et al. , 2022] as a powerful prior, dra-matically improving restoration of severe degradations with high efficiency. 
+
+## 2 Related Work 
+
+2.1 Physical Process and Modeling of SCI Systems 
+
+To ground our work in physical reality, it is essential to first understand the optical encoding process of a typical video SCI system (e.g., Coded Aperture Compressive Temporal Imaging, CACTI) and the gap between this physical process and its widely-used simulation in computational studies. 
+
+The Physical Process of CACTI. As detailed in the survey by Yuan et al. [Yuan et al. , 2021], a CACTI system optically encodes a high-speed scene into a single 2D measurement to enable high-speed videography with simple hardware. The process relies on a Digital Micromirror Device (DMD) mod-ulator that rapidly displays a sequence of binary coding pat-terns during the camera’s prolonged exposure. Light from the scene is spatially modulated by these patterns for each temporal frame, and the cumulative modulated light is inte-grated on the sensor (e.g., CCD/CMOS). This physical pro-cess introduces non-idealities—including optical aberrations from lenses, finite DMD switching times/contrast ratios, and sensor noise—that are often ignored in simplified mathemat-ical models. 
+
+The Simulated Forward Model. In most computational SCI studies (including ours), the forward model is an ide-alized, discretized approximation of the physical process. Given a sequence of clean video frames {Xk}Nt 
+
+> k=1
+
+and pre-defined binary masks {M k}Nt
+
+> k=1
+
+, the measurement Y is com-puted as: 
+
+Y =
+
+> Nt
+
+X
+
+> k=1
+
+Xk ⊙ M k + E, (1) where ⊙ denotes element-wise multiplication and E is typ-ically modeled as additive white Gaussian noise (AWGN). This simulation assumes perfect optics, ideal binary masks, and a linear sensor response—simplifications that disconnect it from real-world imaging conditions. Our work bridges this simulation-to-reality gap not by complicating the SCI for-ward model, but by explicitly injecting realistic degradations 
+
+D into clean frames Xk before they undergo encoding, align-ing training data with physical imaging scenarios. 
+
+2.2 SCI Reconstruction Paradigms 
+
+Algorithms for inverting the SCI forward model have evolved from traditional optimization-based methods to deep learning-driven approaches, yet all share a common limita-tion of assuming pristine input signals. Early iterative optimization methods (e.g., GAP-TV [Yuan, 2016], ISTA [Bioucas-Dias and Figueiredo, 2007]) use hand-crafted priors (e.g., total variation) for interpretable re-construction but suffer from slow inference. Deep learn-ing enabled mainstream end-to-end networks [Qiao et al. ,2020], including recurrent (BIRNAT [Cheng et al. , 2020]), Transformer-based [Wang et al. , 2021; Wang et al. , 2024], and State-Space (MambaSCI [Pan et al. , 2024]) models. Hybrid approaches like PnP [Yuan et al. , 2020] (integrat-ing deep denoisers) and Deep Unfolding [Wu et al. , 2021; Yang et al. , 2022] (combining optimization and deep learn-ing) also emerged. Despite their differences, all these meth-ods invert the idealized forward model (Eq. 1) and ignore real-world signal degradations— a gap RobustSCI addresses. 
+
+2.3 Simulated Degradations 
+
+Since collecting paired real-world degraded/clean SCI data is infeasible, simulating realistic degradations is a corner-stone for training robust restoration models. Our degradation pipeline draws on principled techniques from the deblurring and low-light enhancement communities, aligning with the physical rationale of our RobustSCI design. 
+
+Motion Blur Simulation. To synthesize motion blur, one common approach involves convolving a sharp image with a blur kernel [Levin et al. , 2009], though accurately model-ing complex motion paths remains a challenge. We instead adopt the more physically-grounded method used by the Go-Pro dataset [Nah et al. , 2017], which averages consecutive high-speed frames. This technique directly mimics the tem-poral integration of light inherent in CACTI systems, provid-ing a more realistic simulation of blur from dynamic scenes. 
+
+Low-Light Simulation. Simulating low-light requires modeling both brightness reduction and noise. While phys-ically accurate models characterize sensor noise as a com-bination of signal-dependent Poisson and signal-independent Gaussian noise [Foi et al. , 2008; Chen et al. , 2018], a widely-used and effective approximation is often employed for train-ing deep models. Following this practical approach [Guo 
+
+et al. , 2020; Feijoo et al. , 2025], our pipeline first applies a non-linear darkening curve to mimic reduced photon flux, then adds Gaussian noise to approximate the aggregate sensor noise. This provides a tractable yet powerful way to generate diverse low-light conditions. Degradation Simulation  
+
+> Measurement (Y) RobustSCI
+> Network
+> Masks
+> Low Light
+> Mixed Degradation
+> Motion Blur
+> CACTI
+> Simulation
+> Lightweight PnP
+> DeBlurring Network
+
+RobustSCI -C  
+
+> Ground Truth (X)
+> Inference -Only
+> Training -Only
+> Loss Computation
+> in Training Figure 2: Overview of our training and inference pipeline. Paired data is generated by applying simulated degradations to clean video frames, followed by CACTI simulation to produce degraded measurements ( Y). RobustSCI is trained end-to-end to recover clean ground truth frames ( X), while the Lightweight Post-processing Deblurring Network (trained separately) can be used as a frozen post-processing step during inference.
+
+## 3 Methodology 
+
+Our methodology is designed to shift the paradigm of video SCI from conventional reconstruction to robust restoration. We first formalize this problem shift by analyzing the gap be-tween idealized models and physical reality. Based on this analysis, we then detail the architecture of our proposed net-work, RobustSCI, which is specifically engineered to address these real-world challenges. Our overall strategy is illustrated in Figure 2. 
+
+3.1 Reconstruction to Restoration 
+
+The forward model of video SCI, as established in prior work [Yuan et al. , 2021], describes how a high-speed video se-quence is compressed into a single measurement. In its ideal-ized, vectorized form, this is expressed as: 
+
+y = Hx + z, (2) where x ∈ RNsNt is the vectorized video sequence, H ∈
+
+RNs×NsNt is the sensing matrix composed of coding masks, 
+
+y ∈ RNs is the measurement, and z represents system noise. The conventional SCI reconstruction paradigm aims to solve for x given y and H. However, this model makes a critical simplification: it assumes the source signal x is pristine. In a physical imaging system, the signal captured by the optics, xc, has already undergone degradation. Thus, a more physically accurate forward model is: 
+
+y = Hx c + z, xc = D(xcl ). (3) Here, xcl is the underlying pristine scene, and D is a com-plex, non-linear degradation operator that encapsulates cas-caded physical effects—including atmospheric disturbances, motion blur from object and camera movement, and photon flux reduction due to low light—instead of arbitrary distor-tions. The noise z itself is also not merely additive Gaussian; it is a complex mixture of signal-dependent photon shot noise and signal-independent read noise, further complicated by the camera’s non-linear response function (CRF). This reveals a fundamental dichotomy in the problemOur RobustSCI series (RobustSCI/RobustSCI-C) are trained on data with compression ratios definition. The goal of conven-tional methods is to find an estimate ˆx that best approximates 
+
+xcaptured . In contrast, our goal of scene restoration is to es-timate xclean . We propose to solve this more challenging problem by training a deep neural network, Gθ , to learn the composite inverse mapping: 
+
+Gθ (y) ≈ xclean . (4) This requires the network not only to invert the sensing matrix 
+
+H, but also to implicitly model and invert the complex degra-dation operator D. Our network design is therefore explicitly motivated by the need to tackle the core optical effects em-bedded in D—computationally tractable approximations of real CACTI system artifacts rather than artificial distortions. Our simulation strategy is designed to model these key phys-ical limitations. Motion blur, which arises from the temporal integration of light during the sensor’s exposure, is directly simulated by averaging consecutive high-speed frames. This mimics the amplified blur effect inherent in CACTI systems. To model low-light conditions, which reduce photon flux and introduce a complex mix of shot and read noise, our simu-lation first applies a darkening curve to represent non-linear intensity compression, followed by the addition of Gaussian noise. This darkening step also implicitly models the degra-dation of the DMD’s modulation contrast under low-light, a critical hardware limitation. Since real-world scenarios often feature these degradations concurrently (e.g., night-time driv-ing), our mixed degradation setup combines these simulated artifacts. This forces the network to learn a robust inversion of intertwined motion and noise effects, thereby tackling real system limitations. By training on data synthesized with this Optics-inspired degradation model, our network learns to invert not only the compressive encoding H but also the preceding physical degradations D. This aligns with the ultimate goal of compu-tational imaging: to recover the latent scene xclean from cor-rupted measurements, pushing SCI from reconstruction to-wards true scene restoration. 
+
+3.2 Proposed RobustSCI Network 
+
+To learn the complex mapping in Eq. (3), we propose Ro-bustSCI, which adopts a U-Net-like encoder-decoder back-bone with residual connections [He et al. , 2016]. Its core strength lies in the RobustCFormer block (Figure 3), engi-neered to disentangle and counteract different degradations via dedicated parallel branches—with feature aggregation and refinement integrated into the block’s design. 
+
+ST-Baseline Branch. Adopting core components from Ef-ficientSCI [Wang et al. , 2023], this branch extracts spatio-temporal features: a Spatial Convolution Branch (SCB) cap-tures local spatial details, while a Temporal Self-Attention Branch (TSAB) models long-range motion patterns, form-ing the foundation for spatio-temporal data cube reconstruc-tion. The TimesAttention3D module in TSAB computes dy-namic frame-wise correlation scores independent of sequence length, enabling our model to handle variable compression ratios (8/16/24) without architectural modifications. 
+
+Multi-Scale Deblur Branch (MSDB). Motion blur (a spa-tial degradation from temporal integration) is simulated via kernel-free frame averaging [Nah et al. , 2017] (avoiding over-simplified uniform motion assumptions). The MSDB approx-imates non-uniform blur fields through multi-scale decom-position [Nah et al. , 2017; Zamir et al. , 2022], using three parallel paths with dilation rates d ∈ { 1, 2, 4} [Luo et al. ,2020]: d = 1 captures fine textures/slow motion (narrow frame windows), while d = 2/4 expands receptive fields for large-scale motion (wide windows) at no extra cost. Fea-tures are concatenated and fused via a 1 × 1 × 1 convolution (learned channel-wise attention) to adaptively select motion scales, outperforming single-scale kernel-based methods for complex motion blur inherent to SCI. 
+
+Frequency Enhancement Branch (FEB). The FEB ad-dresses global low-light degradations (non-linear intensity compression, wide-spectrum noise) in the frequency domain. Input features are transformed via 2D Real Fast Fourier Transform (RFFT); real/imaginary components of the com-plex spectrum are concatenated along channels to enable pro-cessing by a standard MLP. The MLP learns a dynamic filter to adjust spectral magnitudes/phases—boosting suppressed mid-frequencies for contrast restoration, or attenuating high-frequency noise bands (analogous to learned dynamic equal-ization). For stability, frequency-domain operations are ap-plied to only half the channels (the other half forms a residual connection); the modified spectrum is transformed back to 1×3×3 Conv    
+
+> d = 2
+> 1×3×3Conv
+> d = 1
+> 1×3×3Conv
+> d = 4
+> C
+> FFT
+> MLP
+> iFFT
+> 1×1×1Conv
+
++
+
+> SCB
+> FFN
+> TSAB
+
++ 
+
+> MSDB FEB
+> ST -Baseline
+
++
+
+> Input
+> Output
+> Figure 3: Architecture of the proposed RobustCFormer block. In-put features are processed via four parallel branches (ST-Baseline: SCB+TSAB, MSDB, FEB) before fusion. Aggregated features are refined by an FFN with a residual connection.
+
+the spatial domain via inverse RFFT (iRFFT), normalized to mitigate artifacts, and fused with residual channels. Following processing by the ST-Baseline, MSDB, and FEB branches, all features (including a direct residual connection from the input) are aggregated via element-wise addition. This fused feature map is refined by a Feed-Forward Net-work (FFN), with a final residual connection producing the block’s output—integrating foundational SCI reconstruction with enhancement capabilities tailored for the SCI process. 
+
+3.3 RobustSCI-C Framework 
+
+Observing that a single end-to-end network can strug-gle to fully eliminate severe motion blur, we propose the RobustSCI-C (RobustSCI-Cascade) framework to explicitly and efficiently address this limitation. This framework op-erates in two stages. First, the trained RobustSCI network produces an initial, high-quality reconstruction. Second, each frame of this video is independently processed by our Lightweight Post-processing Deblurring Network, which acts as a powerful post-processing prior. This network, based on the NAFNet [Chen et al. , 2022] architecture, is kept frozen during inference and requires no task-specific fine-tuning, making it a highly efficient and effective enhancement mod-ule. 
+
+## 4 Experiments 
+
+4.1 Experimental Setup 
+
+Datasets. We adopt the widely-used datasets from BIRNAT [Cheng et al. , 2020] for both training and evaluation. The training set is derived from the DAVIS 2017 dataset [Pont-Tuset et al. , 2017]. For grayscale evaluation, we use six standard benchmark datasets: Kobe, Traffic, Runner, Drop, Crash, and Aerial. For color evaluation, we use another six benchmarks: Beauty, Bosphorus, Jockey, Runner, Shak-eNDry, and Traffic. Crucially, for our robust restoration task, we apply a consistent degradation pipeline to both the training and testing sets. Additionally, we collect real-world degraded SCI data in low-light and motion-blurred scenarios, with a fixed compression ratio (CR) of 24. This real dataset is cap-tured using a custom-built CACTI prototype system, which directly records the degraded compressive measurements of dynamic scenes under natural low-light conditions with in-herent motion blur from scene dynamics, providing a practi-cal validation of our methods on real-world imaging condi-tions. 
+
+Degradation Pipeline. We design a physics-inspired pipeline to generate realistic degradations for supervised learning. First, all source videos are temporally upsampled 8x via RIFE [Huang et al. , 2022] to provide high-frame-rate inputs for accurate motion blur simulation. We then generate paired data (Xdegraded , X gt ), where Xgt is the central frame of the upsampled sequence, and Xdegraded is created by ap-plying motion blur and low-light effects: • Motion Blur Simulation: Following the method of the GoPro dataset [Nah et al. , 2017], we average a window of N consecutive high-speed frames centered around the ground truth frame. The parameter N , which controls the blur severity, is referred to as Blur ( N ) in our exper-iments. • Low-Light Simulation: Inspired by Zero-DCE [Guo et al. , 2020] and DarkIR [Feijoo et al. , 2025], we model low-light conditions as a two-stage process encompass-ing both non-linear brightness reduction and additive sensor noise. For a clean, normalized input image I, the final degraded image Idegraded at pixel coordinate p is calculated via the model shown in Equation (5). Specifi-cally, the first term in the equation models brightness re-duction through a quadratic curve controlled by the dark-ening level parameter α ∈ [0 , 1] , while the second term represents additive Gaussian sensor noise (with mean 0 and standard deviation σ) that is prominent in low-light scenarios. By varying both α and σ during data genera-tion, we can synthesize a wide and continuous spectrum of realistic low-light degradations. 
+
+Idegraded (p) = I(p)−α·I(p)·(1 −I(p))+ N (0 , σ 2). (5) For our training set, we generate a diverse and continu-ous range of degradations by randomly sampling the param-eters within their respective ranges (e.g., N from 3 to 17). To simulate dynamic conditions, we ensure a smooth transition of these degradation parameters between consecutive video chunks. For the test set, we define nine fixed degradation sce-narios with three severity levels (L1, L2, L3), with specific parameters detailed in Table 1. 
+
+Baselines. We compare our methods against a comprehen-sive set of SOTA SCI reconstruction algorithms. These include the iterative optimization method GAP-TV [Yuan, 2016]; end-to-end deep learning models such as BIR-NAT [Cheng et al. , 2020], RevSCI [Cheng et al. , 2021],                                
+
+> Table 1: Degradation parameters for the nine test scenarios.
+> Scenario Blur ( N)Darkening Noise ( σ)
+> MotionBlur-L1 7--MotionBlur-L2 11 --MotionBlur-L3 15 --LowLight-L1 -0.6 10 LowLight-L2 -0.8 25 LowLight-L3 -0.9 40 Mixed-L1 70.6 10 Mixed-L2 11 0.8 25 Mixed-L3 15 0.9 40
+
+EfficientSCI-B [Wang et al. , 2023], and STFormer [Wang 
+
+et al. , 2024]; deep unfolding networks including GAP-net [Meng et al. , 2020], GAP-CCoT [Wang et al. , 2022], and ELP-Unfolding [Yang et al. , 2022]; and the plug-and-play (PnP) algorithm PnP-FFDnet [Yuan et al. , 2020]. All learning-based models were retrained on our dataset, while non-learning methods like GAP-TV were evaluated directly. 
+
+Metrics. We use Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index (SSIM) [Wang et al. , 2004] as the primary metrics for quantitative evaluation. 
+
+Implementation Details. All experiments are conducted on an NVIDIA RTX 4090 GPU with 24GB memory. Our RobustSCI models are trained on a mixture of data with com-pression ratios (CR) of 8, 16, and 24, endowing them with flexibility. For a fair comparison, all evaluations reported in this paper, for both our models and the baselines, are con-ducted on the test set with a fixed CR of 8. We train all mod-els for 150 epochs with a batch size of 4, using the Adam optimizer [Kingma, 2014] with an initial learning rate of 1e-4 and cosine annealing learning rate scheduler (decaying to 1e-6 over epochs). Consistent with EfficientSCI [Wang et al. ,2023], we adopt the Mean Squared Error (MSE) loss (PSNR-oriented loss) defined as: 
+
+L = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥ ˆXi − Xi∥22, (6) where ˆXi denotes the predicted frames and Xi is the ground truth. The post-processing deblurring network (based on NAFNet) is trained separately on a dedicated dataset con-structed by applying varying levels of motion blur to DAVIS 2017 training frames, with the same optimizer and learning rate settings as the main network. 
+
+4.2 Results on Grayscale Videos 
+
+We first present the comprehensive quantitative and qualita-tive results on the degraded grayscale benchmarks. Quantitative comparisons with mainstream baselines in Ta-ble 2 and Figure 1 demonstrate the superiority of our meth-ods. RobustSCI and RobustSCI-C consistently outperform others across nearly all ten test conditions, from clean data to severe degradations, with the performance gap widening as degradation intensifies. This trend holds across the board; Clean         
+
+> Input RevSCI GAP-net BIRNAT ELP-Unfolding EfficientSCI-B STFormer RobustSCI RobustSCI-C
+> MB-L2
+> LL-L2
+> Mix-L2
+
+Figure 4: Qualitative comparison on the grayscale runner benchmark under different degradation scenarios. From top to bottom, the rows show results for Clean, MotionBlur-L2 (MB-L2), LowLight-L2 (LL-L2), and Mixed-L2 scenarios. The first column displays the ground truth or the degraded input. Each subsequent column shows the reconstruction from a different model. Table 2: Quantitative comparison (PSNR in dB / SSIM) on degraded grayscale benchmarks. Best results are highlighted.                                                                                                                                                                                                                                       
+
+> Method Clean MB-1 MB-2 MB-3 LL-1 LL-2 LL-3 Mix-1 Mix-2 Mix-3
+> RevSCI 23.92 0.818 23.03 0.748 22.18 0.693 21.49 0.654 21.06 0.767 18.65 0.682 17.93 0.595 20.33 0.702 17.79 0.585 16.94 0.488 GAP-TV 26.73 0.858 25.61 0.788 24.13 0.728 23.04 0.683 18.25 0.648 16.24 0.462 15.54 0.360 17.88 0.595 15.66 0.383 14.82 0.278 GAP-CCoT 26.73 0.895 24.81 0.801 23.35 0.728 22.34 0.677 26.18 0.848 23.07 0.746 22.48 0.626 24.34 0.764 20.92 0.611 20.35 0.493 GAP-net 27.69 0.853 25.09 0.759 23.57 0.691 22.54 0.643 25.87 0.840 22.12 0.728 21.04 0.598 24.16 0.753 20.23 0.599 19.31 0.474 BIRNAT 22.25 0.777 21.86 0.721 21.21 0.673 20.60 0.632 22.10 0.751 19.93 0.688 19.32 0.586 21.28 0.696 18.96 0.602 18.17 0.602 ELP-Unfolding 29.49 0.905 25.81 0.803 23.89 0.728 22.73 0.678 26.47 0.846 22.30 0.742 21.23 0.659 24.24 0.757 19.59 0.595 18.91 0.525 PnP-FFDnet 29.70 0.892 26.65 0.820 24.55 0.745 23.23 0.691 18.40 0.658 16.05 0.442 15.09 0.341 17.96 0.598 15.48 0.366 14.45 0.265 EfficientSCI-B 29.38 0.898 24.91 0.780 23.24 0.705 22.24 0.657 26.29 0.850 24.06 0.796 22.94 0.659 23.73 0.747 21.20 0.649 20.17 0.538 STFormer 31.28 0.940 26.25 0.819 24.23 0.740 22.99 0.686 28.76 0.884 23.94 0.803 22.16 0.728 25.43 0.780 21.36 0.655 19.83 0.599 RobustSCI (Ours) 33.31 0.951 26.88 0.831 24.58 0.748 23.23 0.693 28.99 0.898 25.42 0.823 24.18 0.727 24.98 0.794 21.31 0.673 20.25 0.613 RobustSCI-C (Ours) 32.32 0.949 28.33 0.872 26.68 0.830 25.52 0.790 28.41 0.899 25.63 0.824 24.41 0.727 25.34 0.810 21.58 0.681 20.44 0.616
+
+RobustSCI and RobustSCI-C dominate the quantitative com-parisons, claiming nearly all the top results in Table 2 and thus verifying the robustness of our restoration-oriented de-sign. Figure 4 validates these findings qualitatively. More-over, RobustSCI-C delivers clearer edges and sharper de-tails in motion blur cases, confirming the effectiveness of our lightweight post-processing deblurring network. 
+
+4.3 Results on Color Videos 
+
+As shown in Table 3, our methods maintain their signif-icant lead on the degraded color video benchmarks. We compare against strong baselines, including EfficientSCI-B and STFormer, which were retrained on our robust training dataset. The RobustSCI-C framework, in particular, demon-strates exceptional performance in restoring both image struc-ture and color fidelity. A qualitative comparison on the Jockey dataset is provided in Figure 5. The visual results con-firm the quantitative findings, highlighting the severe com-promises in the outputs of baseline models. In contrast, our method produces visually pleasing videos with sharp details, natural colors, and minimal artifacts, whereas other methods suffer from color shifts, residual noise, and blur. This un-derscores the effectiveness of our proposed architecture and training strategy for the challenging task of robust color video SCI restoration. 
+
+4.4 Ablation Study 
+
+To validate the effectiveness and efficiency of our proposed components, we conduct an ablation study. We start with a baseline (EfficientSCI-B retrained on our data) and incremen-tally add our proposed branches. We evaluate performance by averaging PSNR and SSIM scores across all ten grayscale test conditions, and also report the computational complexity in GFLOPs. As shown in Table 4, adding either the MSDB or the FEB individually brings a notable performance gain over the baseline with only a modest increase in parame-ters and GFLOPs. Integrating both branches to form our full RobustSCI model yields further improvement, demonstrating their complementary nature while keeping the computational cost manageable. Finally, the Lightweight Post-processing Table 3: Quantitative comparison (PSNR in dB / SSIM) on degraded color benchmarks. Best results are highlighted.                                                                                              
+
+> Method Clean MB-1 MB-2 MB-3 LL-1 LL-2 LL-3 Mix-1 Mix-2 Mix-3
+> EfficientSCI-B 19.29 0.847 19.34 0.842 19.31 0.838 19.28 0.835 25.19 0.839 21.83 0.735 21.07 0.626 25.22 0.835 21.50 0.726 20.69 0.614
+> STFormer 20.48 0.763 20.54 0.761 20.48 0.757 20.40 0.753 24.73 0.803 20.58 0.717 19.56 0.604 24.51 0.799 20.34 0.710 19.29 0.594 RobustSCI (Ours) 21.76 0.866 22.01 0.860 21.77 0.853 21.62 0.848 27.93 0.857 23.51 0.707 21.90 0.581 28.20 0.852 23.30 0.698 21.59 0.571 RobustSCI-C (Ours) 22.64 0.845 22.95 0.832 22.77 0.823 22.64 0.818 24.12 0.823 21.82 0.715 20.75 0.607 24.15 0.814 21.66 0.705 20.55 0.595 Input
+> Clean MB-L2 LL-L2 Mix-L2
+> EfficientSCI-B
+> STFormer
+> RobustSCI
+> RobustSCI-C
+
+Figure 5: Qualitative comparison on the color Jockey benchmark. From top to bottom, the rows show the input and the results from different models. From left to right, the columns show different degradation scenarios at the L2 level. 
+
+Deblurring Network provides the largest performance boost but also substantially increases the total GFLOPs, highlight-ing the trade-off between peak performance and computa-tional efficiency. 
+
+Table 4: Ablation study of our proposed components. Performance and GFLOPs are averaged over all 10 grayscale test conditions. 
+
+Method Params (M) FLOPs (G) PSNR ↑ SSIM ↑
+
+Baseline 8.82 1423.6 23.82 0.728 Baseline + MSDB 9.682 1533.9 24.92 0.76 Baseline + FEB 9.88 1493.4 24.54 0.754 RobustSCI 10.74 1603.7 25.31 0.775 RobustSCI-C 18.04 1662.4 25.87 0.800 
+
+4.5 Results on Real-World Degraded SCI Data 
+
+To validate practical effectiveness, we evaluate RobustSCI and RobustSCI-C on real-world degraded SCI data (CR=24) captured by an actual optical CACTI system (low-light + motion blur), and compare them with two versions of EfficientSCI-B   
+
+> (Base)
+> #0 #12 #23
+> EfficientSCI-B
+> RobustSCI
+> RobustSCI-C
+
+Figure 6: Qualitative comparison on real-world degraded SCI data. From top to bottom: EfficientSCI-B (Base, trained under the conven-tional degradation-agnostic paradigm), EfficientSCI-B, RobustSCI, and RobustSCI-C. The rightmost column shows a low-light en-hanced version of the boxed region for better visualization. 
+
+EfficientSCI-B (EfficientSCI-B (Base), trained under the con-ventional degradation-agnostic reconstruction paradigm, and the standard EfficientSCI-B trained under our experimental settings). Since no ground-truth frames are available for real data, we only provide qualitative comparisons, and as shown in Figure 6, our methods outperform both versions of EfficientSCI-B in suppressing noise/blur and recovering clear details. These results confirm the generalization of our meth-ods to real SCI scenarios. 
+
+## 5 Conclusion 
+
+This paper pioneers the shift in video SCI from reconstruc-tion to restoration, addressing the problem of common real-world degradations like motion blur and low light. We intro-duce a large-scale benchmark for this task and propose Ro-bustSCI, a novel network architecture designed for joint re-construction and restoration, with its RobustCFormer block enabling targeted disentanglement of spatial-temporal blur and frequency-domain noise. We further boost performance with RobustSCI-C (RobustSCI-Cascade), an effective and efficient post-processing framework requiring no retraining. Extensive experiments demonstrate that our methods estab-lish a new state-of-the-art on degraded data, paving the way for practical SCI applications in challenging environments. References 
+
+[Barbastathis et al. , 2019] George Barbastathis, Aydogan Ozcan, and Guohai Situ. On the use of deep learning for computational imaging. Optica , 6(8):921–943, 2019. [Bioucas-Dias and Figueiredo, 2007] Jos´ e M Bioucas-Dias and M´ ario AT Figueiredo. A new twist: Two-step iterative shrinkage/thresholding algorithms for image restoration. 
+
+IEEE Transactions on Image processing , 16(12):2992– 3004, 2007. [Cand` es et al. , 2006] Emmanuel J Cand` es, Justin Romberg, and Terence Tao. Robust uncertainty principles: Exact signal reconstruction from highly incomplete frequency information. IEEE Transactions on information theory ,52(2):489–509, 2006. [Chen et al. , 2018] Chen Chen, Qifeng Chen, Jia Xu, and Vladlen Koltun. Learning to see in the dark. In Proceed-ings of the IEEE conference on computer vision and pat-tern recognition , pages 3291–3300, 2018. [Chen et al. , 2022] Liangyu Chen, Xiaojie Chu, Xiangyu Zhang, and Jian Sun. Simple baselines for image restora-tion. arXiv preprint arXiv:2204.04676 , 2022. [Cheng et al. , 2020] Ziheng Cheng, Ruiying Lu, Zhengjue Wang, Hao Zhang, Bo Chen, Ziyi Meng, and Xin Yuan. Birnat: Bidirectional recurrent neural networks with ad-versarial training for video snapshot compressive imaging. In European Conference on Computer Vision , pages 258– 275. Springer, 2020. [Cheng et al. , 2021] Ziheng Cheng, Bo Chen, Guanliang Liu, Hao Zhang, Ruiying Lu, Zhengjue Wang, and Xin Yuan. Memory-efficient network for large-scale video compressive sensing. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 16246–16255, 2021. [Feijoo et al. , 2025] Daniel Feijoo, Juan C. Benito, Alvaro Garcia, and Marcos V. Conde. Darkir: Robust low-light image restoration. In Proceedings of the Computer Vi-sion and Pattern Recognition Conference (CVPR) , pages 10879–10889, June 2025. [Foi et al. , 2008] Alessandro Foi, Mejdi Trimeche, Vladimir Katkovnik, and Karen Egiazarian. Practical poissonian-gaussian noise modeling and fitting for single-image raw-data. IEEE transactions on image processing ,17(10):1737–1754, 2008. [Guo et al. , 2020] Chunle Guo Guo, Chongyi Li, Jichang Guo, Chen Change Loy, Junhui Hou, Sam Kwong, and Runmin Cong. Zero-reference deep curve estimation for low-light image enhancement. In Proceedings of the IEEE conference on computer vision and pattern recognition (CVPR) , pages 1780–1789, June 2020. [He et al. , 2016] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recog-nition. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 770–778, 2016. [Huang et al. , 2022] Zhewei Huang, Tianyuan Zhang, Wen Heng, Boxin Shi, and Shuchang Zhou. Real-time inter-mediate flow estimation for video frame interpolation. In 
+
+Proceedings of the European Conference on Computer Vi-sion (ECCV) , 2022. [Kingma, 2014] Diederik P Kingma. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. [Levin et al. , 2009] Anat Levin, Yair Weiss, Fredo Durand, and William T Freeman. Understanding and evaluating blind deconvolution algorithms. In 2009 IEEE conference on computer vision and pattern recognition , pages 1964– 1971. IEEE, 2009. [Llull et al. , 2013] Patrick Llull, Xuejun Liao, Xin Yuan, Jianbo Yang, David Kittle, Lawrence Carin, Guillermo Sapiro, and David J. Brady. Coded aperture compres-sive temporal imaging. Opt. Express , 21(9):10526–10545, May 2013. [Luo et al. , 2020] Jianping Luo, Shaofei Huang, and Yuan Yuan. Video super-resolution using multi-scale pyra-mid 3d convolutional networks. In Proceedings of the 28th ACM International Conference on Multimedia , pages 1882–1890, 2020. [Meng et al. , 2020] Ziyi Meng, Shirin Jalali, and Xin Yuan. Gap-net for snapshot compressive imaging. arXiv preprint arXiv:2012.08364 , 2020. [Nah et al. , 2017] Seungjun Nah, Tae Hyun Kim, and Ky-oung Mu Lee. Deep multi-scale convolutional neural network for dynamic scene deblurring. In The IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , July 2017. [Pan et al. , 2024] Zhenghao Pan, Haijin Zeng, Jiezhang Cao, Yongyong Chen, Kai Zhang, and Yong Xu. Mambasci: Ef-ficient mamba-unet for quad-bayer patterned video snap-shot compressive imaging. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Advances in Neural Information Processing Sys-tems , volume 37, pages 80056–80081. Curran Associates, Inc., 2024. [Pont-Tuset et al. , 2017] Jordi Pont-Tuset, Federico Per-azzi, Sergi Caelles, Pablo Arbel´ aez, Alexander Sorkine-Hornung, and Luc Van Gool. The 2017 davis challenge on video object segmentation. arXiv:1704.00675 , 2017. [Qiao et al. , 2020] Mu Qiao, Ziyi Meng, Jiawei Ma, and Xin Yuan. Deep learning for video compressive sensing. Apl Photonics , 5(3), 2020. [Wang et al. , 2004] Zhou Wang, Alan C Bovik, Hamid R Sheikh, and Eero P Simoncelli. Image quality assessment: from error visibility to structural similarity. IEEE transac-tions on image processing , 13(4):600–612, 2004. [Wang et al. , 2021] Zhengjue Wang, Hao Zhang, Ziheng Cheng, Bo Chen, and Xin Yuan. Metasci: Scalable and adaptive reconstruction for video compressive sensing. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2083–2092, 2021. [Wang et al. , 2022] Lishun Wang, Zongliang Wu, Yong Zhong, and Xin Yuan. Snapshot spectral compressive imaging reconstruction using convolution and contextual transformer. Photonics Research , 10(8):1848–1858, 2022. [Wang et al. , 2023] Lishun Wang, Miao Cao, and Xin Yuan. Efficientsci: Densely connected network with space-time factorization for large-scale video snapshot compressive imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 18477– 18486, 2023. [Wang et al. , 2024] Ping Wang, Yulun Zhang, Lishun Wang, and Xin Yuan. Hierarchical separable video transformer for snapshot compressive imaging. In European Confer-ence on Computer Vision , pages 104–122. Springer, 2024. [Wu et al. , 2021] Zhuoyuan Wu, Jian Zhang, and Chong Mou. Dense deep unfolding network with 3d-cnn prior for snapshot compressive imaging. arXiv preprint arXiv:2109.06548 , 2021. [Wu et al. , 2023] Zongliang Wu, Chengshuai Yang, Xiongfei Su, and Xin Yuan. Adaptive deep pnp algorithm for video snapshot compressive imaging. International Journal of Computer Vision , 131(7):1662–1679, 2023. [Yang et al. , 2022] Chengshuai Yang, Shiyu Zhang, and Xin Yuan. Ensemble learning priors unfolding for scal-able snapshot compressive sensing. arXiv preprint arXiv:2201.10419 , 2022. [Yuan and Pang, 2016] Xin Yuan and Shuo Pang. Structured illumination temporal compressive microscopy. Biomedi-cal Optics Express , 7(3):746–758, 2016. [Yuan et al. , 2014] Xin Yuan, Patrick Llull, Xuejun Liao, Jianbo Yang, David J Brady, Guillermo Sapiro, and Lawrence Carin. Low-cost compressive sensing for color video and depth. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pages 3318– 3325, 2014. [Yuan et al. , 2020] Xin Yuan, Yang Liu, Jinli Suo, and Qionghai Dai. Plug-and-play algorithms for large-scale snapshot compressive imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1447–1457, 2020. [Yuan et al. , 2021] Xin Yuan, David J. Brady, and Agge-los K. Katsaggelos. Snapshot compressive imaging: The-ory, algorithms, and applications. IEEE Signal Processing Magazine , 38(2):65–88, 2021. [Yuan, 2016] Xin Yuan. Generalized alternating projection based total variation minimization for compressive sens-ing. In 2016 IEEE International Conference on Image Processing (ICIP) , pages 2539–2543. IEEE, 2016. [Zamir et al. , 2022] Syed Waqas Zamir, Aditya Arora, Salman Khan, Munawar Hayat, Fahad Shahbaz Khan, and Ming-Hsuan Yang. Restormer: Efficient transformer for high-resolution image restoration. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 5728–5739, 2022. [Zhang et al. , 2024] Bo Zhang, Jinli Suo, and Qionghai Dai. Event-enhanced snapshot compressive videography at 10k fps. IEEE Transactions on Pattern Analysis and Machine Intelligence , 2024.

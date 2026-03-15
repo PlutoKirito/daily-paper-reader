@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-03-15 <!--dpr-date:20260315-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202603/15/2603.07489v1-robustsci-beyond-reconstruction-to-restoration-for-snapshot-compressive-imaging-under-real-world-degradations" data-sidebar-item="{&quot;title&quot;: &quot;RobustSCI: Beyond Reconstruction to Restoration for Snapshot Compressive Imaging under Real-World Degradations&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2603.07489v1-robustsci-beyond-reconstruction-to-restoration-for-snapshot-compressive-imaging-under-real-world-degradations&quot;, &quot;score&quot;: &quot;7.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;用于视频快照压缩成像与修复的深度学习&quot;}">RobustSCI: Beyond Reconstruction to Restoration for Snapshot Compressive Imaging under Real-World Degradations</a>
   * 2026-03-14 <!--dpr-date:20260314-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202603/14/2603.09703v1-progs-towards-progressive-coding-for-3d-gaussian-splatting" data-sidebar-item="{&quot;title&quot;: &quot;ProGS: Towards Progressive Coding for 3D Gaussian Splatting&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2603.09703v1-progs-towards-progressive-coding-for-3d-gaussian-splatting&quot;, &quot;score&quot;: &quot;7.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;3D高斯泼溅的渐进式编码&quot;}">ProGS: Towards Progressive Coding for 3D Gaussian Splatting</a>
