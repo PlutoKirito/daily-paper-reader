@@ -1,0 +1,585 @@
+Title: FastLightGen: Fast and Light Video Generation with Fewer Steps and Parameters
+
+URL Source: https://arxiv.org/pdf/2603.01685v1
+
+Published Time: Tue, 03 Mar 2026 03:46:02 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# FastLightGen: Fast and Light Video Generation with Fewer Steps and Parameters 
+
+## Shitong Shao 1 Yufei Gu 1 Zeke Xie 1,∗
+
+> 1
+
+## The Hong Kong University of Science and Technology (Guangzhou), Guangzhou, China 
+
+sshao213@connect.hkust-gz.edu.cn, ygu167.gu@connect.hkust-gz.edu.cn, zekexie@hkust-gz.edu.cn 
+
+∗:Corresponding author 
+
+## Abstract 
+
+The recent advent of powerful video generation models, such as Hunyuan, WanX, Veo3, and Kling, has inaugurated a new era in the field. However, the practical deployment of these models is severely impeded by their substantial computational overhead, which stems from enormous pa-rameter counts and the iterative, multi-step sampling pro-cess required during inference. Prior research on acceler-ating generative models has predominantly followed two distinct trajectories: reducing the number of sampling steps (e.g., LCM, DMD, and MagicDistillation) or compressing the model size for more efficient inference (e.g., ICMD). The potential of simultaneously compressing both to cre-ate a fast and lightweight model remains an unexplored avenue. In this paper, we propose FastLightGen , an al-gorithm that transforms large, computationally expensive models into fast, lightweight counterparts. The core idea is to construct an optimal teacher model, one engineered to maximize student performance, within a synergistic frame-work for distilling both model size and inference steps. Our extensive experiments on HunyuanVideo-ATI2V and WanX-TI2V reveal that a generator using 4-step sampling and 30% parameter pruning achieves optimal visual quality under a constrained inference budget. Furthermore, FastLightGen consistently outperforms all competing methods, establish-ing a new state-of-the-art in efficient video generation. 
+
+## 1. Introduction 
+
+The exceptional performance of recent video generation models [ 1 , 3 , 8 , 9 , 13 , 17 , 19 , 22 , 24 , 34 , 40 , 41 , 47 , 58 ]is largely attributed to their large-scale architectures and iterative, multi-step sampling processes. For example, Hun-yuanVideo [ 17 ] and WanX [ 41 ] utilize diffusion transformer (DiT) [ 30 ] architectures with over 13 billion parameters and employ a multi-step, flow-matching-based denoising pro-cess [ 12 , 35 , 37 ] to synthesize high-quality videos. This reliance on massive parameter counts and multi-step denois-ing, while crucial for performance, imposes a substantial 100 70 50 30 
+
+> Remain Rate (%)
+> 4
+> 3
+> 2
+> 1
+> Sampling Steps
+> 0.420
+> 0.450
+> 0.480 0.510
+> 0.540
+> 0.570
+> 0.600
+> 0.630
+> 0.36
+> 0.39
+> 0.42
+> 0.45
+> 0.48
+> 0.51
+> 0.54
+> 0.57
+> 0.60
+> 0.63
+> Performance (VBench)
+
+Figure 1. The model performance is calculated as the average of Vbench’s dynamic degree, aesthetic, and image quality metrics, plotted against sampling steps and parameter retention rate. The parameter-sampling steps trade-offs in FastLightGen compression reveal that performance is initially more sensitive to a reduction in sampling steps than to parameter pruning. As the overall com-pression ratio increases, the performance degradation from either method begins to converge. Notably, the model with only 30% of its parameters at 4 steps performs on par with the 100% param-eter model at 1.2 steps. We report that a moderate compression strategy, specifically, retaining 70% of parameters at 4 sampling steps—strikes a highly effective trade-off, achieving a theoretical speedup of ≈35.71 × over the 50-step unpruned baseline which relies on classifier-free guidance (CFG) [11]. 
+
+computational burden that presents a major barrier to prac-tical deployment. To illustrate, synthesizing a 5-second video with models like HunyuanVideo [ 17 ] or WanX [ 41 ]requires approximately 20 minutes of inference time on a single NVIDIA H100 GPU. This degree of latency is pro-hibitively high for most real-world applications, making it untenable for both service providers and end-users [10]. Prior work has identified two primary sources of the sub-stantial computational overhead in video generation mod-els [ 44 , 49 –51 ]: (1) high parameter counts and (2) iterative, multi-step sampling procedures. To address the challenge of high parameter counts, one direct approach is to train a lightweight model from scratch. However, this method typi-      
+
+> arXiv:2603.01685v1 [cs.CV] 2 Mar 2026 TIme Spent (↓)
+> Average Score (↑)
+> 28.3
+> 0.680 0.700 0.720
+> Euler
+> DMD2
+> LCM
+> MgD
+> ICMD
+> F3-Pruning
+> Ours
+> 0.740
+> 0.760
+> 0.780
+> 35.4 134.8 220 305.2 390.4 731.2 901.6
+> 0.800
+
+Figure 2. Vbench average score vs. time spent. MgD: MagicDis-tillation. Among the accelerated sampling algorithms evaluated, our proposed FastLightGen achieves the greatest speedup, while its performance also surpasses that of the teacher model (Euler). 
+
+cally leads to a significant degradation in visual quality and motion dynamics. For example, while models like WanX-1.3B are parameter-efficient, the quality of their generated videos is often insufficient for practical applications [ 41 ]. To mitigate the computational overhead of multi-step sampling, the prevailing approach is step distillation [ 26 , 31 , 36 ]. In the context of video generation, few-step generators derived from the distribution matching distillation (DMD) [ 49 , 50 ]framework have demonstrated particularly effective. Recent studies, such as FastVideo [ 10 ] and MagicDistillation [ 33 ], have built upon this foundation. While these methods can synthesize high-quality images in few-step scenarios (e.g., 4-step sampling), their performance degrades significantly when the step count is reduced to just one or two. Prior video diffusion model acceleration methods have typically addressed sampling step distillation and model compression in isolation, largely overlooking their joint op-timization. We argue that there is significant potential in a co-distillation approach that jointly tunes the number of sampling steps and the student model’s size to yield maximal performance gains for a given computational cost. The visu-alization results in Fig. 1 clearly demonstrate that compared to performing compression at a single dimension (i.e., size or step), joint distillation enables student models to become faster and more lightweight while achieving the same perfor-mance gains. To be specific, the advantages of co-distillation are clear when targeting a specific performance threshold, e.g., 0.630. To reach this target, step distillation alone pro-duces a 3-step unpruned model, achieving a 33.3 × speedup. In contrast, the joint distillation yields a 4-step model retain-ing only 50% of the parameters, achieving a substantially higher 50 × speedup. Therefore, developing a method that jointly distills sampling steps and model size is a crucial next step to address this research gap. Based on these considerations, we propose FastLightGen ,a three-stage algorithm that operates by first constructing a compact model and then distilling knowledge into it. The algorithm proceeds in three stages: (1) identifying unimpor-tant model blocks, (2) training a robust, dynamically pruned model, and (3) performing a fine-grained distribution match-ing using a novel guidance mechanism. In the initial stage, we identify the least important model blocks by systemati-cally skipping each one and leveraging Tweedie’s formula to estimate the evidence lower bound (ELBO). Blocks caus-ing the smallest ELBO drop are marked as redundant. The second stage employs dynamic probabilistic pruning, where the identified unimportant blocks are stochastically dropped during training. This process yields a single, robust model that adapts to a dynamic architecture while maintaining high sample quality. In the final stage, the model from the preced-ing phase is used to initialize four components: a student (a few-step generator), and a teacher apparatus composed of a strong teacher, a weak teacher, and a trainable fake DiT. The three teacher components are parameter-sharing, while the student model is separate. As illustrated in Fig. 3, the strong and weak teachers are two configurations derived from the same underlying model. Our contribution consists of the following three parts: 1. We demonstrate for the first time that a synergistic distil-lation of model size and inference steps offers significant advantages over distilling either modality in isolation (Fig. 1). This result motivates a re-examination of accel-erated sampling techniques for visual generative models. 2. We propose FastLightGen, a novel three-stage VDM dis-tillation pipeline that distills large teacher models into compact, efficient student models. Concurrently, we in-troduce a novel teacher guidance strategy to configure the most suitable teacher model for the student, thereby maximizing the student’s final performance. 3. As illustrated in Fig. 2, extensive comparative experi-ments show that FastLightGen outperforms nearly all ex-isting accelerated sampling algorithms and even surpasses its own teacher model, achieving the best performance. 
+
+## 2. Related Work 
+
+Large-Scale Open-Source VDMs. Recent state-of-the-art open-source VDMs have increasingly converged on a common architectural blueprint, exemplified by leading works such as WanX [ 41 ], Step-Video [ 27 ], and Hunyuan-Video [ 17 ]. A notable trend is the adoption of the DiT backbone over traditional UNet architectures, which offers superior scaling properties and a higher performance ceiling. For the generative process, these models leverage the flow-matching paradigm [ 23 , 26 , 46 ] to define a continuous-time mapping from a Gaussian noise distribution p1(x1) to the real data distribution p0(x0). This mapping is governed by an ordinary differential equation (ODE), dxt = vΘ(xt, t )dt ,1st 2nd 
+
+> last
+> selected
+> pruning layer
+> Error Analysis Table
+> Error
+
+# ( )
+
+# ( )
+
+> Large VDM pre-trained
+> Sampled Data
+> Dataset Predicted Velocity
+> Ground Truth Velocity
+
+Compute   
+
+> Layer Idx
+> Error Value
+> 1st 0.27
+> Layer Idx :
+> Error Value:
+> 2nd 0.26 3rd 0.19
+> last 0.22 Guidance
+> Guidance
+> Lightweight VDM
+> Large VDM (pre-trained)
+> Dataset
+
+# ( )
+
+> Ground Truth Velocity
+> Teacher Velocity
+> Predicted Velocity
+> Distillation Supervision
+> Probability Pruning
+> Dataset Lightweight Few-step VDM
+> Synthesized Data
+
+# ( )
+
+# ( )
+
+# ( )
+
+# ( ) 
+
+> Fake Model (Lora Layer) Real Model (Large) Real Model (Lightweight) Well-judged Teacher Guidance
+> Distribution Matching Loss
+
+III III Figure 3. Overview of three-stage distillation pipeline FastLightGen . FastLightGen begins by identifying less critical layers within the model. The second stage introduces dynamic probabilistic pruning, where these identified layers are stochastically skipped during training. This process yields a robust, stochastically-pruned student model for the final stage. In this final stage, we perform distribution matching. Our "well-guided teacher guidance", which is constructed from the stochastically-pruned student, ensures that the resulting lightweight, few-step generator maintains high performance. 
+
+where the velocity field vΘ is trained by minimizing a least squares objective: 
+
+arg min 
+
+> Θ
+
+Z 10
+
+E αt∥∂p t(xt)/∂t − vΘ(xt, t )∥22
+
+ dt, (1) with αt as a weighting factor [ 12 , 16 ]. After training, video synthesis is performed directly via the Euler algorithm. Fur-thermore, these models employ a consistent VAE design, compressing video inputs from a resolution of T ×H ×W to a latent representation of size ⌊T
+
+> 4
+
+⌋×⌊ H 
+
+> 8
+
+⌋×⌊ W 
+
+> 8
+
+⌋.
+
+Step Distillation. Step distillation techniques aim to accel-erate diffusion model inference by reducing the required number of function evaluations (NFEs). For video genera-tion, current research in this area is largely dominated by two distinct paradigms. The first paradigm involves aligning the outputs of a few-step student model with those of a multi-step teacher. This approach is best exemplified by latent consis-tency models (LCMs), which have become a foundational training framework for many open-source, few-step video diffusion models (VDMs), including MCM [ 53 ], the T2V-turbo series [ 21 ], and FastVideo [ 10 ]. A second, alternative paradigm is distribution matching, which directly optimizes the student to replicate the teacher’s output distribution. This strategy has demonstrated a performance advantage over consistency-based alignment in the image synthesis domain, as evidenced by recent methods like DMD [ 50 ], DMD2 [ 49 ], and SiD-LSG [ 57 ]. In particular, DMD2 has emerged as a leading step distillation algorithm for video generation due to its clear advantages over prior methods. Specifically, it offers superior performance compared to LCM while being more memory-efficient than SiD. Its effectiveness has established it as a foundational approach, inspiring subsequent video dis-tribution matching algorithms such as MagicDistillation [ 33 ]and rCM [56]. 0
+
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> Layer Index
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Error Value
+> HunyuanVideo-TI2V
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> Layer Index
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Error Value
+> WanX-TI2V
+
+Figure 4. In the first phase of FastLightGen, we identify non-critical layers by visualizing their importance, where a higher error value corresponds to greater layer criticality. For both HunyuanVideo-TI2V and WanX-TI2V, the results reveal a consistent pattern: the initial and final layers are the most critical, while the importance of the intermediate layers is substantially lower. 
+
+Size Distillation. Size distillation for diffusion models typ-ically relies on pruning techniques [ 18 , 45 , 55 , 59 ]. These methods are broadly classified by their granularity into un-structured [ 7, 29 , 32 ] and structured [ 6, 25 , 52 ] approaches. While unstructured pruning provides fine-grained control, its resulting irregular sparsity patterns are difficult to accelerate on modern hardware. Structured pruning, conversely, oper-ates at a coarser, block-level granularity, thereby yielding practical, hardware-friendly inference speedups. Despite being a common technique for image generation, pruning remains largely underexplored in the video domain. To our knowledge, only two methods, F3-Pruning [ 39 ] and ICMD [ 44 ], have previously explored this direction. Among them, F3-Pruning prunes weights based on a thresholded ranking of aggregated temporal attention values. ICMD, in contrast, introduces intermediate-layer alignment between teacher and student models and simultaneously applies ad-versarial training to enhance the motion dynamics of the generated videos. 
+
+## 3. FastLightGen Framework 
+
+3.1. Overview 
+
+In this section, we introduce FastLightGen, our three-stage distillation algorithm, illustrated in Fig. 3. In the first stage, we identify unimportant layers within the teacher model and analyze their distribution patterns. Next, in the second stage, we employ dynamic probabilistic pruning to train a robust model capable of bypassing these non-essential layers. Finally, in the third stage, we perform a joint step-and-size distillation via distribution matching. 
+
+3.2. Stage I: Identifying Unimportant Model Blocks 
+
+Identifying non-essential layers is a critical first step in com-pressing large-scale video generation models. We consider a DiT model, vΘ(·, ·), composed of N sequential DiT blocks 
+
+{B i(·)}i. Its forward pass can be formulated as 
+
+yoriginal = g2 ◦ B N −1 ◦ · · · ◦ B 2 ◦ B 1 ◦ B 0 ◦ g1(x), (2) where ◦ denotes the composition, g1 and g2 are auxiliary operations whose computational overheads are negligible compared to those of the DiT blocks. We seek to find an optimal list of blocks M , of size Nshort < N , by minimizing the following objective: 
+
+ypruned = g2 ◦ B MNshort −1 ◦ · · · ◦ B M1 ◦ B M0 ◦ g1(x),
+
+arg min 
+
+> M
+
+Ex[∥yoriginal − ypruned ∥22]. (3) This is an NP-hard problem, yet we can employ a greedy algorithm to solve it. Specifically, for each block Bi, we skip that block and compute its loss Ei at x0 using Tweedie’s formula, which is an estimation of the ELBO [12, 37]: 
+
+Ei = E(t,x t,x 0)∥xt − tvskip-i 
+
+> Θ
+
+(xt, t ) − x0∥22, (4) where vskip-i 
+
+> Θ
+
+(·, ·) is the DiT with its i-th block skipped, and 
+
+x0 denotes the ground truth data. After computing the loss value for each block, we sort them in descending order to create a ranked sequence S. The magnitude of the loss serves as an importance score for the corresponding layer. Consequently, to retain Nshort blocks, the set M is composed of the indices corresponding to the top Nshort entries in S.Our analysis reveals a distinct U-shaped pattern of block importance in VDMs. As illustrated in Fig. 4, for both HunyuanVideo-TI2V and WanX-TI2V, the initial and final layers are consistently the most critical, with the initial layers showing marginally higher importance scores. This pattern suggests that the intermediate layers contribute less to the final output, potentially under-utilizing the full generative capacity of their DiT blocks. Additionally, HunyuanVideo-TI2V employs a hybrid architecture, consisting of 20 double DiT blocks followed by 40 single DiT blocks. The double block utilizes a multi-modal DiT architecture, while the single block employs the classic DiT architecture. As shown in Fig. 4, the double blocks yield a higher average loss value, indicating they are more effective at capturing critical information than their single-block counterparts. Figure 5. Visualization of FastLightGen (i.e., 4-step generator that retains 70% of the parameters) across diverse scenarios, including landscapes, food vlogging, dance, and daily activities. Our model generates high-fidelity videos characterized by realistic character motion, detailed expressions, and strong temporal dynamics. 
+
+3.3. Stage II: Training a Robust, Dynamically Pruned Model 
+
+Our initial exploration showed that merely skipping non-critical layers for inference results in a failure to generate plausible videos. We argue that the key is to fine-tune this pruned architecture, enabling it to execute the full multi-step diffusion sampling process effectively, relying solely on its remaining critical layers. Following Stage I, we define two Weak Teacher Guidance Well-guided Teacher Guidance Strong Teacher Guidance     
+
+> Can be fitted! Can be fitted! Cannot be fitted!
+> Student
+> Teacher
+> Student
+> Teacher
+> Student
+> Teacher
+> High Performance Low Performance
+
+Figure 6. Well-guided teacher guidance outperforming approaches that rely solely on weak and strong teachers. Specifically, weak teacher supervision may enable student models to mimic the teacher’s outputs, yet this often leads to suboptimal performance. Conversely, overly strong teachers might provide excessively com-plex supervision signals, hindering effective knowledge transfer and efficient student learning. 
+
+models: the pruned model ( vpruned  
+
+> Θ
+
+), which skips unimpor-tant layers, and the unpruned model ( vunpruned  
+
+> Θ
+
+), which retains all layers. During training, non-essential layers are dynam-ically skipped according to a Bernoulli distribution with 
+
+p = 0 .5. This process constructs the parameter-sharing un-pruned model, vunpruned  
+
+> Θ
+
+, and the pruned sub-model, vpruned  
+
+> Θ
+
+.Our objective is to train on real data such that both mod-els can generate high-fidelity videos, while ensuring that 
+
+vpruned  
+
+> Θ
+
+exhibits no perceptible visual degradation compared to vunpruned  
+
+> Θ
+
+:
+
+Lstage-II training =Et,x 0,x 1∼N (0 ,I)
+
+[(1 − α)∥vpruned  
+
+> Θ
+
+(xt, t ) − (x0 − x1)∥22
+
++ (1 − α)∥vunpruned  
+
+> Θ
+
+(xt, t ) − (x0 − x1)∥22],
+
+(5) where (1 − α) refers to the training weight. Additionally, we align the output of the pruned model vpruned  
+
+> Θ
+
+with that of its unpruned counterpart vunpruned  
+
+> Θ
+
+:
+
+Lstage-II distill =Et,x 0,x 1∼N (0 ,I)
+
+[α∥vpruned  
+
+> Θ
+
+(xt, t ) − SG (vunpruned  
+
+> Θ
+
+(xt, t )) ∥22], (6) where SG (·) denotes the stop gradient operator. This ’soft’ supervision serves to enhance the pruned model’s robustness. Thus, the final loss can be denoted as 
+
+Lstage-II = Lstage-II distill + Lstage-II training . (7) Our ablation experiments show that the model achieves op-timal performance when α = 1 . This setting completely removes the ground truth video supervision, relying solely on the distillation loss from the unpruned model. This re-sult demonstrates that during this process, ’soft’ supervision from the teacher model output is more effective than ’rigid’ supervision from the ground truth video. 
+
+3.4. Stage III: Performing a Fine-grained Distribu-tion Matching 
+
+Stage III introduces fine-grained distribution matching for co-distillation of step and size. Within this framework, the pruned model will serve as a ‘few-step generator’, while a hybrid of the unpruned and pruned models will function as the ‘real DiT’. This approach provides precise and reliable teacher guidance, enabling the coordinated distillation of both steps and parameters. Specifically, we first define the few-step generator, real DiT and fake DiT as Gϕ, vreal  
+
+> Θ
+
+and 
+
+vfake  
+
+> Θ
+
+, respectively. The distribution matching loss is formu-lated as the expectation over t of an approximate Kullback-Liebler (KL) divergence between the diffused target distri-bution preal and the diffused generator output distribution 
+
+pfake . This loss can be computed as the difference of 2 score functions: 
+
+∇ϕLstage-III dm ≜ Et∇ϕDKL (pfake ∥preal ) ≈− Et
+
+Z
+
+> ϵ
+
+
+
+[σtvfake  
+
+> Θ
+
+(xt, t ) − σtvreal  
+
+> Θ
+
+(xt, t )] ∂G ϕ(ϵ)
+
+∂ϕ dϵ 
+
+
+
+. (8) 
+
+Here, both the few-step generator and fake DiT are initial-ized with vpruned  
+
+> Θ
+
+. The fake DiT is trained with a standard denoising objective to model the output distribution of the few-step generator. During training, the ‘real DiT’ parame-ters are held frozen, whereas the ‘fake DiT’ parameters are actively updated. The real DiT leverages outputs from both 
+
+vpruned  
+
+> Θ
+
+and vunpruned  
+
+> Θ
+
+, which can be denoted as 
+
+βcur  
+
+> 1
+
+∼ U [β1 − a1, β 1 + b1], β cur  
+
+> 2
+
+∼ U [β2 − a2, β 2 + a2],
+
+vreal  
+
+> Θ
+
+(xt, t ) = βcur  
+
+> 1
+
+(vpruned  
+
+> Θ
+
+(xt, t, c ) − vpruned  
+
+> Θ
+
+(xt, t, ∅)) + βcur  
+
+> 2
+
+(vunpruned  
+
+> Θ
+
+(xt, t, c ) − vpruned  
+
+> Θ
+
+(xt, t, c )) + vpruned  
+
+> Θ
+
+(xt, t, ∅),
+
+(9) 
+
+where U[·, ·], β1, β2, c, ∅ refer to the uniform distribution, the inter CFG, the intra CFG, the text prompt, the null prompt, respectively. Additionally, a1, a2, b1, and b2 are used to describe the uniform distribution. Specifically, a1, a2, b1,and b2 are empirically set to 1, 0.1, 1, and 0.1, respectively. Sampling CFG values from a uniform distribution serves to improve our method’s robustness. We term this mechanism, formulated in Eq. 9, the well-guided teacher guidance. Intu-itively, the term βcur  
+
+> 2
+
+(vunpruned  
+
+> Θ
+
+(xt, t, c ) − vpruned  
+
+> Θ
+
+(xt, t, c )) is analogous to CFG. The coefficient βcur  
+
+> 2
+
+functions as a guid-ance scale: a larger value steers the resulting output closer to that of the unpruned model vunpruned  
+
+> Θ
+
+, while a smaller value biases the output toward the pruned model vpruned  
+
+> Θ
+
+. As shown in Fig. 6, our well-guided teacher guidance avoids two common failure modes: supervision from an overly weak teacher, which is ineffective, and guidance from an overly strong teacher, which the student model cannot ef-fectively follow. By tuning the inter CFG and intra CFG, we can independently control two orthogonal aspects of the teacher: the strength of its text-conditional guidance and the influence from the unpruned model. This allows us to find an optimal combination of these two factors, creating a carefully calibrated supervision signal that is ideally suited for the student. Table 1. TI2V quantitative results comparison between FastLightGen and other popular large-scale VDMs on general I2V-VBench. Experimental results for the other comparison methods were directly extracted from the official VBench website. FastLightGen outperforms all prior open-source state-of-the-art image-to-video models, including the distilled teacher, Wan-TI2V. 
+
+Method i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality average CogVideoX-I2V-SAT [48] 0.977 0.955 0.984 0.365 0.598 0.676 0.759 I2Vgen-XL [54] 0.975 0.964 0.983 0.250 0.653 0.699 0.753 SEINE-512x320 [5] 0.966 0.942 0.967 0.343 0.584 0.710 0.751 VideoCrafter-I2V [4] 0.912 0.979 0.980 0.226 0.608 0.717 0.736 SVD-XT-1.0 [2] 0.975 0.955 0.981 0.524 0.602 0.698 0.789 Step-Video-TI2V [27] 0.955 0.960 0.992 0.488 0.630 0.704 0.788 Wan-TI2V (Teacher) [41] 0.961 0.970 0.982 0.461 0.653 0.711 0.790 FastLightGen 0.952 0.956 0.983 0.500 0.656 0.717 0.794 
+
+Table 2. Quantitative comparison of FastLightGen against competing acceleration algorithms on WanX-TI2V. For all metrics, higher is better (↑), except for time spent, where lower is better ( ↓). FastLightGen outperforms DMD2, LCM, F3-Pruning and ICMD in both speed and performance. FastLightGen achieves an empirical speedup of approximately 35 × over the Euler baseline without performance degradation.                                                            
+
+> Method i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality average time spent Euler 0.961 0.970 0.982 0.461 0.653 0.711 0.790 885.3s DMD2 [49] 0.948 0.946 0.977 0.160 0.583 0.683 0.716 35.4s LCM [36] 0.945 0.942 0.979 0.003 0.570 0.665 0.684 35.4s MagicDistillation [33] 0.956 0.958 0.980 0.561 0.634 0.701 0.798 35.4s ICMD [44] 0.951 0.949 0.982 0.363 0.653 0.715 0.769 396.2s F3-Pruning [39] 0.938 0.935 0.977 0.300 0.651 0.706 0.751 396.2s FastLightGen 0.952 0.956 0.983 0.500 0.656 0.717 0.794 28 .3s
+
+Table 3. User study on models trained with varying distill and training weights. Users rated models on a 5-point scale (higher is better) for action quality and visual quality. The results indicate that the best overall performance is achieved when the distill weight 
+
+α is set to 1 and the training weight 1 − α is 0.                     
+
+> distill weight ( α)training weight ( 1−α)action score vision score 0.0 1.0 2.86 3.41 0.3 0.7 2.88 3.52 0.5 0.5 2.85 3.55 0.7 0.3 2.89 3.58 1.0 0.0 2.92 3.61
+
+## 4. Experiments 
+
+We evaluated all HunyuanVideo-ATI2V experiments on our customized VBench-I2V, while all WanX-TI2V experiments were assessed using VBench-I2V. The ’ATI2V’ designation signifies that the model accepts audio, text, and image in-puts to generate videos. This model was fine-tuned from the HunyuanVideo-T2V checkpoint on a proprietary dataset, equipping it with audio and image encoding capabilities. In this section, we first describe our experimental setup, includ-ing dataset construction and hyperparameter settings. We then present and analyze key comparative results, concluding with an analysis of our ablation studies. In this study, we utilize a dataset derived from two pri-mary sources: open-source collections and user-generated content (UGC). The open-source component consists mainly of landscape-oriented videos from large-scale datasets, in-cluding OpenVid-1M [ 28 ], OpenHumanVid [ 20 ], Intern-4K [ 38 ], and Koala-36M [ 42 ]. Our UGC data is primarily sourced from YouTube and TikTok; notably, TikTok provides a rich corpus of vertical-aspect-ratio videos, significantly en-hancing data diversity. To ensure quality, all data is filtered using the Dover score [ 43 ], with videos scoring below 80 being excluded. The ethics statement section can be found in Appendix D. The benchmarking and hyperparameter settings are specified in the Appendix. A. 
+
+Main Result. FastLightGen significantly outperforms the state-of-the-art open-source video generation models and other accelerated sampling algorithms, as presented in Ta-bles 1 and 2. Specifically, Table 1 contrasts FastLightGen with a suite of models, including CogVideoX-I2V-SAT [ 47 ], I2Vgen-XL [ 54 ], SEINE-512x320 [ 5 ], VideoCrafter-I2V [ 4], SVD-XT-1.0 [ 2], Step-Video-TI2V [ 27 ], and our teacher model, WanX-TI2V [ 41 ]. FastLightGen surpassed all other models in both aesthetic and imaging quality, underscoring its exceptional visual fidelity. Furthermore, our model even outperformed its own teacher, WanX-TI2V, on the overall average score. In Table 2, we compare FastLightGen against step distil-lation algorithms (i.e., DMD2 [ 49 ], LCM [ 36 ], MagicDis-tillation [ 33 ]) and the model pruning algorithms (i.e., F3-Purning [ 39 ] and ICMD [ 44 ]). FastLightGen outperforms all competing algorithms in subject consistency, motion smooth-ness, aesthetic quality, and imaging quality. Furthermore, its average score surpasses all methods except MagicDistil-lation, trailing by a negligible 0.004 points while reducing inference time by 7.1 seconds. This series of comparative experiments fully demonstrates the generalizability and su-periority of FastLightGen. 
+
+Ablation Study. In Stage II, we introduce two loss terms: supervision from the ground truth video on vpruned  
+
+> Θ
+
+, and a Table 4. Quantitative Comparison of FastLightGen under Varying Distill and Training Weights (Teacher: WanX-TI2V). The optimal configuration, with the distill weight set to 1 and the training weight set to 0, enables this setting to outperform all other hyperparameter settings across key metrics, including i2v subject, subject consistency, motion smoothness, dynamic degree, and aesthetic quality.                                                          
+
+> distill weight (α)training weight (1−α)i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average Teacher N/A 0.959 0.965 0.991 0.309 0.663 0.709 0.983 0.797 0.0 1.0 0.957 0.964 0.990 0.205 0.648 0.711 0.984 0.780 0.3 0.7 0.959 0.969 0.991 0.224 0.653 0.712 0.985 0.785 0.5 0.5 0.959 0.968 0.991 0.244 0.652 0.712 0.983 0.780 0.7 0.3 0.959 0.965 0.990 0.256 0.654 0.712 0.983 0.788 1.0 0.0 0.961 0.970 0.991 0.268 0.655 0.711 0.984 0.791
+
+Table 5. Quantitative results comparison of β1 and β2 on WanX-TI2V. Fixing β2 at 0.25 yields the best overall performance when β1 is set 
+
+β1 to 3.5. While β2 values of 0.5, 0.75, and 1.0 achieve higher dynamic degree metrics when β1 is fixed at 3.5, the synthesized videos suffer from noticeable jitter and motions that violate physical laws upon visual inspection. Thus, we select β2 = 0 .25 as the optimal choice.                                                                                       
+
+> Inter CFG (β1)Intra CFG (β2)i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average
+> Fixed β1= 3 .5:
+> 3.5 0.00 0.952 0.956 0.983 0.459 0.646 0.710 0.978 0.812 3.5 0.25 0.952 0.956 0.983 0.500 0.656 0.717 0.975 0.820 3.5 0.50 0.957 0.959 0.986 0.518 0.638 0.717 0.976 0.822 3.5 0.75 0.927 0.886 0.961 1.000 0.584 0.666 0.918 0.848
+> 3.5 1.00 0.909 0.876 0.945 1.000 0.572 0.652 0.909 0.838
+> Fixed β2= 0 .25 :
+> 1.5 0.25 0.957 0.973 0.988 0.179 0.663 0.711 0.985 0.779 2.5 0.25 0.957 0.966 0.988 0.268 0.652 0.714 0.983 0.790 3.5 0.25 0.952 0.956 0.983 0.500 0.656 0.717 0.975 0.820
+> 4.5 0.25 0.957 0.965 0.987 0.285 0.624 0.713 0.983 0.788
+
+distillation loss from vunpruned  
+
+> Θ
+
+. The parameter α controls the relative weight of these two signals. As illustrated in Tables 4 and 3, FastLightGen achieves optimal performance at α = 1 ,a setting that removes ground truth supervision entirely and relies solely on distillation. At this value, FastLightGen outperforms other settings on VBench-I2V, achieving the highest overall average score. Furthermore, it surpasses other configurations in human-rated metrics, namely the action and vision scores. We therefore set α = 1 as the default in all comparative experiments. The inter CFG β1 and intra CFG β2 are critical hyper-parameters in Stage III, controlling the strength of text-conditional guidance and the strength of the teacher model (i.e., real DiT), respectively. Intuitively, a larger β1 can lead to exaggerated motion and oversaturation. Conversely, a larger β2 biases the model’s output towards the unpruned model ( vunpruned  
+
+> Θ
+
+) and away from the pruned model ( vpruned  
+
+> Θ
+
+), thereby strengthening the ‘real DiT’ component. We con-duct ablation experiments on both HunyuanVideo-ATI2V and WanX-TI2V, with the results presented in Table 8 (see Appendix) and Table 5. For β1, the optimal values are 2.0 (HunyuanVideo) and 3.5 (WanX). This represents a trade-off: although Table 8 indicates that dynamic degree continues to rise with β1, our qualitative assessment found that higher val-ues produce uncontrollable videos with severe artifacts, such as jitter and the hallucination of objects not in the prompt. For β2, the effective range was much smaller. We observe an interesting, divergent trend: increasing β2 decreases the dy-namic degree for HunyuanVideo-ATI2V, whereas it increases it for WanX-TI2V. Despite this difference, β2 = 0 .25 sub-stantiates optimal for both. Further analysis of β2 can be found in Appendix C. Additional ablation studies on “The Importance of Stage III”, “Pruning Ratio”, and “Teacher Category” are available in Appendix B. 
+
+Visualization. Fig. 5 showcases qualitative results from FastLightGen trained with optimal parameters. The figure demonstrates that our algorithm effectively handles diverse scenarios, including e-commerce, food vlogging, natural landscapes, and dance performances, producing high-fidelity videos with excellent motion quality. 
+
+## 5. Conclusion 
+
+In this paper, we propose FastLightGen, a novel step-and-size co-distillation algorithm for VDMs. Our method com-prises three stages: 1) identifying and pruning unimpor-tant layers, 2) training a dynamically pruned model, and 3) 
+
+distilling the model via fine-grained distribution matching. Additionally, we introduce a well-guided teacher guidance that dynamically adjusts the guidance intensity to match the student model’s capacity, thereby enabling the distil-lation of an optimal student model. For future work, we plan to extend FastLightGen beyond the TI2V (i.e., text-and-image-to-video) task to broader applications like text-to-video and video-to-video, further advancing the development of lightweight video sampling. References 
+
+[1] Lichen Bai, Masashi Sugiyama, and Zeke Xie. Weak-to-strong diffusion with reflection. arXiv preprint arXiv:2502.00473 , 2025. 1 [2] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. 7 [3] Haoxin Chen, Menghan Xia, Yingqing He, Yong Zhang, Xi-aodong Cun, Shaoshu Yang, Jinbo Xing, Yaofang Liu, Qifeng Chen, Xintao Wang, et al. Videocrafter1: Open diffusion models for high-quality video generation. arXiv preprint arXiv:2310.19512 , 2023. 1 [4] Haoxin Chen, Yong Zhang, Xiaodong Cun, Menghan Xia, Xintao Wang, Chao Weng, and Ying Shan. Videocrafter2: Overcoming data limitations for high-quality video diffusion models, 2024. 7 [5] Xinyuan Chen, Yaohui Wang, Lingjun Zhang, Shaobin Zhuang, Xin Ma, Jiashuo Yu, Yali Wang, Dahua Lin, Yu Qiao, and Ziwei Liu. Seine: Short-to-long video diffusion model for generative transition and prediction. In The Twelfth International Conference on Learning Representations , 2023. 7[6] Xiaohan Ding, Guiguang Ding, Yuchen Guo, and Jungong Han. Centripetal SGD for pruning very deep convolutional networks with complicated structure. In CVPR , pages 4943– 4953, 2019. 4 [7] Xin Dong, Shangyu Chen, and Sinno Jialin Pan. Learning to prune deep neural networks via layer-wise optimal brain surgeon. In NeurIPS , pages 4857–4867, 2017. 4 [8] Chengqian Gao, Haonan Li, Liu Liu, Zeke Xie, Peilin Zhao, and Zhiqiang Xu. Principled data selection for align-ment: The hidden risks of difficult examples. arXiv preprint arXiv:2502.09650 , 2025. 1 [9] Yuwei Guo, Ceyuan Yang, Anyi Rao, Zhengyang Liang, Yao-hui Wang, Yu Qiao, Maneesh Agrawala, Dahua Lin, and Bo Dai. Animatediff: Animate your personalized text-to-image diffusion models without specific tuning. arXiv preprint arXiv:2307.04725 , 2023. 1 [10] Hao-AI-Lab. Fastvideo. https://github.com/hao-ai-lab/FastVideo/tree/main , 2025. 1, 2, 3 [11] Jonathan Ho and Tim Salimans. Classifier-free diffusion guid-ance. In Neural Information Processing Systems Workshop ,Virtual Event, 2021. NeurIPS. 1 [12] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. In Neural Information Processing Systems , pages 6840–6851, Virtual Event, 2020. NeurIPS. 1, 3, 4 [13] Rui Huang, Shitong Shao, Zikai Zhou, Pukun Zhao, Hangyu Guo, Tian Ye, Lichen Bai, Shuo Yang, and Zeke Xie. Dif-fusion dataset condensation: Training your diffusion model faster with less data. arXiv preprint arXiv:2507.05914 , 2025. 1[14] Ziqi Huang, Yinan He, Jiashuo Yu, Fan Zhang, Chenyang Si, Yuming Jiang, Yuanhan Zhang, Tianxing Wu, Qingyang Jin, Nattapol Chanpaisit, Yaohui Wang, Xinyuan Chen, Limin Wang, Dahua Lin, Yu Qiao, and Ziwei Liu. VBench: Com-prehensive benchmark suite for video generative models. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , 2024. 12 [15] Ziqi Huang, Fan Zhang, Xiaojie Xu, Yinan He, Jiashuo Yu, Ziyue Dong, Qianli Ma, Nattapol Chanpaisit, Chenyang Si, Yuming Jiang, Yaohui Wang, Xinyuan Chen, Ying-Cong Chen, Limin Wang, Dahua Lin, Yu Qiao, and Ziwei Liu. Vbench++: Comprehensive and versatile benchmark suite for video generative models. arXiv preprint arXiv:2411.13503 ,2024. 12 [16] Tero Karras, Miika Aittala, Timo Aila, and Samuli Laine. Elucidating the design space of diffusion-based generative models. Advances in neural information processing systems ,35:26565–26577, 2022. 3 [17] Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 , 2024. 1, 2 [18] François Lagunas, Ella Charlaix, Victor Sanh, and Alexan-der M. Rush. Block pruning for faster transformers. In 
+
+EMNLP , pages 10619–10629, 2021. 4 [19] Bao Li, Zeke Xie, Xiaomei Zhang, Xiangyu Zhu, and Zhen Lei. Diffusion models are zero-shot generative text-vision retrievers. In ICASSP 2025-2025 IEEE International Confer-ence on Acoustics, Speech and Signal Processing (ICASSP) ,pages 1–5. IEEE, 2025. 1 [20] Hui Li, Mingwang Xu, Yun Zhan, Shan Mu, Jiaye Li, Kaihui Cheng, Yuxuan Chen, Tan Chen, Mao Ye, Jingdong Wang, et al. Openhumanvid: A large-scale high-quality dataset for enhancing human-centric video generation. In Proceedings of the Computer Vision and Pattern Recognition Conference ,pages 7752–7762, 2025. 7 [21] Jiachen Li, Qian Long, Jian Zheng, Xiaofeng Gao, Robinson Piramuthu, Wenhu Chen, and William Yang Wang. T2v-turbo-v2: Enhancing video generation model post-training through data, reward, and conditional guidance design. arXiv preprint arXiv:2410.05677 , 2024. 3 [22] Bai LiChen, Shitong Shao, zikai zhou, Zipeng Qi, zhiqiang xu, Haoyi Xiong, and Zeke Xie. Zigzag diffusion sampling: Diffusion models can self-improve via self-reflection. In The Thirteenth International Conference on Learning Representa-tions , 2025. 1 [23] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. 
+
+arXiv preprint arXiv:2210.02747 , 2022. 2 [24] Buhua Liu, Shitong Shao, Bao Li, Lichen Bai, Zhiqiang Xu, Haoyi Xiong, James T. Kwok, Sumi Helal, and Zeke Xie. Alignment of diffusion models: Fundamentals, challenges, and future. ACM Comput. Surv. , 2026. Just Accepted. 1 [25] Liyang Liu, Shilong Zhang, Zhanghui Kuang, Aojun Zhou, Jing-Hao Xue, Xinjiang Wang, Yimin Chen, Wenming Yang, Qingmin Liao, and Wayne Zhang. Group fisher pruning for practical network compression. In ICML , pages 7021–7032, 2021. 4 [26] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2022. 2 [27] Guoqing Ma, Haoyang Huang, Kun Yan, Liangyu Chen, Nan Duan, Shengming Yin, Changyi Wan, Ranchen Ming, Xiao-niu Song, Xing Chen, Yu Zhou, Deshan Sun, Deyu Zhou, Jian Zhou, Kaijun Tan, Kang An, Mei Chen, Wei Ji, Qiling Wu, Wen Sun, Xin Han, Yanan Wei, Zheng Ge, Aojie Li, Bin Wang, Bizhu Huang, Bo Wang, Brian Li, Changxing Miao, Chen Xu, Chenfei Wu, Chenguang Yu, Dapeng Shi, Dingyuan Hu, Enle Liu, Gang Yu, Ge Yang, Guanzhe Huang, Gulin Yan, Haiyang Feng, Hao Nie, Haonan Jia, Hanpeng Hu, Hanqi Chen, Haolong Yan, Heng Wang, Hongcheng Guo, Huilin Xiong, Huixin Xiong, Jiahao Gong, Jianchang Wu, Jiaoren Wu, Jie Wu, Jie Yang, Jiashuai Liu, Jiashuo Li, Jingyang Zhang, Junjing Guo, Junzhe Lin, Kaixiang Li, Lei Liu, Lei Xia, Liang Zhao, Liguo Tan, Liwen Huang, Liying Shi, Ming Li, Mingliang Li, Muhua Cheng, Na Wang, Qiao-hui Chen, Qinglin He, Qiuyan Liang, Quan Sun, Ran Sun, Rui Wang, Shaoliang Pang, Shiliang Yang, Sitong Liu, Siqi Liu, Shuli Gao, Tiancheng Cao, Tianyu Wang, Weipeng Ming, Wenqing He, Xu Zhao, Xuelin Zhang, Xianfang Zeng, Xiao-jia Liu, Xuan Yang, Yaqi Dai, Yanbo Yu, Yang Li, Yineng Deng, Yingming Wang, Yilei Wang, Yuanwei Lu, Yu Chen, Yu Luo, Yuchu Luo, Yuhe Yin, Yuheng Feng, Yuxiang Yang, Zecheng Tang, Zekai Zhang, Zidong Yang, Binxing Jiao, Jiansheng Chen, Jing Li, Shuchang Zhou, Xiangyu Zhang, Xinhao Zhang, Yibo Zhu, Heung-Yeung Shum, and Daxin Jiang. Step-video-t2v technical report: The practice, chal-lenges, and future of video foundation model, 2025. 2, 7 [28] Kepan Nan, Rui Xie, Penghao Zhou, Tiehan Fan, Zhen-heng Yang, Zhijie Chen, Xiang Li, Jian Yang, and Ying Tai. Openvid-1m: A large-scale high-quality dataset for text-to-video generation. arXiv preprint arXiv:2407.02371 , 2024. 7[29] Sejun Park, Jaeho Lee, Sangwoo Mo, and Jinwoo Shin. Lookahead: A far-sighted alternative of magnitude-based pruning. In ICLR , 2020. 4 [30] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF Inter-national Conference on Computer Vision , pages 4195–4205, 2023. 1 [31] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. In International Con-ference on Learning Representations , Virtual Event, 2022. OpenReview.net. 2 [32] Victor Sanh, Thomas Wolf, and Alexander M. Rush. Move-ment pruning: Adaptive sparsity by fine-tuning. In NeurIPS ,2020. 4 [33] Shitong Shao, Hongwei Yi, Hanzhong Guo, Tian Ye, Daquan Zhou, Michael Lingelbach, Zhiqiang Xu, and Zeke Xie. Mag-icdistillation: Weak-to-strong video distillation for large-scale few-step synthesis. arXiv preprint arXiv:2503.13319 , 2025. 2, 3, 7 [34] Shitong Shao, zikai zhou, Bai LiChen, Haoyi Xiong, and Zeke Xie. IV-mixed sampler: Leveraging image diffusion models for enhanced video synthesis. In The Thirteenth International Conference on Learning Representations , 2025. 1 [35] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denois-ing diffusion implicit models. In International Conference on Learning Representations , kigali, rwanda, 2023. OpenRe-view.net. 1 [36] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. arXiv preprint arXiv:2303.01469 , 2023. 2, 7 [37] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Ab-hishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations ,kigali, rwanda, 2023. OpenReview.net. 1, 4 [38] Alexandros Stergiou and Ronald Poppe. Adapool: Exponen-tial adaptive pooling for information-retaining downsampling. 2021. 7 [39] Sitong Su, Jianzhi Liu, Lianli Gao, and Jingkuan Song. F 3-pruning: a training-free and generalized pruning strategy towards faster and finer text-to-video synthesis. In Proceed-ings of the AAAI Conference on Artificial Intelligence , pages 4961–4969, 2024. 4, 7 [40] Genmo Team. Mochi 1. https://github.com/ genmoai/models , 2024. 1 [41] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. 1, 2, 7 [42] Qiuheng Wang, Yukai Shi, Jiarong Ou, Rui Chen, Ke Lin, Jia-hao Wang, Boyuan Jiang, Haotian Yang, Mingwu Zheng, Xin Tao, et al. Koala-36m: A large-scale video dataset improv-ing consistency between fine-grained conditions and video content. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 8428–8437, 2025. 7 [43] Haoning Wu, Erli Zhang, Liang Liao, Chaofeng Chen, Jing-wen Hou Hou, Annan Wang, Wenxiu Sun Sun, Qiong Yan, and Weisi Lin. Exploring video quality assessment on user generated contents from aesthetic and technical perspectives. In International Conference on Computer Vision (ICCV) ,2023. 7 [44] Yiming Wu, Zhenghao Chen, Huan Wang, and Dong Xu. Individual content and motion dynamics preserved pruning for video diffusion models. arXiv preprint arXiv:2411.18375 ,2024. 1, 4, 7 [45] Mengzhou Xia, Zexuan Zhong, and Danqi Chen. Structured pruning learns compact and accurate models. In ACL , pages 1513–1528, 2022. 4 [46] Dian Xie, Shitong Shao, Lichen Bai, zikai zhou, Bojun Cheng, Shuo Yang, WU JUN, and Zeke Xie. Guidance matters: Re-thinking the evaluation pitfall for text-to-image generation. In 
+
+The Fourteenth International Conference on Learning Repre-sentations , 2026. 2 [47] Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiao-han Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024. 1, 7 [48] Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiao-han Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024. 7 [49] Tianwei Yin, Michaël Gharbi, Taesung Park, Richard Zhang, Eli Shechtman, Fredo Durand, and William T Freeman. Im-proved distribution matching distillation for fast image syn-thesis. arXiv preprint arXiv:2405.14867 , 2024. 1, 2, 3, 7 [50] Tianwei Yin, Michaël Gharbi, Richard Zhang, Eli Shecht-man, Fredo Durand, William T Freeman, and Taesung Park. One-step diffusion with distribution matching distillation. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 6613–6623, 2024. 2, 3[51] Tianwei Yin, Qiang Zhang, Richard Zhang, William T Free-man, Fredo Durand, Eli Shechtman, and Xun Huang. From slow bidirectional to fast autoregressive video diffusion mod-els. In CVPR , 2025. 1 [52] Zhonghui You, Kun Yan, Jinmian Ye, Meng Ma, and Ping Wang. Gate decorator: Global filter pruning method for accelerating deep convolutional neural networks. In NeurIPS ,pages 2130–2141, 2019. 4 [53] Yuanhao Zhai, Kevin Lin, Zhengyuan Yang, Linjie Li, Jian-feng Wang, Chung-Ching Lin, David Doermann, Junsong Yuan, and Lijuan Wang. Motion consistency model: Acceler-ating video diffusion with disentangled motion-appearance distillation. arXiv preprint arXiv:2406.06890 , 2024. 3 [54] Shiwei Zhang, Jiayu Wang, Yingya Zhang, Kang Zhao, Hangjie Yuan, Zhiwu Qing, Xiang Wang, Deli Zhao, and Jingren Zhou. I2vgen-xl: High-quality image-to-video syn-thesis via cascaded diffusion models. 2023. 7 [55] Ji Zhao, Yufei Gu, Shitong Shao, Xun Zhou, Liang Xiang, and Zeke Xie. Late-to-early training: Let llms learn earlier, so faster and better. arXiv preprint arXiv:2602.05393 , 2026. 4[56] Kaiwen Zheng, Yuji Wang, Qianli Ma, Huayu Chen, Jintao Zhang, Yogesh Balaji, Jianfei Chen, Ming-Yu Liu, Jun Zhu, and Qinsheng Zhang. Large scale diffusion distillation via score-regularized continuous-time consistency. arXiv preprint arXiv:2510.08431 , 2025. 3 [57] Mingyuan Zhou, Zhendong Wang, Huangjie Zheng, and Hai Huang. Long and short guidance in score identity distillation for one-step text-to-image generation. ArXiv 2406.01561 ,2024. 3 [58] Zikai Zhou, Shitong Shao, Lichen Bai, Zhiqiang Xu, Bo Han, and Zeke Xie. Golden noise for diffusion models: A learning framework. arXiv preprint arXiv:2411.09502 , 2024. 1 [59] Long Zhuo, Guangcong Wang, Shikai Li, Wayne Wu, and Ziwei Liu. Fast-vid2vid: Spatial-temporal compression for video-to-video synthesis. In ECCV , 2022. 4 Table 6. Quantitative comparison of Stage III application and varying pruning ratios on WanX-TI2V. Applying Stage III, which performs coordinated distillation of sampling step and model size, results in slight declines across metrics like i2v subject, subject consistency, motion smoothness, and temporal flickering. Crucially, however, it achieves significant improvements in dynamic degree, aesthetic quality, and imaging quality. We also observe that larger pruning ratios correlate with poorer model performance overall.                                                              
+
+> Stage III sampling steps pruning ratio i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average
+> ✗28 30% 0.961 0.970 0.991 0.268 0.655 0.711 0.984 0.791
+> ✓430% 0.960 0.966 0.987 0.378 0.658 0.712 0.977 0.805
+> ✗28 50% 0.958 0.964 0.988 0.174 0.632 0.692 0.989 0.771
+> ✓450% 0.957 0.958 0.971 0.273 0.649 0.701 0.976 0.784
+> ✗28 70% 0.959 0.959 0.965 0.064 0.552 0.591 0.983 0.725
+> ✓470% 0.955 0.958 0.953 0.132 0.579 0.619 0.970 0.738
+
+## A. Benchmarks and Hyperparameter Settings 
+
+Our Benchmark. Our benchmarking strategy is twofold: we use the generic VBench-I2V [ 14 ] to evaluate WanX-I2V and a customized VBench-I2V to assess HunyuanVideo-ATI2V. Regarding the generic VBench-I2V, the original VBench [ 14 ]was designed exclusively for T2V generators and could not assess I2V performance. Consequently, VBench-I2V [ 15 ] was developed as an extension, building upon the foundational VBench framework. This enhancement adds over 1118 new text-image pairs, facilitating a comprehensive evaluation of I2V generators across multiple dimensions—such as visual quality, motion dynamics, and subject consistency—with all testing conducted at a 16:9 aspect ratio. Our customized VBench-I2V is specifically designed for testing digital human scenarios. We collected 58 widescreen images featuring real people and anime characters and generated corresponding prompts using InternVL-26B. Similar to the generic VBench-I2V, we employed a 16:9 aspect ratio and repeated each sample five times to mitigate random errors. 
+
+Hyperparameter Settings for Training. All experiments were conducted on 16 NVIDIA H100 GPUs (2 nodes of 8) with a per-GPU batch size of 1, resulting in a global batch size of 16. We employed DeepSpeed ZeRO-3 and AdamW with CPU offloading to mitigate GPU memory overhead. For Stage II, we set the learning rate to 1e−5 and trained for 4000 iterations. For Stage III, the learning rate was 5e−7 and training ran for 1000 iterations. Specifically, Stage II consumes approximately 64 GPU days, while Stage III requires approximately 16 GPU days. The video memory footprint for both stages remains under 80GB. This shorter duration for Stage III was chosen empirically, as we observed that training beyond this point produced overly abrupt video motions and oversaturated colors. The hyperparameters (α, β 1, β 2) were set to (1 , 2.0, 0.25) for the HunyuanVideo-TI2V experiments and (1 , 3.5, 0.25) for the WanX-TI2V experiments. 
+
+Hyperparameter Settings for Evaluation. For the general-purpose VBench-I2V benchmark, we adopted the official evaluation prompts and the standard 16:9 resolution. On our customized VBench-I2V benchmark, identical prompts and a 16:9 resolution were used for all evaluations. To account for generative stochasticity, we generated five distinct videos for each prompt using different random seeds. 
+
+## B. Additional Ablation Study 
+
+The Importance of Stage III. Stage III is critical, as it performs the truly coordinated distillation of both sampling steps and model size. As demonstrated in Table 6, without this stage, FastLightGen remains an underperforming pruned model; its 28-step sampling performance is markedly inferior to that of the final 4-step distilled model. 
+
+Pruning Ratio. As shown in Fig. 1, FastLightGen achieves an optimal balance between acceleration and performance at a 70% parameter retention rate with 4 distillation steps. The contour plot indicates that performance metrics decline sharply when retention falls below this 70% threshold, as shown by the denser contour lines. This finding is corroborated by the results in Tables 6 and 7. For instance, Table 6 demonstrates that pruning beyond this 30% limit (i.e., < 70% retention) causes a severe degradation in dynamic degree, aesthetic quality, and overall fidelity, leading to blurry and uncontrollable outputs. 
+
+Teacher Category. In Table 9, we provide further empirical evidence supporting the assertion that “stronger teachers do not necessarily benefit students more” On HunyuanVideo-ATI2V, we compare initializing both components with the unpruned model (i.e., a ‘strong teacher’) versus initializing both with the pruned model (i.e., a ‘weak teacher’). The results show that the ‘weak teacher’ setup (using pruned models) outperforms the ·strong teacher’ setup (using unpruned models) on the overall Table 7. Quantitative results for different pruning ratios on HunyuanVideo-ATI2V. As the pruning ratio increases, we observe a significant degradation in model performance, specifically in dynamic degree, aesthetic quality, and imaging quality. 
+
+Pruning Ratio i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average 0% 0.965 0.984 0.993 0.696 0.603 0.722 0.982 0.849 
+
+30% 0.966 0.972 0.996 0.622 0.571 0.693 0.982 0.829 50% 0.948 0.979 0.996 0.501 0.538 0.553 0.977 0.785 70% 0.949 0.967 0.993 0.249 0.465 0.519 0.952 0.728 
+
+Table 8. Quantitative results comparison of β1 and β2 on HunyuanVideo-ATI2V. Fixing β2 at 0.25 yields the best overall performance when 
+
+β1 is set β1 to 2.0. With β1 fixed at 2.0, we found that higher values for β2 (e.g., 0.5,0.75,1.0) improved aesthetic and image quality but significantly degraded lipsyncing. Therefore, we select β2=0.25 as it provides the best trade-off between these two objectives.                                                                                                 
+
+> Inter CFG (β1)Intra CFG (β2)i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average lipsyncing
+> Fixed β1= 2 .0:
+> 2.0 0.00 0.947 0.941 0.992 0.667 0.585 0.687 0.986 0.829 1.642 2.0 0.25 0.962 0.967 0.994 0.512 0.586 0.702 0.991 0.816 1.967
+> 2.0 0.50 0.962 0.962 0.994 0.217 0.584 0.693 0.990 0.771 1.702 2.0 1.00 0.966 0.970 0.996 0.000 0.587 0.704 0.995 0.745 1.670
+> Fixed β2= 0 .25 :
+> 1.0 0.25 0.997 0.959 0.995 0.052 0.585 0.695 0.991 0.753 1.851 2.0 0.25 0.962 0.967 0.994 0.512 0.586 0.702 0.991 0.816 1.967
+> 3.0 0.25 0.942 0.950 0.992 0.744 0.573 0.699 0.987 0.841 1.551 4.0 0.25 0.963 0.962 0.994 0.755 0.570 0.688 0.991 0.846 1.496 5.0 0.25 0.924 0.931 0.992 0.837 0.561 0.678 0.986 0.844 1.250
+
+Table 9. Quantitative results on HunyuanVideo-ATI2V. This ablation investigates the choice of teacher model for the real DiT and the fake DiT in Stage III. We find that employing a pruned model as the teacher significantly outperforms using the unpruned version. This result suggests that the optimal teacher is not necessarily the most powerful, but rather one whose capacity is better matched to the student. 
+
+Teacher Setting i2v subject subject consistency motion smoothness dynamic degree aesthetic quality imaging quality temporal flickering average 
+
+Pruned 0.947 0.941 0.992 0.667 0.585 0.687 0.986 0.829 
+
+Unpruned 0.956 0.932 0.989 0.670 0.525 0.612 0.980 0.809 
+
+average score in our customized VBench-I2V evaluation. Therefore, our proposed well-guided teacher guidance is effective precisely because it constructs a teacher model that is optimally suited to the student. 
+
+## C. Analysis of β2
+
+In Stage III, the hyperparameter β2 controls the teacher model’s interpolation between its unpruned and pruned states. Increasing β2 biases the teacher toward the unpruned model, while decreasing β2 biases it toward the pruned model. However, a ‘stronger’ teacher (i.e., one closer to the unpruned model) does not necessarily yield superior distillation results, as illustrated in Fig. 7. Specifically, setting β2 = 0 (using the fully pruned model) results in overly static videos with poor motion quality. Conversely, setting β2 = 1 (using the fully unpruned model) produces videos with drastic changes and uncontrollable content. Therefore, an appropriate intermediate value for β2 is required to construct an optimal teacher for student model distillation. 
+
+## D. Ethics Statement 
+
+We propose FastLightGen, a method for enabling coordinated step and size optimization in large-scale VDMs. The publicly available data used for this method is sourced from online animation clips and authorized public portrait videos. All UGC Too static 
+
+# Good Motion Quality 
+
+# Exist Artifacts Figure 7. In WanX-TI2V, the β2 hyperparameter modulates the dynamic quality of the generated video. A value of β2 = 0 yields overly static results, whereas β2 = 1 introduces abrupt temporal discontinuities and excessive visual artifacts. 
+
+data is filtered using an automated model to ensure compliance with safety standards and ethical guidelines. We emphasize the responsible deployment and ethical regulation of this technology, aiming to maximize social benefits while proactively monitoring and mitigating potential risks. 
+
+## E. Additional Visualization 
+
+Here, we present further visualizations of FastLightGen trained with optimal parameters, as shown in Figs. 8, 9 and 10. TimeStamp Figure 8. Additional visualization of FastLightGen (i.e., 4-step generator that retains 70% of the parameters). TimeStamp Figure 9. Additional visualization of FastLightGen (i.e., 4-step generator that retains 70% of the parameters). TimeStamp Figure 10. Additional visualization of FastLightGen (i.e., 4-step generator that retains 70% of the parameters).

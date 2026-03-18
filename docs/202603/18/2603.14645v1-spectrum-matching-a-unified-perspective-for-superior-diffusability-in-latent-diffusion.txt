@@ -1,0 +1,556 @@
+Title: Spectrum Matching: a Unified Perspective for Superior Diffusability in Latent Diffusion
+
+URL Source: https://arxiv.org/pdf/2603.14645v1
+
+Published Time: Tue, 17 Mar 2026 02:57:42 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Spectrum Matching: a Unified Perspective for Superior Diffusability in Latent Diffusion 
+
+Mang Ning 
+
+Utrecht University m.ning@uu.nl 
+
+Mingxiao Li 
+
+KU Leuven mingxiao.li@kuleuven.be 
+
+Le Zhang 
+
+Mila le.zhang@mila.quebec 
+
+Lanmiao Liu 
+
+Utrecht University Max Planck Institute for Psycholinguistics 
+
+Matthew B. Blaschko 
+
+KU Leuven matthew.blaschko@kuleuven.be 
+
+Albert Ali Salah 
+
+Utrecht University 
+
+Itir Onal Ertugrul 
+
+Utrecht University i.onalertugrul@uu.nl 
+
+# Abstract 
+
+In this paper, we study the diffusability (learnability) of variational autoencoders (VAE) in latent diffusion. First, we show that pixel-space diffusion trained with an MSE objective is inherently biased toward learning low and mid spatial frequencies, and that the power-law power spectral density (PSD) of natural images makes this bias perceptually beneficial. Motivated by this result, we propose the Spectrum Matching Hypothesis : latents with superior diffusability should (i) follow a flattened power-law PSD ( Encoding Spectrum Matching , ESM) and (ii) preserve frequency-to-frequency semantic correspondence through the decoder ( Decoding Spectrum Matching , DSM). In practice, we apply ESM by matching the PSD between images and latents, and DSM via shared spectral masking with frequency-aligned reconstruction. Importantly, Spectrum Matching provides a unified view that clarifies prior observations of over-noisy or over-smoothed latents, and interprets several recent methods as special cases (e.g., VA-VAE, EQ-VAE). Experiments suggest that Spectrum Matching yields superior diffusion generation on CelebA and ImageNet datasets, and outperforms prior approaches. Finally, we extend the spectral view to representation alignment (REPA): we show that the directional spectral energy of the target representation is crucial for REPA, and propose a DoG-based method to further improve the performance of REPA. Our code is available https://github.com/forever208/SpectrumMatching .
+
+# 1 Introduction 
+
+Latent diffusion models have become a main paradigm for high-resolution image generation [ 1]and video generation [ 2– 4], combining the expressive power of diffusion models [ 5– 8] with the computational efficiency of operating in a compressed latent space. In this two-stage framework, a first-stage Variational Autoencoder (VAE) maps images to latents, and a second-stage diffusion model learns to generate these latents, which are then decoded back to RGB space. This design underpins many modern text-to-image and unconditional generation systems [ 9–11 ], enabling high-resolution synthesis with manageable training and inference cost. 
+
+Preprint 
+
+> arXiv:2603.14645v1 [cs.CV] 15 Mar 2026
+
+Despite their success, latent diffusion models exhibit a practically important problem: better recon-structions do not necessarily imply better generation quality . Recent studies show that reconstruction-focused improvements to the VAE can yield limited or even inconsistent gains in downstream diffusion quality [ 12 ], motivating a shift from reconstruction fidelity to the diffusability (learnability) of the latent representation [ 13 ]. This perspective has inspired a growing body of work that regularizes the latent space to make it easier for diffusion to model. For example, prior methods suggest that non-uniform (biased) latent spectra can be beneficial [ 14 ], aligning latents to pretrained foundation-model features improves diffusion performance [ 15 , 16 ], and truncating high-frequency latent components via downsampling or enforcing equivariance to spatial transforms can improve generation [ 13 , 17 ]. While these findings are compelling, they are often presented as separate observations or heuristics, leaving open a central question: What properties characterize a diffusion-friendly latent space? 
+
+In this work, we propose a unifying answer through the lens of the latent spectrum. We first theoretically demonstrate that pixel-space diffusion trained with an MSE objective is inherently biased toward learning low and mid spatial frequencies, and that the power-law power spectral density (PSD) of natural images makes this bias perceptually beneficial. Motivated by this result, we introduce the Spectrum Matching Hypothesis : latents with superior diffusability should (i) follow a flattened power-law PSD ( Encoding Spectrum Matching , ESM), and (ii) preserve frequency-to-frequency semantic correspondence through the decoder ( Decoding Spectrum Matching , DSM). This hypothesis not only naturally yields practical algorithms—ESM via PSD matching between images and latents, and DSM via shared spectral masking with frequency-aligned reconstruction—but also provides a unified interpretation of prior observations such as over-noisy (over-whitened) and over-smoothed latents, and re-casts several recent methods as special cases of ESM/DSM. Beyond VAE latents, we further show that the spectrum view can clarify representation alignment (REPA) [ 18 ], a recently successful paradigm for accelerating diffusion training with feature-based alignment. We demonstrate that the proposed RMS Spatial Contrast (RMSC) metric in iREPA [ 19 ] is equivalent to directional spectral energy , suggesting that the spectral energy of the direction field is a key property of effective target representations. Moreover, we propose a Difference-of-Gaussians (DoG) band-pass preprocessing that improves REPA generation quality. To summarize, our contributions are fourfold: • We theoretically show that pixel-space diffusion with an MSE objective induces an implicit low-/mid-frequency learning bias, and the power-law PSD of natural images makes this bias beneficial for modeling the perceptual semantics of images. • We propose the Spectrum Matching Hypothesis for latent diffusion, which unifies prior methods and empirical observations. • We instantiate ESM via PSD matching and DSM via shared spectral masking and frequency-aligned reconstruction, leading to superior latent diffusability. • We extend the spectrum view to REPA by connecting RMSC to directional spectral energy, and introduce a DoG-based method that improves REPA and iREPA. 
+
+# 2 Related Work 
+
+2.1 VAE in Latent Diffusion 
+
+The two-stage latent diffusion models (LDM) were introduced in [ 1 ] for high-resolution image generation, and the VAE used for the first-stage compression has been widely studied for better reconstruction or generation. On the reconstruction side, the SDXL approach [ 20 ] showed that larger batch sizes and exponential moving average (EMA) updates improve reconstruction quality. SD3-VAE [ 21 ] and Flux-VAE [ 9] further boosted reconstruction quality by increasing latent channel capacity. To achieve higher compression ratios, DC-AE [ 22 ] introduced a residual module together with a multi-phase training strategy. Other lines of work explicitly decoupled the reconstruction of low and high-frequency components to better reconstruct the fine details [ 23 , 16 ]. Beyond reconstruction, several methods aim to improve downstream diffusion performance by regularizing the VAE. A common strategy is to inject perturbations into the latent space during VAE training [ 24 –26 ], which helps by mitigating exposure bias in diffusion models [ 27 , 28 ]. More recently, researchers have found that a lossy or weak encoder is also feasible for diffusion modeling by enhancing the capability of the decoder [26, 29]. 22.2 Diffusability of the Latent Representations 
+
+A VAE with strong reconstruction fidelity does not necessarily yield better downstream diffusion performance [ 12 ]. This empirical observation has motivated recent work to study the diffusability 
+
+of the latent space. For instance, [ 14 ] argues that latents with a biased (non-uniform) spectrum are preferable for diffusion, highlighting the importance of latent spectral structure. Another line of work improves diffusability by aligning VAE latents with representations from foundation models. VA-VAE [ 15 ] and UAE [ 16 ] reveal that matching latents to features such as DINOv2 [ 30 ] can substantially enhance diffusion quality. As we discuss in Section 3.4, these feature-alignment approaches can be interpreted through the lens of Spectrum Matching, where the pretrained representation implicitly defines a desirable target spectrum. In addition, Scale Equivariance [13] reports that standard VAEs often exhibit an abnormally strong high-frequency component in the latent space, and proposes to truncate these frequencies via latent downsampling. EQ-VAE [ 17 ] further enforces equivariance of latents under spatial transformations, which also improves diffusion performance. In Section 3.4, we show that these methods can be naturally categorized within the Spectrum Matching family, as special cases of enforcing frequency-consistent latent structure and decoding. 
+
+# 3 Spectrum Matching 
+
+In this section, we first introduce Proposition 3.1, which states that pixel diffusion training induces low-frequency bias and power-law PSD makes this bias beneficial for image perceptual quality. To make the latent diffusion enjoy the spectral bias benefit, we propose Spectrum Matching Hypothesis for the latent space. 
+
+3.1 Power-Law PSD Matches Pixel Diffusion Spectral Bias Proposition 3.1 (Power-law PSD aligns diffusion training objective with perceptually dominant structure) . Let xxx0 be a random natural image and y0(ω) ≜ F(xxx0)( ω) be its Fourier coefficients with power spectral density S(ω) ≜ E|y0(ω)|2 = K|ω|−α. The diffusion forward process at timestep t:
+
+xxxt = √¯αt xxx0 + √1 − ¯αt εεε, εεε ∼ N (0 00, I II),
+
+implies the diffusion in the Fourier domain 
+
+yt(ω) = √¯αt y0(ω) + √1 − ¯αt η(ω),
+
+with spectrally flat Gaussian noise η(ω). Let ˆxxxθ (xxxt, t ) be the denoiser to be trained by MSE in pixel space, and define the per-frequency timestep Signal-Noise-Ratio as SNR t(ω) ≜ ¯αt S(ω)1− ¯αt , under a standard local Gaussian approximation for (y0(ω), y t(ω)) , the learnable signal power at frequency 
+
+ω is proportional to 
+
+Gt(ω) ≜ S(ω) · SNR t(ω)1 + SNR t(ω) .. (1) 
+
+Consequently, for natural images with S(ω) = K|ω|−α, Gt(ω) decays rapidly with |ω|, so optimiza-tion is inherently biased toward fitting low-frequency components of xxx0 (proof in Appendix A.1). 
+
+In essence, Proposition 3.1 presents that when training diffusion with an MSE loss in pixel space, we can rewrite the loss as a sum of independent per-frequency MSE losses in the Fourier domain. Then, for each frequency ω, the maximum achievable MSE reduction depends on the frequency energy 
+
+S(ω) and the diffusion SNR at timestep t. Because Gt(ω) decays quickly with |ω| for power-law spectra, diffusion training allocates most of its modeling capacity and gradient signal to low and mid spatial frequencies. These frequency bands dominate the energy of natural images and encode the global, semantically meaningful structure. This low-frequency learning bias shown by Proposition 3.1 also explains the finding of smooth diffusion scores in [ 31 ]. High-frequency components, by contrast, are both low-energy and often noise-dominated across most timesteps, so their detailed statistics are learned more weakly and can be approximated without substantially affecting perceived image quality, which explains the phenomenon observed in [ 32 ] where an improved modeling of high frequencies does not lead to better generated images. 33.2 Spectrum Matching Hypothesis 
+
+Motivated by Proposition 3.1, which demonstrates that pixel-space diffusion training induces an implicit low-frequency bias that aligns well with the power-law PSD of natural images, we propose the Spectrum Matching Hypothesis for latent diffusion. Given a VAE consisting of an encoder E(.)
+
+and a decoder D(.), we hypothesize that the latent zzz = E(xxx) for superior diffusability satisfies: (i) Encoding Spectrum Matching (ESM) , where the latent spectrum of zzz = E(xxx) follows an approximately power-law PSD Szzz (ω) ∝ | ω|−(α−δ) with δ > 0 flattening the natural-image spectrum 
+
+Sxxx(ω) ∝ | ω|−α (the flattening tendency is detailed by Lemma A.2 in the Appendix). In essence, ESM constrains the shape of the latent spectrum. (ii) Decoding Spectrum Matching (DSM) , where the decoder D(.) should be frequency-aligned such that latent frequency bands can be decoded to corresponding image frequency bands. For example, the low-frequency components of the latent zzz should contain the low-frequency infomation of the input image xxx. Essentially, DSM constrains the semantic meaning of the latent spectrum. If a VAE satisfies ESM and DSM, the latent diffusion can inherit the same advantageous alignment properties as pixel diffusion on natural images: MSE denoising objectives emphasize the most learnable and perceptually salient semantics (encoded by the low-frequency band). Also, Spectrum Matching preserves the coarse-to-fine (spectral autoregressive [ 33 ]) generation order: latent diffusion can first model low-frequency latent structure and progressively refine higher-frequency details of the RGB image. 
+
+3.3 Algorithms of ESM and DSM 
+
+In order to apply the Spectrum Matching regularization in VAE, we propose practical algorithms for ESM and DSM, respectively. Figure 1 illustrates how these two methods are integrated into a standard VAE training used for latent diffusion training. 
+
+Figure 1: Diagram of ESM and DSM in a typical VAE for latent diffusion. 
+
+Encoding Spectrum Matching (ESM). ESM regularizes the encoder-side latent spectrum to make it more learnable by diffusion training. As shown in Algorithm 1, given an input image xxx,we first obtain its latent representation zzz = E(xxx). We then compute a spectral descriptor by PSD for both the image and the latent, denoted by Sxxx and Szzz , respectively. According to the spectrum flattening tendency detailed in Lemma A.2, we construct a flattened image-side target spectrum 
+
+˜Sxxx = Flatten( Sxxx; δ) where δ > 0 controls the strength of flattening. This reflects our intuition that a latent space with superior diffusability should follow a power-law PSD while the positive δ encourages the latent zzz to maintain as much information of xxx as possible by maximizing its information entropy. Finally, both spectra are normalized into valid distributions ˆSxxx and ˆSzzz , and the ESM loss is defined as a KL divergence LESM = KL 
+
+ ˆSxxx ∥ ˆSzzz
+
+
+
+.4Algorithm 1 Encoding Spectrum Matching (ESM) 
+
+Require: Input image xxx, encoder E(·), flattening factor δ ≥ 0
+
+1: Compute image latent: zzz ← E(xxx)
+
+2: Compute image spectrum PSD and latent spectrum PSD: 
+
+Sxxx ← P SD (xxx), Szzz ← P SD (zzz)
+
+3: Flatten the image-side target spectrum: 
+
+˜Sxxx ← Flatten( Sxxx; δ)
+
+4: Normalize spectra into valid distributions: 
+
+ˆSxxx ← Normalize( ˜Sxxx), ˆSzzz ← Normalize( Szzz )
+
+5: Match latent PSD to target PSD: 
+
+LESM ← KL divergence( ˆSxxx, ˆSzzz )
+
+return LESM 
+
+In practice, researchers often use the following compound loss to train a VAE: 
+
+LSD −VAE (xxx) = L1(xxx, ˆxxx) + λ1LLP IP S (xxx, ˆxxx) + λ2LGAN (xxx, ˆxxx) + λ3LKL . (2) In the case of ESM, we integrate the loss LESM into the VAE losses by replacing the LKL term: 
+
+LESM −AE (xxx) = L1(xxx, ˆxxx) + λ1LLP IP S (xxx, ˆxxx) + λ2LGAN (xxx, ˆxxx) + βLESM . (3) where β is a hyperparameter for the ESM loss. We remove the Gaussian KL loss term (i.e., the variational term is gone) when using ESM or DSM regularization because we find that ESM or DSM can achieve a similar Gaussian regularization effect in the latent space. Note that the computational cost of LESM is negligible, so that ESM is an efficient regularization method. 
+
+Decoding Spectrum Matching (DSM). While ESM shapes the latent spectrum by regularizing the encoder E(.), DSM enforces decoder-side frequency alignment between the latent and image. As shown in Algorithm 2, we again start from the latent zzz = E(xxx), and then sample a shared frequency mask M ∼ M . In practice, we apply the triangular mask M (with shape ) in the 2D-DCT block [ 34 ] where the high frequencies are on the bottom-right corner. Therefore, the mask acts as a low-pass filter, preserving only a subset of low-frequency components and suppressing high-frequency components. We then apply the same spectral mask to both the image xxx and the latent zzz:
+
+xxxM = SpectralFilter( xxx, M ), zzzM = SpectralFilter( zzz, M ).
+
+Finally, the decoder is trained to reconstruct the masked image from the masked latent ˆxxxM = D(zzzM ),and the DSM loss is defined as an ℓ1 reconstruction objective LDSM = ∥ˆxxxM − xxxM ∥1. In practice, we use the compound loss below to train an Autoencoder: 
+
+LDSM −AE (xxx) = LDSM + λ1LLP IP S (xxxM , ˆxxxM ) + λ2LGAN (xxxM , ˆxxxM ). (4) Note that during training, the sampled mask M may also be empty (i.e., no filtering), in which case all frequency components of xxx and zzz are preserved. Under this setting, Equation 4 reduces to the standard VAE reconstruction loss. In Section 4.1, we will show that both ESM and DSM can achieve improved diffusion results compared with standard VAEs. 
+
+3.4 Spectrum Matching Unifies Prior Observations and Approaches 
+
+Beyond the empirical performance gains, a key advantage of Spectrum Matching is that it provides a unified lens for understanding prior observations and methods in the recent VAE literature. 
+
+Explaining over-noisy or over-smoothed latents Several works report that the latent space of SD-VAE contains overly strong high-frequency components [ 13 ], and that these high-frequency bands can even carry substantial low-frequency semantic information from the RGB image [ 35 ]. This is undesirable for diffusion modeling: as discussed in Section 3.1, diffusion training is naturally 5Algorithm 2 Decoding Spectrum Matching (DSM) 
+
+Require: Input image xxx, encoder E(·), decoder D(·), frequency mask family M
+
+1: Compute image latent: zzz ← E(xxx)
+
+2: Sample a shared frequency mask: M ∼ M 
+
+▷ M acts as a low-pass filter and removes high frequencies 3: Apply the same spectral mask to image and latent: 
+
+xxxM ← SpectralFilter( xxx, M ), zzzM ← SpectralFilter( zzz, M )
+
+4: Reconstruct masked image from masked latent: 
+
+ˆxxxM ← D(zzzM )
+
+5: Enforce frequency-aligned decoding: 
+
+LDSM ← ∥ ˆxxxM − xxxM ∥1
+
+return LDSM 
+
+biased toward low and mid frequencies, while high-frequency components are harder to model and often violate the posterior Gaussian assumption [ 32 ]. Through the lens of Spectrum Matching, this phenomenon becomes principled. The flattening tendency in the latent spectrum can be interpreted as a result of entropy maximization during compression (see Lemma A.2); however, a standard VAE may overuse this mechanism and shift too much information into high-frequency bands. ESM directly counteracts this behavior by matching the latent PSD to a flattened but still power-law target, while DSM further prevents semantic drift across frequency bands by enforcing frequency-consistent decoding. We present in Section 4.1 that both ESM and DSM can solve this excessive-high-frequency issue and improve downstream diffusion quality. As pointed in [ 14 , 36 ], the opposite extreme is also problematic: an overly smooth latent space is not ideal for diffusion modeling either. If the latent over-concentrates energy in low frequencies, the representation becomes too lossy and fails to preserve sufficient image detail. In our framework, ESM avoids both extremes—over-whitening and over-smoothing—by explicitly regularizing the latent toward a flattened power-law PSD. 
+
+Unifying recent methods as special cases. Spectrum Matching also subsumes several recent methods as special cases or partial realizations of ESM/DSM. First, UAE [ 16 ] improves reconstruction quality by aligning low-frequency components of the latent zzz with low-frequency components of DINOv2 features [ 30 ]. In our analysis (Appendix A.3), DINOv2 features exhibit an approximately power-law PSD S(ω) ∝ | ω|−(α−δ) with δ ≈ 1.0 relative to the input image spectrum. Therefore, UAE can be interpreted as a specific instance of ESM, where the target spectrum comes from DINOv2. Similarlly, VA-VAE [ 15 ] applies a linear transform on the latents to match the DINOv2 features. As shown in Appendix A.3, the resulting latent representations in VA-VAE also approximately follow a power-law PSD. Second, Scale Equivariance [ 13 ] and EQ-VAE [ 17 ] show that applying linear spatial transformations (e.g., downsampling) to the latent and requiring the decoder to reconstruct the correspondingly transformed image improves diffusability. In our framework, these methods can be interpreted as special cases of DSM: downsampling is equivalent to applying a particular low-pass spectral mask M according to [ 37 ], and the corresponding reconstruction constraint is precisely a frequency-aligned decoding objective (detailed in Appendix A.4 ). In Section 4.1, we show that DSM, as a generalized version of equivariance regularization, outperforms Scale Equivariance in terms of generation quality. 
+
+3.5 Directional Spectrum Energy Matters in REPA 
+
+Figure 2: Right side is the directional image by doing magnitude normalization at each pixel, the directional image maintains the spa-tial structure of the original image (left) Spectrum considerations are not limited to VAE la-tents. They also help clarify the representation align-ment objective in REPA: what properties should a target representation have to serve as an effective alignment signal? Recent work iREPA [ 19 ] argues that the spatial structure of the target representation is crucial for REPA, and empirically finds that the RMS Spatial Contrast (RMSC) of the target feature correlates strongly with diffusion generation qual-ity. We observe that the RMSC used in iREPA is 6Table 1: Spectrum Matching Unifies Prior Approaches and Empirical Observations. 
+
+Prior research Observations / Method Spectrum Matching View Scale Equivariance [13] Observation: standard VAE training yields a prominent high-frequency component in the latent space, deviating significantly from the spectral distribution of RGB signals. Latent space should follow a flattened power-law PSD FreqWarm [35] Observation: in the latent space of a VAE, too much image information is encoded into the high-frequency band, which is in contrast to the case in the RGB space. Latent space should follow a flattened power-law PSD SSVAE [14] Observation: biased (rather than uniform) latent spectra lead to improved diffusability. ESM ensures that the latent has a power-law spectrum REPA-E [36] Observation: over-smoothed latent space leads to bad diffusion modeling ESM ensures that the latent has a power-law spectrum UAE [16] Method: aligns the low frequencies of DINOv2 features with the low frequencies of the UAE latent. Partial realizations of ESM VA-VAE [15] Method: aligns the DINOv2 features with the VA-VAE latent after a learnable linear matrix. Partial realizations of ESM Scale Equivariance [13] Method: downsamples the latent z and image x,then forces the decoder to reconstruct the downsampled x.A special case of DSM EQ-VAE [17] Method: aligns reconstructions of transformed latent 
+
+z with the corresponding transformed input x.A special case of DSM 
+
+mathematically equivalent to the directional spectral energy of the target representation (Proposition 3.2). Hence, iREPA’s finding can be restated in spectral terms: directional spectral energy of the target representation matters for REPA . Here, the directional field refers to the direction of feature tokens obtained via magnitude normalization. Figure 2 provides an intuition by visualizing an RGB image after per-pixel magnitude normalization: although absolute magnitudes are removed, the spatial layout remains clearly visible. This visualization is consistent with signal processing studies, which have shown that the phase/direction largely determines the spatial structure [38, 39]. 
+
+Proposition 3.2 (RMSC is equivalent to directional spectral energy) . Let {xt}Tt=1 ⊂ RD be token features with ∥xt∥2 > 0. Define the normalized tokens ut := xt/∥xt∥2 and their mean ¯u := 
+
+> 1
+> T
+
+PTt=1 ut. Let RMSC( x) := 
+
+q 1
+
+> T
+
+PTt=1 ∥ut − ¯u∥22 be the normalized RMSC. Let {Uk}T −1 
+
+> k=0
+
+be the coefficients of applying an orthonormal DCT (along the token index t) to each feature dimension of 
+
+{ut}, i.e., Uk ∈ RD is the DCT coefficient vector at frequency k. Then 
+
+RMSC( x)2 = 1
+
+T 
+
+> T−1
+
+X
+
+> k=1
+
+∥Uk∥22, (5) 
+
+i.e., T × RMSC( x)2 equals the total DCT energy of the direction field excluding the DC term. Proof is in Appendix A.5. 
+
+From DC removal to band-pass filter. To increase the spatial contrast of the target representation, iREPA applies a spatial normalization ˆZ = Z−α mean( Z)std( Z)+ ε . We notice that the mean subtraction removes the DC component, thus we propose a more general frequency method: a Difference-of-Gaussians (DoG) filter, which acts as a band-pass operator and can suppress a broader range of low-frequency components beyond DC while also attenuating very high frequencies. Concretely, we replace the above spatial normalization with: 
+
+DoG( Z) = ( Gσ1 ∗ Z) − (Gσ2 ∗ Z), ˆZ = DoG( Z)(std( Z) + ε), (6) 7where σ2 > σ 1 and Gσ1 , G σ2 are Gaussian kernels. In Section 4.2, we show that replacing spatial normalization with DoG yields better generation quality than iREPA. 
+
+# 4 Experiments 
+
+To evaluate the effectiveness of Spectrum Matching, we construct the Spectrum Matching Autoen-coder based on SD-VAE [ 1] without changing their U-Net architecture. For convenience, we refer to the Autoencoders trained our ESM and DSM regularizers as ESM-AE and DSM-AE , respectively. We assess reconstruction quality using reconstruction Fréchet Inception Distance(rFID) [ 40 ], Peak Signal-to-Noise Ratio (PSNR), and Structural Similarity (SSIM) [ 41 ], and we measure generation quality using gFID. For fair comparison, SD-VAE, Scale Equivariance, ESM-AE, and DSM-AE use the same model capacity and training protocol, and all models are trained from scratch. Full architecture details and training hyperparameters are provided in Appendix A.6. 
+
+4.1 Results of ESM and DSM 
+
+In the first stage, we train SD-VAE [ 1], Scale Equivariance [ 13 ], ESM-AE and DSM-AE from scratch on the CelebA 256 ×256 dataset [ 42 ]. All models share the same network architecture and are trained with batch size 48 for 500,000 steps, which we find sufficient for convergence. In the second stage, we apply the diffusion transformer U-ViT [ 43 ] to learn the latent distributions in an unconditional way. Since there is no clear correlation between reconstruction quality (rFID) and generation quality (gFID) [ 12 ], we train diffusion models from multiple Autoencoder checkpoints and report the checkpoint that yields the best gFID. We compute gFID using 50,000 samples generated by a 100-step DDIM sampler [ 44 ]. For SD-VAE, we use the objective in Eq. 2. For Scale Equivariance, we follow [ 13 ] and apply the same objective while randomly downsampling both the target image and latent size by 1×
+
+(i.e, unchanged), 2×, or 4×. ESM-AE is trained with Eq. 3 using β = 0 .01 and δ = 1 .0. DSM-AE is trained with Eq. 4; details of the frequency mask family M are provided in Appendix A.7. Additional ablations for ESM and DSM are deferred to Appendix A.8. In our experiments, we treat both SD-VAE and Scale Equivariance as the baselines, and compare our Spectrum Matching models against them. We consider two commonly used VAE configurations: 
+
+f 8d4, f 16 d16 , where f denotes the spatial downsampling ratio and d means the depth of the latent. Results on Table 2 highlight that ESM-AE and DSM-AE consistently outperform SD-VAE regarding the generation quality (gFID) with the faster training of diffusion modeling. As a special case of DSM, Scale Equivariance also achieves better gFID than SD-VAE, but is inferior to DSM-AE, which indicates the superiority of DSM in terms of diffusability. Regarding the reconstruction quality, all models show similar performance. Table 2: Reconstruction and generation results on CelebA 256 ×256, ’diff steps’ denotes the diffusion training step at convergence.                                                            
+
+> Models f8d4 f16d16 rFID ↓PSNR ↑SSIM ↑diff steps gFID ↓rFID ↓PSNR ↑SSIM ↑diff steps gFID ↓
+> SD-VAE 1.31 31.23 0.788 125k 6.63 1.72 30.08 0.753 150k 6.88 Scale Equivariance 1.24 30.98 0.781 100k 5.87 1.31 29.70 0.741 100k 5.46 ESM-AE (ours) 1.55 31.63 0.793 100k 5.91 1.56 31.30 0.782 100k 5.84 DSM-AE (ours) 1.44 30.07 0.760 100k 4.44 4.44 4.44 1.39 29.32 0.745 100k 4.49 4.49 4.49
+
+We further analyze the latent space and its spectrum to understand the practical effects of ESM and DSM. As shown in Figure 3, SD-VAE produces noticeably noisier latents, whereas ESM-AE and DSM-AE yield smoother latents while preserving semantic structure. This behavior is reflected more clearly in the spectral domain (Figures 4 and 5): both ESM and DSM induce a flatter power-law PSD than the RGB image, consistent with our hypothesis. While Scale Equivariance also exhibits a power-law-like spectrum, its latent PSD is less smooth and less consistently regularized than DSM, highlighting DSM’s advantage as a more general and effective regularization than Scale Equivariance. 8Figure 3: PCA visualization (top three principal components) of the latent space of different Autoen-coders. 
+
+Figure 4: Spectrum distributions of the latents Figure 5: Spectrum distributions of the latents. Based on the empirical results that DSM can also lead to a flattened power-law PSD and DSM achieves better diffusability than ESM, we advocate the DSM method as a simple solution for Spectrum Matching and further benchmark DSM on ImageNet 256 ×256. We again train both 
+
+f 16 d16 type SD-VAE and DSM-AE from scratch for 600k steps, with batch size =128. Then, we apply the diffusion Transformer SiT [ 45 ] to model the latent distribution. To accelerate the diffusion training, we adopt REPA [ 18 ] and train SiT for 400k steps with batch size =256. Table 3 indicates that DSM-AE consistently achieves better generation results than SD-VAE under the condition of REPA or without REPA, even though the reconstruction quality is slightly worse than SD-VAE (a similar trend was observed in [13]). Table 3: Reconstruction and generation results on ImageNet 256 ×256; we measure gFID at different diffusion training steps.                                       
+
+> Models f16d16 gFID (without REPA) gFID (with REPA) rFID ↓PSNR ↑SSIM ↑100k 200k 300k 400k 100k 200k 300k 400k SD-VAE 1.20 25.44 0.659 37.78 22.95 17.40 14.58 25.86 12.46 9.01 7.60 DSM-AE 1.57 23.83 0.606 31.99 18.95 14.37 12.20 12.20 12.20 21.92 10.64 7.83 6.48 6.48 6.48
+
+94.2 Results of DoG on REPA 
+
+Table 4: gFID-50k on ImageNet 256 ×256 using DINOv2-B as encoder on SiT-B/2.                 
+
+> Classifier-Free Guidance = 1.8 Models 100k 200k 300k 400k REPA 23.92 10.67 7.13 5.68 iREPA 17.73 8.51 6.23 5.07 REPA-DoG 18.52 8.60 6.15 4.98
+
+In Section 3.5, we showed that an effective target rep-resentation for REPA should exhibit high directional spectral energy (equivalently, strong spatial contrast), and propose the DoG filter (Equation 6) to preprocess the target representation. To verify the effectiveness of DoG, we utilize the codebase of REPA [ 18 ], and train REPA, iREPA [ 19 ], and our REPA-DoG on ImageNet 256 ×256 for 400k steps with SiT-B/2 as the diffusion backbone. All methods use the same recommended training configuration from [18] (e.g., alignment coefficient = 0 .5) to ensure a controlled comparison. Table 4 reports gFID throughout dif-fusion training and shows that REPA-DoG overtakes REPA and iREPA as training proceeds, achieving the best gFID (4.98) at 400k steps using classifier-free guidance [ 46 ]. Without using guidance during, our REPA-DoG achieves gFID=20.37, consistently outperforms REPA (gFID=22.75) and iREPA (gFID=21.40) at 400k training steps. Following iREPA [ 19 ], we also visualize the token-wise cosine similarity maps to illustrate the impact of spatial normalization used in iREPA [ 19 ] and our DoG method. It is clear from Fig. 6 that our DoG approach presents stronger spatial contrast than REPA and iREPA, which explains the improved gFID accordinga to the finding of correlation between gFID and spatial contrast in iREPA[19] 
+
+Figure 6: Impact of processing the feature representation of DINOv3-B [ 47 ]. Comparison of token-wise cosine similarity maps. The red star indicates the reference token, while the heatmap represents its affinity with the spatial query tokens. 
+
+# 5 Conclusion 
+
+In this paper, we propose Spectrum Matching as a unified perspective on latent diffusability, for-malized by the Spectrum Matching Hypothesis. We instantiate this principle with two practical mechanisms, ESM and DSM. Experiments on CelebA and ImageNet demonstrate improved gen-eration quality over SD-VAE and the prior method. We further extend the spectral perspective to REPA by linking RMSC to directional spectral energy and introducing a DoG-based band-pass preprocessing that yields additional gains. Our study focuses on image VAEs given the limited computational resources. A key limitation is that we did not investigate Spectrum Matching in video autoencoders, where temporal frequency structure and spatiotemporal coupling may introduce new constraints and opportunities. We leave this to our future work. 
+
+# 6 Acknowledgement 
+
+We acknowledge the EuroHPC Joint Undertaking for awarding this project access to the EuroHPC supercomputer LEONARDO, hosted by CINECA (Italy) and the LEONARDO consortium through an EuroHPC [Extreme/Regular] Access call. We thank Long Zhao for providing suggestions on VAE training. 10 References 
+
+[1] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in CVPR , 2022, pp. 10 684–10 695. [2] T. Wan, A. Wang, B. Ai, B. Wen, C. Mao, C.-W. Xie, D. Chen, F. Yu, H. Zhao, J. Yang 
+
+et al. , “Wan: Open and advanced large-scale video generative models,” arXiv preprint arXiv:2503.20314 , 2025. [3] B. Wu, C. Zou, C. Li, D. Huang, F. Yang, H. Tan, J. Peng, J. Wu, J. Xiong, J. Jiang et al. ,“Hunyuanvideo 1.5 technical report,” arXiv preprint arXiv:2511.18870 , 2025. [4] G. Ma, H. Huang, K. Yan, L. Chen, N. Duan, S. Yin, C. Wan, R. Ming, X. Song, X. Chen 
+
+et al. , “Step-video-t2v technical report: The practice, challenges, and future of video foundation model,” arXiv preprint arXiv:2502.10248 , 2025. [5] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,” NeurIPS , vol. 33, pp. 6840–6851, 2020. [6] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole, “Score-based generative modeling through stochastic differential equations,” in ICLR , 2020. [7] W. Peebles and S. Xie, “Scalable diffusion models with transformers,” in ICCV , 2023, pp. 4195–4205. [8] X. Liu, C. Gong et al. , “Flow straight and fast: Learning to generate and transfer data with rectified flow,” in ICLR , 2023. [9] B. F. Labs, S. Batifol, A. Blattmann, F. Boesel, S. Consul, C. Diagne, T. Dockhorn, J. English, Z. English, P. Esser et al. , “Flux. 1 kontext: Flow matching for in-context image generation and editing in latent space,” arXiv preprint arXiv:2506.15742 , 2025. [10] C. Wu, J. Li, J. Zhou, J. Lin, K. Gao, K. Yan, S.-m. Yin, S. Bai, X. Xu, Y. Chen et al. ,“Qwen-image technical report,” arXiv preprint arXiv:2508.02324 , 2025. [11] H. Cai, S. Cao, R. Du, P. Gao, S. Hoi, Z. Hou, S. Huang, D. Jiang, X. Jin, L. Li et al. , “Z-image: An efficient image generation foundation model with single-stream diffusion transformer,” arXiv preprint arXiv:2511.22699 , 2025. [12] P. Hansen-Estruch, D. Yan, C.-Y. Chuang, O. Zohar, J. Wang, T. Hou, T. Xu, S. Vishwanath, P. Vajda, and X. Chen, “Learnings from scaling visual tokenizers for reconstruction and genera-tion,” in ICML , 2025. [13] I. Skorokhodov, S. Girish, B. Hu, W. Menapace, Y. Li, R. Abdal, S. Tulyakov, and A. Siarohin, “Improving the diffusability of autoencoders,” ICML , 2025. [14] S. Liu, X. Deng, Z. Yang, J. Teng, X. Gu, and J. Tang, “Delving into latent spectral biasing of video vaes for superior diffusability,” arXiv preprint arXiv:2512.05394 , 2025. [15] J. Yao, B. Yang, and X. Wang, “Reconstruction vs. generation: Taming optimization dilemma in latent diffusion models,” in CVPR , 2025, pp. 15 703–15 712. [16] W. Fan, H. Diao, Q. Wang, D. Lin, and Z. Liu, “The prism hypothesis: Harmonizing semantic and pixel representations via unified autoencoding,” arXiv preprint arXiv:2512.19693 , 2025. [17] T. Kouzelis, I. Kakogeorgiou, S. Gidaris, and N. Komodakis, “Eq-vae: Equivariance regularized latent space for improved generative image modeling,” ICML , 2025. [18] S. Yu, S. Kwak, H. Jang, J. Jeong, J. Huang, J. Shin, and S. Xie, “Representation alignment for generation: Training diffusion transformers is easier than you think,” in ICLR , 2025. [19] J. Singh, X. Leng, Z. Wu, L. Zheng, R. Zhang, E. Shechtman, and S. Xie, “What matters for representation alignment: Global information or spatial structure?” ICLR , 2026. 11 [20] D. Podell, Z. English, K. Lacey, A. Blattmann, T. Dockhorn, J. Müller, J. Penna, and R. Rom-bach, “Sdxl: Improving latent diffusion models for high-resolution image synthesis,” in ICLR ,2024. [21] P. Esser, S. Kulal, A. Blattmann, R. Entezari, J. Müller, H. Saini, Y. Levi, D. Lorenz, A. Sauer, F. Boesel et al. , “Scaling rectified flow transformers for high-resolution image synthesis,” in 
+
+ICML , 2024. [22] J. Chen, H. Cai, J. Chen, E. Xie, S. Yang, H. Tang, M. Li, and S. Han, “Deep compression autoencoder for efficient high-resolution diffusion models,” in ICLR , 2025. [23] T. Medi, H.-Y. Wang, A. Rampini, and M. Keuper, “Missing fine details in images: Last seen in high frequencies,” arXiv preprint arXiv:2509.05441 , 2025. [24] J. Chen, D. Zou, W. He, J. Chen, E. Xie, S. Han, and H. Cai, “Dc-ae 1.5: Accelerating diffusion model convergence with structured latent space,” in ICCV , 2025, pp. 19 628–19 637. [25] N. Team, C. Han, G. Li, J. Wu, Q. Sun, Y. Cai, Y. Peng, Z. Ge, D. Zhou, H. Tang et al. ,“Nextstep-1: Toward autoregressive image generation with continuous tokens at scale,” arXiv preprint arXiv:2508.10711 , 2025. [26] B. Zheng, N. Ma, S. Tong, and S. Xie, “Diffusion transformers with representation autoencoders,” 
+
+ICLR , 2026. [27] M. Ning, E. Sangineto, A. Porrello, S. Calderara, and R. Cucchiara, “Input perturbation reduces exposure bias in diffusion models,” ICML , 2023. [28] M. Ning, M. Li, J. Su, A. A. Salah, and I. O. Ertugrul, “Elucidating the exposure bias in diffusion models,” ICLR , 2024. [29] L. Zhao, S. Woo, Z. Wan, Y. LI, H. Zhang, B. Gong, H. Adam, X. Jia, and T. Liu, “Epsilon-vae: Denoising as visual decoding,” in ICML , 2025. [30] M. Oquab, T. Darcet, T. Moutakanni, H. Vo, M. Szafraniec, V. Khalidov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby et al. , “Dinov2: Learning robust visual features without supervision,” 
+
+TMLR , 2024. [31] T. Bonnaire, R. Urfin, G. Biroli, and M. Mézard, “Why diffusion models don’t memorize: The role of implicit dynamical regularization in training,” NeurIPS , 2025. [32] F. Falck, T. Pandeva, K. Zahirnia, R. Lawrence, R. Turner, E. Meeds, J. Zazo, and S. Karmalkar, “A fourier space perspective on diffusion models,” arXiv preprint arXiv:2505.11278 , 2025. [33] S. Dieleman, “Diffusion is spectral autoregression,” 2024. [Online]. Available: https: //sander.ai/2024/09/02/spectral-autoregression.html [34] N. Ahmed, T. Natarajan, and K. R. Rao, “Discrete cosine transform,” IEEE transactions on Computers , vol. 100, no. 1, pp. 90–93, 1974. [35] B. Lai, X. Wang, S. Rambhatla, J. M. Rehg, Z. Kira, R. Girdhar, and I. Misra, “Toward diffusible high-dimensional latent spaces: A frequency perspective,” arXiv preprint arXiv:2511.22249 ,2025. [36] X. Leng, J. Singh, Y. Hou, Z. Xing, S. Xie, and L. Zheng, “Repa-e: Unlocking vae for end-to-end tuning of latent diffusion transformers,” in ICCV , 2025, pp. 18 262–18 272. [37] M. Ning, M. Li, J. Su, J. Haozhe, L. Liu, M. Benes, W. Chen, A. A. Salah, and I. O. Ertugrul, “Dctdiff: Intriguing properties of image generative modeling in the dct space,” in ICML . PMLR, 2025, pp. 46 498–46 524. [38] A. V. Oppenheim and J. S. Lim, “The importance of phase in signals,” Proceedings of the IEEE ,vol. 69, no. 5, pp. 529–541, 2005. [39] R. Hassen, Z. Wang, and M. M. Salama, “Image sharpness assessment based on local phase coherence,” IEEE Transactions on Image Processing , vol. 22, no. 7, pp. 2798–2810, 2013. 12 [40] M. Heusel, H. Ramsauer, T. Unterthiner, B. Nessler, and S. Hochreiter, “Gans trained by a two time-scale update rule converge to a local nash equilibrium,” NeurIPS , 2017. [41] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: from error visibility to structural similarity,” IEEE transactions on image processing , vol. 13, no. 4, pp. 600–612, 2004. [42] T. Karras, T. Aila, S. Laine, and J. Lehtinen, “Progressive growing of gans for improved quality, stability, and variation,” in ICLR , 2018. [43] F. Bao, S. Nie, K. Xue, Y. Cao, C. Li, H. Su, and J. Zhu, “All are worth words: A vit backbone for diffusion models,” in CVPR , 2023. [44] J. Song, C. Meng, and S. Ermon, “Denoising diffusion implicit models,” in ICLR , 2021. [45] N. Ma, M. Goldstein, M. S. Albergo, N. M. Boffi, E. Vanden-Eijnden, and S. Xie, “Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers,” in ECCV ,2024, pp. 23–40. [46] J. Ho and T. Salimans, “Classifier-free diffusion guidance,” arXiv preprint arXiv:2207.12598 ,2022. [47] O. Siméoni, H. V. Vo, M. Seitzer, F. Baldassarre, M. Oquab, C. Jose, V. Khalidov, M. Szafraniec, S. Yi, M. Ramamonjisoa et al. , “Dinov3,” arXiv preprint arXiv:2508.10104 , 2025. [48] S. G. Mallat, “A theory for multiresolution signal decomposition: the wavelet representation,” 
+
+IEEE transactions on pattern analysis and machine intelligence , vol. 11, no. 7, pp. 674–693, 2002. [49] G. K. Wallace, “The jpeg still picture compression standard,” Communications of the ACM ,vol. 34, no. 4, pp. 30–44, 1991. 13 A Appendix 
+
+A.1 Proof of Proposition 3.1 
+
+Let xxx0 be a random natural image and y0(ω) ≜ F(xxx0)( ω) be its Fourier coefficients where F denotes the unitary discrete Fourier transform (DFT). By Parseval Theorem, 
+
+∥xxx0 − ˆxxx0∥22 ∝ X
+
+> ω
+
+y0(ω) − ˆy0(ω) 2,
+
+hence, for a diffusion model ˆxxx0,θ (xxxt, t ) and any timestep t, we have 
+
+Lt(θ) = E∥xxx0 − ˆxxx0,θ (xxxt, t )∥22 ∝ X
+
+> ω
+
+E
+
+h
+
+y0(ω) − ˆy0,θ (yt, t ; ω) 2i
+
+.
+
+Therefore, the spatial domain MSE objective can be decomposed as a sum of per-frequency MSE terms. Define the scalar variables Y0 ≜ y0(ω) and Yt ≜ yt(ω) for any frequency ω, we have the diffusion transition 
+
+Yt = √¯αt Y0 + √1 − ¯αt η, η ∼ N (0 , 1) ,
+
+where the noise variance is independent of ω.Let S(ω) ≜ E|Y0|2. Consider estimating Y0 from Yt with squared error. The Bayes-optimal estimator is the conditional mean E[Y0 | Yt], and the minimum achievable MSE is E|Y0 − E[Y0 | Yt]|2.Applying second-moment decomposition, we have 
+
+E|Y0|2 = E E[Y0 | Yt] 2 + E|Y0 − E[Y0 | Yt]|2.
+
+Thus the maximal achievable reduction of the per-frequency MSE equals 
+
+∆( ω, t ) ≜ E|Y0|2 − E|Y0 − E[Y0 | Yt]|2 = E E[Y0 | Yt] 2,
+
+which we interpret as the learnable signal power at frequency ω and time t.Under the local Gaussian/LMMSE approximation for (Y0, Y t), the conditional mean is linear: E[Y0 |
+
+Yt] = cY t, where 
+
+c = Cov( Y0, Y t)Var( Yt) .
+
+Using E[Y0η] = 0 , we have 
+
+Cov( Y0, Y t) = √¯αt E|Y0|2 = √¯αt S(ω), Var( Yt) = ¯ αtS(ω) + (1 − ¯αt).
+
+Therefore 
+
+c =
+
+√¯αt S(ω)¯αtS(ω) + (1 − ¯αt) .
+
+Hence the learnable signal power is 
+
+∆( ω, t ) = E|cY t|2 = c2 Var( Yt) = ¯αtS(ω)2
+
+¯αtS(ω) + (1 − ¯αt) .
+
+Define SNR t(ω) ≜ ¯αtS(ω)1− ¯αt . Then 
+
+∆( ω, t ) = S(ω) · ¯αtS(ω)¯αtS(ω) + (1 − ¯αt) = S(ω) · SNR t(ω)1 + SNR t(ω) .
+
+Thus the maximal achievable reduction of the per-frequency MSE is proportional to Gt(ω) ≜
+
+S(ω) SNR t(ω)1+SNR t(ω) , which proves the proposition. 14 A.2 Encoding Spectrum Matching (ESM) from an Information Theory Perspective 
+
+Natural images commonly have a power-law spatial spectrum, Sx(ω) ∝ ∥ ω∥−α with α > 0,implying that low frequencies carry substantially large energy. Under the limited latent dimensionality constraint, the latent variable must allocate a limited capacity budget across frequencies. If we model the carried information by latent via maximizing its entropy under the budget, the optimal allocation tends to make the latent spectrum as flat as possible (a whitening tendency) . As a result, the encoder E(.) will suppress low-frequency redundancy and relatively enhance high-frequency energy, making the latent PSD flatter than the input image, forming the core of ESM hypothesis: 
+
+Sz (ω) ∝ ∥ ω∥−(α−δ) with δ > 0.
+
+Remark A.1 (Gaussian reference for a maximum-entropy upper bound) . We do not assume that the latent field is exactly Gaussian. Instead, we use a Gaussian reference model for second-order spectral analysis: among all stationary random fields sharing the same PSD (equivalently, the same second-order statistics), the Gaussian one has the maximum differential entropy rate. Therefore, analyzing the Gaussian case provides a valid maximum-entropy upper-bound argument under a fixed PSD (power) constraint. 
+
+Lemma A.2 (Maximum-entropy spectrum under a finite power budget implies flattening effect) . Let 
+
+z be a zero-mean, wide-sense stationary latent random field with power spectral density Sz (ω) > 0
+
+defined on a continuous frequency domain Ω. Assume the latent is subject to an energy budget 
+
+Z
+
+> Ω
+
+Sz (ω) dω = P, (7) 
+
+for some constant P > 0. Under the Gaussian reference model, the differential entropy rate is maximized by a flat spectrum: 
+
+S⋆z (ω) = P
+
+Vol(Ω) for a.e. ω ∈ Ω, (8) 
+
+where Vol(Ω) denotes the volume of the frequency domain. Hence, the entropy-maximizing latent distribution exhibits a whitening (spectral-flattening) tendency. Sketch of Proof. For a zero-mean stationary Gaussian random field, the differential entropy rate admits the spectral representation 
+
+h(z) = 12
+
+Z
+
+> Ω
+
+log Sz (ω) dω + const . (9) Therefore, maximizing h(z) under equation (7) is equivalent to maximizing R 
+
+> Ω
+
+log Sz (ω) dω under the same constraint. Since log( ·) is strictly concave on R>0, applying Jensen’s inequality yields 
+
+1Vol(Ω) 
+
+Z
+
+> Ω
+
+log Sz (ω) dω ≤ log 
+
+ 1Vol(Ω) 
+
+Z
+
+> Ω
+
+Sz (ω) dω 
+
+
+
+= log 
+
+ P
+
+Vol(Ω) 
+
+
+
+, (10) where the last equality uses the energy budget equation (7) . Moreover, equality holds if and only if 
+
+Sz (ω) is constant almost everywhere on Ω. Hence the maximizer is 
+
+S⋆z (ω) = P
+
+Vol(Ω) for a.e. ω ∈ Ω,
+
+which proves the Lemma. 
+
+Implication of Lemma A.2 in VAE. If the encoder is viewed in second-order statistics as shaping the input spectrum through an effective frequency response, then Lemma A.2 implies that, under a finite latent space, the encoder E(.) tends to flatten the latent spectrum for entropy maximization (to carry the maximum information). Therefore, compared to Sx(ω), the latent PSD should decay more slowly with frequency, which can be described as 
+
+Sz (ω) ∝ ∥ ω∥−(α−δ) with δ > 0,
+
+which indicates the behavior of the encoder E(.) that suppresses low-frequency redundancy and relatively improves high-frequency energy. 15 A.3 Spectrum Analysis of UAE and VA-VAE 
+
+Recall that our ESM hypothesis states that the latent spectrum of zzz = E(xxx) should follows an approximately power-law PSD Szzz (ω) ∝ | ω|−(α−δ) with δ > 0 flattening the natural-image spectrum 
+
+Sxxx(ω) ∝ | ω|−α, we now analyze the methods UAE and VA-VAE which align the latent z with DINOv2 features [ 30 ]. We first measure the spectrum distribution of DINOv2 on ImageNet 256 ×256 dataset, the results on Figure 7 demonstrate that the spectrum of DINOv2 features approximately follows a power-law PSD Szzz (ω) ∝ | ω|−(α−δ) with δ = 1 .0. In detail, the RGB spectrum distribution is evaluated using 50,000 random images, then the power-law target ( δ = 1 .0) is formed by flattening the RGB spectrum. 
+
+Figure 7: Spectrum distributions of the input image and DINOv2 features on ImageNet 256 ×256. In addition, we measure the practical spectrum distribution of VA-VAE latents on ImageNet 256 ×256. Figure 8 shows that the VA-VAE latent spectrum is close to the power-law target PSD ( δ = 1 .0), indicating that DINOv2 feature alignment is an implicit regularization of ESM .
+
+Figure 8: Spectrum distributions of the input image and VA-VAE latents on ImageNet 256 ×256. 
+
+A.4 Scale Equivariance and EQ-VAE are special cases of DSM 
+
+Scale Equivariance [ 13 ] applies spatial transform (downsampling by 2 × or 4 ×) on the latent zzz and force the decoder to reconstruct the corresponding spatial transformed input image xxx. Similarly, EQ-VAE [ 17 ] uses two types of spatial transformation, rotation and scaling, to regularize the decoder. Since the gFID performance gain mainly comes from the scaling transform [ 17 ], we can first unify both Scale Equivariance and EQ-VAE as a method of spatial downsampling. It is well known that spatial downsampling is equivalent to filtering out high-frequency components in the frequency domain. For example, the Discrete Wavelet Transform (DWT) preserves a downsampled 16 representation of the image in the top-left corner of the coefficient map [ 48 ]. Similarly, in the case of the 2D-DCT [ 34 ], the DCT coefficients located in the top-left quarter (purple region in Figure 9) contain all the information required to reconstruct the image downsampled by a factor of 2× in the spatial domain (see [ 37 ] for details). Therefore, the spatial downsampling strategies used in [13 , 17 ] can be interpreted as removing high-frequency components from the spectrum (gray region in Figure 9), which corresponds to a special case of DSM. Finally, the rotation transform used in [17 ] does not change the spectral PSD; thus, the rotation operation remains within the scope of our proposed Spectrum Matching. 
+
+Figure 9: Illustration of the spatial downsampling in the DCT space (left). In the concept of DSM, the frequency mask M can be any shape, even though we instantiate the DSM using a series of triangular masks (right) 
+
+A.5 Proof of Proposition 3.2 
+
+Proof. By definition of ¯u and expanding the square, 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥ut − ¯u∥22 = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥ut∥22 − ∥ ¯u∥22.
+
+Since ∥ut∥2 = 1 for all t, the first term equals 1, hence 
+
+RMSC( x)2 = 1 − ∥ ¯u∥22. (11) Let C ∈ RT ×T be an orthonormal DCT matrix ( C⊤C = IT ). Applying it along t to each feature dimension gives coefficient vectors Uk ∈ RD . By Parseval’s identity for an orthonormal transform, 
+
+> T
+
+X
+
+> t=1
+
+∥ut∥22 = 
+
+> T−1
+
+X
+
+> k=0
+
+∥Uk∥22.
+
+Moreover, the DC coefficient equals the mean up to √T :
+
+U0 =
+
+> T
+
+X
+
+> t=1
+
+C0,t ut = 1
+
+√T
+
+> T
+
+X
+
+> t=1
+
+ut = √T ¯u, 
+
+so ∥U0∥22 = T ∥¯u∥22. Since PTt=1 ∥ut∥22 = T , we obtain  
+
+> T−1
+
+X
+
+> k=1
+
+∥Uk∥22 = T − ∥ U0∥22 = T − T ∥¯u∥22 = T RMSC( x)2,
+
+where the last step uses equation (11). Dividing by T completes the proof. 
+
+A.6 Training Parameters 
+
+We present the complete training parameters of Autoencoders in Table 5. All models (SD-VAE, ESM-AE, DSM-AE) are trained on CelebA 256 ×256 using 4 A100 GPUs and on ImageNet 256 ×256 using 8 A100 GPUs. In addition, Table 6 shows the training parameters of REPA, iREPA, and REPA-DoG on ImageNet 256 ×256. Experiments are implemented using 4 A100 GPUs. 17 Table 5: Training parameters of Autoencoders on CelebA 256 ×256 and ImageNet 256 ×256                                                       
+
+> Dataset CelebA 256 (f8d4, f16d16) ImageNet 256 (f16d16) Model SD-VAE Scale Equivariance ESM-AE DSM-AE SD-VAE DSM-AE network parameters 83.7M (f8d4), 64.4M (f16d16) 64.4M VAE learning rate 5e-5 5e-5 GAN learning rate 5e-5 5e-5 GAN begin steps 50k 50k lr schedule constant with warmup constant with warmup batch size 48 128 training steps 500k 600k optimizer AdamW AdamW weight decay 0.005 0.005 mix precision bf16 bf16
+> λ1(LPIPS loss) 0.5 0.5
+> λ2(GAN loss) 0.5 0.5
+> δ(ESM) --1.0 ---
+> β(ESM loss) --0.01 ---KL loss 1e-6 0001e-6 0
+
+Table 6: Training parameters of Autoencoders on CelebA 256 ×256 and ImageNet 256 ×256                            
+
+> Model REPA iREPA REPA-DoG diffusion network SiT-B/2 foundation model DINOv2-b encoder depth 4alignment coefficient 0.5 learning rate 1e-4 batch size 256 training steps 400k optimizer Adam mix precision fp16 FID samples 50,000 diffusion sampling steps 100 diffusion sampler Euler Maruyama cfg scale 1.8 projection layer MLP Conv spatial normalization -✓-DoG --✓
+> normalization std -0.6 1.0
+
+A.7 Design of Frequency Mask M
+
+Considering that the frequency in the DCT space follows a zigzag order (see Figure 10), where low frequencies lie in the top-left corner and high frequencies are in the bottom right, we design the frequency mask set M as a series of triangular shapes to perform progressive high-frequency filtering. In detail, we follow the convention of the JPEG codec [ 49 ] and use the 8 ×8 DCT block in practice. Thus, the number of diagonal rows n of the mask can uniquely define a specific mask M ∼ M .Figure 10 further shows some concrete samples when n = 4 , n = 8 and n = 12 .
+
+A.8 Ablation Studies of ESM and DSM Ablation study of ESM. There are two parameters in the ESM regularization: the PSD flatten factor δ and the ESM loss weight β. We perform the ablation study in terms of δ and β. Experimental results in the Table 7 indicates that δ = 1 .0 and β = 0 .01 yield the best diffusability on CelebA 256 × 256 dataset. The optimal δ = 1 .0 is consistent with the DINOv2 feature spectrum we have analyzed in A.3) 18 Figure 10: The frequency in the DCT space follows a zigzag order where low frequencies lie in the top-left corner, and high frequencies are in the bottom right. Therefore, we design the frequency mask as a set of triangular shapes to perform different levels of high-frequency filtering. On the right side, we show some concrete samples of the mask M using n = 4 , n = 8 and n = 12 in the 8 ×8DCT space. Table 7: Ablation study of ESM-AE on CelebA 256 ×256, ’diff steps’ denotes the diffusion training step at convergence.                                                      
+
+> Models δβf16d16 rFID ↓PSNR ↑SSIM ↑diff steps gFID ↓
+> ESM-AE 0.6 0.01 1.56 30.52 0.767 100k 5.90 ESM-AE 1.0 0.01 1.56 31.30 0.782 100k 5.84
+> ESM-AE 1.4 0.01 1.61 31.62 0.790 100k 6.57 ESM-AE 1.0 0.1 1.63 30.86 0.777 100k 6.82 ESM-AE 1.0 0.01 1.56 31.30 0.782 100k 5.84
+> ESM-AE 1.0 0.001 1.82 31.19 0.781 100k 6.00
+
+Ablation study of DSM. There is only one hyperparameter in the DSM regularization: the design of the DCT frequency mask set M. We test various designs of M, in which n = {8, 12 } means M
+
+consists of two mask samples and they remove 8 and 12 diagonal rows of frequencies, respectively. Moreover, we maintain the mask sample n = 0 in M to let the DSM-AE train the original input image. The results on Table 8 reveal that a proper element density in the mask set M leads to the optimal diffusability on CelebA 256 × 256. This phenomenon is consistent with our expectation: too few elements in the mask set M lead to a weak DSM constraint, while too many mask elements in 
+
+M would reduce the chance of training the original image ( n = 0 )Table 8: Ablation study of DSM-AE on CelebA 256 ×256, ’diff steps’ denotes the diffusion training step at convergence.                                    
+
+> Models Mask set Mf16d16 rFID ↓PSNR ↑SSIM ↑diff steps gFID ↓
+> DSM-AE n={0, 8, 12} 1.40 29.64 0.749 100k 5.02 DSM-AE n={0, 8, 10, 12} 1.39 29.32 0.745 100k 4.49
+> DSM-AE n={0, 6, 8, 10, 12} 1.38 29.52 0.746 100k 4.61 DSM-AE n={0, 8, 10, 12, 13} 1.23 28.71 0.728 100k 5.33
+
+19
