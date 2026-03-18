@@ -1,0 +1,578 @@
+Title: LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization
+
+URL Source: https://arxiv.org/pdf/2602.16086v2
+
+Published Time: Mon, 23 Feb 2026 01:56:30 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization 
+
+# Idil Bilge Altun 
+
+ialtun@iu.edu Indiana University Bloomington School of Informatics, Computing, and Engineering Bloomington, IN, USA 
+
+# Mert Onur Cakiroglu 
+
+meocakir@iu.edu Indiana University Bloomington School of Informatics, Computing, and Engineering Bloomington, IN, USA 
+
+# Elham Buxton 
+
+esahe2@uis.edu University of Illinois Springfield Computer Science Springfield, IL, US 
+
+# Mehmet Dalkilic 
+
+dalkilic@iu.edu Indiana University Bloomington School of Informatics, Computing, and Engineering Bloomington, IN, USA 
+
+# Hasan Kurban ∗
+
+hkurban@hbku.edu.qa Hamad Bin Khalifa University College of Science and Engineering Doha, Qatar 
+
+## Abstract 
+
+Discrete image tokenization is a central bottleneck for scalable vi-sual generation: a tokenizer must be compact enough for efficient latent-space priors while preserving semantically important struc-tures as well as making effective use of discrete capacity. Existing quantizers face a persistent trade-off: vector-quantized tokenizers learn flexible geometries, but often suffer from biased straight-through optimization, codebook under-utilization, and representa-tion collapse that intensify as vocabularies scale. In contrast, struc-tured scalar or implicit tokenizers achieve stable, near-complete utilization by construction, but rely on fixed discretization geome-tries that can allocate capacity inefficiently under heterogeneous, dataset-dependent latent statistics. We introduce Learnable Geo-metric Quantization (LGQ) , a discrete image tokenizer that learns the discretization geometry end-to-end . LGQ replaces hard nearest-neighbor lookup with temperature-controlled soft assignments, enabling fully differentiable training while recovering hard discrete assignments at inference. This design is principled: the assignments correspond to posterior responsibilities in an isotropic Gaussian mixture and minimize a variational, free-energy objective, while provably recovering hard nearest-neighbor quantization in the low-temperature limit. To ensure confident discretization and robust scalability, LGQ combines a token-level peakedness regularizer with a global usage regularizer that discourages imbalanced marginal code utilization, preventing collapse without imposing rigid grids. Under a controlled VQGAN-style backbone on ImageNet across different vocabulary sizes, LGQ yields stable optimization and con-sistently balanced utilization. LGQ improves reconstruction quality over collapse-prone VQ tokenizers and matches or exceeds strong baselines such as FSQ and SimVQ, achieving 11.88% better rFID 
+
+with 49.96% lower effective representation rate compared to FSQ, and 6.06% rFID with 49.45%lower effective representation rate with SimVQ, showing comparable fidelity with substantially 
+
+> ∗Corresponding author
+> Arxiv,
+
+fewer active codebook entries. Our GitHub repository is available at: https://github.com/KurbanIntelligenceLab/LGQ. 
+
+## Keywords 
+
+Image Tokenization, Vector Quantization, Discrete Representation Learning, Generative Models 
+
+ACM Reference Format: 
+
+Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban. . LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization. In Proceedings of (Arxiv). ACM, New York, NY, USA, 11 pages. 
+
+## 1 Introduction 
+
+Large-scale multimodal generative models—encompassing images, video, audio and text—have propelled discrete representation learn-ing from a niche technique to a central pillar of modern machine learning. Discrete tokens provide a universal currency for com-pressing heterogeneous signals, enabling autoregressive and dif-fusion priors to operate on compact codes rather than raw high-dimensional data. In particular, vector-quantized variational autoen-coders (VQ-VAEs) convert continuous encoder outputs into discrete codes by replacing each latent vector with its nearest neighbour in a learned codebook [ 13 ]. This simple bottleneck produces low-entropy latent sequences that can be fed into large language models or used as conditioning variables, and has powered state-of-the-art generative systems ranging from text-to-image diffusion models to speech synthesis. However, classical VQ schemes break down when one attempts to scale vocabulary sizes and model capacities to the levels demanded by cutting-edge generative tasks. Because only selected codes receive gradient updates, unused entries remain frozen; simply enlarging the vocabulary therefore fails to increase representational power. Practitioners attempt to mitigate collapse with heuristics such as codebook reseeding, commitment losses, or reservoir sampling, but these add complexity and do not funda-mentally solve the problem. A robust tokenizer for next-generation generative models must address collapse at its root [17].  
+
+> arXiv:2602.16086v2 [cs.CV] 20 Feb 2026 Arxiv, Under Review, Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban (x,y,z)
+> Nearest Neighbor
+
+Figure 1: Discretization geometries in latent tokenizers. (Left:) VQ maps 𝑧 to the nearest learned codeword ˆ𝑧 (Voronoi partitions). (Middle:) FSQ quantizes each dimension with fixed axis-aligned bins (implicit lattice). (Right:) LGQ (ours) uses temperature-controlled soft assignments 𝑝 𝑡,𝑘 with straight-through hard selection, learning discretization ge-ometry end-to-end for smoother optimization and balanced utilization. 
+
+Recent attempts to mitigate collapse have revisited the optimiza-tion procedure itself. A key insight is that standard VQ performs 
+
+disjoint codebook updates: only the nearest codeword is updated per latent token, leaving most entries inactive. Approaches such as SimVQ [ 17 ] address this by reparameterizing the codebook through a latent basis so that all codes are updated jointly. While this remedy increases utilization, it still relies on hard nearest-neighbour assign-ments and requires careful tuning to avoid collapse during training. When scaling to large vocabularies or highly non-linear encoders, such techniques often underperform. At the opposite extreme, finite scalar quantization (FSQ) dispenses with vector codebooks entirely. FSQ projects latent vectors onto a small number of scalar channels and quantizes each channel to a fixed set of values. The resulting codebook is an implicit lattice with cardinality equal to the product of channel resolutions. FSQ thereby guarantees full code utilization and eliminates the machinery of commitment losses and code resets. Unfortunately, this stability derives from rigidity: each dimension is quantised independently on a fixed grid, implicitly assuming that latent dimensions are axis-aligned and homogeneously distributed. Real-world representations are typically heterogeneous, anisotropic and dataset-dependent; fixed scalar grids often misalign with the natural data manifold and squander capacity [9]. 
+
+Bridging VQ and FSQ. The dichotomy between the geometric flexibility of VQ and the robustness of FSQ motivates the search for a middle ground: a tokenizer that learns its discretization geometry from data while providing smooth, differentiable assignments that update all codes. Such a mechanism would allow large codebooks to be used effectively, adapt to complex latent distributions, and eliminate collapse without heavy heuristics. 
+
+Learnable Geometric Quantization. We propose LGQ, a unified framework that resolves the above trade-offs and elevates tokeniza-tion from an empirical hack to a principled inference problem. Fig-ure 1 summarizes the discretization geometries induced by classical VQ, structured scalar quantization (FSQ), and our proposed LGQ, highlighting the trade-off between geometric flexibility, optimiza-tion stability, and codebook utilization. LGQ maintains a shared learnable codebook C = {𝑐 1, . . . , 𝑐 𝐾 } and assigns each latent vector 
+
+𝑧 𝑒,𝑡 via a temperature-controlled Gibbs distribution over Euclidean distances: 
+
+𝑝 𝑡,𝑘 ∝ exp  −∥ 𝑧 𝑒,𝑡 − 𝑐 𝑘 ∥2/𝜏  .
+
+These soft assignments are exactly the posterior responsibilities in an isotropic Gaussian mixture model and arise as the minimizer of a variational free-energy objective (expected distance plus en-tropy). During training, the assignments are differentiable, allowing gradients to flow to every codeword and eliminating disjoint up-dates; during inference, a straight-through estimator converts soft assignments into discrete indices. By moving from hard nearest neighbours to Gibbs distributions, LGQ learns its discretization ge-ometry end-to-end from data, adapting to the intrinsic structure of encoder outputs. To avoid collapse and encourage balanced usage, LGQ introduces two complementary regularizers. A token-level 
+
+peakedness term penalises high-entropy assignments, promoting confident (near one-hot) selections without forbidding smoothness. A global usage regularizer minimizes the squared L2 norm of the empirical code usage distribution, penalising concentrated alloca-tion and encouraging balanced utilization across codebook entries. These terms operate at different scales and jointly ensure that all codewords receive meaningful updates, thereby sustaining utiliza-tion across vocabulary sizes. 
+
+Practical Impact and Contributions. From a systems perspec-tive, LGQ is a drop-in replacement for existing discrete tokenizers in autoencoder architectures. Its fully differentiable assignments obviate commitment losses and codebook reseeding and enable large vocabularies to be trained effectively. In our experiments un-der a VQGAN-style encoder–decoder backbone [ 2 ], LGQ achieves comparable or better reconstruction fidelity on ImageNet at lower effective representation rates and exhibits smooth optimization dynamics. In summary, our contributions are (i) We propose Learnable Geometric Quantization (LGQ), a discrete tokenizer that learns dis-cretization geometry via temperature-controlled Gibbs assignments, bridging VQ and FSQ. (ii) We provide theory and regularization with a variational free-energy formulation, convergence to hard quantization, Lipschitz stability, and peakedness and usage regular-izers to prevent collapse. (iii) We validate empirically on ImageNet where LGQ achieves competitive rate–distortion performance with stable training and balanced utilization with increasing vocabulary size. 
+
+## 2 Background and Related Work 
+
+Discrete latent representations are a cornerstone of modern large-scale generative modeling, enabling efficient compression and tractable sequence modeling for high-dimensional data such as images, video, and audio. VQ-VAEs introduced a principled mechanism for dis-cretization by replacing a continuous bottleneck with nearest-neighbor assignment into a learned codebook, producing discrete latent to-kens suitable for autoregressive modeling [ 12 , 13 ]. Hierarchical extensions such as VQ-VAE-2 further demonstrated that multi-level discrete representations can substantially improve fidelity and di-versity at scale [ 10 ]. Recent work has shown that, when paired with a strong visual tokenizer such as MAGVIT-v2 (also known as LFQ), masked language models operating on discrete visual tokens can LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization Arxiv, Under Review, ENCODER  
+
+> ............
+> DECODER Temperature (T)
+> Soft Hard
+
+Learnable Geometric Quantization (LGQ) 
+
+............... ......... ............... ............... ............. ................. ............ ............. ............ ............ ............ ............ Bin centers Iterations c 1 c 2 c K-1 c K 
+
+> 1.0 0.1
+
+Dead bins Active Bins 
+
+Figure 2: LGQ-VAE pipeline. The encoder 𝑓 𝜃 maps an input image 𝑥 to a continuous latent representation 𝑧 𝑒 , which is discretized using Learnable Geometric Quantization (LGQ) before reconstruction by the decoder 𝑔 𝜙 . Each latent token is softly assigned to a shared learnable codebook via temperature-controlled distance-based probabilities, inducing a continuous assignment geometry over codebook entries. During training, soft assignments enable end-to-end optimization of both encoder and codebook geometry; as the temperature is annealed, assignments gradually sharpen and converge to hard quantization. The bottom panel illustrates how active codebook entries adapt to the latent distribution over training iterations, with inactive (“dead”) bins remaining unused. This soft-to-hard discretization mechanism allows LGQ to learn an efficient, data-aligned quantization structure, avoiding fixed grids and hard nearest- neighbor assignments used in standard VQ-VAEs. 
+
+outperform diffusion models in both generation quality and effi-ciency, highlighting the central role of tokenization in large-scale visual generative modeling [14]. 
+
+## 2.1 Optimization challenges: biased gradients and representation collapse 
+
+Despite their empirical success, VQ-based tokenizers suffer from fundamental optimization challenges. A persistent challenge is the representation collapse, encompassing both token collapse (where only a small subset of codes is used) and embedding collapse (where continuous latents cluster around a few centroids). These effects become increasingly severe as vocabulary size grows, undermin-ing scalability. Recent works propose targeted remedies, including rotation-based reparameterizations and auxiliary linear mappings, such as SimVQ, which reparameterizes the codebook via a single learnable linear transformation to jointly update the latent space and prevent code collapse [ 3, 17 ]. At the same time, scaling code-books to extremely large vocabularies has been shown to be feasible only with explicit design choices that stabilize assignment and up-dates [16]. 
+
+## 2.2 Structured and implicit quantization schemes 
+
+An alternative line of work seeks quantizers with more favorable scaling properties by imposing structure or using implicit vocabu-laries. FSQ replaces explicit vector codebooks with per-dimension discretization, simplifying optimization and guaranteeing full uti-lization while retaining competitive rate–distortion performance [ 9]. Binary Spherical Quantization constructs an implicit, exponen-tially large discrete space by projecting latents onto a hypersphere and applying binary quantization, extending naturally to image and video tokenization [ 15 ]. Differentiable vector quantization meth-ods such as DiVeQ adopt reparameterization-based estimators to improve gradient fidelity through discretization [ 11 ]. Multi-stage schemes, including residual quantization with implicit neural code-books, progressively encode residual errors to increase expressivity for latent autoregressive generation [ 6, 8]. Beyond compression, quantization has been employed as an inductive bias to encourage disentanglement [ 4] and to study self-organizing discrete represen-tations [7]. 
+
+## 2.3 Latent geometry and downstream sequence modeling 
+
+Beyond rate–distortion trade-offs, the geometry of the latent space induced by a tokenizer plays a decisive role in downstream sequence modeling. Recent work shows that stabilizing the latent space is critical for image autoregressive models as well [ 18 ]. These findings point to three key desiderata for next-generation tokenizers: (i) scalable discrete capacity, (ii) robust optimization through or around the quantization operation, and (iii) latent geometries that are well aligned with transformer priors. 
+
+## 2.4 Motivation for Learnable Geometric Quantization 
+
+LGQ is designed to address these challenges in a unified and princi-pled manner. Recent work has shown that fully differentiable soft assignment schemes can substantially improve optimization sta-bility and compression efficiency but often rely on fixed similarity Arxiv, Under Review, Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban 
+
+structures or token aggregation rather than learning the assign-ment geometry itself [ 1]. By framing discretization as a geometry-learning problem, LGQ replaces hard nearest-neighbor assignment with temperature-controlled, distance-based soft assignments, en-abling differentiable soft assignments that update all codebook entries. Peakedness and global usage regularizers jointly promote confident assignments and balanced utilization, preventing collapse even at large vocabulary sizes. Unlike classical VQ, LGQ learns its discretization geometry end-to-end from data; unlike structured schemes such as FSQ or binary quantization, it retains the flexibil-ity to adapt to heterogeneous latent distributions. Grounded in a variational free-energy formulation with theoretical guarantees on convergence and stability, LGQ bridges the long-standing gap be-tween flexibility and robustness in discrete representation learning and provides a tokenizer well suited for large-scale transformer-based generative modeling. 
+
+## 3 Methods 3.1 Learnable Geometric Quantization 
+
+Our pipeline extends the classic VQ-VAE framework by replacing purely hard assignment training dynamics with a learnable geomet-ric discretization mechanism based on soft-to-hard assignments. An overview of the LGQ-VAE architecture and its soft-to-hard dis-cretization process is shown in Figure 2. Given an input image 
+
+𝑥 ∈ R𝐶 in ×𝐻 ×𝑊 , the encoder 𝑓 𝜃 first generates a continuous latent representation 𝑧 𝑒 ∈ R𝐶 ×𝐻 ′ ×𝑊 ′
+
+, where the spatial dimensions are downsampled to 𝐻 ′ = 𝐻 /16 and 𝑊 ′ = 𝑊 /16 . This representation is flattened into a sequence of 𝑇 = 𝐻 ′𝑊 ′ latent tokens 𝑧 𝑒, ·,𝑡 ∈ R𝐶 .Unlike standard VQ training, which relies on purely hard assign-ment during optimization, we maintain a shared learnable codebook 
+
+C = {𝑐 1, . . . , 𝑐 𝐾 } and compute soft assignments based on feature similarity. LGQ learns a continuous assignment geometry over the codebook through temperature-controlled soft distances, allow-ing the discretization structure to adapt to the latent distribution. Specifically, for each token, we calculate the Euclidean distance 
+
+𝑑 𝑡,𝑘 = ∥𝑧 𝑒, ·,𝑡 − 𝑐 𝑘 ∥2 to every codebook entry and derive assignment probabilities 𝑝 𝑡,𝑘 using a softmax distribution with temperature 𝜏 :
+
+𝑝 𝑡,𝑘 = exp (− 𝑑 𝑡,𝑘 /𝜏 )
+
+Í𝐾 𝑗 =1 exp (− 𝑑 𝑡,𝑗 /𝜏 ) (1) The soft assignment in the equation above arises as the unique minimizer of the free-energy functional 
+
+F ( 𝑝 ; 𝑧 ) =
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑝 𝑘 ∥𝑧 − 𝑐 𝑘 ∥2 + 𝜏 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑝 𝑘 log 𝑝 𝑘 (2) which trades off expected distortion and assignment entropy. To bridge the gap between continuous optimization and discrete rep-resentation, we employ a straight-through soft-to-hard estimator. While the discrete index is selected as 𝑘 ∗ 
+
+> 𝑡
+
+= arg max 𝑘 𝑝 𝑡,𝑘 , the quan-tized token 𝑧 𝑞, ·,𝑡 preserves gradient flow by combining the hard selection with a residual correction from the soft average: 
+
+𝑧 𝑞, ·,𝑡 =
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑝 𝑡,𝑘 𝑐 𝑘 + sg 𝑐 𝑘 ∗ 
+
+> 𝑡
+
+−
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑝 𝑡,𝑘 𝑐 𝑘 
+
+!
+
+(3) where sg (·) denotes the stop-gradient operator. This yields a quan-tized tensor 𝑧 𝑞 that is subsequently processed by the decoder to produce the reconstruction ˆ𝑥 = 𝑔 𝜓 (𝑧 𝑞 ). This mechanism allows the model to learn the codebook geometry directly from the data via soft assignments, avoiding fixed discretization grids and the hard nearest-neighbor quantization commonly used in standard VQ-VAEs. 
+
+## 3.2 Model Training 
+
+We optimize a composite objective function that balances recon-struction fidelity with latent space regularization. The total training objective is defined as the sum of a reconstruction term and a latent discretization term, L = Lrecon (𝑥, ˆ𝑥 ) + L disc (𝑧 𝑒 , 𝑧 𝑞 ). For reconstruc-tion, we minimize the pixel-wise L1 distance Lrecon (𝑥, ˆ𝑥 ) = ∥𝑥 − ˆ𝑥 ∥1
+
+between the original and decoded images. The latent discretiza-tion loss Ldisc encourages consistency between continuous and quantized latents and prevents codebook collapse. It comprises the squared error between continuous and quantized latents, along with auxiliary penalties for assignment peakedness and bin usage: 
+
+Ldisc = ∥𝑧 𝑞 − 𝑧 𝑒 ∥22 + 𝜆 peak Lpeak + 𝜆 bins Lbins , (4) where 𝑧 𝑞 and 𝑧 𝑒 are quantized and continuous latent, respec-tively, Lpeak is the peakedness regularizer to encourage confident token assignments and Lbins is a global usage regularizer to prevent codebook collapse. 𝜆 peak and 𝜆 bins are scalar weights that control the strength of each regularizer. 
+
+Lpeak is defined as the average deviation from peaked (one-hot) assignments across all tokens: 
+
+Lpeak = E𝑛 [max (0, 1 −∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑛,𝑘
+
+)] (5) and Lbins is defined as the squared L2 norm of the marginal code usage distribution: 
+
+Lbins =∑︁ 
+
+> 𝑘
+
+¯𝑝 2 
+
+> 𝑘
+
+(6) where ¯𝑝 𝑘 = 1
+
+> 𝑁
+
+Í𝑛 𝑝 𝑛,𝑘 is the empirical marginal probability of code 𝑘 across all 𝑁 tokens. This is minimized when code usage is uniform ( ¯𝑝 𝑘 = 1/𝐾 for all 𝑘 ) and increases as usage becomes concentrated on fewer codes (See A.4). 
+
+## 3.3 Convergence to Hard Quantization 
+
+The temperature parameter 𝜏 controls the stochasticity of the as-signments. When 𝜏 is large, the assignments become diffuse; as 𝜏 
+
+becomes small, the assignments become more deterministic. We formalize this behavior. 
+
+Theorem 3.1 (Soft–to–hard convergence) . Suppose 𝑐 1, . . . , 𝑐 𝐾 are pairwise distinct. For fixed 𝑧 , the soft assignment 𝑝 (𝑘 | 𝑧 ) defined in 
+
+(1) converges to a one–hot distribution as 𝜏 → 0:
+
+lim  
+
+> 𝜏 →0
+
+𝑝 (𝑘 | 𝑧 ) = I[𝑘 = 𝑘 ∗ (𝑧 )] (7) 
+
+where 
+
+𝑘 ∗ (𝑧 ) = arg min  
+
+> 𝑗
+
+∥𝑧 − 𝑐 𝑗 ∥2.
+
+Proof. Let 𝑚 = min 𝑗 ∥𝑧 − 𝑐 𝑗 ∥2 and define Δ𝑘 = ∥𝑧 − 𝑐 𝑘 ∥2 − 𝑚 .Then LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization Arxiv, Under Review, 
+
+𝑝 (𝑘 | 𝑧 ) = exp (− Δ𝑘 /𝜏 )
+
+> 𝐾
+
+∑︁ 
+
+> 𝑗 =1
+
+exp (− Δ𝑗 /𝜏 )
+
+(8) If 𝑘 ∗ (𝑧 ) is the unique minimizer of ∥𝑧 − 𝑐 𝑘 ∥2, then Δ𝑘 ∗ (𝑧 ) = 0
+
+and Δ𝑗 > 0 for 𝑗 ≠ 𝑘 ∗ (𝑧 ). For 𝑗 ≠ 𝑘 ∗ (𝑧 ) we have exp (− Δ𝑗 /𝜏 ) → 0
+
+as 𝜏 → 0. Therefore the denominator converges to 1 and the only nonvanishing term in the numerator corresponds to 𝑘 ∗ (𝑧 ). Thus 
+
+𝑝 (𝑘 | 𝑧 ) → 0 for 𝑘 ≠ 𝑘 ∗ (𝑧 ) and 𝑝 (𝑘 ∗ (𝑧 ) | 𝑧 ) → 1. □
+
+## 3.4 Optimization Stability and Gradient Regularity 
+
+LGQ training involves differentiating through the soft assignments with respect to both the encoder outputs and the codebook param-eters. Under bounded latent and codebook norms, these gradients are well behaved. 
+
+Proposition 3.2 (Lipschitz continuity) . Assume ∥𝑧 ∥2 ≤ 𝐵 and 
+
+∥𝑐 𝑘 ∥2 ≤ 𝐵 for all 𝑧 and 𝑐 𝑘 , and that 𝑧 is such that ∥𝑧 − 𝑐 𝑘 ∥2 > 0 for all 𝑘 . Then for any 𝜏 > 0 and any two such latents 𝑧 1, 𝑧 2 we have 
+
+∥𝑝 (· | 𝑧 1) − 𝑝 (· | 𝑧 2)∥ 1 ≤ 2𝐾 𝜏 ∥𝑧 1 − 𝑧 2 ∥2 (9) 
+
+Additionally, 𝑝 (𝑘 | 𝑧 ) is Lipschitz-continuous in each centroid 𝑐 𝑗 .
+
+Proof. Let 𝑑 𝑘 (𝑧 ) = ∥𝑧 − 𝑐 𝑘 ∥2. Then 
+
+𝑝 𝑘 (𝑧 ) = exp (− 𝑑 𝑘 /𝜏 )/ 𝑍 (𝑧 ) (10) with 
+
+𝑍 (𝑧 ) =∑︁ 
+
+> 𝑗
+
+exp (− 𝑑 𝑗 /𝜏 ). (11) For 𝑑 𝑘 > 0, ∇𝑧 𝑑 𝑘 = (𝑧 − 𝑐 𝑘 )/ 𝑑 𝑘 .
+
+∇𝑧 exp (− 𝑑 𝑘 /𝜏 ) = exp (− 𝑑 𝑘 /𝜏 ) · (− 1/𝜏 )( 𝑧 − 𝑐 𝑘 )/ 𝑑 𝑘 (12) 
+
+⇒ ∇ 𝑧 𝑍 =∑︁ 
+
+> 𝑗
+
+exp (− 𝑑 𝑗 /𝜏 ) · (− 1/𝜏 )( 𝑧 − 𝑐 𝑗 )/ 𝑑 𝑗 (13) 
+
+⇒ ∇ 𝑧 𝑝 𝑘 = 𝑝 𝑘 
+
+𝜏 −𝑧 − 𝑐 𝑘 
+
+𝑑 𝑘 
+
++∑︁ 
+
+> 𝑗
+
+𝑝 𝑗 
+
+𝑧 − 𝑐 𝑗 
+
+𝑑 𝑗 
+
+!
+
+. (14) For each 𝑗 with 𝑑 𝑗 > 0, ∥( 𝑧 − 𝑐 𝑗 )/ 𝑑 𝑗 ∥2 = 1.
+
+⇒ ∥∇ 𝑧 𝑝 𝑘 ∥2 ≤ ( 𝑝 𝑘 /𝜏 )( 1 +∑︁ 
+
+> 𝑗
+
+𝑝 𝑗 ) = 2𝑝 𝑘 /𝜏 ≤ 2/𝜏 . (15) By the mean value theorem, 
+
+|𝑝 𝑘 (𝑧 1) − 𝑝 𝑘 (𝑧 2)| ≤ ( 2/𝜏 )∥ 𝑧 1 − 𝑧 2 ∥2 (16) Summing over 𝑘 yields 
+
+∥𝑝 (· | 𝑧 1) − 𝑝 (· | 𝑧 2)∥ 1 ≤ ( 2𝐾 /𝜏 )∥ 𝑧 1 − 𝑧 2 ∥2 (17) A similar argument gives Lipschitz continuity in each 𝑐 𝑗 . □
+
+To propagate gradients through non–differentiable argmax op-erations, LGQ uses the straight–through estimator (STE): in the forward pass one applies arg max 𝑘 𝑝 𝑘 (𝑧 ) to obtain a discrete index, while in the backward pass one substitutes the derivative of 𝑝 𝑘 (𝑧 ).This estimator introduces a bias because the gradient of a one–hot vector differs from that of 𝑝 . However, the bias vanishes as the assignments become peaked during annealing. Moreover, the STE reduces gradient variance and yields stable training. For a detailed analysis we refer to [ 5]. Unless otherwise stated, we set the weights 
+
+𝜆 peak = 𝜆 bins = 0.005 . Finally, to stabilize the learning dynamic, the softmax temperature 𝜏 is annealed linearly from 𝜏 start = 1.0 to 
+
+𝜏 end = 0.1 over the total training epochs 𝐸 :
+
+𝜏 (𝑒 ) = 𝜏 start + ( 𝜏 end − 𝜏 start )   𝑒 −1
+
+> 𝐸 −1
+
+ (18) 
+
+## 4 Results 4.1 Experimental Setup 
+
+We adopt a VQGAN-style encoder–decoder backbone in all experi-ments to ensure a controlled and fair comparison with discretization-based approaches. The architectural components of the encoder and decoder, the latent dimensionality, and the spatial downsam-pling factor are kept fixed across all settings; only the discretization mechanism is varied. The encoder downsamples the input image by a fixed compression factor of 16 , producing a latent representa-tion of spatial resolution 𝐻 ′ = 𝐻 /16 and 𝑊 ′ = 𝑊 /16 with 𝐶 = 64 
+
+latent channels. This configuration matches the tokenizer setup commonly used in VQGAN based pipelines and is kept constant throughout all experiments. All experiments are conducted on the ImageNet dataset resized to 128 × 128 , focusing exclusively on dis-cretization behavior and reconstruction quality. Following the LGQ formulation, the spatial dimensions of the latent representation are flattened, yielding 𝑇 = 𝐻 ′𝑊 ′ latent tokens, each represented as a vector in R𝐶 . Discretization is performed using a single shared learn-able vector codebook of size 𝐾 = 16 ,384 , with temperature-controlled soft assignments and a straight-through estimator. Evaluation fo-cuses on reconstruction quality and discretization dynamics. We report reconstruction FID (rFID), reconstruction loss measured by mean squared error, PSNR, LPIPS and SSIM. All metrics are computed using reconstructions obtained from the discrete latent representations. For codebook utilization, we report two metrics: 
+
+active codes (number of codebook entries used at least once) and 
+
+effective codebook size 𝐾 eff , defined as the perplexity of the empirical code usage distribution 
+
+## 4.2 Reconstruction Quality and Codebook Utilization 
+
+LGQ achieves strong reconstruction quality while substantially improving over standard vector quantization, as shown in Table 1. In particular, LGQ attains the lowest reconstruction distortion in terms of rFID (110.64), outperforming all baselines, including FSQ (125.56), VQ (121.26), LFQ (118.08), and SIM-VQ (117.77). LGQ also achieves the best SSIM (0.6335) and LPIPS (0.4864), indicating improved structural fidelity and perceptual quality. While FSQ and SIM-VQ achieve slightly lower reconstruction loss and strong PSNR, these gains are accompanied by near-complete codebook utilization by construction. In contrast, LGQ attains com-parable or superior reconstruction quality while activating sub-stantially fewer codebook entries (8,199 vs. ∼16K), resulting in a much lower effective rate. This demonstrates that LGQ’s perfor-mance stems from learning an efficient, data-aligned discretization Arxiv, Under Review, Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban 
+
+Figure 3: Training dynamics of reconstruction quality met-rics. Per-epoch comparison of models at 128 × 128 resolution over 61 training epochs. Metrics include relative Fréchet In-ception Distance (rFID, ↓), peak signal-to-noise ratio (PSNR, 
+
+↑), structural similarity index (SSIM, ↑), and learned percep-tual image patch similarity (LPIPS, ↓). 
+
+geometry rather than relying on codebook saturation. As further illustrated in Figure 3, LGQ exhibits smooth and stable conver-gence across both reconstruction and utilization metrics. Large-vocabulary scaling behavior. To assess how discretization methods behave under substantially larger vocabularies, we additionally report results at a codebook size of K=65,536 in Table 1. All models are evaluated at an early training stage (epoch 9), and they pro-vide a controlled snapshot of relative reconstruction quality and utilization trends under large codebook sizes. 
+
+Table 1: Reconstruction quality and scaling behavior across codebook sizes. Top: main comparison at 𝐾 =16 ,384 (epoch 61). Bottom: large-vocabulary scaling at 𝐾 =65 ,536 (epoch 9). Lower rFID and reconstruction loss are better; higher PSNR, SSIM, utilization, and number of active codes indicate improved performance.                                                                         
+
+> Method rFID ↓PSNR ↑SSIM ↑Rec. Loss ↓Util. (%) Active
+> Main setting: 𝐾 =16 ,384
+> FSQ 125.56 21.38 0.6331 0.2331 100.0 16384 LFQ 118.08 20.74 0.6118 0.2586 68.1 11165 SIM-VQ 117.77 21.35 0.6261 0.2330 98.9 16216 VQ 121.26 20.35 0.5975 0.2713 99.8 16358 LGQ 110.64 21.26 0.6335 0.2372 50.0 8199
+> Large-vocabulary scaling: 𝐾 =65 ,536
+> FSQ 114.76 21.47 0.6348 0.2265 95.9 62860 LFQ 115.07 20.91 0.6238 0.2525 52.4 34323 SIM-VQ 125.98 20.97 0.6085 0.2418 97.8 64088 VQ 121.96 20.60 0.6075 0.2639 8.2 5391 LGQ 111.08 21.53 0.6401 0.2338 22.5 14716
+
+Despite the limited number of training epochs, LGQ consistently achieves strong reconstruction quality and yielding the lowest rFID and highest SSIM while operating at substantially lower utilization compared to baselines that activate nearly the entire codebook. This indicates that LGQ can effectively allocate discrete capacity even in large-vocabulary regimes, achieving favorable reconstruc-tion–utilization trade-offs early in training. 
+
+## 4.3 Rate–Distortion Trade-offs 
+
+While reconstruction fidelity and codebook utilization are often reported as separate metrics, their interaction is more naturally understood through a rate -distortion perspective. In this setting, distortion is measured using distributional (rFID) and perceptual (LPIPS) reconstruction metrics, while the effective representation rate reflects how much discrete capacity is actually used by the tokenizer. We first approximate the rate using empirical codebook utilization, measured by the number of active codes. Figure 6 il-lustrates the resulting utilization- distortion behavior across dis-cretization methods. Methods such as FSQ and SimVQ achieve near-complete utilization by construction; however, this forced sat-uration does not consistently yield lower distortion. In particular, increasing utilization beyond a certain point produces diminishing returns in both rFID and LPIPS, indicating inefficient allocation of representational capacity.In contrast, LGQ achieves comparable or better distortion while operating at a significantly lower effective rate (approximately 40-55% utilization) compared to baselines that saturate the codebook. This behavior suggests that LGQ learns a dis-cretization geometry that aligns more efficiently with the empirical latent distribution, allowing a smaller subset of codes to represent the data without sacrificing reconstruction quality, resulting in a favorable utilization–distortion trade-off. To better understand the origin of LGQ’s favorable rate–distortion LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization Arxiv, Under Review, 
+
+Figure 4: Visualization of encoder outputs (blue) and active codebook entries (red) using UMAP. Blue contours represent the density of encoder outputs, while red points denote active codebook entries.The latent distributions differ across methods as each quantizer is trained end-to-end with its own encoder; the relevant comparison is the alignment between codes (red) and latent density (blue) within each plot, not the shape of the latent space across plots. SimVQ achieves dense coverage of the latent manifold by activating nearly the entire codebook, whereas LGQ attains comparable coverage using substantially fewer active codes. This illustrates that LGQ allocates codebook capacity more selectively, supporting similar reconstruction quality at lower effective representation rates. 
+
+behavior, we relate the utilization–distortion curves in Figure 4 to the latent space visualizations in Figure 6. The UMAP projections reveal that LGQ activates a compact but well-aligned subset of codebook entries that closely follow the high-density regions of the encoder latent distribution. Despite using only approximately 50% of the available codebook, the active LGQ codes collectively span the full latent manifold, providing coverage comparable to methods such as SimVQ that activate nearly the entire codebook. This geo-metric alignment directly explains the improved rate–distortion trade-off observed for LGQ. Taken together, these results show that LGQ’s advantage does not arise from increased representational capacity, but from more efficient allocation of that capacity. By learning a discretization geometry that adapts to the empirical la-tent distribution, LGQ concentrates active codes where they are most useful, achieving better reconstruction quality while operat-ing at a lower effective rate. This coupling between learned latent geometry and rate–distortion efficiency distinguishes LGQ from fixed or uniformly utilized discretization schemes. 
+
+## 4.4 Center Drift Magnitude 
+
+A defining characteristic of LGQ is that discretization geometry is learned end-to-end rather than being fixed by design. To verify that codebook centers actively adapt during training, we analyze their temporal evolution across epochs. Let v𝑘 (𝑡 ) ∈ R𝐶 denote the 
+
+𝑘 -th codebook vector (center of the 𝑘 -th quantization cell) at epoch 
+
+𝑡 , where 𝐾 is the codebook size and 𝐶 is the latent dimension. We define the center drift magnitude for codebook entry 𝑘 as 
+
+Δ𝑘 = ∥v𝑘 (𝑇 ) − v𝑘 (0)∥ 2 ,
+
+where 𝑇 denotes the final training epoch. Beyond endpoint dis-placement, we also track the mean absolute change in codebook centers between successive epochs, which provides a finer-grained view of learning dynamics over time. As shown in Figure 5, code-book centers undergo substantial movement during the early stages of training, followed by a gradual reduction in update magnitude as training progresses. This pattern indicates an initial phase of rapid geometric reorganization, during which the codebook adapts to the empirical distribution of latent activations, followed by a stabilization phase consistent with convergence. Importantly, the observed drift is neither uniform nor random: individual codebook Arxiv, Under Review, Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban 
+
+Figure 5: Evolution of discretization bin centers during training. Right: Trajectories of a subset of individual bin centers over training epochs, highlighting structured and heterogeneous adaptation. Left: Distribution of bin center values at initialization and at the final epoch, showing a learned, non-trivial reshaping of the codebook. 
+
+Figure 6: Rate–distortion behavior across discretization meth-ods. Distortion is measured using rFID (left) and LPIPS (right), while rate is approximated by effective codebook utilization or the number of active codes. 
+
+vectors exhibit structured and heterogeneous trajectories, as ev-idenced by the consistent separation and relative positioning of centers over epochs. This behavior is inconsistent with trivial global shifts and instead indicates structured, data-dependent adaptation of discretization geometry. The codebook therefore functions as an adaptive quantization mechanism whose entries are optimized jointly with the encoder and decoder, rather than as a static or incidental lookup table. All reported experiments are conducted at intermediate training stages. We observe that relative trends in utilization, distortion, and geometry stabilize early, and extended training primarily refines reconstruction metrics without altering the qualitative conclusions. 
+
+## 5 Conclusion 
+
+We introduced Learnable Geometric Quantization (LGQ) , a discrete image tokenizer that learns discretization geometry end-to-end via temperature-controlled soft-to-hard vector assignments. LGQ bridges the flexibility of vector quantization and the stability of structured quantizers by replacing purely hard nearest-neighbor training dynamics and fixed scalar grids with adaptive geometry learning. As a drop-in tokenizer within a controlled VQGAN-style autoencoder, LGQ yields stable optimization, confident assignments, and balanced code usage. Across the ImageNet dataset in different vocabulary sizes, LGQ consistently improves over standard VQ and matches or exceeds strong baselines such as FSQ while avoiding codebook collapse. Importantly, LGQ achieves these gains with substantially fewer active codebook entries, placing it at a more favorable point on the utilization–distortion frontier. These results highlight a key takeaway: utilization alone is not a sufficient mea-sure of discretization quality—effective tokenization must allocate discrete capacity in accordance with the empirical latent distribu-tion. By learning discretization geometry directly from data through differentiable soft assignments and regularizing for peakedness and global usage, LGQ concentrates capacity where it is most needed without resorting to brittle heuristics. More broadly, viewing quan-tization as geometry learning provides a principled foundation for designing efficient and scalable discrete representations, and mo-tivates future extensions to latent priors and higher-dimensional tokenization (e.g., video and multimodal settings). 
+
+## 6 Limitations and Future Work 
+
+Our evaluation is restricted to ImageNet at 128 ×128 resolution; validation across additional datasets, modalities (video, audio), and higher resolutions would strengthen generalizability claims. Al-though LGQ is designed as a general-purpose discrete tokenizer, our evaluation focuses on reconstruction and representation anal-ysis rather than end-to-end generative modeling with a learned LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization Arxiv, Under Review, 
+
+prior (e.g., MaskGIT). Evaluating how learned discretization geom-etry impacts downstream generation quality, sampling efficiency, and training stability of token-based generators is an important direction for future work. Further experiments are needed to char-acterize LGQ’s scaling behavior across a wider range of codebook sizes and training durations, particularly to validate long-term con-vergence properties and utilization dynamics at large vocabularies. Finally, while we provide convergence and stability guarantees, for-mal information-theoretic rate-distortion bounds remain an open theoretical direction. 
+
+## References 
+
+[1] Hao Chen, Ze Wang, Xiang Li, Ximeng Sun, Fangyi Chen, Jiang Liu, Jindong Wang, Bhiksha Raj, Zicheng Liu, and Emad Barsoum. 2025. SoftVQ-VAE: Efficient 1-Dimensional Continuous Tokenizer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . 28358–28370. [2] Patrick Esser, Robin Rombach, and Bjorn Ommer. 2021. Taming Transformers for High-Resolution Image Synthesis. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . 12873–12883. [3] Christopher Fifty, Ronald G. Junkins, Dennis Duan, Aniketh Iyengar, Jerry W. Liu, Ehsan Amid, Sebastian Thrun, and Christopher Ré. 2025. Restructuring Vector Quantization with the Rotation Trick. arXiv:2410.06424 [cs.LG] https: //arxiv.org/abs/2410.06424 [4] Kyle Hsu, William Dorrell, James Whittington, Jiajun Wu, and Chelsea Finn. 2023. Disentanglement via Latent Quantization. In Advances in Neural Information Processing Systems , A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine (Eds.), Vol. 36. Curran Associates, Inc., 45463–45488. https://proceedings.neurips.cc/paper_files/paper/2023/file/ 8e63972d4d9d81b31459d787466ce271-Paper-Conference.pdf [5] Minyoung Huh, Brian Cheung, Pulkit Agrawal, and Phillip Isola. 2023. Straight-ening out the straight-through estimator: Overcoming optimization challenges in vector quantized networks. In International Conference on Machine Learning .PMLR, 14096–14113. [6] Iris A. M. Huijben, Matthijs Douze, Matthew Muckley, Ruud J. G. van Sloun, and Jakob Verbeek. 2024. Residual Quantization with Implicit Neural Codebooks. arXiv:2401.14732 [cs.LG] https://arxiv.org/abs/2401.14732 [7] Kazuki Irie, Róbert Csordás, and Jürgen Schmidhuber. 2024. Self-organising Neu-ral Discrete Representation Learning à la Kohonen. In Artificial Neural Networks and Machine Learning – ICANN 2024 , Michael Wand, Kristína Malinovská, Jür-gen Schmidhuber, and Igor V. Tetko (Eds.). Springer Nature Switzerland, Cham, 343–362. [8] Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. 2022. Autoregressive Image Generation using Residual Quantization. arXiv:2203.01941 [cs.CV] https://arxiv.org/abs/2203.01941 [9] Fabian Mentzer, David Minnen, Eirikur Agustsson, and Michael Tschannen. 2023. Finite Scalar Quantization: VQ-VAE Made Simple. arXiv:2309.15505 [cs.CV] https://arxiv.org/abs/2309.15505 [10] Ali Razavi, Aaron van den Oord, and Oriol Vinyals. 2019. Generating Diverse High-Fidelity Images with VQ-VAE-2. In Advances in Neural Information Process-ing Systems , H. Wallach, H. Larochelle, A. Beygelzimer, F. d 'Alché-Buc, E. Fox, and R. Garnett (Eds.), Vol. 32. Curran Associates, Inc. https://proceedings.neurips. cc/paper_files/paper/2019/file/5f8e2fa1718d1bbcadf1cd9c7a54fb8c-Paper.pdf [11] Mohammad Hassan Vali, Tom Bäckström, and Arno Solin. 2025. Di-VeQ: Differentiable Vector Quantization Using the Reparameterization Trick. arXiv:2509.26469 [cs.LG] https://arxiv.org/abs/2509.26469 [12] Aaron van den Oord, Oriol Vinyals, and koray kavukcuoglu. 2017. Neural Discrete Representation Learning. In Advances in Neural Information Processing Systems ,I. Guyon, U. Von Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett (Eds.), Vol. 30. Curran Associates, Inc. https://proceedings.neurips.cc/ paper_files/paper/2017/file/7a98af17e63a0ac09ce2e96d03992fbc-Paper.pdf [13] Aaron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. 2018. Neural Discrete Representation Learning. arXiv:1711.00937 [cs.LG] https://arxiv.org/ abs/1711.00937 [14] Lijun Yu, José Lezama, Nitesh B. Gundavarapu, Luca Versari, Kihyuk Sohn, David Minnen, Yong Cheng, Vighnesh Birodkar, Agrim Gupta, Xiuye Gu, Alexander G. Hauptmann, Boqing Gong, Ming-Hsuan Yang, Irfan Essa, David A. Ross, and Lu Jiang. 2024. Language Model Beats Diffusion – Tokenizer is Key to Visual Generation. arXiv:2310.05737 [cs.CV] https://arxiv.org/abs/2310.05737 [15] Yue Zhao, Yuanjun Xiong, and Philipp Krähenbühl. 2024. Image and Video Tokenization with Binary Spherical Quantization. arXiv:2406.07548 [cs.CV] https://arxiv.org/abs/2406.07548 [16] Lei Zhu, Fangyun Wei, Yanye Lu, and Dong Chen. 2024. Scaling the Codebook Size of VQ-GAN to 100,000 with a Utilization Rate of 99%. In Advances in Neural Information Processing Systems , A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang (Eds.), Vol. 37. Curran Associates, Inc., 12612–12635. doi:10.52202/079017-0401 [17] Yongxin Zhu, Bocheng Li, Yifei Xin, Zhihua Xia, and Linli Xu. 2025. Addressing Representation Collapse in Vector Quantized Models with One Linear Layer. arXiv:2411.02038 [cs.LG] https://arxiv.org/abs/2411.02038 [18] Yongxin Zhu, Bocheng Li, Hang Zhang, Xin Li, Linli Xu, and Lidong Bing. 2024. Stabilize the Latent Space for Image Autoregressive Modeling: A Unified Per-spective. arXiv:2410.12490 [cs.CV] https://arxiv.org/abs/2410.12490 
+
+## A Appendix A.1 Ablation study on the auxilary losses 
+
+Table 2 examines the influence of different temperature schedules on LGQ training stability and performance. Fast annealing yields the best overall results, achieving the lowest rFID and LPIPS while maintaining high PSNR, SSIM, and effective codebook usage. In con-trast, a fixed temperature leads to inferior performance and reduced utilization, suggesting insufficient pressure toward confident dis-cretization. Slow annealing results in catastrophic collapse, where almost all bins become inactive, severely degrading reconstruc-tion quality. This highlights the sensitivity of LGQ to temperature dynamics and underscores the importance of sufficiently rapid an-nealing to encourage discrete commitment without destabilizing training. 
+
+Table 2: Effect of temperature annealing schedule on LGQ. Schedule rFID ↓ PSNR ↑ SSIM ↑ LPIPS ↓ Util. (%) Active                         
+
+> Fast annealing (1.0 →0.05) 118.36 21.12 0.6257 0.4994 57.96 9496 Fixed temperature (1.0 →0.1) 123.50 21.01 0.6152 0.5103 46.61 7637 Slow annealing (1.0 →0.2) 364.51 11.46 0.3339 0.8341 0.01 1
+
+Table 4 shows that introducing either peakedness or usage regu-larization alone reduces codebook utilization but also degrades re-construction quality relative to the unregularized model, indicating that each constraint in isolation enforces a suboptimal rate–distortion trade-off. In contrast, jointly applying both regularizers recov-ers much of the reconstruction quality while operating at a sub-stantially lower effective rate, yielding a more favorable utiliza-tion–distortion balance. 
+
+## A.2 Matched Effective Capacity ( 𝐾 eff )
+
+To isolate the effect of discretization geometry from raw vocab-ulary size, we evaluate all tokenizers under a matched effective capacity constraint. Specifically, we restrict all methods to the same number of active codes chosen to match the natural code usage of LGQ. We set 𝐾 eff to the number of distinct codes used by LGQ on the validation set in one evaluation pass. For each baseline, we collect code usage counts on the same validation pass and keep the top-𝐾 eff most frequent codes As shown in Table 5, LGQ achieves reconstruction distortion comparable to VQ (rFID 101.88 vs. 100.45), while outperforming FSQ and SimVQ by a substantial margin (rFID 109.01 and 120.00, respectively). At the same effective capacity, LGQ also attains the highest PSNR (22.35) among all methods, indicat-ing improved signal fidelity at equal discrete budget.Standard VQ can marginally outperform LGQ in rFID. However, VQ requires careful tuning and collapses outside this narrow regime, whereas LGQ naturally converges to favorable operating points with lower Arxiv, Under Review, Idil Bilge Altun, Mert Onur Cakiroglu, Elham Buxton, Mehmet Dalkilic, and Hasan Kurban 
+
+Figure 7: Perplexity and marginal entropy dynamics over training. Top: Effective codebook size (perplexity 𝐾 eff ) as a function of training epoch. Bottom: Marginal assignment en-tropy measured as log 2 (perplexity ). FSQ and SimVQ rapidly reach near-saturated entropy, reflecting full codebook uti-lization by design, while VQ exhibits entropy collapse. LGQ converges to a stable intermediate entropy regime, indicating selective yet balanced use of discrete capacity that underlies its favorable rate–distortion behavior. Table 3: Reconstruction quality and entropy-based rate across discretization methods. Lower rFID indicates better recon-struction quality, while entropy (in bits) reflects the effective representation rate. Model rFID ↓ Entropy (bits) 
+
+SIM_VQ 114.42 13.68 LGQ 115.31 12.58 FSQ 116.62 13.41 LFQ 123.48 12.39 VQ 123.47 10.56 entropy and stable utilization. LGQ’s advantage therefore lies in robustness and automatic rate selection rather than dominating VQ at fixed Keff. These results suggest that LGQ’s learned discretiza-tion geometry enables competitive reconstruction quality without relying on near-saturated codebook usage, supporting the claim 
+
+Figure 8: Entropy-based rate–distortion analy-sis.Reconstruction distortion (rFID) as a function of entropy-based rate. Each point corresponds to a different training epoch. Table 4: Effect of regularization on LGQ. Ablation of peaked-ness and usage regularization. Metrics reported at epoch 2 (LPIPS computed). Setting rFID ↓ PSNR ↑ SSIM ↑ LPIPS ↓ Util. (%) ↑ Active                                         
+
+> None (0,0)128.16 20.77 0.6044 0.5240 41.43 6787 Weak (0.002 ,0.002 )127.31 20.84 0.6010 0.5269 36.30 5947 Bins only (0,0.01 )127.91 20.81 0.5997 0.5283 37.37 6102 Peak only (0.01 ,0)127.66 20.87 0.5989 0.5301 39.09 6404 Strong (0.01 ,0.01 )126.43 20.81 0.6011 0.5271 39.09 6402
+
+that its advantages stem from more efficient allocation of discrete representational capacity rather than increased effective rate. 
+
+Table 5: Evaluation at matched effective capacity ( 𝐾 = 8241 
+
+active codes). 
+
+Model rFID ↓ PSNR ↑ SSIM ↑ Rec. Loss ↓
+
+LGQ (Ours) 101.88 22.35 0.646 0.203 FSQ 109.01 22.13 0.639 0.212 SimVQ 120.00 21.82 0.618 0.216 VQ 100.45 22.21 0.642 0.216 
+
+## A.3 Rate Distortion via Entropy 
+
+To complement the utilization-based analysis in Section 4.3, we measure rate using marginal entropy of code usage in bits (Table 3). We first examine how different discretization methods evolve their effective rate during training. Figure 7 reports the marginal entropy (in bits) and the corresponding perplexity of code usage across training epochs. Standard VQ exhibits entropy collapse, re-flecting severe codebook under-utilization. In contrast, FSQ and SimVQ operate at near-saturated entropy by construction, as their discretization schemes enforce near-uniform code usage regardless LGQ: Learning Discretization Geometry for Scalable and Stable Image Tokenization Arxiv, Under Review, 
+
+of the latent data distribution. LGQ displays qualitatively different behavior: entropy increases during early training as the codebook reorganizes, then stabilizes at an intermediate value. This indicates that LGQ autonomously selects an effective operating rate, rather than collapsing or saturating the codebook. We next relate this learned rate to reconstruction quality. Figure 8 plots reconstruction distortion (rFID) as a function of entropy-based rate, with each point corresponding to a different training epoch. While FSQ and SimVQ cluster at high entropy values with limited variation in distortion, LGQ traces a clear rate–distortion curve, achieving comparable or lower rFID at substantially lower entropy. This demonstrates that LGQ allocates probability mass over codes more efficiently, concentrating representational capacity in regions aligned with the empirical latent distribution. 
+
+## A.4 Regularizer Optimality Proofs 
+
+We formally prove that the peakedness and usage regularizers introduced in Section 3.2 drive the model toward their intended be-haviors. Proposition A.1 shows that minimizing Lpeak pushes each token assignment toward a peaked (one-hot) distribution, ensuring confident discretization. Proposition A.2 shows that minimizing 
+
+Lbins encourages uniform code usage across the codebook, prevent-ing collapse. 
+
+Proposition A.1 (Peaked assignments) . Let 𝑝 = (𝑝 1, . . . , 𝑝 𝐾 ) be a categorical distribution on [𝐾 ]. Then Í𝐾 𝑘 =1 𝑝 2 
+
+> 𝑘
+
+≤ 1, with equality if and only if 𝑝 is a Dirac (one-hot) distribution. Hence max (0, 1 −
+
+Í𝑘 𝑝 2 
+
+> 𝑘
+
+) ≥ 0 with equality iff 𝑝 is one-hot. Minimizing 
+
+Lpeak = E𝑛 [max (0, 1 −∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑛,𝑘
+
+)] (19) 
+
+therefore, drives each assignment 𝑝 𝑛 toward a one-hot distribution. 
+
+Proof. For any probability vector 𝑝 , Í𝑘 𝑝 𝑘 = 1 and 𝑝 𝑘 ≥ 0. By Cauchy–Schwarz, 
+
+1 = (∑︁ 
+
+> 𝑘
+
+𝑝 𝑘 · 1)2 ≤ ( ∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑘
+
+)( ∑︁ 
+
+> 𝑘
+
+12) = 𝐾 ∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑘
+
+(20) 
+
+⇒∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑘
+
+≥ 1/𝐾, ∑︁ 
+
+> 𝑘
+
+𝑝 2 
+
+> 𝑘
+
+≤ ( ∑︁ 
+
+> 𝑘
+
+𝑝 𝑘 )2 = 1 (21) with equality iff exactly one 𝑝 𝑘 = 1 and the rest zero. Thus 
+
+Í𝑘 𝑝 2 
+
+> 𝑘
+
+≤ 1 with equality iff 𝑝 is one-hot, so 1 − Í𝑘 𝑝 2 
+
+> 𝑘
+
+≥ 0 with equality iff 𝑝 is one-hot. Minimizing Lpeak thus drives each 𝑝 𝑛 
+
+toward a one-hot distribution. □
+
+Proposition A.2 (Balanced codebook utilization) . Let ¯𝑝 ∈ R𝐾 be a probability vector (the empirical marginal of assignments). Then 
+
+Lbins =
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+¯𝑝 2 
+
+> 𝑘
+
+≥ 1/𝐾 (22) 
+
+with equality if and only if ¯𝑝 is uniform ( ¯𝑝 𝑘 = 1/𝐾 for all 𝑘 ). Mini-mizing Lbins penalises concentrated usage and pushes ¯𝑝 toward uni-formity. 
+
+Proof. We have ¯𝑝 𝑘 ≥ 0 and Í𝑘 ¯𝑝 𝑘 = 1. By Cauchy–Schwarz, 
+
+1 = (∑︁ 
+
+> 𝑘
+
+¯𝑝 𝑘 · 1)2 ≤ ( ∑︁ 
+
+> 𝑘
+
+¯𝑝 2 
+
+> 𝑘
+
+)( ∑︁ 
+
+> 𝑘
+
+12) = 𝐾 ∑︁ 
+
+> 𝑘
+
+¯𝑝 2 
+
+> 𝑘
+
+(23) so Lbins = Í𝑘 ¯𝑝 2 
+
+> 𝑘
+
+≥ 1/𝐾 . Equality holds iff ( ¯𝑝 1, . . . , ¯𝑝 𝐾 ) is propor-tional to (1, . . . , 1), i.e. ¯𝑝 𝑘 = 1/𝐾 for all 𝑘 . □

@@ -1,0 +1,651 @@
+Title: Generative Video Compression with One-Dimensional Latent Representation
+
+URL Source: https://arxiv.org/pdf/2603.15302v1
+
+Published Time: Tue, 17 Mar 2026 05:38:55 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Generative Video Compression with One-Dimensional Latent Representation 
+
+Zihan Zheng 1* Zhaoyang Jia 1∗ Naifu Xue 2∗ Jiahao Li 3 Bin Li 3 Zongyu Guo 3
+
+Xiaoyi Zhang 3 Zhenghao Chen 4 Houqiang Li 1 Yan Lu 31 University of Science and Technology of China 2 Communication University of China 
+
+3 Microsoft Research Asia 4 University of Newcastle 
+
+{zzh2003, jzy ustc }@mail.ustc.edu.cn, lihq@ustc.edu.cn , zhenghao.chen@newcastle.edu.au 
+
+{li.jiahao, libin, zongyuguo, xiaoyizhang, yanlu }@microsoft.com , aaronxuenf@cuc.edu.cn 
+
+Abstract 
+
+Recent advancements in generative video codec (GVC) typically encode video into a 2D latent grid and em-ploy high-capacity generative decoders for reconstruction. However, this paradigm still leaves two key challenges in fully exploiting spatial-temporal redundancy: Spatially, the 2D latent grid inevitably preserves intra-frame redun-dancy due to its rigid structure, where adjacent patches remain highly similar, thereby necessitating a higher bi-trate. Temporally, the 2D latent grid is less effective for modeling long-term correlations in a compact and seman-tically coherent manner, as it hinders the aggregation of common contents across frames. To address these limi-tations, we introduce Generative Video Compression with One-Dimensional ( 1D ) Latent Representation (GVC1D). GVC1D encodes the video data into extreme compact 1D latent tokens conditioned on both short- and long-term con-texts. Without the rigid 2D spatial correspondence, these 1D latent tokens can adaptively attend to semantic re-gions and naturally facilitate token reduction, thereby re-ducing spatial redundancy. Furthermore, the proposed 1D memory provides semantically rich long-term context while maintaining low computational cost, thereby further reduc-ing temporal redundancy. Experimental results indicate that GVC1D attains superior compression efficiency, where it achieves bitrate reductions of 60.4% under LPIPS and 68.8% under DISTS on the HEVC Class B dataset, sur-passing the previous video compression methods. Project: 
+
+https://gvc1d.github.io/ 
+
+1. Introduction 
+
+As video data continues to grow, achieving efficient com-pression while preserving human perceptual quality has be-
+
+> *
+
+This work was done when Zihan Zheng, Zhaoyang Jia and Naifu Xue were full-time interns at Microsoft Research Asia. (a) Previous Method  (b) Our Method   
+
+> Enc
+> 𝑐 s
+> Enc
+> 𝑐 s𝑐 l
+> 2D latent grid
+> 1D latent tokens
+> (c) 2 D Latent Grid Attention Flow
+
+…t-1 t t+1      
+
+> 𝑐 s: short -term context 𝑐 l: long -term context : update : readout
+> Memory
+
+# ×
+
+> (d) 1 D Latent Tokens Attention Flow
+
+…          
+
+> t-1tt+1
+> 1D Memory
+> Simple Design &
+> Fixed Memory Cost &
+> Semantically rich
+> :memory state
+> T×H×W
+> N
+> Naïve
+> stack ing Complex
+> Selection
+> Recurrent
+> Update
+> Complex Design &
+> Numerous Memory
+> Rigid Structure &
+> Numerous Tokens
+> Few Tokens &
+> Flexible Feature
+
+# ×
+
+> Readout
+
+Figure 1. Method comparison . (a) Previous generative video codecs [28, 34, 50] encode videos into dense 2D latent grids with rigid spatial structures using short-term context cs, resulting in nu-merous inflexible tokens. (b) Our method exploits short-term cs
+
+and 1D-based long-term context cl to encode videos into a few flexible 1D latent tokens. Attention map comparison . (c) 2D la-tent grids preserve fixed spatial correspondences between tokens and image patches, limiting redundancy exploitation and requir-ing complex memory designs [3, 35, 42]. (d) Our 1D latent tokens adaptively attend to semantic regions, while the 1D memory, man-aged by a few 1D tokens, efficiently preserves long-term context in a semantically coherent and computationally efficient manner. 
+
+come critical for transmitting high-fidelity content at low bitrates in applications such as video streaming and con-ferencing. However, both traditional codecs [1–3] and re-cent neural video codecs (NVCs) [19, 26, 39], which are 1
+
+> arXiv:2603.15302v1 [cs.CV] 16 Mar 2026
+
+typically optimized for generic distortion measures, often yield blurry reconstructions due to limited preserved infor-mation [6]. To improve perceptual quality, recent genera-tive video codecs (GVCs) [28, 34, 48, 50] encode raw video into latent representations (typically 2D feature maps) and decode them with powerful generative models [36, 41] to add fine details. Coupled with perceptual loss, these GVCs achieve better perceptual performance. Regardless of their architectural designs or optimization objectives (distortion-or perception-oriented), both traditional and neural ap-proaches ultimately transform the raw signal into 2D spatial structures, such as blocks in traditional codecs or 2D feature maps in neural ones, for subsequent processing such as en-tropy coding and decoding. Although 2D representations are intuitive and naturally align with the spatial structure of images, representing frames as 2D latent grids introduces several limitations. Firstly, each token in a 2D latent grid models only its cor-responding image patch and focuses more on spatial mod-eling than object semantics. They capture only variations within its local region, without understanding how the ob-ject moves as a whole. Secondly, the 2D latent grid is dense and redundant due to its rigid spatial structure and addi-tional spatial dimension: each image patch is encoded into a token of equal size, resulting in an excessive number of tokens. For instance, both complex and simple regions are assigned the same number of tokens, introducing unneces-sary redundancy. These limitations stem from the 2D la-tent grid’s preservation of spatial structure, which enforces a rigid mapping between 2D latent grids and image patches, thereby restricting the model’s capacity to exploit image re-dundancy for a more compact latent representation. To overcome these limitations imposed by 2D structures, we propose compressing videos into a 1D latent represen-tation. Notably, 1D latent representations have been shown to capture high-level semantics efficiently and yield more compact latent spaces in image processing tasks [22, 30, 51, 52]. In particular for image compression [20, 46, 47], prior work [46] has encoded images into 1D latent sequences, achieving extremely low bitrates while preserving competi-tive perceptual performance. In this work, we employ a Vi-sion Transformer–based 1D tokenization to encode videos into 1D latent tokens, which serve as the 1D latent repre-sentation. Specifically, our 1D representation refers strictly to the compressed latent bottleneck. While 2D spatial in-formation is initially processed, we use a set of unstruc-tured, learnable 1D tokens to aggregate information from 2D patch embeddings via a ViT, rather than simply flatten-ing them into a sequence. These tokens effectively aggre-gate essential information from 2D patches without enforc-ing fixed spatial correspondences (as illustrated in Fig. 1), freeing them from the rigidity and locality constraints of 2D grids. This design decouples the number of tokens from the spatial resolution, contributing to a compact and seman-tically rich latent space that enables more flexible model-ing of semantic variations and improves compression effi-ciency. Furthermore, by removing rigid spatial correspon-dences and eliminating the additional spatial dimension, the 1D latent tokens facilitates token reduction, allowing a com-pact set of latents to efficiently represent video frames and thereby lowering the bitrate. Beyond effectively removing spatial redundancy, the proposed 1D latent representation enhances long-range dependency modeling, thereby strengthening conditional video compression. Prior studies [32, 33] have demon-strated the benefit of modeling long-term correlations for conditional coding. Yet, their reliance on 2D latent rep-resentations limits the ability to provide temporally con-sistent semantic features. These representations primarily capture spatial variations across frames rather than seman-tic dynamics, which ultimately constrains long-term context preservation. Hence, leveraging its compactness and en-hanced semantic feature modeling, as illustrated in Fig. 1, we further propose a 1D memory that recurrently updates a fixed-size memory state with a small set of 1D latent to-kens. Owing to the semantically rich input, the 1D memory can extract temporally consistent semantic features with-out being constrained by spatial structures, thereby provid-ing a semantically rich and coherent context. Moreover, due to the compactness of the 1D input, the 1D memory can store richer semantic contextual information within the same memory size while keeping the computational cost low. Benefiting from these properties, our memory adopts a simple yet effective design (Transformer) for long-term context modeling. The proposed 1D memory captures ab-stract long-term semantics through a small number of se-mantically rich 1D tokens, while the features from the pre-ceding frame preserve fine-grained structural details. To-gether, they provide a more comprehensive context and fur-ther reduce redundancy. To the best of our knowledge, this work is the first to employ a 1D latent representation for video compres-sion. Integrating our design of 1D latent tokens and the 1D memory, we propose Generative Video Compression with One-Dimensional ( 1D ) Latent Representation (GVC1D), demonstrating that the 1D latent representation achieves better performance by removing the rigid spatial structure of 2D representations. Combined with our long-term con-text constructed from a few 1D tokens, our method achieves state-of-the-art (SOTA) compression performance across multiple datasets and metrics, demonstrating particularly strong performance. Compared to the previous perceptual codec [34], our method reduces the bitrate by 60.4% in LPIPS and 68.8% in DISTS on the HEVC-B dataset. Fur-thermore, our approach provides visually superior results relative to existing video codecs [1, 26, 34]. 2In summary, our contributions are as follows: • We propose a novel video compression method based on 1D latent representations. By removing the rigid 2D spatial structure and reducing the number of tokens, our model encodes videos into a few flexible 1D tokens, en-abling more efficient and adaptive video compression. • We introduce a long-term memory module that leverages 1D latent tokens to construct semantically rich context, enhancing conditional coding through improved contex-tual modeling. • Our approach achieves state-of-the-art performance across multiple benchmarks, reducing bitrate while main-taining high perceptual and visual quality. 
+
+2. Related Work 
+
+Learned Video Compression. Learned video codecs achieve compression by leveraging neural networks to re-move redundancy. For neural video codecs (NVCs) primar-ily optimized for PSNR, the DCVC series [19, 23–26, 37] has demonstrated remarkable potential by replacing tradi-tional residual coding with conditional coding. Through continuous architectural improvements, the latest DCVC-RT [19] even surpasses advanced traditional codecs [1–3] while maintaining high coding speed. However, since these models are mainly optimized for PSNR, they often suffer from severe detail loss at low bitrates, producing blurry frames. Consequently, improving perceptual quality has become a crucial research direction. For generative video codecs (GVCs), the goal is to produce more realistic re-sults using powerful generative models. For example, GLC-Video [18, 34] achieves high perceptual compression qual-ity at low bitrates by performing transform coding in the 2D latent space of a vector-quantized variational autoen-coder (VQ-VAE) [41], which is better aligned with human perception but suffers from limited performance due to the restricted capacity of VQ-VAE. Other models, such as Dif-fVC [28], employ more powerful pretrained diffusion mod-els [36] to enhance perceptual quality; however, their bi-trates remain relatively high, failing to fully demonstrate the advantages of GVCs at low bitrates. Our method also fo-cuses on improving perceptual quality. Unlike previous ap-proaches that primarily enhance codec modules while over-looking the critical role of token reduction and token struc-ture in compression efficiency, we address this challenge from a representational perspective by employing a small number of flexible and semantically rich 1D latent repre-sentations to improve perceptual quality. 
+
+1D Tokenization. In recent years, 1D image tokeniza-tion has achieved remarkable progress in image genera-tion [22, 30, 51, 52], enabling the synthesis of high qual-ity images with lots of details. TiTok [52] demonstrated the potential of discrete 1D latent tokens as a replacement for the 2D latent grid, achieving more compact semantic com-pression that enhances generation quality, while reducing the number of tokens to improve generation speed. TA-TiTok [22] extended discrete 1D latent tokens to continu-ous formats and incorporated textual information, thereby enhancing alignment with text captions. One-D-Piece [30] further advanced this direction by employing the Tail Token Drop regularization technique to develop a variable-length discrete image tokenizer. In the field of image compression, DLF [46] employs discrete 1D tokenization [52] to extract compact semantic representations, achieving superior com-pression performance through a semantic branch. However, this discrete 1D tokenization is unsuitable for video com-pression, as the discrete format undermines the video tem-poral consistency. Moreover, most existing video compres-sion methods still rely on 2D representation. Yet, the dense structure and rigid spatial constraints of 2D representation restrict their ability to achieve efficient compression. Mo-tivated by the continuous 1D tokenizers introduced in TA-TiTok [22], we enhance video codec efficiency by reducing the number of tokens and exploiting the compact semantic representations offered by 1D latent tokens. 
+
+Long-term Context. Long-term context has been exten-sively leveraged in various tasks, such as video understand-ing [9, 14, 35], to capture long-range dependencies. Some approaches [42, 44] use fixed-size or bounded dynamic memory to preserve long-term context but suffer from in-formation loss due to dense input features and limited mem-ory capacity. In contrast, other methods [16, 53] reduce computational overhead by adopting suboptimal state-space models (SSMs), thereby sacrificing the strong representa-tional capability of Transformers. In video compression, DCVC-LCG [33] introduces a complex intra-cluster search mechanism based on dense 2D features to capture long-term context. In contrast, our method manages the 1D memory using only a few semantically rich 1D latent tokens. The compact input enables the use of a full Transformer while maintaining low computational cost and mitigating infor-mation forgetting. Furthermore, the semantic richness of these 1D tokens allows the memory to naturally focus on compact and meaningful representations without requiring additional complex designs. 
+
+3. Methodology 
+
+3.1. Framework Overview 
+
+Existing generative video codecs [28, 34, 50] typically en-code the current frame xt into a dense 2D latent grid using the short-term context from the preceding frame. However, this approach constrains their ability to effectively exploit the redundancy inherent in videos due to the rigid spatial structure of the 2D latent grid and the inefficient use of tem-poral information. In contrast, our method encodes xt into a 3Image patches  Latent tokens              
+
+> Local Transformer
+> Enc block
+> Global Transformer
+> ×Ne
+> ×Me
+> QAE AD
+> Entropy Model
+> Out
+> head
+> Window merge
+> ො𝑥 𝑡
+> 𝑓 𝑡 ,𝑘
+> Update Short -term
+> Context Buffer
+> Context model
+> Long -term
+> 1D Memory
+> …
+> Window partition
+> 𝑥 𝑡
+> patchfy
+> ො𝑦 𝑡 ,𝑘 Mask tokens
+> 𝑓 𝑡
+> …
+> …
+> …
+> …
+> Local Transformer
+> Dec block
+> Global Transformer
+> ×Nd
+> ×Md
+> …
+> ……
+> …
+> … …
+> Update
+> …
+> 𝐸 𝑡 ,𝑘  ∈ 𝑅 𝐷 ×(16 ⋅16 ) 𝐿 𝑘  ∈ 𝑅 𝐷 ×32
+> 𝑦 𝑡 ,𝑘  ∈ 𝑅 𝐷 ×32
+> 𝑀 𝑘  ∈ 𝑅 𝐷 × 16 ⋅16
+> 𝐶 𝑙 ∈𝑅 𝐷 ×𝑁 ×32 𝐶 𝑠 ∈𝑅 𝐷 ×ℎ×𝑤
+> k-th  window
+> 𝐶 =𝐶 𝑙 ⊕𝐶 𝑠
+> Readout Out
+
+Figure 2. Framework overview. Q, AE and AD represent quantization, arithmetic encoder and decoder, respectively. The input image xt is first embedded into patches and then fed into the encoder composed of local and global transformers to produce yt. The local transformer handles each window independently with low cost, while the global transformer captures inter-window correlations. Subsequently, an entropy model then performs autoregressive entropy coding on yt. The decoder adopts an architecture similar to the encoder to reconstruct the image ˆxt. All are guided by a context model combining long-term 1D memory and short-term context buffer to provide comprehensive temporal context. 
+
+few 1D latent tokens by leveraging both the short- and long-term context. As illustrated in Fig. 2, we first employ a Vi-sion Transformer-based [11] encoder to encode the current frame xt into a few 1D latent tokens yt. Next, we perform entropy coding in these 1D latent tokens to achieve efficient compression. Finally, these 1D latent tokens are decoded to reconstruct the frame ˆxt. In addition, all three stages are guided by our context model, which integrates two types of context: long-term context from previous 1D latent tokens and short-term context from the preceding frame. 
+
+Encoding. Our method takes a video as input. For the current frame xt ∈ R3×H×W , it is first embedded into 
+
+Emb (xt) ∈ RD×h×w through patch embedding, with a patch size of h = H/ 16 and w = W/ 16 . The embed-ded features Emb (xt) are then flattened into a 1D sequence 
+
+Et ∈ RD×(h·w). Next, The embedding Et is concatenated with learnable 1D latent tokens L ∈ RD×(N ·32) , where 
+
+N = h×w 
+
+> 16 ×16
+
+, and the context C from the context model, which integrates both long-term context Cl ∈ RD×(N ·32) 
+
+and the flattened short-term context Cs ∈ RD×(h·w). The combined tokens are then fed into the encoder to generate compact 1D tokens yt.
+
+yt = Enc (Et ⊕ L ⊕ C), (1) 
+
+C = Cl ⊕ Cs. (2) Specifically, our encoder consists of Me encoding blocks, and each block contains Ne layers of local trans-formers followed by one layer of global transformer: 
+
+Enc =
+
+> Me
+
+[
+
+> i=1
+
+{
+
+> Ne
+
+[
+
+> j=1
+
+LocalTrans i,j , GlobalTrans i}. (3) For the local transformer, we partition the combined to-kens into N windows and process each window in parallel. Specifically, the embedding Et and short-term context Cs
+
+are divided into 16 × 16 windows, while the 1D latent to-kens L and long-term context Cl are divided into 32 tokens per window. Within each window, these four components are concatenated and fed into the local transformer, which leverages the Vision Transformer (ViT) to encode image to-kens into 1D latent tokens. Through cascaded local trans-former layers, the 1D latent tokens effectively aggregate key semantic and motion information from the image to-kens and the context C, thereby producing a compact 1D token representation with rich semantics. To model the correlations across windows, we introduce a global transformer layer after every Ne local transformer layers. Specifically, the 2D image tokens Et, short-term context Cs, 1D latent tokens L, and long-term context Cl
+
+are first recombined and assigned 2D Rotary Positional Em-beddings (RoPE) [15] to independently model relative po-sitional relationships. The resulting tokens are then fed into the global transformer, which employs a ViT to process the 4(a) Update Stage    
+
+> …
+> Latent Tokens Memory S tate
+> …
+> …
+> Updated Memory S tate
+> Self Attention
+> MLP
+> ×Dm
+> Drop
+> (b) Readout Stage
+> …
+> Learnable Tokens Memory S tate
+> …
+> Self Attention
+> MLP
+> ×Dm
+> Drop Long -term Context
+> …
+
+Figure 3. 1D memory. Dm denote the number of Transformer lay-ers. We employ simple yet effective Transformer layers to manage long-term context. 
+
+entire sequence and facilitate global information exchange. This design allows independent windows to interact through global attention while maintaining low computational cost by employing only a few global transformer layers. Consequently, we encode these compact 1D tokens to produce yt ∈ RD×(N ·32) . Unlike previous methods [34] that encode frames into dense 2D latent grids, our approach compresses frames into 1D latent tokens. By removing rigid spatial correspondences, these tokens provide greater flex-ibility in modeling frames, capture richer semantics, and form a more compact latent space, thereby achieving lower bitrates and improved perceptual reconstruction quality. 
+
+Entropy Model. To estimate the probability distribution of 1D latent tokens for arithmetic coding, we employ an au-toregressive Transformer (AR Transformer)-based entropy model. Specifically, the 1D latent representation yt is first quantized into Q(yt), after which an AR Transformer mod-els its distribution for entropy coding. During this pro-cess, the AR Transformer predicts the probability of each quantized token sequentially, conditioned on all previously decoded tokens. Consequently, the autoregressive model-ing effectively captures inter-dependencies among tokens, thereby achieving lower bitrates. Notably, the number of 1D latent tokens is small, and the 1D latent tokens from N
+
+windows can be processed in parallel, keeping the compu-tational cost of the AR Transformer manageable. 
+
+Decoding. Our decoder follows an architecture similar to that of the encoder. Specifically, a sequence of learnable mask tokens M ∈ RD×(h·w) is first integrated with the 1D latent tokens ˆyt and the context C. Through the decoding process, these mask tokens iteratively extract information from ˆyt and C, and the reconstructed frame ˆxt is then gen-erated through a convolution output head. 
+
+ˆxt = Out (Dec (ˆ yt ⊕ M ⊕ C)) . (4) 
+
+3.2. Context Model 
+
+In this section, we present our context model, which con-sists of two components: a long-term 1D memory and a Frame 481  Frame 501  Token 11 Attention Heatmap  
+
+> Token 19 Attention Heatmap Token 23 Attention Heatmap
+
+Figure 4. Visualization of 1D latent token outflows across two frames during object motion. In the two figures, the lines connect points corresponding to the maximum attention weights of each token, with the numbers indicating token indices (e.g., token 19 focuses on the horse’s left foreleg in both frames). Detailed atten-tion maps show that each token consistently focuses on the same semantic region across frames, effectively capturing object mo-tion. Frame 6  Frame 21  Frame 36 
+
+> Token 4 Attention Heatmap
+
+Figure 5. Visualization of the outflow variation of a 1D latent to-ken (index 4) as a new object appears. The red boxes in the first row mark image patches with the highest attention weights, while the green lines in the second row link them to the top four 1D latent tokens with the strongest attention. The bottom row is the 1D latent tokens attention weights corresponding to the maximum weight image patch (red boxes). As new content emerges, atten-tion weights gradually shift from previously active tokens to newly activated ones. 
+
+short-term context buffer. Unlike previous methods [19, 26, 34], our model incorporates long-term context derived from 1D tokens to provide richer temporal information. The short-term context captures fine grained features but lacks awareness of long-range dependencies, whereas the long-term context delivers global semantic context that supple-ments the short-term context. Together, these two compo-nents form a comprehensive temporal representation, effec-tively exploiting temporal dependencies and further reduc-ing redundancy in videos. For the short-term context, similar to previous meth-5Figure 6. Rate-distortion curves on the HEVC-B, the UVG and the MCL-JCV datasets. 96 frames are tested in RGB colorspace with intra-period=–1. 
+
+ods [26], we use the decoder features ft from the preceding frame to provide detailed short-term context. For the long-term context, we design a simple yet effective 1D mem-ory that provides global semantic features using the Trans-former architecture. As shown in Fig. 3, our 1D mem-ory maintains a fixed size memory state and comprises two stages for recurrently updating the memory and reading out long-term context. In the update stage, a few 1D latent to-kens ˆyt are used to update the memory state, while in the readout stage, learnable query tokens retrieve the long-term context from the memory. All operations are performed in the 1D latent space, which is free from rigid 2D spatial constraints and thus enables flexible memory management without complex designs. By leveraging compact and se-mantically rich 1D latent tokens to manage memory, our 1D memory provides more global and semantic context than the fine-grained short-term context. Moreover, since the num-ber of 1D latent tokens is considerably smaller than that of the 2D latent grids used in previous works, the model can store more information within a fixed memory capacity, ef-fectively alleviating information forgetting. 
+
+3.3. Analysis on 1D Latent Tokens 
+
+To validate that our 1D representation can effectively and flexibly model videos in a semantic manner, thereby achiev-ing better perceptual quality, we follow FlowCut [40] and visualize the attention maps of the 1D latent tokens cor-responding to the final reconstructed frames. Specifically, for an attention map A ∈ RM ×M , we visualize the out-flow of each 1D latent token, where the outflow repre-sents the primary destination of its information, defined as 
+
+argmaxA [: , j ]. We illustrate two two representative video scenarios: object motion and the appearance of new con-tent, based on the attention map from the last decoder layer. 
+
+Object Motion. As shown in Fig. 4, each token consistently focuses on the same semantic region across two frames, even under large motion. For example, token 23 attends to the grassland in both frames. In more challenging cases involving large motion, such as token 19 focusing on the horse’s left foreleg in both frames, more detailed informa-tion is required. Consequently, the attention map of token 19 covers a smaller area than that of token 23. These ob-servations demonstrate that our 1D latent token design ef-fectively tracks consistent semantic regions throughout the video while capturing intrinsic motion. Moreover, it can adaptively assign attention weights across the entire image without being constrained by the 2D spatial structure. 
+
+New Content. As shown in Fig. 5, we visualize the atten-tion maps of token 4 and the variation in attention weights of the 1D latent tokens corresponding to newly appeared content. Specifically, as the rabbit gradually emerges in the video, the attention map shifts its focus from the blank background to the rabbit. Initially, the token focuses on 6the grass background. As the rabbit emerges, the atten-tion weights of certain 1D latent tokens progressively in-crease to capture the new content, indicating that they begin to attend to the newly appeared object. Finally, the atten-tion weights are re-assigned to adapt to the new scene. This observation demonstrates the effectiveness of our 1D latent token design in handling the emergence of new objects, as the 1D tokens can dynamically reallocate attention to newly appearing content. 
+
+4. Experiment 
+
+4.1. Experimental Protocol 
+
+Training Details. Our model is trained on the Vimeo [4, 49] and OpenVid-HD [31] datasets. We train a variable-bitrate model using the loss function L = R + λD , where R and 
+
+D denote the bitate and distion, respectively. The trade-off parameter λ is sampled at 8 points using log-space lin-ear interpolation within the range [0 .07 , 1.5] . The detailed training strategy and loss formulation are provided in the supplementary material. 
+
+Test Details. We test our model on the HEVC-B [12], UVG [29], and MCL-JCV [43] datasets. All experiments are conducted under low-delay encoding settings(intra-period=–1) in the RGB colorspace. The BD-Rate [5] metric is employed for performance evaluation. To assess recon-struction quality, we use the reference perceptual metrics LPIPS [54] and DISTS [10]. The bitrate is measured in bits per pixel (bpp), and the PSNR and MS-SSIM [45] results are also reported in the supplementary material. 
+
+Baselines. For traditional codecs, we compare against HM-16.25 [2], VTM-17.0 [3], and ECM-5.0 [1], which are pri-marily optimized for PSNR. For neural methods, we include the PSNR-oriented codecs DCVC-FM [26] and DCVC-RT [19], as well as the perceptual generative codec GLC-Video [34], which targets perceptual quality.. 
+
+4.2. Experimental Results 
+
+Quantitative Evaluation. In Fig. 6, we present the rate-distortion curves across multiple datasets. For percep-tual metrics, our method consistently outperforms all other methods, achieving substantially lower LPIPS and DISTS at the same bitrates. Table 1 reports the BD-Rate results across multiple datasets. For perceptual metrics (LPIPS and DISTS), compared with GLC-Video, our method achieves bitrate savings of 60.4% for LPIPS and 68.8% for DISTS on the HEVC-B dataset. For fidelity metrics (PSNR and MS-SSIM), our method achieves bitrate savings of 53.8% for PSNR and 45.1% for MS-SSIM on the HEVC-B dataset compared with GLC-Video. Detailed rate-distortion curves for PSNR and MS-SSIM are provided in the supplemen-tary material. These results demonstrate the potential of our 1D latent token design in perceptual video compres-
+
+Table 1. BD-Rate (%) comparison in the RGB colorspace on the HEVC-B, UVG, and MCL-JCV datasets (lower is better). 96 frames are evaluated with an intra-period of –1.                                         
+
+> Method HEVC-B UVG MCL-JCV LPIPS DISTS LPIPS DISTS LPIPS DISTS GLC-video [34] 0.0% 0.0% 0.0% 0.0% 0.0% 0.0% Ours -60.4% -68.8% -66.0% -47.9% -62.1% -61.5%
+> Method HEVC-B UVG MCL-JCV PSNR MS-SSIM PSNR MS-SSIM PSNR MS-SSIM GLC-video [34] 0.0% 0.0% 0.0% 0.0% 0.0% 0.0% Ours -53.8% -45.1% -62.5% -45.8% -54.7% -33.0%
+
+Table 2. BD-Rate comparison for different token sizes. The token size of 32 × 16 is used as the anchor.                               
+
+> Token Size HEVC-B UVG MCL-JCV (Number ×Channel)
+> 16 ×32 41.7% 47.6% 37.3%
+> 16 ×64 20.1% 23.4% 12.2%
+> 32 ×16 (Ours )0.0% 0.0% 0.0%
+> 32 ×32 14.2% 21.5% 10.2%
+> 64 ×16 24.2% 22.8% 17.6%
+
+Table 3. BD-Rate comparison of different model variants. AR denotes the autoregressive entropy model, and Memory denotes the memory component, where 1D and 2D indicate the use of 1D or 2D features to manage the memory. We use setting (4) as the anchor, which is finally adopted by our method.                          
+
+> Setting AR Memory HEVC-B UVG MCL-JCV (1) ✗✗67.8% 67.4% 41.8% (2) ✓✗20.1% 40.6% 24.2% (3) ✓2D 11.5% 16.8% 7.3% (4) ✓1D 0.0% 0.0% 0.0%
+
+sion. By eliminating the 2D structure, reducing the to-ken count, and introducing 1D-based long-term context, our model achieves lower bitrates while maintaining high per-ceptual quality. 
+
+Qualitative Evaluation. In Fig. 7, we present visual com-parisons on the UVG and MCL-JCV datasets. The neural video codec DCVC-FM and the traditional codec ECM-5.0 struggle to reproduce realistic details at low bitrates, lead-ing to blurred regions (e.g., the railing in the first example and the basket pattern in the third example). The percep-tual codec GLC-Video enhances visual realism but intro-duces noticeable artifacts and distortions, such as unrealis-tic facial features and clothing textures in the second exam-ple. In contrast, our method produces reconstructions with fewer artifacts, more accurate colors, and finer details, even at lower bitrates. 
+
+4.3. Ablation Study 
+
+In this section, we conduct ablation studies on different la-tent token sizes, the 1D memory, and the autoregressive entropy model. All model variants are evaluated on the 7Original(zoomed)  ECM -5.0  DCVC -FM  GLC -video  Ours                       
+
+> Original
+> Bpp↓ / LPIPS↓ / DISTS ↓ 0.0107 (1.03 ×)/ 0.249 / 0.154 0.0114 (1.10 ×)/ 0.218 / 0.153 0.0135(1.30 ×)/ 0.107 / 0.065 0.0104(1.00 ×)/ 0.102 / 0.060
+> Bpp↓ / LPIPS↓ / DISTS ↓ 0.0072 (1.41 ×)/ 0.314 / 0.189 0.0054 (1.06 ×)/ 0.420 / 0.263 0.0106(2.08 ×)/ 0.131 / 0.086 0.0051(1.00 ×)/ 0.119 / 0.082
+> Bpp↓ / LPIPS↓ / DISTS ↓ 0.00 51 (1. 06×)/ 0. 177 /0.1 38 0.00 49 (1.0 2×)/ 0. 186 /0. 159 0.0061( 1.27 ×)/ 0.093 / 0.066 0.00 48 (1.00 ×)/ 0.0 73/0.0 51
+
+Figure 7. Qualitative examples on the MCL-JCV datasets. 
+
+HEVC-B, UVG, and MCL-JCV datasets, as measured by LPIPS metric. 
+
+1D Latent Token Size. We evaluate the impact of different 1D latent token sizes. As shown in Table 2, a smaller token size (e.g., 16 × 32 , where 16 denotes the number of tokens and 32 denotes the token channel) restricts the model’s ca-pacity, thereby degrading reconstruction quality and result-ing in a worse BD-Rate. In contrast, a larger token size (e.g., 
+
+64 × 16 ) increases the bitrate due to its higher dimensional-ity, which also leads to a worse BD-Rate. Hence, selecting an appropriate token size is essential to achieve a balanced trade-off between bitrate and reconstruction quality. 
+
+1D Memory. In this variant, we first remove the 1D mem-ory to assess the importance of long-term contextual infor-mation. As shown in Table 3, comparing settings (2) and (4) reveals that removing the long-term context results in a BD-Rate increase of over 40% on the UVG dataset, demonstrat-ing the necessity of long-term context. Next, we replace the 1D memory with a 2D memory constructed from 2D short-term context to examine the effectiveness of the 1D memory design. By comparing settings (3) and (4), we observe that this replacement leads to a BD-Rate degradation of more than 16% on the UVG dataset, confirming that using 1D features for memory management is more effective. 
+
+Autoregressive Entropy Model. We further evaluate the effectiveness of our proposed autoregressive entropy model by replacing it with a non-autoregressive version, under the 
+
+Table 4. Complexity analysis using fp16 precision at 1080P reso-lution. The tests are conducted on an NVIDIA A100 GPU. 
+
+Model Enc. Time (s) Dec. Time (s) DCVC-FM [26] 0.183 0.190 GLC-video [34] 0.290 0.183 Ours 0.262 0.207 
+
+same setting without the 1D memory. As shown in Table 3, comparing setting (1) and (2), replacing the autoregressive entropy model leads to a worse BD-Rate. These results con-firm that the autoregressive entropy model effectively re-duces redundancy among tokens. 
+
+4.4. Complexity Analysis 
+
+We compare the average coding time in Table 4. Compared with DCVC-FM, our method is only slightly slower due to its larger model size. However, the larger model provides stronger capacity, enabling our method to achieve signifi-cantly better perceptual quality with richer details. Com-pared with GLC-Video, our method attains a similar overall coding speed, with the encoding even slightly faster, while delivering notably higher visual quality. Overall, our ap-proach improves compression efficiency while maintaining a relatively fast coding speed. This efficiency stems from performing compression in a compact latent space with fewer tokens, utilizing a parallel window processing de-sign, and employing advanced techniques such as FlashAt-tention [8] to accelerate computation. 85. Conclusion 
+
+In this paper, we present a novel method for modeling videos using 1D latent tokens instead of conventional dense 2D latent grids. We first analyze the limitations of 2D latent grids, including the rigid 2D spatial structure and the redun-dancy of token numbers. To address these issues, we repre-sent videos with 1D latent tokens. Without the constraints of the rigid spatial correspondences, 1D latent tokens can effectively capture intrinsic object motion and semantics while flexibly reducing the number of tokens. Moreover, our 1D memory incorporates semantical long-term context to further exploit temporal information. By leveraging com-pact and semantically rich 1D latent tokens to manage mem-ory, our design effectively mitigates information forgetting while maintaining low computational cost. Experimental results demonstrate that our model achieves state-of-the-art reconstruction quality while maintaining a relatively fast coding speed. 
+
+Limitations. Due to the inherent information loss from representing each frame with only 32 1D tokens and the limited token capacity, our model currently targets lossy compression at low bitrates. Future work will explore extending it towards lossless video compression. 
+
+References 
+
+[1] ECM. https : / / vcgit . hhi . fraunhofer . de / ecm/ECM . 1, 2, 3, 7, 12, 13 [2] HM. https : / / vcgit . hhi . fraunhofer . de / jvet/HM . 7, 12 [3] VTM. https : / / vcgit . hhi . fraunhofer . de / jvet/VVCSoftware_VTM . 1, 3, 7, 12 [4] Original Vimeo links. https : / / github . com / anchen1011 / toflow / blob / master / data / original_vimeo_links.txt . 7, 12 [5] Gisle Bjontegaard. Calculation of average PSNR differences between RD-curves. VCEG-M33 , 2001. 7 [6] Yochai Blau and Tomer Michaeli. Rethinking lossy com-pression: The rate-distortion-perception tradeoff. In Inter-national Conference on Machine Learning , pages 675–685. PMLR, 2019. 2 [7] Duolikun Danier, Fan Zhang, and David Bull. Flolpips: A bespoke video quality metric for frame interpolation. In 2022 Picture Coding Symposium (PCS) , pages 283–287. IEEE, 2022. 14 [8] Tri Dao. FlashAttention-2: Faster attention with better par-allelism and work partitioning. In International Conference on Learning Representations (ICLR) , 2024. 8 [9] Shangzhe Di, Zhelun Yu, Guanghao Zhang, Haoyuan Li, TaoZhong, Hao Cheng, Bolin Li, Wanggui He, Fangxun Shu, and Hao Jiang. Streaming video question-answering with in-context video KV-cache retrieval. In The Thirteenth In-ternational Conference on Learning Representations , 2025. 3[10] Keyan Ding, Kede Ma, Shiqi Wang, and Eero P Simoncelli. Image quality assessment: Unifying structure and texture similarity. IEEE transactions on pattern analysis and ma-chine intelligence , 44(5):2567–2581, 2020. 7 [11] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. ICLR , 2021. 4 [12] D Flynn, K Sharman, and C Rosewarne. Common Test Con-ditions and Software Reference Configurations for HEVC Range Extensions, document JCTVC-N1006. Joint Collab-orative Team Video Coding ITU-T SG , 16. 7, 12 [13] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial networks. Commu-nications of the ACM , 63(11):139–144, 2020. 12 [14] Bo He, Hengduo Li, Young Kyun Jang, Menglin Jia, Xue-fei Cao, Ashish Shah, Abhinav Shrivastava, and Ser-Nam Lim. Ma-lmm: Memory-augmented large multimodal model for long-term video understanding. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 13504–13514, 2024. 3 [15] Byeongho Heo, Song Park, Dongyoon Han, and Sangdoo Yun. Rotary position embedding for vision transformer. In 
+
+European Conference on Computer Vision , pages 289–305. Springer, 2024. 4 [16] Syed Ariff Syed Hesham, Yun Liu, Guolei Sun, Henghui Ding, Jing Yang, Ender Konukoglu, Xue Geng, and Xudong Jiang. Exploiting temporal state space sharing for video se-mantic segmentation. In CVPR , 2025. 3 [17] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 13 [18] Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu. Generative latent coding for ultra-low bitrate image com-pression. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 26088– 26098, 2024. 3 [19] Zhaoyang Jia, Bin Li, Jiahao Li, Wenxuan Xie, Linfeng Qi, Houqiang Li, and Yan Lu. Towards practical real-time neural video compression. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2025, Nashville, TN, USA, June 11-25, 2024 , 2025. 1, 3, 5, 7, 12, 13 [20] Zhaoyang Jia, Zihan Zheng, Naifu Xue, Jiahao Li, Bin Li, Zongyu Guo, Xiaoyi Zhang, Houqiang Li, and Yan Lu. Cod: A diffusion foundation model for image compression. arXiv preprint arXiv:2511.18706 , 2025. 2 [21] Wei Jiang, Junru Li, Kai Zhang, and Li Zhang. Ecvc: Ex-ploiting non-local correlations in multiple frames for contex-tual video compression. In Proceedings of the Computer Vi-sion and Pattern Recognition Conference , pages 7331–7341, 2025. 12 [22] Dongwon Kim, Ju He, Qihang Yu, Chenglin Yang, Xiao-hui Shen, Suha Kwak, and Liang-Chieh Chen. Democra-
+
+9tizing text-to-image masked generative models with com-pact text-aware one-dimensional tokens. arXiv preprint arXiv:2501.07730 , 2025. 2, 3, 12 [23] Jiahao Li, Bin Li, and Yan Lu. Deep contextual video com-pression. Advances in Neural Information Processing Sys-tems , 34, 2021. 3 [24] Jiahao Li, Bin Li, and Yan Lu. Hybrid spatial-temporal en-tropy modelling for neural video compression. In Proceed-ings of the 30th ACM International Conference on Multime-dia , 2022. [25] Jiahao Li, Bin Li, and Yan Lu. Neural video compression with diverse contexts. In IEEE/CVF Conference on Com-puter Vision and Pattern Recognition, CVPR 2023, Vancou-ver, Canada, June 18-22, 2023 , 2023. [26] Jiahao Li, Bin Li, and Yan Lu. Neural video compression with feature modulation. In IEEE/CVF Conference on Com-puter Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 17-21, 2024 , 2024. 1, 2, 3, 5, 6, 7, 8, 12, 13 [27] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 , 2017. 12 [28] Wenzhuo Ma and Zhenzhong Chen. Diffusion-based percep-tual neural video compression with temporal diffusion infor-mation reuse. ACM Trans. Multimedia Comput. Commun. Appl. , 2025. Just Accepted. 1, 2, 3 [29] Alexandre Mercat, Marko Viitanen, and Jarno Vanne. UVG dataset: 50/120fps 4K sequences for video codec analysis and development. In Proceedings of the 11th ACM Multime-dia Systems Conference , pages 297–302, 2020. 7, 12 [30] Keita Miwa, Kento Sasaki, Hidehisa Arai, Tsubasa Taka-hashi, and Yu Yamaguchi. One-d-piece: Image tokenizer meets quality-controllable compression. arXiv preprint arXiv:2501.10064 , 2025. 2, 3 [31] Kepan Nan, Rui Xie, Penghao Zhou, Tiehan Fan, Zhen-heng Yang, Zhijie Chen, Xiang Li, Jian Yang, and Ying Tai. Openvid-1m: A large-scale high-quality dataset for text-to-video generation. In The Thirteenth International Confer-ence on Learning Representations , 2025. 7, 12 [32] Huu-Tai Phung, Zong-Lin Gao, Yi-Chen Yao, Kuan-Wei Ho, Yi-Hsin Chen, Yu-Hsiang Lin, Alessandro Gnutti, and Wen-Hsiao Peng. Mh-lvc: Multi-hypothesis temporal prediction for learned conditional residual video coding. In Proceedings of the IEEE/CVF International Conference on Computer Vi-sion , pages 19649–19658, 2025. 2 [33] Linfeng Qi, Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu. Long-term temporal context gathering for neu-ral video compression. In European Conference on Com-puter Vision , pages 305–322. Springer, 2024. 2, 3 [34] Linfeng Qi, Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu. Generative latent coding for ultra-low bitrate image and video compression. IEEE Transactions on Cir-cuits and Systems for Video Technology , 2025. 1, 2, 3, 5, 7, 8, 13 [35] Rui Qian, Xiaoyi Dong, Pan Zhang, Yuhang Zang, Shuan-grui Ding, Dahua Lin, and Jiaqi Wang. Streaming long video understanding with large language models. Advances in Neu-ral Information Processing Systems , 37:119336–119360, 2024. 1, 3 [36] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 2, 3 [37] Xihua Sheng, Jiahao Li, Bin Li, Li Li, Dong Liu, and Yan Lu. Temporal context mining for learned video compression. 
+
+IEEE Transactions on Multimedia , 2022. 3 [38] JD Sutherland, Michael Arbel, and Arthur Gretton. Demys-tifying mmd gans. In International conference for learning representations , 2018. 13 [39] Chuanbo Tang, Zhuoyuan Li, Yifan Bian, Li Li, and Dong Liu. Neural video compression with context modulation. In 
+
+Proceedings of the Computer Vision and Pattern Recognition Conference , pages 12553–12563, 2025. 1 [40] Jintao Tong, Wenwei Jin, Pengda Qin, Anqi Li, Yixiong Zou, Yuhong Li, Yuhua Li, and Ruixuan Li. Flowcut: Rethink-ing redundancy via information flow for efficient vision-language models. arXiv preprint arXiv:2505.19536 , 2025. 6[41] Aaron Van Den Oord, Oriol Vinyals, et al. Neural discrete representation learning. Advances in neural information pro-cessing systems , 30, 2017. 2, 3 [42] Hengyi Wang and Lourdes Agapito. 3d reconstruction with spatial memory. In 2025 International Conference on 3D Vision (3DV) , pages 78–89. IEEE, 2025. 1, 3 [43] Haiqiang Wang, Weihao Gan, Sudeng Hu, Joe Yuchieh Lin, Lina Jin, Longguang Song, Ping Wang, Ioannis Katsavouni-dis, Anne Aaron, and C-C Jay Kuo. MCL-JCV: a JND-based H. 264/AVC video quality assessment dataset. In 2016 IEEE international conference on image processing (ICIP) , pages 1509–1513. IEEE, 2016. 7, 12 [44] Qianqian Wang, Yifei Zhang, Aleksander Holynski, Alexei A Efros, and Angjoo Kanazawa. Continuous 3d per-ception model with persistent state. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 10510–10522, 2025. 3 [45] Zhou Wang, Eero P Simoncelli, and Alan C Bovik. Multi-scale structural similarity for image quality assessment. In 
+
+The thrity-seventh asilomar conference on signals, systems & computers, 2003 , pages 1398–1402. Ieee, 2003. 7, 13 [46] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Yuan Zhang, and Yan Lu. Dlf: Extreme image compression with dual-generative latent fusion. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , 2025. 2, 3, 13 [47] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Yuan Zhang, and Yan Lu. One-step diffusion-based image compression with semantic distillation. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. 2 [48] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Zihan Zheng, Yuan Zhang, and Yan Lu. Single-step diffusion-based video coding with semantic-temporal guidance. arXiv preprint arXiv:2512.07480 , 2025. 2 [49] Tianfan Xue, Baian Chen, Jiajun Wu, Donglai Wei, and William T Freeman. Video enhancement with task-oriented flow. International Journal of Computer Vision , 127(8): 1106–1125, 2019. 7, 12 
+
+10 [50] Ren Yang, Radu Timofte, and Luc Van Gool. Perceptual video compression with recurrent conditional gan. In Pro-cessings of the International Joint Conference on Artificial Intelligence (IJCAI) , 2022. 1, 2, 3 [51] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-Chieh Chen. Randomized autoregressive visual generation. 
+
+arXiv preprint arXiv:2411.00776 , 2024. 2, 3 [52] Qihang Yu, Mark Weber, Xueqing Deng, Xiaohui Shen, Daniel Cremers, and Liang-Chieh Chen. An image is worth 32 tokens for reconstruction and generation. NeurIPS , 2024. 2, 3 [53] Olga Zatsarynna, Emad Bahrami, Yazan Abu Farha, Gian-piero Francesca, and Juergen Gall. Manta: Diffusion mamba for efficient and effective stochastic long-term dense action anticipation. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2025. 3 [54] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 586–595, 2018. 7 
+
+11 Generative Video Compression with One-Dimensional Latent Representation 
+
+# Supplementary Material 
+
+A. Training Details 
+
+This section provides the training details of our model. We train the model on the Vimeo [4, 49] and OpenVid-HD [31] datasets. The OpenVid-HD dataset contains 433,523 videos. For the Vimeo dataset, in addition to the 7-frame sequences in Vimeo-90k, we follow DCVC-FM [26] to process the raw Vimeo videos and generate approxi-mately 6,000 additional 32-frame sequences. Specifically, we use the original Vimeo videos [4], apply scene detection, and randomly sample 32-frame clips. Our training strategy is as follows. The model is optimized using the AdamW optimizer [27] throughout the entire training process. 
+
+The first stage. We train only the encoder and decoder us-ing two-frame samples from the OpenVid-HD dataset, re-sized to 256 × 256 , with a batch size of 128. We adopt the reconstruction loss function from TA-Titok [22]: 
+
+Lstage1 =∥x − ˆx∥2+
+
+λLPIPS LLPIPS (x, ˆx)+ 
+
+λadv Ladv (x, ˆx).
+
+(5) Here, LLPIPS denotes the perceptual loss, and Ladv denotes the adversarial loss [13]. The corresponding weighting co-efficients, λLPIPS and λadv , are set to 1.1 and 0.1, respec-tively, following TA-Titok. Consistent with TA-Titok, we use a maximum learning rate of 1e −4 and apply a cosine learning rate schedule. Both the encoder and decoder are initialized with TA-Titok pretrained weights, which provide a strong prior and facilitate faster convergence. 
+
+The second stage. We introduce the entropy model and train the network on resized 256 × 256 videos from the Vimeo dataset. Regarding the AR entropy model, we adopt a standard Transformer for token-by-token probability pre-diction. As for the non-autoregressive version used for ab-lation experiments, we adopt the two-step entropy model from DCVC-RT [19]. The number of training frames pro-gressively increases from 2 to 32, while the batch size de-creases from 128 to 4 according to the training frames. The learning rate is set to 5e −5. The loss function is defined as: 
+
+Lstage2 = 1
+
+T
+
+> t=T
+
+X
+
+> t=1
+
+(R + λL stage1 ), (6) where R denotes the bitrate and T denotes the number of frames used in cascade training. The trade-off parameter 
+
+λ is sampled at eight points using logarithmic-space linear interpolation within the range [0 .07 , 1.5] .
+
+The third stage. We sequentially introduce the global Transformer and 1D memory, and finetune the model on OpenVid-HD videos with variable resolutions ranging from 
+
+256 × 256 to 1280 × 2048 . The training sequence length is set to 32 frames with a batch size of 2. The learning rate is set to 1e −5. To reduce GPU memory consumption, follow-ing ECVC [21], we employ the partial cascaded finetuning strategy with a frame group size of 4. The loss function remains the same as in the second stage. 
+
+B. Experiments 
+
+This section describes the evaluation settings and presents additional quantitative and qualitative results. 
+
+B.1. Evaluation Details 
+
+We evaluate all models on the 96-frame videos from the HEVC-B [12], UVG [29], and MCL-JCV [43] datasets. All videos are processed so that both their height and width are multiples of 256. For traditional video codecs, we evaluate VTM-17.0 [3], HM-16.25 [2], and ECM-5.0 [1] in the RGB colorspace, following the protocol used in the DCVC-FM [26], which converts the RGB input to 10-bit YUV444 for internal codec processing and adopts the low-delay encoding setting. We use the official config-uration files for VTM, HM, and ECM, respectively: en-coder lowdelay vtm.cfg , encoder lowdelay main rext.cfg ,and encoder lowdelay ecm.cfg . The parameters for encod-ing are as: • -c {config file name }
+
+--InputFile= {input file name }
+
+--InputBitDepth=10 --OutputBitDepth=10 --OutputBitDepthC=10 --InputChromaFormat=444 --FrameRate= {frame rate }
+
+--DecodingRefreshType=2 --FramesToBeEncoded= {frame number }
+
+--SourceWidth= {width }
+
+--SourceHeight= {height }
+
+--IntraPeriod= {intra period }
+
+--QP= {qp }
+
+--Level=6.2 --BitstreamFile= {bitstream file name }
+
+12 0.0025 0.0050 0.0075 0.0100 0.0125 0.0150 0.0175 0.0200 
+
+BPP 
+
+> 24
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> PSNR
+
+HEVC-B        
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016
+
+BPP 
+
+> 28
+> 30
+> 32
+> 34
+> 36
+> 38
+> PSNR
+
+UVG         
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016 0.018
+
+BPP 
+
+> 28
+> 30
+> 32
+> 34
+> 36
+> PSNR
+
+MCL-JCV        
+
+> 0.0025 0.0050 0.0075 0.0100 0.0125 0.0150 0.0175 0.0200
+
+BPP 
+
+> 0.775
+> 0.800
+> 0.825
+> 0.850
+> 0.875
+> 0.900
+> 0.925
+> 0.950
+> MS-SSIM
+
+HEVC-B        
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016
+
+BPP 
+
+> 0.82
+> 0.84
+> 0.86
+> 0.88
+> 0.90
+> 0.92
+> 0.94
+> 0.96
+> MS-SSIM
+
+UVG         
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016 0.018
+
+BPP 
+
+> 0.84
+> 0.86
+> 0.88
+> 0.90
+> 0.92
+> 0.94
+> 0.96
+> MS-SSIM
+
+MCL-JCV 
+
+DCVC-RT DCVC-FM GLC-video VTM-17.0 HM-16.25 ECM-5.0 Ours Figure 8. Rate-distortion curves in terms of PSNR and MS-SSIM. 0.0025 0.0050 0.0075 0.0100 0.0125 0.0150 0.0175 0.0200 
+
+BPP 
+
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> FID
+
+HEVC-B        
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016
+
+BPP 
+
+> 20
+> 40
+> 60
+> 80
+> 100
+> FID
+
+UVG         
+
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016 0.018
+
+BPP 
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> FID
+
+MCL-JCV 
+
+DCVC-RT DCVC-FM GLC-video VTM-17.0 HM-16.25 ECM-5.0 Ours 
+
+Figure 9. Rate-distortion curves in terms of FID. 
+
+For previous neural video codecs [19, 26, 34], and our method, we adopt low-delay encoding settings (intra-period = –1) in the RGB colorspace. 
+
+B.2. Quantitative Results 
+
+We report traditional pixel-level distortion metrics, PSNR and MS-SSIM [45] results in Fig. 8. Compared with GLC-video [34], which is similarly optimized for perceptual quality, our method not only achieves better perceptual met-rics (LPIPS and DISTS) but also attains higher objective metrics (PSNR and MS-SSIM). These results confirm the effectiveness of our approach for perceptual video compres-sion. Although our method produces lower PSNR than ob-jective video codecs [1, 26], both the visual comparisons and the perceptual metrics presented in the main text con-sistently demonstrate its superior perceptual performance. Moreover, at such low bitrates, objective codecs (typically optimized for PSNR) tend to lose fine details, resulting in blurry reconstructions. Therefore, higher PSNR or MS-SSIM at these bitrates does not necessarily correspond to better perceptual quality. We further report the FID [17] metric in Fig. 9 and KID [38] metric in Fig. 10. The FID and KID metrics are evaluated by splitting the frames into overlapped 256 × 256 
+
+patches, following the method in [46]. FID and KID mea-13 0.0025 0.0050 0.0075 0.0100 0.0125 0.0150 0.0175 0.0200                          
+
+> BPP
+> 10 2
+> 10 1
+> KID (log scale)
+> HEVC-B
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016
+> BPP
+> 10 2
+> KID (log scale)
+> UVG
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016 0.018
+> BPP
+> 10 2
+> KID (log scale)
+> MCL-JCV
+> DCVC-RT DCVC-FM GLC-video VTM-17.0 HM-16.25 ECM-5.0 Ours
+
+Figure 10. Rate-distortion curves in terms of KID. 0.0025 0.0050 0.0075 0.0100 0.0125 0.0150 0.0175 0.0200                      
+
+> BPP
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> FloLPIPS
+> HEVC-B
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016
+> BPP
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> FloLPIPS
+> UVG
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014 0.016 0.018
+> BPP
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> FloLPIPS
+> MCL-JCV
+> DCVC-RT DCVC-FM GLC-video VTM-17.0 HM-16.25 ECM-5.0 Ours
+
+Figure 11. Rate-distortion curves in terms of FloLPIPS. 
+
+sure the distribution-level similarity between reconstructed and ground-truth frames, thus providing complementary in-sights beyond pixel- or feature-level metrics. As shown in the figures, our method consistently outperforms all com-peting approaches across both metrics, indicating that our reconstructions better align with the statistical characteris-tics of natural video distributions and exhibit superior over-all fidelity. 
+
+B.3. Qualitative Results 
+
+In this section, we present additional qualitative results from the HEVC-B, UVG, and MCL-JCV datasets (Fig. 12). Our method produces visually sharper and more realistic recon-structions compared with other baselines. These examples further demonstrate that our approach excels not only in quantitative metrics but also in preserving fine structures, color consistency, and perceptual naturalness, thereby de-livering superior visual quality. 
+
+C. Temporal Consistency Evaluation 
+
+In this section, we test the temporal consistency of our method through both quantitative and qualitative evaluation. For quantitative results, we report the FloLPIPS [7] met-ric in Fig. 11. FloLPIPS is a flow-guided variant of LPIPS designed to measure temporal perceptual consistency in videos. As shown in the figure, our method consistently achieves lower FloLPIPS scores across all datasets, indicat-ing better temporal coherence and reduced flickering arti-facts. This further validates that the proposed method not only enhances perceptual quality but also preserves inter-frame consistency, which is crucial for producing visually stable video results. For the qualitative evaluation, as illustrated in Fig. 13, our model preserves the structure of the railing while pro-ducing clear and temporally consistent results. In contrast, DCVC-FM and ECM-5.0 produce blurrier reconstructions with noticeable temporal instability, while GLC-video ex-hibits prominent temporal artifacts across frames. These observations further confirm the ability of our method to generate temporally consistent videos. 14 Original(zoomed)  ECM -5.0  DCVC -FM  GLC -video  Ours 
+
+Original 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0086 (1.05 ×)/ 0.313 / 0.188  0.0099 (1.21 ×)/ 0.308 / 0.207  0.0094 (1.15 ×)/ 0.162 / 0.093  0.0082(1.00 ×)/ 0.133 / 0.084 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0060 (1.11 ×)/ 0.362 / 0.212  0.0060 (1.11 ×)/ 0.404 / 0.243  0.0108 (2.00 ×)/ 0.143 / 0.087  0.0054(1.00 ×)/ 0.133 / 0.080 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0053 (1.15 ×)/ 0.182 / 0.161  0.0050 (1.09 ×)/ 0.233 / 0.212  0.0092 (2.00 ×)/ 0.096 / 0.081  0.0046(1.00 ×)/ 0.091 / 0.081 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0064 (1.21 ×)/ 0.265 / 0.116  0.0063 (1.19 ×)/ 0.283 / 0.132  0.0065 (1.23 ×)/ 0.148 / 0.073  0.0053(1.00 ×)/ 0.117 / 0.055 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0119 (1.20 ×)/ 0.464 / 0.257  0.0125 (1.26 ×)/ 0.500 / 0.314  0.0112 (1.13 ×)/ 0.172 / 0.121  0.0099(1.00 ×)/ 0.138 / 0.094 
+
+Bpp↓ / LPIPS↓ / DISTS ↓  0.0047 (1.12 ×)/ 0.174 / 0.175  0.0047 (1.12 ×)/ 0.218 / 0.216  0.0083 (1.98 ×)/ 0.087 / 0.078  0.0042(1.00 ×)/ 0.080 / 0.077 Figure 12. More visual examples. 
+
+15 Original 
+
+(BPP) 
+
+ECM -5.0 
+
+(0.0072) 
+
+DCVC -FM 
+
+(0.0054 )
+
+GLC -video 
+
+(0.0106) 
+
+Ours 
+
+(0.0051) 
+
+Time Figure 13. Visualization results across video frames. 
+
+16

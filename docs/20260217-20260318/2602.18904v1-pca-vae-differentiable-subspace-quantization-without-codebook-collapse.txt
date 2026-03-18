@@ -1,0 +1,321 @@
+Title: PCA-VAE: Differentiable Subspace Quantization without Codebook Collapse
+
+URL Source: https://arxiv.org/pdf/2602.18904v1
+
+Published Time: Tue, 24 Feb 2026 01:42:53 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# PCA-VAE: Differentiable Subspace Quantization without Codebook Collapse 
+
+# Hao Lu 1* Onur C. Koyun 1 Yongxin Guo 1 Zhengjie Zhu 1 Abbas Alili 1 Metin Nafi Gurcan 11Wake Forest University School of Medicine, Winston-Salem, NC, USA 
+
+{Hao.Lu, Onur.Koyun, Abbas.Alili }@advocatehealth.org 
+
+{Yongxin.Guo, Zhengjie.Zhu, Metin.Gurcan }@wfusm.edu 
+
+# Abstract 
+
+Vector-quantized autoencoders deliver high-fidelity latents but suffer inherent flaws: the quantizer is non-differentiable, requires straight-through hacks, and is prone to collapse. We address these issues at the root by replacing VQ with a simple, principled, and fully-differentiable alternative: an online PCA bottleneck trained via Oja’s rule. The result-ing model, PCA-VAE, learns an orthogonal, variance or-dered latent basis without codebooks, commitment losses, or lookup noise. Despite its simplicity, PCA-VAE exceeds VQ-GAN and SimVQ in reconstruction quality on Cele-bAHQ—while using 10–100× fewer latent bits. It also pro-duces naturally interpretable dimensions (e.g., pose, light-ing, gender cues) without adversarial regularization or dis-entanglement objectives. These results suggest that PCA is a viable replacement for VQ: mathematically grounded, stable, bit-efficient, and semantically structured—offering a new direction for generative models beyond vector quan-tization. The code is available at: https://github. com/CAIR-LAB-WFUSM/OPCA-VAE.git 
+
+Key words: VAE, Online PCA, Oja’s Rule, Orthogonal Latents, 
+
+# 1. Introduction 
+
+Vector Quantization (VQ) has been a long-standing tool in signal processing for discretizing continuous representa-tions [1]. Its integration into deep generative models—most notably through VQ-VAE [2]—has proven remarkably suc-cessful, demonstrating that inserting a clustering mecha-nism in the latent space of an autoencoder can substantially improve generative modeling performance. Since then, VQ has become a cornerstone of modern architectures such as VQ-GAN [3] and Latent Diffusion Models (LDMs) [4], as well as a fundamental component of vision–language tok-enizers [5] that bridge visual and linguistic modalities. 
+
+> *Corresponding author: Hao.Lu@advocatehealth.org
+
+Despite its empirical success, VQ is inherently non-differentiable and exhibits several well-known limitations. First, the quantization operation in VQ involves a discrete 
+
+arg min selection over the codebook, which blocks gradi-ent flow. Consequently, VQ-VAE must rely on surrogate techniques such as the straight-through estimator (STE) [2], Gumbel-Softmax relaxation [6], or codebook rotation tricks to approximate gradients. Second, the codebook update rule in standard VQ only modifies the “winner” vector at each step. Non-winning entries remain static, often leading to the codebook collapse phenomenon, where large portions of the codebook are never used during training. These two issues—non-differentiability and sparse updates—limit the theoretical soundness and practical stability of VQ-based generative models. In contrast, Principal Component Analysis (PCA) nat-urally avoids both problems. PCA performs a linear pro-jection onto an orthonormal subspace, which is fully dif-ferentiable and globally updated. Unlike VQ, which ad-justs one code vector per sample, PCA updates all basis vectors jointly via continuous gradients. Therefore, PCA is immune to collapse and provides a smooth, mathemat-ically grounded alternative to vector quantization. More-over, PCA inherently decouples the latent factors of vari-ation: its orthogonal basis directions capture statistically independent variance components, aligning with one of the key theoretical motivations of Variational Autoencoders (VAEs)—to disentangle latent semantics. Building on these insights, we propose the PCA-VAE, a new generative model that replaces the non-differentiable VQ layer in VQ-VAE with an online PCA module. Specif-ically, we treat PCA as a trainable layer governed by Oja’s rule, enabling incremental, stable updates to both the mean and basis vectors during training. The resulting framework maintains the expressive power of deep VAEs while achiev-ing orthogonal, continuous, and interpretable latent repre-sentations. As shown in Fig. 1, the PCA layer serves as a differentiable projection operator that replaces the discrete quantization stage, thus bridging the gap between discrete 
+
+> arXiv:2602.18904v1 [cs.LG] 21 Feb 2026
+
+clustering and linear subspace learning. Our contributions are summarized as follows: • We introduce PCA-VAE, a new latent generative model that replaces VQ codebooks with an online-learned PCA layer (trained via Oja’s rule) inside a VAE architecture, enabling end-to-end differentiability and eliminating the need for discrete token learning. • We show that PCA-VAE naturally orders and decorrelates latent dimensions by explained variance, yielding axis-aligned semantic factors and highly interpretable latent traversal while achieving competitive or superior recon-struction quality and 10–100 × higher bit-efficiency than VQ-based counterparts. 
+
+# 2. Related Work 
+
+2.1. VQ-VAE Applications 
+
+Vector Quantization (VQ) is a long-established technique in classical signal processing [7, 8]. It represents data by par-titioning the input space into discrete regions, each repre-sented by a prototype vector (codeword). Mathematically, the VQ process can be viewed as a special case of the k-means algorithm [9, 10], where the quantizer’s codebook corresponds to cluster centroids and the encoding step as-signs each data vector to its nearest centroid. Building upon these classical foundations, Oord et al. introduced the Vector-Quantized Variational Autoencoder (VQ-VAE) 
+
+[11], which integrates a learnable VQ module into the la-tent bottleneck of an autoencoder. This design enables the model to learn discrete latent codes while maintaining a differentiable training pipeline through the straight-through estimator (STE). The quantized latent representations can then be modelled by powerful autoregressive priors such as PixelCNN or transformers, resulting in high-quality image, speech, and video synthesis. The VQ-VAE framework has since become the founda-tion for many state-of-the-art generative models. Razavi et al. proposed VQ-VAE-2 [12], a hierarchical extension that improved the fidelity and diversity of image generation by stacking multiple quantization layers. VQ tokenization has also been adopted in large-scale text-to-image and diffusion models such as DALL·E and LDMs [4, 13], as well as in video generation frameworks like VideoGPT [14]. More-over, VQ-based discrete representations have become cru-cial for vision–language models [15, 16], where images are discretized into sequences of visual tokens that large lan-guage models can process. Overall, these applications demonstrate that incorporat-ing a clustering-based discretization module into the la-tent space of autoencoders yields compact, compositional, and highly expressive latent representations. VQ-VAE thus bridges the gap between continuous representation learn-ing and discrete token modeling, serving as a fundamental building block for modern generative AI. 
+
+2.2. VQ-VAE Variants 
+
+Some variants have been proposed to address the funda-mental limitations of standard VQ, particularly its non-differentiable arg min quantization and the “winner-takes-all” codebook update that often leads to codebook collapse. Unlike classical VQ, which can be viewed as a stochastic approximation to k-means clustering, most of these modern variants no longer adhere to that geometric interpretation. Instead, they redesign the quantization mechanism to im-prove stability, gradient flow, or representational flexibility. For instance, Finite Scalar Quantization (FSQ) [17] dis-penses with the notion of a vector codebook entirely. It di-rectly quantizes each latent feature dimension into a small number of scalar levels, effectively replacing the nearest-neighbor lookup with element-wise discretization. This de-sign removes the need for arg min operations and elimi-nates codebook competition, yielding a fully differentiable quantization process. Similarly, Latent Feature Quantization (LFQ) [18] in-troduces a directional or sign-based quantization scheme, where latent vectors are normalized to unit length and then discretized by their orientations rather than Euclidean dis-tances. This can be interpreted as a form of directional clus-tering rather than traditional k-means, enabling better angu-lar consistency across latent codes. Other approaches modify the structure or dynamics of the codebook itself. For example, Lattice VQ and Prod-uct VQ methods [19, 20] introduce parameterized or factor-ized codebooks that ensure more uniform utilization, while Residual Quantization [21] and Hierarchical VQ-VAE-2 [12] extend the quantization across multiple levels of ab-straction to capture fine-grained features. Collectively, modern quantization modules preserve the core intuition of compressing latent spaces into finite sets but abandon the strict k-means assumptions that initially motivated vector quantization. 
+
+2.3. Online and Streaming PCA 
+
+In a parallel vein, the literature on principal component analysis (PCA) in streaming or online settings provides a mature theoretical and practical framework for continu-ous subspace learning. The work on streaming PCA by Mitliagkas et al. [22] offers memory-limited streaming al-gorithms with convergence guarantees, while broader sur-veys on subspace tracking appear in Balzano et al. [23]. The original Erkki Oja’s rule [24] for online PCA has been extended, for example in the convergence analysis of Oja’s algorithm by Xin Liang [25]. These methods update ba-sis vectors continuously (rather than using winner-takes-all) and are fully differentiable linear operations. Crucially, they avoid the non-differentiability and codebook collapse issues Figure 1. Overall architecture of the proposed PCA-VAE. The encoder extracts latent features h from the input image x. The PCA layer performs an online orthogonal projection ˆh = CC ⊤(h − μ) + μ, where C and μ are updated via Oja’s rule and r-fade averaging but treated as stop-gradient variables during VAE backpropagation. The quantized latent ˆh is then decoded to reconstruct ˆx. The PCA layer supports both global (single-vector) and spatial (multi-patch) latent configurations, each with its own PCA basis. 
+
+seen in vector quantization. Despite this, the use of PCA as a latent-layer within deep generative autoencoders remains under-explored. Our work bridges this gap by integrating an online PCA layer—learned via Oja’s algorithm—directly into a generative VAE framework. 
+
+# 3. Methods 
+
+3.1. Preliminary Knowledge: Principal Component Analysis 
+
+Principal Component Analysis (PCA) is a classical lin-ear method for finding a low-dimensional orthonormal subspace that captures the maximal variance of a high-dimensional dataset. Let zi ∈ RN denote the i-th sam-ple from a centered distribution with covariance matrix 
+
+Σ = E[zz ⊤]. The goal of PCA is to find Q orthonormal directions {c1, . . . , cQ} that maximize the total projected variance: 
+
+max  
+
+> C∈RN×Q
+
+tr  C⊤ΣC s.t. C⊤C = IQ, (1) where C = [ c1, . . . , cQ]. Each column cq is referred to as a principal component . The solution of (1) is given by the eigenvectors of Σ corresponding to its Q largest eigenvalues 
+
+λ1 ≥ λ2 ≥ · · · ≥ λN . These eigenvalues quantify the amount of variance explained by each component. For a centered input sample z, the projection and recon-struction under PCA are 
+
+y = C⊤z, (2) 
+
+bz = Cy = CC ⊤z. (3) The reconstruction error in mean square form is 
+
+L(C) = E∥z − CC ⊤z∥22
+
+ = tr(Σ) − tr  C⊤ΣC . (4) Minimizing (4) is equivalent to the maximization in (1). Hence, the optimal subspace span( C) preserves the largest possible variance of the data while minimizing the average reconstruction error. In online or streaming settings, the true covariance Σ is unknown; instead, it is estimated from minibatches of sam-ples. Online PCA algorithms, such as Oja’s rule, iteratively update C using stochastic gradients that approximate the stationary solution of Eq. (1). This motivates the learning formulation adopted in our PCA quantizer. 
+
+3.2. Online PCA 
+
+3.2.1. Notation and setup 
+
+Let a minibatch of latent feature maps be x ∈ RB×D×H×W
+
+with batch size B. We flatten each sample to vec( xb) ∈
+
+RDHW . When enabled, a lightweight mapper ϕ :
+
+RDHW → RN and a decoder ψ : RN → RDHW map to and from an intermediate space of dimension N . The sub-space basis is represented by 
+
+C = [ c1, . . . , cQ] ∈ RN ×Q, C⊤C = IQ, (5) where each column cq is an orthonormal component. For each sample b,
+
+zb = vec( xb) (6) 
+
+˜zb = zb − μ. (7) Projection and reconstruction in the PCA space are given by 
+
+yb = C⊤˜zb, (8) 
+
+bzb = Cyb + μ. (9) If the mapper is enabled, the reconstructed image is bxb =reshape  ψ(bzb), D, H, W ; otherwise, we reshape bzb di-rectly. 
+
+3.2.2. Running-mean centering with geometric γ-fade 
+
+To stabilize the subspace updates, we maintain a running mean μn ∈ RN of the latent vectors in the PCA space. In-stead of the classical exponential moving average (EMA), we employ a geometric fading mean , or γ-fade average ,which assigns exponentially decaying weights γk to past batch means. Let the batch mean at step t be 
+
+¯zt = 1
+
+B
+
+> B
+
+X
+
+> b=1
+
+z(t) 
+
+> b
+
+. (10) The cumulative γ-fade mean after n+1 updates is defined as 
+
+μn+1 =
+
+> n
+
+X
+
+> k=0
+
+γk ¯zn+1 −knX
+
+> k=0
+
+γk
+
+, γ ∈ (0 , 1) . (11) This normalized geometric weighting ensures that recent batches dominate when γ < 1, while older statistics decay exponentially. For practical streaming updates, Eq. (11) can be imple-mented recursively as 
+
+μn+1 = 1
+
+ρn+1 
+
+¯zn+1 + γρ n
+
+ρn+1 
+
+μn, (12) 
+
+ρn = 1 − γn
+
+1 − γ (13) Thus, the update smoothly transitions between the newest batch mean and the accumulated average, while guarantee-ing normalization by the cumulative geometric weight. We refer to this process as the γ-fade update , which replaces the bias-corrected EMA used in standard online PCA for-mulations. 
+
+3.2.3. Online subspace learning (Oja-type update) 
+
+Given a centered minibatch matrix ˜Z ∈ RB×N whose rows are ˜z⊤ 
+
+> b
+
+, we compute the projected representations and their Gram matrix: 
+
+Y = ˜ZC ∈ RB×Q, (14) 
+
+G = Y ⊤Y ∈ RQ×Q. (15) Let Up( G) denote the elementwise upper-triangular part of 
+
+G (including the diagonal). The Oja-type update with learn-ing rate ηt > 0 is 
+
+∆C = 1
+
+B
+
+ ˜Z⊤Y − C Up( G)
+
+
+
+, (16) 
+
+C ← C + ηt ∆C. (17) The first term in Eq. (16) performs stochastic ascent on the variance captured by the subspace, while the second term −C Up( G) damps within-subspace rotations, improv-ing numerical stability. 
+
+3.2.4. Symmetric re-orthonormalization 
+
+To prevent drift from numerical accumulation, we peri-odically re-orthonormalize C using the symmetric inverse square root of its Gram matrix: 
+
+GC = C⊤C = U ΛU ⊤, (18) 
+
+Λϵ = diag   max( λi, ϵ ), (19) 
+
+S−1/2 = U Λ−1/2 
+
+> ϵ
+
+U ⊤, (20) 
+
+C ← C S −1/2. (21) This ensures C⊤C ≈ IQ while minimally perturbing the learned span. 
+
+3.2.5. Objective and optimality (link to PCA) 
+
+For a zero-mean random vector z ∈ RN with covariance 
+
+Σ = E[zz ⊤], the Oja-type update in Eqs. (16)–(17), to-gether with the orthonormalization in Eq. (21), forms a stochastic online algorithm that converges to the optimal so-lution of Eq. 4 [24]. 
+
+3.3. Integration of PCA Layer into VAE 
+
+In our PCA-VAE, the conventional latent bottleneck of a Variational Autoencoder is replaced by an online-learned PCA quantization layer. Figure 1 illustrates the overall pipeline of the proposed PCA-VAE, where the PCA layer replaces the stochastic sampling of a traditional VAE with an online orthogonal projection step. This design preserves the low-dimensional structure of the latent representation through orthogonal projection while allowing the PCA ba-sis to adapt dynamically to the feature distribution during training. 
+
+3.3.1. Architecture overview 
+
+Let the encoder network Eθ : RC×H×W → RD×H′×W ′
+
+map an input image x into latent features h = Eθ (x). These features are then passed into a PCA quantizer Qϕ (the PCA layer), producing the quantized latent code 
+
+bh = Qϕ(h; sg (C), sg (μ)) , (22) where C ∈ RN ×Q denotes the learned orthonormal basis and μ ∈ RN is the running mean estimated using the geo-metric r-fade update defined in Eq. (11). The reconstructed image is obtained by decoding bh through the decoder net-work Dψ : RD×H′×W ′
+
+→ RC×H×W :
+
+bx = Dψ (bh). (23) The model is trained to minimize the reconstruction loss: 
+
+LPCA-VAE = ∥bx − x∥22. (24) 3.3.2. Stop-gradient treatment of PCA parameters 
+
+During VAE training, both C and μ are updated using the Oja-type and r-fade rules described in Sec. 3.2. However, these updates are outside the standard VAE backpropaga-tion graph. In other words, C and μ are treated as stop-gradient (sg) variables during the encoder–decoder opti-mization: 
+
+∂LPCA-VAE 
+
+∂C = 0 , ∂LPCA-VAE 
+
+∂μ = 0 . (25) This design ensures that the subspace learning dynamics of the PCA layer follow the stable Oja updates, while the encoder and decoder are trained purely through the recon-struction loss. In effect, the PCA layer acts as a non-parametric, self-organizing quantizer embedded in the VAE pipeline. 
+
+3.3.3. Single-vector and multi-patch latent structures 
+
+Depending on the latent layout, the PCA-VAE can operate in two configurations: (i) Single-vector latent: The encoder output h ∈
+
+RD×H′×W ′
+
+is flattened into one global feature vec-tor z ∈ RN before being projected onto a shared PCA basis C. This setting captures global semantic factors in the image. (ii) Multi-patch latent: The encoder output is divided into spatial patches h(p) ∈ RD for p = 1 , . . . , P ,where P = H′W ′. Each patch has an independent PCA basis Cp ∈ RD×Q and running mean μp, up-dated separately using the local feature statistics: 
+
+bh(p) = CpC⊤ 
+
+> p
+
+(h(p) − μp) + μp. (26) This configuration allows localized, position-dependent feature compression analogous to spatial quantization in VQ-VAE, but with orthogonal linear projections. 
+
+3.3.4. Summary of integration 
+
+In summary, the PCA layer replaces stochastic sampling in a conventional VAE with an online orthogonal projection 
+
+stage. The parameters (C, μ) are updated analytically via Oja’s rule and geometric r-fade averaging, while gradients from the reconstruction loss propagate only through the en-coder and decoder. This hybrid design combines the sta-tistical interpretability of PCA with the nonlinear modeling power of deep VAEs, supporting both global (single-vector) and spatial (multi-patch) latent forms. 
+
+# 4. Experiments 
+
+In this work, we focus exclusively on the reconstruction task in order to isolate the effect of replacing the VQ bottleneck with our online PCA layer. All reported metrics (rFID, SSIM, LPIPS) are computed between inputs and their re-constructions produced by the PCA-VAE. Although our experiments emphasize reconstruction, the PCA-coded latents are continuous and can be integrated into modern generative pipelines. For latent diffusion mod-els (e.g., LDM [4]), the PCA coefficients can serve directly as the latent space or as conditioning features without re-quiring discretization. We adopt the CelebA-HQ (256×256) dataset, which con-tains 30,000 high-quality celebrity face images resampled to 256 pixels. Initially introduced by NVIDIA [26], this dataset is widely used for generative modeling and con-tains only images without attributes or labels. We employ MSE loss as the reconstruction objective, and evaluate re-construction quality using rFID, LPIPS, and SSIM metrics. We set batch size as 16, learning rate as 0.0005, use Adam optimizer. 
+
+# 5. Results 
+
+5.1. Multi-Metric Reconstruction Comparison 
+
+We compare the strongest configuration of our method, PCA-VAE with a 16 ×16 latent grid and 100% orthogonal bases, against VQGAN [3], SimVQ [27] (SOTA VQVAE in 2024), VQ-VAE [12], and an AutoencoderKL [4] (VAE) baseline. All VQ models use a 16 ×16 latent grid with an equal token budget of 8,912 codebook indices. Autoen-coderKL [4] (VAE) also operates on a 16 ×16 latent grid with a Gaussian latent prior. We report PSNR, SSIM, LPIPS, and rFID. PSNR and SSIM are min–max normalized, while LPIPS and rFID use reverse min–max normalization so that higher scores uni-formly indicate better performance. Figure 2 shows that PCA-VAE attains the most balanced and overall highest re-construction quality across all four metrics, outperforming discrete codebook approaches despite using a continuous latent space. 
+
+Clarification. Discrete VQ models quantize latent features into codebook indices. PCA-VAE, in contrast, uses con-tinuous orthogonal basis coefficients. To ensure fairness, all VQ models share the same spatial latent resolution and token budget (16 ×16, 8,912 tokens), and AutoencoderKL serves as a continuous latent baseline under the same latent grid configuration. 
+
+5.2. Orthogonal Basis Efficiency and Scaling Be-havior 
+
+We investigate how reconstruction quality scales with both latent grid resolution (1 ×1, 4 ×4, 8 ×8, 16 ×16) and the frac-tion of PCA bases retained from the 256-dimensional la-tent (1% to 100%). Figure 3 reports SSIM, PSNR, LPIPS, and rFID as we gradually increase the number of orthog-onal bases. For LPIPS and rFID, log axes are used due Figure 2. Normalized reconstruction performance. We compare PCA-VAE (16 ×16, 100% bases) with VQGAN [3], SimVQ [27], VQ-VAE [12], and a VAE [4] baseline. All VQ models use 16 ×16 latents and 8,912 codebook tokens. Metrics are normal-ized (PSNR/SSIM min–max, LPIPS/rFID reverse) so that higher is better. 
+
+to long-tailed behavior. The best-performing VQ baseline (SimVQ [27] at a 16 ×16 grid) is marked as a horizontal reference. Across all metrics, PCA-VAE exhibits smooth and monotonic scaling: larger latent grids and more principal components consistently improve performance. Notably, PCA-VAE approaches or exceeds the SimVQ [27] baseline using only 5–10% of the PCA bases, indicating that most perceptual signal energy is concentrated in the top eigen-directions. Even with aggressive basis truncation, PCA-VAE outperforms discrete codebook methods in the low-dimensional regime. 
+
+5.3. Latent Bit–Budget Efficiency 
+
+To evaluate representational efficiency, we measure recon-struction quality as a function of the latent bit budget, de-fined as the total number of bits required to store the la-tent representation of an image. For continuous latent mod-els such as PCA-VAE and AutoencoderKL, the latent bud-get equals N × k × b, where N is the number of spa-tial latent tokens, k is the number of active latent chan-nels (i.e., retained PCA bases), and b = 32 bits per floating point value. For discrete vector–quantized models such as VQGAN [3], SimVQ [27], and VQ-VAE [12], the budget equals N × log 2 K, where K is the codebook size and each token stores an index. Figure 4 reports PSNR, SSIM, LPIPS, and rFID as a function of the latent bit budget across PCA-VAE config-urations (1 ×1, 4 ×4, 8 ×8, and 16 ×16 latent grids) and VQ baselines. PCA-VAE exhibits consistent quality improve-ments as additional principal components are included, forming a smooth scaling curve. Remarkably, PCA-VAE achieves comparable or better reconstruction quality than VQGAN [3], SimVQ [27], and VQ-VAE [12] while using one to two orders of magnitude fewer latent bits. For exam-ple, the 8 ×8 PCA-VAE configuration reaches SimVQ [27]– level PSNR and SSIM despite consuming approximately 
+
+10 ×–30 × fewer bits, and the 16 ×16 PCA-VAE variant at-tains near–zero LPIPS and rFID at significantly lower bud-gets than any discrete tokenizer. These results demonstrate that continuous orthogonal la-tent representations achieve higher information density than discrete codebooks. Whereas VQ models require large to-ken streams to capture perceptual structure, PCA-VAE con-centrates signal energy into a compact set of principal axes, yielding higher reconstruction quality per bit and establish-ing a favorable bit–quality scaling law for orthogonal latent spaces. 
+
+5.4. Latent Factor Interpretability 
+
+Orthogonal latent representations naturally induce disen-tangled semantic axes. To examine the interpretability of PCA-VAE latents, we perform controlled latent perturba-tion experiments on a held–out face image. We use the 1 ×1PCA-VAE, identify its first five principal components, and independently vary each latent coefficient within the range 
+
+[−2, 2] while holding all others fixed. Figure 5 visualizes the resulting reconstructions. Each principal direction produces a coherent and consis-tent semantic change. The first component adjusts global illumination (dark–to–bright background), the second in-duces head pose rotation, the third smoothly transitions fa-cial structure from masculine to feminine, the fourth mod-ulates facial shading, and the fifth alters hair density (from thick hair to near baldness). These effects remain stable across the perturbation range and do not collapse into tex-ture noise or incoherent artifacts. Unlike discrete codebook latents, which lack a natural coordinate geometry, PCA-VAE yields continuous, ordered, and interpretable latent axes due to its orthogonal construc-tion. This structure enables semantic manipulation with-out adversarial latent directions or iterative search, demon-strating that PCA-VAE possesses inherent latent organiza-tion typically attributed to specialized disentanglement ob-jectives. Unlike VAE latents, which lack a canonical ordering, PCA-VAE automatically sorts latent dimensions by infor-mation content, concentrating salient semantic factors in the first few coordinates. This yields interpretable and hi-erarchically organized latent axes, enabling both compact representation and direct semantic manipulation. Across all experiments, PCA-VAE demonstrates three key advantages. First, it consistently achieves higher re-construction quality per latent bit, revealing a favorable (a) rFID (log scale) (b) PSNR   
+
+> (c) LPIPS (log scale) (d) SSIM
+> Figure 3. Scaling behavior of PCA-VAE with respect to the fraction of principal bases used (1%–100%) under different latent grid resolutions (1 ×1, 4 ×4, 8 ×8, 16 ×16). The red horizontal line marks the best VQ baseline (SimVQ [27], 16 ×16).
+
+scaling law and superior information efficiency compared to discrete tokenizers. Second, its latent dimensions form ordered, orthogonal, and interpretable semantic axes, en-abling direct and compact control of perceptual attributes. Third, PCA-VAE exhibits smooth, monotonic performance gains as the number of retained principal components increases, offering predictable capacity–quality trade-offs without codebook collapse or instability. Together, these findings indicate that orthogonal continuous latent spaces provide a simple yet powerful alternative to learned vector quantization. 
+
+# 6. Discussion 
+
+Vector-quantized autoencoders require non-differentiable codebook lookup and rely on straight-through estimators to enable training. They may also suffer from codebook collapse when the codebook size increases. PCA-VAE nat-urally avoids both issues: its latent transformation is fully differentiable, no surrogate gradients are required, and no codebook exists to collapse. Despite this simplicity, PCA-VAE achieves strong reconstruction performance and fa-vorable bit–quality scaling behavior, rivaling or exceeding state-of-the-art VQ methods. PCA-VAE inherits the orthogonality and spectral order-ing of principal components, producing a latent space in which axes are automatically ranked by explained vari-ance. This yields semantically meaningful directions con-centrated in the leading components, unlike conventional VAE latents, which lack a canonical ordering or guaran-teed disentanglement. Such a structure provides both in-terpretability and efficient compression, and it suggests a promising inductive bias for representation learning. The PCA layer used in PCA-VAE is a linear transfor-mation and therefore modular: it can be inserted into exist-ing neural architectures to induce interpretability and rank-aware latent organization. This suggests opportunities be-yond autoencoding, including generative modeling, vision transformers, and multimodal encoders, where latent struc-ture and controllability are desirable. (a) rFID (lower is better) (b) PSNR (higher is better)  
+
+> (c) LPIPS (lower is better) (d) SSIM (higher is better)
+
+Figure 4. Latent bit–budget curves comparing PCA–VAE to VQGAN [3], SimVQ [27], VQ-VAE [12], and AutoencoderKL [4]. PCA–VAE achieves higher reconstruction quality per bit across PSNR, SSIM, LPIPS, and rFID, often matching VQ performance with 10 ×-100 ×
+
+fewer latent bits. 
+
+Figure 5. Latent semantics in PCA-VAE. We modify a single la-tent coefficient within the range [−2, 2] while fixing the others. Each principal direction produces a coherent semantic transition (illumination, head pose, facial structure, shading, hair density), demonstrating interpretable continuous latent axes. 
+
+# 7. Conclusion 
+
+We introduced PCA-VAE, a variational autoencoder that re-places discrete codebook quantization with an orthogonal principal component layer. This design yields interpretable and hierarchically ordered latent axes while achieving supe-rior information efficiency and strong reconstruction qual-ity. PCA-VAE provides a simple, differentiable alternative to vector quantization, eliminating the need for straight-through estimators and avoiding codebook collapse. Our study focuses on reconstruction quality, and we eval-uate primarily on CelebA–HQ at 256 ×256 resolution. We have not yet explored generative sampling or scaling to large datasets and models. Future directions include extending PCA-VAE to fully generative models, training on large-scale datasets, and in-vestigating PCA-based latent layers as a general building block to improve interpretability and controllability across diverse neural architectures. References 
+
+[1] R. Gray, “Vector quantization,” IEEE Assp Magazine , vol. 1, no. 2, pp. 4–29, 1984. 1 [2] A. Van Den Oord and O. Vinyals, “Neural discrete represen-tation learning,” Advances in neural information processing systems , vol. 30, 2017. 1 [3] J. Yu, X. Li, J. Y. Koh, H. Zhang, R. Pang, J. Qin, A. Ku, Y. Xu, J. Baldridge, and Y. Wu, “Vector-quantized image modeling with improved vqgan,” arXiv preprint arXiv:2110.04627 , 2021. 1, 5, 6, 8 [4] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Om-mer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 10 684– 10 695. 1, 2, 5, 6, 8 [5] L. Yu, Y. Cheng, K. Sohn, J. Lezama, H. Zhang, H. Chang, A. G. Hauptmann, M.-H. Yang, Y. Hao, I. Essa et al. ,“Magvit: Masked generative video transformer,” in Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023, pp. 10 459–10 469. 1 [6] P. Esser, R. Rombach, and B. Ommer, “Taming transform-ers for high-resolution image synthesis,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2021, pp. 12 873–12 883. 1 [7] A. Gersho and R. M. Gray, Vector Quantization and Signal Compression . Springer Science & Business Media, 1991. 2[8] R. M. Gray, “Vector quantization,” IEEE ASSP Magazine ,vol. 1, no. 2, pp. 4–29, 1984. 2 [9] S. P. Lloyd, “Least squares quantization in pcm,” IEEE Transactions on Information Theory , vol. 28, no. 2, pp. 129– 137, 1982. 2 [10] J. MacQueen, “Some methods for classification and analy-sis of multivariate observations,” in Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Proba-bility , 1967. 2 [11] A. van den Oord, O. Vinyals, and K. Kavukcuoglu, “Neu-ral discrete representation learning,” in Neural Information Processing Systems (NeurIPS) , 2017. 2 [12] A. Razavi, A. van den Oord, and O. Vinyals, “Generating diverse high-fidelity images with vq-vae-2,” in Advances in Neural Information Processing Systems , 2019. 2, 5, 6, 8 [13] A. Ramesh, P. Pavlov, G. Goh, S. Gray, C. Voss, A. Radford, M. Chen, and I. Sutskever, “Zero-shot text-to-image genera-tion,” arXiv preprint arXiv:2102.12092 , 2021. 2 [14] W. Yan, I. Misra, A. Gupta, D. Ghadiyaram, and D. Mahajan, “Videogpt: Video generation using vq-vae and transform-ers,” in Advances in Neural Information Processing Systems (NeurIPS) , 2021. 2 [15] J. Gu, X. Shen, B. Zhou, P. Zhang, and J.-B. Xu, “Vector-quantized image modeling with improved vqgan,” in Ad-vances in Neural Information Processing Systems , 2021. 2 [16] P. Esser, R. Rombach, and B. Ommer, “Taming transformers for high-resolution image synthesis,” in IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,2021. 2 [17] F. Mentzer, D. Minnen, E. Agustsson, and M. Tschannen, “Finite scalar quantisation: Vq-vae made simple,” arXiv preprint arXiv:2309.15505 , 2023. 2 [18] L. Yu, J. Lezama, N. B. Gundavarapu, L. Versari, K. Sohn, D. Minnen, Y. Cheng, V. Birodkar, A. Gupta, and X. Gu, “Language model beats diffusion–tokenizer is key to visual generation,” arXiv preprint arXiv:2310.05737 , 2023. 2 [19] A. Khalil, R. Piechocki, and R. Santos-Rodriguez, “Ll-vq-vae: Learnable lattice vector-quantization for efficient dis-crete representation learning,” OpenReview preprint ICLR 2024 , 2024. 2 [20] M. H. Vali and T. B¨ ackstr¨ om, “Stochastic optimization of vector quantization methods in application to speech and image processing,” in ICASSP 2023-2023 IEEE Interna-tional Conference on Acoustics, Speech and Signal Process-ing (ICASSP) . IEEE, 2023, pp. 1–5. 2 [21] N. Zeghidour, A. Luebs, A. Omran, J. Skoglund, and M. Tagliasacchi, “Soundstream: An end-to-end neural au-dio codec,” IEEE/ACM Transactions on Audio, Speech, and Language Processing , vol. 30, pp. 495–507, 2021. 2 [22] I. Mitliagkas, C. Caramanis, and P. Jain, “Memory-limited, streaming pca,” in Advances in Neural Information Process-ing Systems (NeurIPS) , 2014. 2 [23] L. Balzano and et al., “Streaming pca and subspace tracking: The missing data case,” IEEE Signal Processing Magazine ,vol. 35, no. 3, p. 116–130, 2018. 2 [24] E. Oja, “Simplified neuron model as a principal component analyzer,” Journal of mathematical biology , vol. 15, no. 3, pp. 267–273, 1982. 2, 4 [25] X. Liang, “On the optimality of the oja’s algorithm for online pca,” arXiv preprint arXiv:2104.00512 , 2021. 2 [26] T. Karras, T. Aila, S. Laine, and J. Lehtinen, “Progressive growing of gans for improved quality, stability, and varia-tion,” arXiv preprint arXiv:1710.10196 , 2017. 5 [27] Y. Zhu, B. Li, Y. Xin, Z. Xia, and L. Xu, “Addressing repre-sentation collapse in vector quantized models with one linear layer,” arXiv preprint arXiv:2411.02038 , 2024. 5, 6, 7, 8 PCA-VAE: Differentiable Subspace Quantization without Codebook Collapse 
+
+# Supplementary Material 
+
+# Additional Qualitative Results 
+
+To further validate the reconstruction advantages of PCA-VAE, we provide qualitative visualizations on held-out CelebA-HQ images (Fig. 7). The compared methods in-clude: • Ground-truth reference images • PCA-VAE (ours) • AutoencoderKL (Stable Diffusion VAE) • VQ-VAE v2 • SimVQ (strong VQ baseline) • VQGAN-FC All models are trained on CelebA-HQ at 256 ×256 res-olution. The same inputs are shown for every method. No test-set overlap or cherry-picking was performed. Across identities, poses, and lighting conditions, PCA-VAE produces clearer and more faithful reconstructions rel-ative to VAE and VQ baselines. We highlight the following consistent effects: • Sharper facial features, especially around eyes, nose, and mouth • Cleaner textures in skin, hair, and background regions • Better identity preservation, including face shape and hairstyle • Fewer artifacts than VQ models (no patch blocking or codebook noise) • No over-smoothing, a common failure mode in Autoen-coderKL Visually, PCA-VAE resembles the fidelity of the best VQ models (SimVQ / VQGAN-FC) while avoiding their quan-tization artifacts and without requiring a codebook. This supports our claim that PCA-VAE provides: (1) competitive or superior perceptual quality, and (2) a more stable and interpretable latent space. 
+
+# Latent Semantics and Emergent Correlations 
+
+Beyond controllable attribute directions shown in the main paper, we further explore additional PCA-VAE latent di-mensions by applying scalar perturbations to individual components. Fig. 6 visualizes interpolations on the 8th and 10th principal dimensions for the same input identity. Interestingly, we observe that semantic factors are not always perfectly disentangled across dimensions. Certain attributes emerge in correlated groups. For example: • Negative shifts on c8 tend to produce a sad expression together with a more masculine facial structure. • Positive shifts on c8 often produce a smiling expression together with a feminine facial structure. • Perturbing c10 yields similar co-occurrence patterns: sun-glasses and a confident pose often appear alongside more masculine features, while removing glasses and soften-ing expression often correlate with more feminine facial traits. These phenomena suggest that while PCA-VAE latents are ordered by variance and exhibit strong semantic inter-pretability, complete disentanglement is not guaranteed. In-stead, certain emerging factors reflect natural co-occurrence patterns in the training distribution, revealing intrinsic dataset and representation biases. 
+
+> Figure 6. Latent interpolation along the 8th and 10th PCA dimen-sions. Although many dimensions capture well-defined semantics, some attributes co-vary (e.g., emotion and gender appearance, sun-glasses and perceived masculinity). This reveals interpretable yet not strictly disentangled latent factors, likely reflecting data co-occurrence structure rather than model artifacts.
+
+Ground Truth 
+
+PCA-VAE (ours) 
+
+AutoencoderKL (Stable Diffusion VAE baseline) 
+
+VQ-VAE v2 
+
+SimVQ (strong VQ baseline) 
+
+VQGAN-FC Figure 7. Qualitative reconstruction comparison on CelebA-HQ (256 ×256). Each row displays reconstructions from a different model using the same set of input images (top row). PCA-VAE produces sharp and identity-preserving reconstructions, noticeably improving facial structure (e.g., eye and mouth shapes) and global consistency compared to AutoencoderKL and VQ-VAE v2. SimVQ and VQGAN-FC perform competitively but occasionally exhibit blocky textures or over-smoothed regions, whereas PCA-VAE achieves similarly strong fidelity without vector quantization, codebook lookup, or STE.

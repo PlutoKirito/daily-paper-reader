@@ -1,0 +1,624 @@
+Title: Flash-VAED: Plug-and-Play VAE Decoders for Efficient Video Generation
+
+URL Source: https://arxiv.org/pdf/2602.19161v1
+
+Published Time: Tue, 24 Feb 2026 02:10:37 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# iCom AI Lab INTEGRATED COMMUNICATIONS AND AI LAB Flash-VAED: Plug-and-Play VAE Decoders for Efficient Video Generation 
+
+Lunjie Zhu 1, Yushi Huang 1, Xingtong Ge 1, Yufei Xue 1, Zhening Liu 1, Yumeng Zhang 1, Zehong Lin 1, Jun Zhang 11Hong Kong University of Science and Technology Latent diffusion models have enabled high-quality video synthesis, yet their inference remains costly and time-consuming. As diffusion transformers become increasingly efficient, the latency bottleneck inevitably shifts to VAE decoders. To reduce their latency while maintaining quality, we propose a universal acceleration framework for VAE decoders that preserves full alignment with the original latent distribution. Specifically, we propose (1) an independence-aware channel pruning method to effectively mitigate severe channel redundancy, and (2) a stage-wise dominant operator optimization strategy to address the high inference cost of the widely used causal 3D convolutions in VAE decoders. Based on these innovations, we construct a Flash-VAED family. Moreover, we design a three-phase dynamic distillation framework that efficiently transfers the capabilities of the original VAE decoder to Flash-VAED. Extensive experiments on Wan and LTX-Video VAE decoders demonstrate that our method outperforms baselines in both quality and speed, achieving approximately a 6×
+
+speedup while maintaining the reconstruction performance up to 96.9% . Notably, Flash-VAED accelerates the end-to-end generation pipeline by up to 36% with negligible quality drops on VBench-2.0. 
+
+Code: https://github.com/Aoko955/Flash-VAED 
+
+Correspondence to: Jun Zhang ( eejzhang@ust.hk )5090 D Decoding Speed (FPS)  5090 D Decoding Speed (FPS) Jetson Orin Decoding Speed (FPS)  Jetson Orin Decoding Speed (FPS) PSNR                     
+
+> (a )Top :Wan 2.1 Middle: LightVAE -Wan 2.1 Bottom: Flash -VAED -Wan 2.1 (b )Top :LTX Video Middle: Turbo -VAED -LTX Bottom: Flash -VAED -LTX
+> 6.16x 5.69x 5.71x 5.63x
+> PSNR
+
+Figure 1 Qualitative and quantitative comparisons of video reconstruction results. We evaluate Flash-VAED (Bottom) against the original VAE decoder (Top) and the current state-of-the-art baseline (Middle). Flash-VAED offers the fastest decoding speed with minimal loss of fidelity to the original VAE decoder. 
+
+1
+
+> arXiv:2602.19161v1 [cs.CV] 22 Feb 2026
+
+# 1 Introduction 
+
+Recently, artificial intelligence-generated content has wit-nessed remarkable breakthroughs across various domains, including text (Touvron et al., 2023; DeepSeek-AI et al., 2025), image (Labs, 2024; Xie et al., 2024), and video synthesis (HaCohen et al., 2024; Wan et al., 2025), achiev-ing unprecedented levels of realism and coherence. The success of modern video generation models is largely at-tributed to powerful latent diffusion models (LDMs) (Ma et al., 2025), which typically comprise video variational auto-encoders (VAEs) (Kingma and Welling, 2013) and diffusion transformers (DiT) (Peebles and Xie, 2023). Despite their exceptional performance, video generation models are computationally expensive and slow in infer-ence. For instance, it requires more than 30 minutes and 50 GB of GPU memory for the Wan 14B model to gen-erate a 10-second 720p video clip on a standard H100 GPU. Such inefficiency significantly hinders practical de-ployment (Wu et al., 2025; Kim et al., 2025) and calls for more efficient video generation pipelines. Prior re-search has primarily focused on the DiT module, aiming to accelerate video generation by reducing denoising la-tency (Huang et al., 2025a; Zhang et al., 2025) or applying model compression (Guo et al., 2020; Wang et al., 2024; Huang et al., 2025b; Huang et al., 2025c). Nevertheless, as DiT acceleration techniques advance, the latency bot-tleneck has gradually shifted towards the VAE decoder, which has been largely overlooked. In light of this issue, some recent studies have explored training lightweight VAEs from scratch (Cheng and Yuan, 2025; Li et al., 2025). However, these models often suffer from latent distribution misalignment with the original generation pipeline, incurring expensive fine-tuning on the DiT. In addition, some attempts have been made to structurally optimize the original VAE decoder (Zou et al., 2025; Contributors, 2025), yet they have neither fully investigated the underlying causes of the decoding latency bottleneck nor achieved an optimal trade-off between speed and quality. In this work, we propose Flash-VAED , a family of efficient VAE decoders designed to accelerate video generation while preserving full alignment with the original latent distribution. Specifically, after a thorough analysis of the VAE decoder, we identify two primary factors that make it a latency bottleneck. First, through a singular value de-composition (SVD) analysis, we find that retaining merely 
+
+∼22% of the channels is sufficient to explain 99% of the variance in the full channel feature maps, which indicates severe channel redundancy. Based on this insight, we intro-duce an independence-aware channel pruning method that selectively optimizes a limited number of retained chan-nels to linearly reconstruct the full channel feature maps. Second, we notice that causal 3D convolutions (Causal-Conv3D) dominate the latency within each decoder block. To address this issue, we analyze CausalConv3D across different stages and propose a stage-wise dominant opera-tor optimization strategy, which replaces CausalConv3D with more efficient operators tailored to stage-specific characteristics. Moreover, to efficiently transfer the capa-bilities of the original VAE decoder to Flash-VAED, we develop a three-phase dynamic distillation training frame-work , achieving stage-wise alignment of Flash-VAED with the original VAE decoder. In summary, our work aims to accelerate latent decoding for video generation and makes the following contribu-tions: 
+
+• We propose an independence-aware channel pruning method, which reduces the channel count to 12.5% −
+
+25% of the original with minimal quality loss. 
+
+• We introduce a stage-wise dominant operator optimiza-tion strategy that targets the dominant CausalConv3D, substituting it with efficient operators based on stage-specific characteristics to maximize efficiency. 
+
+• We present a three-phase dynamic distillation train-ing framework that enables Flash-VAED to efficiently inherit the capabilities of the original VAE decoder. 
+
+• Extensive experiments on Wan and LTX-Video VAE decoders demonstrate that our method outperforms baselines in both quality and speed, achieving an ap-proximate 6× speedup while maintaining up to 96.9% performance in reconstruction quality. Moreover, our method accelerates the entire generation pipeline by up to 36% with negligible quality drops on VBench-2.0. 
+
+# 2 Related Work  
+
+> Latent Diffusion Models.
+
+Diffusion models have achieved remarkable success in generative tasks, delivering unprece-dented performance in video generation (HaCohen et al., 2024; Wan et al., 2025). Among recent advancements, architectures that employ DiT (Peebles and Xie, 2023) as the backbone have become particularly prominent, demon-strating superior scalability and generation quality com-pared to traditional U-Net-based designs (Ronneberger et al., 2015). However, performing the iterative diffusion process directly in the high-dimensional pixel space in-curs prohibitive computational costs. To address this, VAEs have been introduced to compress raw data into compact low-dimensional latent representations. This paradigm, referred to as LDMs (Ma et al., 2025), signif-icantly reduces inference complexity while maintaining high-fidelity synthesis. Nevertheless, as models scale up, both computational overhead and inference latency esca-late substantially. To address this challenge, prior research has primarily targeted the DiT module, with strategies generally falling into two categories: reducing the number of denoising steps and reducing the latency per step. The former largely employs distillation techniques (Yin et al., 2024; Ge et al., 2025), while the latter mainly utilizes model compression methods such as pruning Guo et al. (2020); Wang et al. (2024) and quantization (Shang et al., 2F8 F7         
+
+> F5 F4
+> H
+> WT
+> F1 F2 F3
+> C9 C8 C7
+> C6 C5 C4
+> H
+> WT
+> C1 C2 C3
+> Input
+> Latent
+> Pruning C1 C2
+
+Independence -Aware Channel Pruning     
+
+> Ci:Channel i
+> Fi:Feature map from C i
+> If
+
+Base -VAED  Flash -VAED 
+
+up0 
+
+up1 
+
+up2 
+
+up3 
+
+mid  3D DW Conv. Block s                
+
+> 3D DW Conv. Block s
+> 3D DW Conv. Block s
+> Pruned 2D Conv. Block s
+> Pruned 2D Conv. Block s
+> 3D Conv. Block s
+> 3D Conv. Block s
+> 3D Conv. Block s
+> Spatial -Temporal Stage ：Depthwise Separation
+> 3D Conv. Block s
+> 3D Conv. Block sChannel
+> N×N×N filters
+> 1×1×1 filters
+> Spatial Stage ：3D 2D & Channel Pruning
+> W
+> H
+> T
+> Remain
+> Delete
+> Denoised Latent Denoised Latent
+> Depthwise Conv Pointwise Conv
+
+Stage -Wise Operator Optimization  
+
+> F1
+> F2
+> F1
+> F9
+> w11
+> w21
+> w19
+> w29
+> F6
+> F9 Figure 2
+
+Overview of the Flash-VAED architecture 1. The proposed stage-wise dominant operator optimization substitutes CausalConv3D with stage-specific efficient operators (left), tailored to each decoding stage. Moreover, the independence-aware channel pruning method (right) reduces the channel count to 12.5% − 25% of the original with minimal quality loss, leveraging channel independence. 
+
+2023; Huang et al., 2024; Huang et al., 2025c). Yet, as the efficiency of DiT improves, the latency bottleneck has gradually shifted towards the VAE decoder. For instance, when generating an 81-frame 480p video using the original pipeline for Wan 1.3B (Wan et al., 2025), VAE decoding accounts for only 2.3% of the total latency. However, with autoregressive few-step distillation (Huang et al., 2025a), this proportion surges to 29.6%, representing more than a ten-fold increase. 
+
+Video VAE Decoding Acceleration. Modern video VAE de-coders (HaCohen et al., 2024; Kong et al., 2024; Wan et al., 2025) prioritize high-fidelity and consistent decoding by employing computationally intensive CausalConv3D and a large number of channels. While beneficial for quality, these designs incur prohibitive computational and mem-ory costs, hindering real-time deployment. To address these challenges, some studies focus on designing novel lightweight VAE architectures from scratch (Cheng and Yuan, 2025; Li et al., 2025). However, these approaches inevitably cause a latent distribution mismatch between the VAE decoder and the pre-trained DiT. Integrating them into the generation pipeline necessitates fine-tuning of the DiT, which incurs prohibitive computational costs. Alternatively, another line of research attempts to per-form structural optimizations directly on the original VAE decoder to maintain latent consistency (Zou et al., 2025; Contributors, 2025). However, these methods neither fully address the root causes of the latency bottleneck in VAE decoders nor achieve an optimal trade-off between speed and quality. For instance, Turbo-VAED (Zou et al., 2025) addresses the parameter redundancy of CausalConv3D in low-resolution layers but fails to resolve the significant in-ference latency in high-resolution layers. Similarly, Light-VAE (Contributors, 2025) identifies channel redundancy yet fails to effectively reduce it without incurring quality loss. In contrast, our work comprehensively identifies the underlying causes of the decoding latency bottleneck, achieving substantial acceleration with negligible quality degradation. 
+
+# 3 Method 
+
+In this section, we analyze the two primary factors that contribute to the latency bottleneck in the VAE decoder for video generation and present our corresponding so-lutions. The first factor is severe channel redundancy ,which we address by proposing independence-aware chan-nel pruning, as illustrated on the right side of Figure 2 and detailed in Section 3.1. The second factor is the ubiq-uitous presence and high inference cost of CausalConv3D .To address this issue, we introduce a stage-wise dominant operator optimization strategy, as shown on the left side of Figure 2, with further details provided in Section 3.2. Building on these optimizations, we construct the Flash-VAED family. Finally, to efficiently transfer the capabilities of the original VAE decoder to Flash-VAED and seam-lessly embed Flash-VAED into the original generation pipeline, we design a comprehensive three-stage feature distillation training framework, which is elaborated in Section 3.3. For clarity, we standardize the naming of the decoder blocks. From input to output, corresponding to low to high resolutions, we refer to the main blocks as the Middle Block, Upsample Block 0, Upsample Block 1, Upsample Block 2, and Upsample Block 3, denoted by mid , up 0,up 1, up 2, and up 3, respectively. 
+
+3.1 Independence-Aware Channel Pruning 
+
+As a fundamental branch of model compression (Xue et al., 2025; Liu et al., 2025; Liu et al., 2024), channel pruning is a widely used neural network acceleration technique (Liu et al., 2017; Cheng et al., 2024). However, applying con-ventional pruning methods to video VAE decoders faces 
+
+> 1We take Flash-VAED-Wan 2.1 as an example.
+
+3several challenges. First, our visualization of the output feature maps and the calculation of the cosine similarity against Channel 0, as shown in Figure 3, reveal observable redundancy. Nevertheless, pairwise similarity measures fail to provide sufficient evidence for pruning decisions. Second, the extensive use of cascaded residual blocks in the decoder complicates the pruning process, as main-taining identical channel indices across different blocks is critical to preserve the model’s original connectivity. A detailed explanation is provided in Appendix A.2. To address these challenges, we shift from pairwise sim-ilarity to linear dependence, where a channel is consid-ered redundant if it can be linearly represented by other channels. To validate this concept, we conduct an SVD analysis on the matrix of feature maps across all channels. As illustrated in Figure 4, we find that retaining only  
+
+> 22%
+
+of the singular values is sufficient to explain 99% 
+
+of the total variance. Based on this insight, we propose an independence-aware channel pruning method that re-duces the channel count to 12.5% −25% of the original size with minimal quality loss, while maintaining the internal continuity of the model. Mathematically, we use X to denote the retained channel features and linearly reconstruct the full channel features 
+
+Y as follows (Luo et al., 2017): 
+
+ˆY = WX , (1) where the projection matrix W is derived using the least squares method (Björck, 1990). Since traditional metrics for quantifying the reconstruction fidelity, such as mean squared error, exhibit inherent sensitivity to feature mag-nitude variations, we instead employ the coefficient of determination R2 to measure how well the retained chan-nel features explain the original full channel features (Lai et al., 2018): 
+
+R2 = 1 − SS res 
+
+SS tot 
+
+= 1 − ∥Y − WX ∥2
+
+> F
+
+∥Y − Y∥2
+
+> F
+
+, (2) where SS res and SS tot denote the residual and total sum of squares, respectively, and ∥ · ∥ F is the Frobenius norm. Based on this foundation, our independence-aware chan-nel pruning framework unfolds in three integrated steps. First, we employ a greedy channel selection strategy to iteratively identify the optimal subset of channels. Specifi-cally, given the current subset, the next channel is selected by ensuring that each addition maximizes the marginal gain of R2 until the target number of channels is reached. Second, to ensure that the selected channels adequately represent the full feature map, we introduce a pre-pruning retained channel enhancement. We encourage the model to maximize the expressive power of the retained channels by incorporating an expressivity loss during training with respect to W and X, which is formulated as: 
+
+Lce = 1 − R2 = ∥Y − WX ∥2
+
+> F
+
+∥Y − Y∥2
+
+> F
+
+. (3) As shown in Figure 5, this operation significantly enhances the reconstruction capability, with R2 scores improving from an initial range of 0.87 −0.93 to consistently exceed-ing 0.98 across all layers. Finally, to resolve the disrup-tion of residual block continuity caused by mismatched retained indices across blocks, we implement a topology-preserving shortcut injection. Specifically, standard iden-tity shortcuts are replaced with 1 × 1 convolutions. Since retained channels are capable of linearly representing any channel within the current block, we can directly derive the mapping matrix W from the retained indices of the current block to the retained indices of the subsequent block using the least squares method. By initializing the 1 × 1 convolution shortcut of the subsequent block with this matrix W, we effectively preserve the internal continuity of the pruned VAE decoder. More details are provided in Appendix A.2. Top 8 Channels Similar to Ch 0          
+
+> Ch 0
+> Sim: 1.000 Ch 2
+> Sim: 0.726 Ch 80
+> Sim: 0.652 Ch 52
+> Sim: 0.646
+> Ch 50
+> Sim: 0.634 Ch 85
+> Sim: 0.626 Ch 27
+> Sim: 0.623 Ch 43
+> Sim: 0.602
+> Figure 3 Channel-wise similarity analysis. We visualize the top-8 channels most similar to Channel 0. Although the feature maps exhibit visual similarity, the quantitative similarity scores are
+> not high enough to support pruning.
+
+3.2 Stage-Wise Dominant Operator Optimization 
+
+In addition to channel redundancy, our comprehensive latency analysis identifies CausalConv3D as another key computational bottleneck within the VAE decoder. As shown in Figure 6, this operator consistently consumes over 60% of the inference time across most blocks, with computational costs escalating dramatically in high-resolution stages. Therefore, we characterize CausalConv3D as the dominant operator. To tackle this, we propose a stage-wise replacement strategy that substitutes CausalConv3D with tailored efficient operators based on the specific char-acteristics of each decoding stage. This approach achieves significant reductions in both parameter count and infer-ence latency with negligible quality degradation. Specifically, guided by insights from previous works (Zou et al., 2025; Sandler et al., 2018; Howard et al., 2017), we start from the deep layers (low-resolution layers). In these layers, we substitute CausalConv3D with 3D depthwise separable convolutions (3D DW Conv.), reducing the pa-rameter count to approximately 20% of the original VAE decoder with minimal quality degradation. The theoreti-cal analysis is provided in Appendix A.1. For the shallow layers (high-resolution layers), since temporal upsampling has been completed in deep layers, we hypothesize that the 4Number of Components   
+
+> Cumulative  Explained  Variance Ratio  99%
+> 22.9% (22/96) Figure 4 SVD analysis on channel features. The curve for cumu-lative explained variance ratio reveals the intrinsic low-rank nature of the feature maps. Notably, only 22 components (22.9% of the total) are required to explain 99% of the feature variance, providing strong empirical support for our pruning method.
+
+reliance on inter-frame temporal dependencies diminishes here. Consequently, computationally expensive 3D opera-tions can be safely replaced by spatial-only operators. To validate this hypothesis, we conduct an experiment by pro-gressively replacing CausalConv3D with 2D convolutions from deep to shallow layers. As illustrated in Figure 7, a clear trend emerges: as the replacement shifts toward higher-resolution layers, the latency increasingly reduces, while the quality loss diminishes. These empirical results strongly support our strategy to replace CausalConv3D in the shallow layers with lightweight 2D convolutions for faster inference. 
+
+3.3 Training Strategy: Three-Phase Dynamic Dis-tillation Framework 
+
+To enable Flash-VAED to efficiently inherit the capabilities of the original VAE decoder, we incorporate feature distil-lation into our training objective. Following the paradigm established in prior works (Bai et al., 2022; Doshi and Kim, 2024), we define a feature-based distillation loss as follows: 
+
+Ldistill = X
+
+> l
+
+1numel( f Fl )
+
+X
+
+> i
+
+σ(f Fl )i − f Ol,i 1,
+
+with σ(·) = 
+
+(
+
+Identity( ·), phase 1 & 2 ,
+
+Conv 1×1(·), phase 3 ,
+
+(4) where f Fl and f Ol denote the intermediate feature maps extracted from Flash-VAED and the original VAE decoder in block l, respectively, numel (·) is the normalization factor that represents the total element count, and σ(·)
+
+serves as a phase-dependent adaptation layer that aligns the features of Flash-VAED with the original feature space. Based on this, we propose a three-phase dynamic distil-lation training strategy. In phase 1, we aim to capture global structural information by directly aligning the fea-tures of the deep layers of Flash-VAED with those of the original VAE decoder. The complete loss function is formulated as 
+
+L = α1L1 + α2Llpips + α3Ldistill + α4Lssim . (5) Then, phase 2 focuses on enhancing pre-pruned channels by incorporating Lce from Equation 3 into the overall objective to maximize the expressivity of retained channels. The complete loss function for this phase is represented as 
+
+L = α1L1 + α2Llpips + α3Ldistill + α4Lssim + α5Lce . (6) Finally, phase 3 targets fine-grained recovery in pruned shallow layers. To address channel number misalignment caused by pruning, we instantiate σ as a 1 × 1 convolution. Notably, we initialize this projection layer using W derived in Section 3.1 to significantly accelerate convergence. The loss function for this phase is the same as Equation 5. 
+
+# 4 Experiments 
+
+In this section, we first describe the experiment setup, including the implementation details of our Flash-VAED family, training and benchmark datasets, baselines, and evaluation protocols in Section 4.1. Then, we present our main results regarding both quality and efficiency in Section 4.2. Finally, we conduct ablation studies to justify the design choices for critical components and parameters in Section 4.3. 
+
+4.1 Experimental Setup  
+
+> Flash-VAED Family.
+
+To demonstrate the versatility and ro-bustness of our approach, we instantiate the Flash-VAED family by applying our optimization methods to the de-coders of two representative state-of-the-art (SOTA) video VAEs: Wan (Wan et al., 2025) and LTX-Video (HaCohen et al., 2024). The rationale for this selection is twofold. First, we choose Wan (Wan et al., 2025) because its VAE decoder is widely recognized for delivering the highest quality among mainstream video generation models, serv-ing as a benchmark for high-fidelity performance. Second, LTX-Video (HaCohen et al., 2024), which operates at an extreme spatial-temporal compression ratio of 1:192, demonstrates the superior efficiency and effectiveness of our method even under ultra-high compression regimes.  
+
+> Datasets.
+
+To ensure robustness for both reconstruction and generation tasks, we curate a hybrid training dataset that comprises 10K samples, equally drawn from two distinct sources. The first half consists of 5K video-latent pairs obtained through video reconstruction, where videos sampled from the VidGen (Tan et al., 2024) dataset and latents are extracted using the original VAE encoder. The second half comprises 5K latent-video pairs generated via a pipeline where diverse text prompts generated by GPT-4o are fed into the video generation model (Wan et al., 2025; HaCohen et al., 2024) to collect pairs of final denoised latents and generated videos. For quantitative evaluation, following prior work (Zou et al., 2025), we utilize the UCF-101 test set (Soomro et al., 2012) as our reconstruction benchmark. 5L8 -Res2  L9 -Res2  L11 -Res1  L12 -Res2  L13 -Res2  L14 -Res2    
+
+> 0.86
+> 0.88
+> 0.90
+> 0.92
+> 0.94
+> 0.96
+> 1.00 Before Enhancement
+> After Enhancement
+> Reconstruction Fidelity (R 2)
+
+Figure 5 Effectiveness of pre-pruning channel enhancement. We compare the reconstruc-tion fidelity R2 of the retained channels before and after enhancement. The sig-nificant improvement across all layers val-idates that our strategy effectively forces the retained channels to encode more in-formation. 0        
+
+> 20
+> 40
+> 60
+> 80
+> 100
+> Total Latency
+> CausalConv3D
+> 100% 39.6% 61.9%
+> 59.6%
+> 73.2%
+> 74.2%
+> 74.7%
+> in mid up 0up 1up 2up 3out
+> Decoder Blocks
+> Inference Latency (ms)
+> 120
+
+Figure 6 Block-wise latency breakdown. 
+
+The CausalConv3D operator occupies over 60% of the total latency in most blocks, and its inference time grows rapidly with resolution. These obser-vations jointly lead us to define it as the 
+
+dominant operator .Higher Resolution          
+
+> PSNR (dB) Inference Latency ( ms )
+> 32.0
+> 32.2
+> 32.4
+> 32.6
+> 32.8
+> 33.0
+> 280
+> 300
+> 320
+> 340
+> 360
+> 380
+> 400
+> 420
+> Baseline up 0up 1up 2up 3
+> 33.28
+> 32.42 32.46 32.70
+> 32.99
+> 396 394
+> 362
+> 345
+> 307
+> PSNR (dB)
+> Inference Latency ( ms )
+> 33.2
+> 33.4
+
+Figure 7 Analysis of 2D convolution substi-tution. Moving towards higher resolution layers, replacing CausalConv3D with 2D convolutions consistently reduces the la-tency while delivering less quality loss. 
+
+Table 1 Quantitative comparison of video reconstruction results with SOTA methods. We compare Flash-VAED against the original VAE decoders and competitive baselines on both a consumer-grade GPU (RTX 5090D) and an edge device (Jetson Orin), where 
+
+dT, dH, and dW denote the compression ratios for time, height, and width, respectively, ↑ indicates higher is better, while ↓
+
+indicates lower is better. The best results among the methods are highlighted in bold . Flash-VAED outperforms all the baselines in both speed and quality. 
+
+Model (d T, dH, dW) FPS ↑ Reconstruction Quality RTX 5090D Jetson Orin PSNR ↑ SSIM ↑ LPIPS ↓
+
+Wan 2.1 (Wan et al., 2025) (4 , 8, 8) 19.27 0.65 40.40 0.9733 0.0190 LightVAE-Wan 2.1 (Contributors, 2025) (4 , 8, 8) 118.60 3.70 32.61 0.9416 0.0892 
+
+Flash-VAED-Wan 2.1 (Ours) (4 , 8, 8) 118.77 3.70 37.61 0.9614 0.0285 
+
+LTX-Video (HaCohen et al., 2024) (8 , 32 , 32) 204.55 4.75 33.28 0.9253 0.0497 Turbo-VAED-LTX (Zou et al., 2025) (8 , 32 , 32) 623.08 23.24 31.52 0.9275 0.0555 
+
+Flash-VAED-LTX (Ours) (8 , 32 , 32) 1167.99 26.74 32.24 0.9293 0.0551 
+
+Baselines. We compare our Flash-VAED against the fol-lowing baselines in terms of both quality and efficiency: 
+
+• Turbo-VAED (Zou et al., 2025): The current SOTA framework for accelerating VAE decoders specifically for video generation tasks. 
+
+• LightVAE (Contributors, 2025): An open-source solu-tion in the Hugging Face LightX2V series, known for its strong practical adoption, with over 7,000 monthly downloads. 
+
+Metrics. To comprehensively evaluate our method, we first assess the reconstruction quality using three standard metrics: PSNR for pixel-level fidelity, SSIM for structural preservation, and LPIPS for perceptual realism aligned with human vision. To rigorously verify Flash-VAED’s capability on compute-constrained devices, we bench-mark inference speed (FPS) on both a consumer-grade GPU (NVIDIA RTX 5090D) and an edge device (NVIDIA Jetson AGX Orin 64G) (Karumbunathan, 2022). For the generation task, we measure end-to-end latency to evalu-ate efficiency. The quality evaluation is conducted using VBench 2.0 (Zheng et al., 2025), the most authoritative and comprehensive benchmark for assessing models across 18 distinct dimensions, ensuring that our acceleration maintains high-quality generation standards with holistic evaluation. 
+
+Implementation Details. Flash-VAED is trained on video sequences with a resolution of 480 × 832 spanning 81 frames. The training process is conducted on four NVIDIA A5880 GPUs and requires approximately 300 GPU-hours. We employ the AdamW optimizer with a learning rate of 1 × 10 −4 and a weight decay of 1 × 10 −4. The loss coefficients are set as α1 = 10 , α2 = 2 , α3 = 1 , and α4 = 5 
+
+during the first and third training stages, while in the second stage, we maintain these values and additionally set 
+
+α5 = 1 . In terms of specific architectural adaptations, for the Wan 2.1 VAE decoder (Wan et al., 2025), we replace the blocks mid , up 0, and up 1 with depthwise separable convolutions, and switch up 2 and up 3 to 2D convolutions, applying 1/8 channel pruning to the latter two blocks. Similarly, for the LTX-Video VAE decoder (HaCohen et al., 2024), we replace the blocks mid , up 0, and up 1 with depthwise separable convolutions, keep up 2 unchanged, replace up 3 with a 2D convolution, and apply 1/4 channel pruning to both up 2 and up 3.64.2 Main Results  
+
+> Reconstruction Results.
+
+We present qualitative visual results in Figure 1 and report quantitative evaluations in Table 1. For the Wan 2.1 VAE decoder (Wan et al., 2025), Flash-VAED achieves substantial speedups of 6.16 ×
+
+on the NVIDIA RTX 5090 D and 5.69 × on the Jetson Orin, while retaining 93.1% of the original VAE decoder’s quality. Notably, our reconstructed PSNR reaches 37.61 dB, surpassing even the original VAE decoders of other SOTA video generation models (Kong et al., 2024; HaCo-hen et al., 2024; Yang et al., 2024), which demonstrates the effectiveness of our method on VAE decoders with mainstream compression ratios. Compared to the base-line LightVAE-Wan2.1 (Contributors, 2025), Flash-VAED achieves an impressive 5 dB gain in PSNR at the same inference speed. For the LTX-Video VAE (Contributors, 2025), Flash-VAED achieves 5.71 × and 5.63 × speedups on the NVIDIA RTX 5090 D and Jetson Orin, respectively, while preserving 96.9% of the original quality. This fur-ther validates the efficacy of our method on VAE decoders with high compression ratios. Compared with Turbo-VAED (Zou et al., 2025), Flash-VAED outperforms in both speed and quality. Specifically, Flash-VAED is nearly 2× faster than Turbo-VAED on the NVIDIA RTX 5090 D and even faster on the Jetson Orin, without specific edge optimizations. For quality comparison, our proposed Flash-VAED surpasses Turbo-VAED across all PSNR, SSIM, and LPIPS metrics. These superiority arises from (i) a lightweight model design that facilitates fast infer-ence, and (ii) an efficient training strategy that enables Flash-VAED to retain the capabilities of the original VAE decoders.  
+
+> Generation Results.
+
+To demonstrate the versatility of our method, we integrate Flash-VAED into two representa-tive accelerated generation frameworks: Self Forcing-Wan 1.3B, an autoregressive acceleration framework (Huang et al., 2025a), and FastVideo-Wan 1.3B, a few-step distil-lation acceleration framework (Zhang et al., 2025). The video generation results are qualitatively visualized in Figure 8 for Self Forcing-Wan 1.3B (left) and FastVideo-Wan 1.3B (right), with the corresponding quantitative results evaluated on VBench 2.0 reported in Figure 9 on the left and right sides, respectively. For the Self Forc-ing pipeline (Huang et al., 2025a), Flash-VAED achieves a 27% speedup in end-to-end generation latency, while the performance curve in Figure 9a closely tracks that of the original VAE decoder across all dimensions in VBench-2.0 (Zheng et al., 2025). In contrast, the base-line LightVAE (Contributors, 2025), although comparable (slightly slower) in speed, demonstrates noticeable perfor-mance drops in several dimensions. The advantages of Flash-VAED are even more pronounced in the FastVideo pipeline (Zhang et al., 2025), where it achieves a 36% speedup while maintaining a closely aligned performance curve with the original VAE decoder. Conversely, the performance of the LightVAE-Wan 2.1 baseline degrades significantly, resultining in the decoding of latent infor-                         
+
+> Table 2 Ablation results of using different pruning ratios. Prune Ratio FPS/5090D ↑PSNR ↑SSIM ↑LPIPS ↓
+> 1204.55 33.2883 0.9253 0.0497 1/2 625.00 32.5421 0.9307 0.0521 1/4 1167.99 32.2400 0.9293 0.0551 1/8 1907.23 31.0786 0.9162 0.0804
+
+mation into meaningless noise. This disparity comes from the mismatch in latent distribution, as illustrated in Fig-ure 10, which visualizes the latent distribution of the original VAE, Flash-VAED, and the baseline. It is evident that the latent distribution of Flash-VAED (red) perfectly overlaps with that of the original VAE decoder (black), en-suring seamless compatibility with the generation pipeline, while LightVAE (blue) (Contributors, 2025) suffers from a significant distributional deviation. 
+
+4.3 Ablation Study  
+
+> Ablation on Pruning Methods.
+
+To validate our independence-aware channel pruning strategy, we compare it against a random pruning approach. As shown in Figure 11, our method demonstrates a significantly higher starting point, faster performance growth, and superior outcomes. These improvements verify that our independence-aware channel selection effectively preserves the most informative chan-nels, laying a solid foundation for the retained-channel enhancement in the second stage, while ensuring that the retained channels effectively inherit the capabilities from the original full channel set.  
+
+> Ablation on Pruning Ratios.
+
+Taking the LTX-Video VAE decoder (HaCohen et al., 2024) as a representative ex-ample, we investigate the speed-quality trade-off across different pruning ratios ( 1, 1/2, 1/4, 1/8), as presented in Table 2. As the pruning ratio decreases from 1 to 1/8,the inference speed steadily increases, with a degradation in performance. We select a 1/4 ratio for the LTX-Video VAE decoder (HaCohen et al., 2024) as it achieves the best trade-off: compared with a 1/2 ratio, the 1/4 ration provides a 2 × speedup with only a 0.93% drop in quality, while the 1/8 ratio incurs a more substantial 3.7% qual-ity loss. Similarly, for the Wan 2.1 VAE decoder (Wan et al., 2025), we identify the 1/8 ratio as the optimal configuration that effectively balances speed and quality.  
+
+> Ablation on Trainning Strategies.
+
+To validate the rationale behind our three-phase dynamic distillation pipeline, we compare our method against settings without distillation and those applying distillation exclusively to shallow or deep layers. As shown in Table 4, our method maximizes the transfer of capabilities from the original VAE decoders to Flash-VAED, achieving 96.9% of the original quality. Moreover, we evaluate the impact of initializing the pro-jection layer using the W matrix derived from the second training stage during the third training stage, comparing it against random initialization. As indicated in Table 3, 7(b ) FastVideo -Wan 1.3B 
+
+Prompt example: A fluffy golden retriever sits calmly in a sunlit backyard, 
+
+surrounded by vibrant green grass and colorful flower beds, its eyes alert 
+
+and ears perked. Suddenly, with a burst of energy, it leaps up and begins to 
+
+run in joyful circles, tail wagging furiously. 
+
+Prompt example: A stylish woman strolls down a bustling Tokyo street, 
+
+the warm glow of neon lights and animated city signs casting vibrant 
+
+reflections. She wears a sleek black leather jacket paired with a flowing 
+
+red dress and black boots, her black purse slung over her shoulder. 
+
+(a ) Self Foring -Wan 1.3B 
+
+Top: Wan 2.1 VAE Middle: LightVAE -Wan 2.1 Bottom: Flash -VAED -Wan 2.1 Figure 8 Visual comparison of video generation results. Our Flash-VAED (bottom) matches closely with the original Wan 2.1 VAE (top) in fidelity, details and textures, whereas the LightVAE (middle) exhibits severe artifacts that results in invalid video content. The full prompts and additional details are provided in Appendix A.4. Human Identity        
+
+> Human Clothes Human Interaction
+> Dynamic Spatial
+> Relationship
+> Dynamic
+> Attribute
+> Composition
+> Multi -View
+> Consistency
+> Motion
+> Rationality
+> Motion Order
+> Understanding
+> Complex Plot
+> Complex Landscape
+> Camera Motion
+> Instance
+> Preservation
+> Diversity
+> Thermotics
+> Human Anatomy
+> Mechanics
+> Material
+> Speed/5090D: Wan 2.1: 10.14s LightVAE : 7.52s Flash -VAED: 7.41s 27%
+> Wan 2.1 LightVAE -Wan 2.1 Flash -VAED -Wan 2.1
+
+(a) Self Forcing-Wan 1.3B Human Identity         
+
+> Human Clothes Human Interaction
+> Dynamic Spatial
+> Relationship
+> Dynamic
+> Attribute
+> Composition
+> Multi -View
+> Consistency
+> Motion
+> Rationality
+> Motion Order
+> Understanding
+> Complex Plot
+> Complex Landscape
+> Camera Motion
+> Instance
+> Preservation
+> Diversity
+> Thermotics
+> Human Anatomy
+> Mechanics
+> Material
+> Speed/5090D: Wan 2.1: 9.66s LightVAE : 6.29s Flash -VAED: 6.15s 36%
+> Wan 2.1 LightVAE -Wan 2.1 Flash -VAED -Wan 2.1
+
+(b) FastVideo Wan-1.3B 
+
+Figure 9 Generation performance of Flash-VAED embedded on the VBench-2.0. We employ Flash-VAED to replace the VAE decoders of: (a) the Self Forcing-Wan 1.3B, and (b) the FastVideo-Wan 1.3B, whose overall generation quality is evaluated on VBench-2.0. LTX VAE  Flash -VAED -LTX  Turbo -VAED -LTX     
+
+> Wan2.1 VAE Flash-VAED-Wan 2.1 LightVAE-Wan 2.1
+
+Figure 10 Visualization of samples from the latent distribution. Training Steps 
+
+100K  200 K 300 K 400 K 500 K 600 K 700 K
+
+> PSNR (dB)
+
+23 
+
+24 
+
+25 
+
+26 
+
+27 
+
+Independence -Aware Channel Pruning 
+
+Random Pruning  Figure 11 Ablation results of using different pruning methods. 
+
+8our initialization method leads to approximately a 6.25% improvement in reconstruction quality.                                 
+
+> Table 3 Ablation results of different projected layer initializa-tion. Project Layer PSNR ↑SSIM ↑LPIPS ↓
+> Random Initialization 30.3061 0.9013 0.0978
+> Ours 32.2400 0.9293 0.0551 Table 4 Ablation results of using different distillation methods. Training Methods PSNR ↑SSIM ↑LPIPS ↓
+> Without Distillation 30.7957 0.9125 0.0831 Deep-only Distillation 30.8065 0.9126 0.0830 Shallow-only Distillation 31.2386 0.9152 0.0722
+> Ours 32.3768 0.9317 0.0566
+
+# 5 Conclusions 
+
+In this paper, we focus on accelerating VAE decoders for video generation while ensuring strict alignment with the original latent distribution. We first experimentally identify two primary factors that contribute to the latency bottleneck of VAE decoders: extreme channel redundancy and the ubiquitous presence and high inference cost of CausalConv3D operations. To address these challenges, we propose two targeted strategies: independence-aware channel pruning and stage-wise dominant operator opti-mization. Building on these optimizations, we introduce the Flash-VAED family. Furthermore, to facilitate the efficient transfer of capabilities from the original VAE decoders to Flash-VAED, we develop a three-phase dy-namic distillation training pipeline. Extensive experi-ments demonstrate that Flash-VAED significantly outper-forms baselines, achieving the fastest decoding speed with minimal loss of fidelity to the original VAE decoders. 9Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 
+
+# References 
+
+Yutong Bai, Zeyu Wang, Junfei Xiao, Chen Wei, Huiyu Wang, Alan Yuille, Yuyin Zhou, and Cihang Xie. Masked au-toencoders enable efficient knowledge distillers, 2022. URL 
+
+https://arxiv.org/abs/2208.12256 .Åke Björck. Least squares methods. Handbook of numerical analysis , 1:465–652, 1990. Hongrong Cheng, Miao Zhang, and Javen Qinfeng Shi. Asurvey on deep neural network pruning: Taxonomy, compar-ison, analysis, and recommendations. IEEE Transactions on Pattern Analysis and Machine Intelligence , 2024. Yu Cheng and Fajie Yuan. Leanvae: An ultra-efficient re-construction vae for video diffusion models, 2025. URL 
+
+https://arxiv.org/abs/2503.14325 .LightX2V Contributors. Lightx2v: Light video genera-tion inference framework. https://github.com/ModelTC/ lightx2v , 2025. DeepSeek-AI, Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, Damai Dai, Daya Guo, Dejian Yang, Deli Chen, Dongjie Ji, Erhang Li, Fangyun Lin, Fu-cong Dai, Fuli Luo, Guangbo Hao, Guanting Chen, Guowei Li, H. Zhang, Han Bao, Hanwei Xu, Haocheng Wang, Haowei Zhang, Honghui Ding, Huajian Xin, Huazuo Gao, Hui Li, Hui Qu, J. L. Cai, Jian Liang, Jianzhong Guo, Jiaqi Ni, Jiashi Li, Jiawei Wang, Jin Chen, Jingchang Chen, Jingyang Yuan, Junjie Qiu, Junlong Li, Junxiao Song, Kai Dong, Kai Hu, Kaige Gao, Kang Guan, Kexin Huang, Kuai Yu, Lean Wang, Lecong Zhang, Lei Xu, Leyi Xia, Liang Zhao, Litong Wang, Liyue Zhang, Meng Li, Miaojun Wang, Mingchuan Zhang, Minghua Zhang, Minghui Tang, Mingming Li, Ning Tian, Panpan Huang, Peiyi Wang, Peng Zhang, Qiancheng Wang, Qihao Zhu, Qinyu Chen, Qiushi Du, R. J. Chen, R. L. Jin, Ruiqi Ge, Ruisong Zhang, Ruizhe Pan, Runji Wang, Runxin Xu, Ruoyu Zhang, Ruyi Chen, S. S. Li, Shanghao Lu, Shangyan Zhou, Shanhuang Chen, Shaoqing Wu, Shengfeng Ye, Shengfeng Ye, Shirong Ma, Shiyu Wang, Shuang Zhou, Shuiping Yu, Shunfeng Zhou, Shuting Pan, T. Wang, Tao Yun, Tian Pei, Tianyu Sun, W. L. Xiao, Wangding Zeng, Wanjia Zhao, Wei An, Wen Liu, Wen-feng Liang, Wenjun Gao, Wenqin Yu, Wentao Zhang, X. Q. Li, Xiangyue Jin, Xianzu Wang, Xiao Bi, Xiaodong Liu, Xiaohan Wang, Xiaojin Shen, Xiaokang Chen, Xiaokang Zhang, Xiaosha Chen, Xiaotao Nie, Xiaowen Sun, Xiaoxiang Wang, Xin Cheng, Xin Liu, Xin Xie, Xingchao Liu, Xingkai Yu, Xinnan Song, Xinxia Shan, Xinyi Zhou, Xinyu Yang, Xinyuan Li, Xuecheng Su, Xuheng Lin, Y. K. Li, Y. Q. Wang, Y. X. Wei, Y. X. Zhu, Yang Zhang, Yanhong Xu, Yanhong Xu, Yanping Huang, Yao Li, Yao Zhao, Yaofeng Sun, Yaohui Li, Yaohui Wang, Yi Yu, Yi Zheng, Yichao Zhang, Yifan Shi, Yiliang Xiong, Ying He, Ying Tang, Yishi Piao, Yisong Wang, Yixuan Tan, Yiyang Ma, Yiyuan Liu, Yongqiang Guo, Yu Wu, Yuan Ou, Yuchen Zhu, Yuduan Wang, Yue Gong, Yuheng Zou, Yujia He, Yukun Zha, Yun-fan Xiong, Yunxian Ma, Yuting Yan, Yuxiang Luo, Yuxiang You, Yuxuan Liu, Yuyang Zhou, Z. F. Wu, Z. Z. Ren, Zehui Ren, Zhangli Sha, Zhe Fu, Zhean Xu, Zhen Huang, Zhen Zhang, Zhenda Xie, Zhengyan Zhang, Zhewen Hao, Zhibin Gou, Zhicheng Ma, Zhigang Yan, Zhihong Shao, Zhipeng Xu, Zhiyu Wu, Zhongyu Zhang, Zhuoshu Li, Zihui Gu, Zijia Zhu, Zijun Liu, Zilin Li, Ziwei Xie, Ziyang Song, Ziyi Gao, and Zizheng Pan. Deepseek-v3 technical report, 2025. URL 
+
+https://arxiv.org/abs/2412.19437 .Divyang Doshi and Jung-Eun Kim. Reffakd: Resource-efficient autoencoder-based knowledge distillation. arXiv preprint arXiv:2404.09886 , 2024. Xingtong Ge, Xin Zhang, Tongda Xu, Yi Zhang, Xinjie Zhang, Yan Wang, and Jun Zhang. Senseflow: Scaling distribution matching for flow-based text-to-image distillation, 2025. URL https://arxiv.org/abs/2506.00523 .Jinyang Guo, Wanli Ouyang, and Dong Xu. Multi-dimensional pruning: A unified framework for model compression. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 1508–1517, 2020. Yoav HaCohen, Nisan Chiprut, Benny Brazowski, Daniel Shalem, Dudu Moshe, Eitan Richardson, Eran Levin, Guy Shiran, Nir Zabari, Ori Gordon, Poriya Panet, Sapir Weiss-buch, Victor Kulikov, Yaki Bitterman, Zeev Melumian, and Ofir Bibi. Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 , 2024. Andrew G Howard, Menglong Zhu, Bo Chen, Dmitry Kalenichenko, Weijun Wang, Tobias Weyand, Marco An-dreetto, and Hartwig Adam. Mobilenets: Efficient convolu-tional neural networks for mobile vision applications. arXiv preprint arXiv:1704.04861 , 2017. Xun Huang, Zhengqi Li, Guande He, Mingyuan Zhou, and Eli Shechtman. Self forcing: Bridging the train-test gap in autoregressive video diffusion, 2025a. URL https://arxiv. org/abs/2506.08009 .Yushi Huang, Ruihao Gong, Jing Liu, Tianlong Chen, and Xianglong Liu. Tfmq-dm: Temporal feature maintenance quantization for diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 7362–7371, 2024. Yushi Huang, Ruihao Gong, Jing Liu, Yifu Ding, Chengtao Lv, Haotong Qin, and Jun Zhang. Qvgen: Pushing the limit of quantized video generative models, 2025b. URL 
+
+https://arxiv.org/abs/2505.11497 .Yushi Huang, Ruihao Gong, Xianglong Liu, Jing Liu, Yuhang Li, Jiwen Lu, and Dacheng Tao. Temporal feature matters: A framework for diffusion model quantization, 2025c. URL 
+
+https://arxiv.org/abs/2407.19547 .Leela S Karumbunathan. Nvidia jetson agx orin series. AGiant Leap Forward for Robotics and Edge AI Applications. Technical Brief , 2022. Bosung Kim, Kyuhwan Lee, Isu Jeong, Jungmin Cheon, Yeojin Lee, and Seulki Lee. On-device sora: Enabling training-free 
+
+10 diffusion-based text-to-video generation for mobile devices. 
+
+arXiv preprint arXiv:2502.04363 , 2025. Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 ,2024. Black Forest Labs. Flux. https://github.com/ black-forest-labs/flux , 2024. Guokun Lai, Wei-Cheng Chang, Yiming Yang, and Hanxiao Liu. Modeling long-and short-term temporal patterns with deep neural networks. In The 41st international ACM SIGIR conference on research & development in information retrieval , pages 95–104, 2018. Zongjian Li, Bin Lin, Yang Ye, Liuhan Chen, Xinhua Cheng, Shenghai Yuan, and Li Yuan. Wf-vae: Enhancing video vae by wavelet-driven energy flow for latent video diffusion model, 2025. URL https://arxiv.org/abs/2411.17459 .Zhening Liu, Xinjie Zhang, Jiawei Shao, Zehong Lin, and Jun Zhang. Bidirectional stereo image compression with cross-dimensional entropy model, 2024. URL https://arxiv. org/abs/2407.10632 .Zhening Liu, Rui Song, Yushi Huang, Yingdong Hu, Xin-jie Zhang, Jiawei Shao, Zehong Lin, and Jun Zhang. Feed-forward 3d gaussian splatting compression with long-context modeling, 2025. URL https://arxiv.org/abs/ 2512.00877 .Zhuang Liu, Jianguo Li, Zhiqiang Shen, Gao Huang, Shoumeng Yan, and Changshui Zhang. Learning efficient convolutional networks through network slimming. In Proceedings of the IEEE international conference on computer vision , pages 2736–2744, 2017. Jian-Hao Luo, Jianxin Wu, and Weiyao Lin. Thinet: A filter level pruning method for deep neural network compression. In Proceedings of the IEEE International Conference on Computer Vision (ICCV) , Oct 2017. Xin Ma, Yaohui Wang, Xinyuan Chen, Gengyun Jia, Ziwei Liu, Yuan-Fang Li, Cunjian Chen, and Yu Qiao. Latte: Latent diffusion transformer for video generation, 2025. URL 
+
+https://arxiv.org/abs/2401.03048 .William Peebles and Saining Xie. Scalable diffusion models with transformers, 2023. URL https://arxiv.org/abs/ 2212.09748 .Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation, 2015. URL https://arxiv.org/abs/1505.04597 .Mark Sandler, Andrew Howard, Menglong Zhu, Andrey Zh-moginov, and Liang-Chieh Chen. Mobilenetv2: Inverted residuals and linear bottlenecks. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 4510–4520, 2018. Yuzhang Shang, Zhihang Yuan, Bin Xie, Bingzhe Wu, and Yan Yan. Post-training quantization on diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 1972–1981, 2023. Khurram Soomro, Amir Roshan Zamir, and Mubarak Shah. Ucf101: A dataset of 101 human actions classes from videos in the wild, 2012. URL https://arxiv.org/abs/1212. 0402 .Zhiyu Tan, Xiaomeng Yang, Luozheng Qin, and Hao Li. Vidgen-1m: A large-scale dataset for text-to-video genera-tion, 2024. URL https://arxiv.org/abs/2408.02629 .Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Mar-tinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and Guillaume Lample. Llama: Open and efficient foundation language models, 2023. URL https://arxiv.org/abs/2302.13971 .Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, Jianyuan Zeng, Jiayu Wang, Jingfeng Zhang, Jingren Zhou, Jinkai Wang, Jixuan Chen, Kai Zhu, Kang Zhao, Keyu Yan, Lianghua Huang, Mengyang Feng, Ningyi Zhang, Pandeng Li, Pingyu Wu, Ruihang Chu, Ruili Feng, Shiwei Zhang, Siyang Sun, Tao Fang, Tianxing Wang, Tianyi Gui, Tingyu Weng, Tong Shen, Wei Lin, Wei Wang, Wei Wang, Wenmeng Zhou, Wente Wang, Wenting Shen, Wenyuan Yu, Xianzhong Shi, Xiaoming Huang, Xin Xu, Yan Kou, Yangyu Lv, Yifei Li, Yijing Liu, Yiming Wang, Yingya Zhang, Yitong Huang, Yong Li, You Wu, Yu Liu, Yulin Pan, Yun Zheng, Yuntao Hong, Yupeng Shi, Yutong Feng, Zeyinzi Jiang, Zhen Han, Zhi-Fan Wu, and Ziyu Liu. Wan: Open and advanced large-scale video generative models, 2025. URL https://arxiv.org/abs/2503.20314 .Kafeng Wang, Jianfei Chen, He Li, Zhenpeng Mi, and Jun Zhu. Sparsedm: Toward sparse efficient diffusion models. 
+
+arXiv preprint arXiv:2404.10445 , 2024. Yushu Wu, Zhixing Zhang, Yanyu Li, Yanwu Xu, Anil Kag, Yang Sui, Huseyin Coskun, Ke Ma, Aleksei Lebedev, Ju Hu, et al. Snapgen-v: Generating a five-second video within five seconds on a mobile device. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 2479– 2490, 2025. Enze Xie, Junsong Chen, Junyu Chen, Han Cai, Haotian Tang, Yujun Lin, Zhekai Zhang, Muyang Li, Ligeng Zhu, Yao Lu, and Song Han. Sana: Efficient high-resolution image synthesis with linear diffusion transformers, 2024. URL 
+
+https://arxiv.org/abs/2410.10629 .Yufei Xue, Yushi Huang, Jiawei Shao, and Jun Zhang. Vlmq: Efficient post-training quantization for large vision-language models via hessian augmentation, 2025. URL https:// arxiv.org/abs/2508.03351 .Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiao-han Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024. Tianwei Yin, Michaël Gharbi, Taesung Park, Richard Zhang, Eli Shechtman, Fredo Durand, and William T. Freeman. Im-proved distribution matching distillation for fast image syn-thesis, 2024. URL https://arxiv.org/abs/2405.14867 .
+
+11 Peiyuan Zhang, Haofeng Huang, Yongqi Chen, Will Lin, Zhengzhong Liu, Ion Stoica, Eric Xing, and Hao Zhang. Vsa: Faster video diffusion with trainable sparse attention. 
+
+arXiv preprint arXiv:2505.13389 , 2025. Dian Zheng, Ziqi Huang, Hongbo Liu, Kai Zou, Yinan He, Fan Zhang, Lulu Gu, Yuanhan Zhang, Jingwen He, Wei-Shi Zheng, Yu Qiao, and Ziwei Liu. Vbench-2.0: Advancing video generation benchmark suite for intrinsic faithfulness, 2025. URL https://arxiv.org/abs/2503.21755 .Ya Zou, Jingfeng Yao, Siyuan Yu, Shuai Zhang, Wenyu Liu, and Xinggang Wang. Turbo-vaed: Fast and stable transfer of video-vaes to mobile devices, 2025. URL https://arxiv. org/abs/2508.09136 .
+
+12 A Implementation Details 
+
+A.1 Mechanism of Depthwise Separable Convolutions 
+
+Standard 3D convolutions effectively model spatiotemporal correlations (across time, height, and width) and cross-channel correlations. While effective, this approach incurs high computational costs. To address this, depthwise separable 3D convolution decomposes this operation into two efficient stages: spatiotemporal filtering and channel mixing. We use T, H , and W to denote the number of frames, the height, and the width of the videos, respectively, while Cin and Cout represent the input and output channels of the convolution layers, respectively.  
+
+> Standard 3D Convolution.
+
+Given an input video tensor of size T × H × W , a standard 3D convolution with a cubic kernel size of N × N × N incurs a computational cost (measured in FLOPs) of: Cost std = T · H · W · Cin · Cout · N 3. (7)  
+
+> Depthwise Separable 3D Convolution.
+
+The proposed mechanism splits the computation into two steps: 1. Depthwise Convolution: We first apply spatiotemporal filters of size N ×N ×N to each input channel independently. This step captures both motion and spatial patterns while maintaining channel independence, with a computational cost (in FLOPs) of: Cost dw = T · H · W · Cin · N 3. (8) 2. Pointwise Convolution: We then apply a 1 × 1 × 1 convolution to linearly combine the filtered features across channels, with a computational cost (in FLOPs) of: Cost pw = T · H · W · Cin · Cout . (9)  
+
+> Efficiency Analysis.
+
+The total cost of the depthwise separable 3D convolution, denoted by Cost sep , is the sum of Cost dw 
+
+and Cost pw , i.e., Cost sep = Cost dw + Cost pw . The reduction ratio of the computational cost relative to standard 3D convolution is derived as: Cost sep 
+
+Cost std 
+
+= T · H · W · Cin (N 3 + Cout )
+
+T · H · W · Cin · Cout · N 3 = 1
+
+Cout 
+
++ 1
+
+N 3 . (10) For a typical kernel size where N = 3 , the term 1  
+
+> N3
+
+is equal to 127 . As Cout increases, 1 
+
+> Cout
+
+becomes negligible. Consequently, this design reduces the computational load and parameter count by approximately 27 times compared to standard 3D convolutions. 
+
+A.2 Detailed Analysis of the Effectiveness of Shortcut Injection 
+
+In this section, we detail why retaining different indices between residual blocks destroys the continuity of the original model. We also explain how our pruning strategy and 1 × 1 convolutional shortcut injection effectively address this issue. A standard residual block consists of two parallel pathways: the main path, which comprises stacked convolutional layers that transform the features, and the shortcut path, which directly links the input to the output to prevent gradient vanishing. Typically, an identity mapping is employed for the shortcut path. However, when the retained channel indices of two consecutive blocks are different, using an identity shortcut become problematic. Specifically, it results in the addition of feature maps from Channel Subset 1 (the output of Residual Block 1) to feature maps from Channel Subset 2 (the output of Residual Block 2), thereby destructing the continuity of the original model. To address this, our pruning strategy ensures that the feature maps from the retained channels of Residual Block 1 can linearly represent the feature map from any channel within the same block. Consequently, we can establish a mapping from these retained channels to the specific channels in Residual Block 1 that correspond to the retained indices of Residual Block 2. This mapping matrix, denoted by W, is computed using the least squares method and is then used to initialize an injected 1 × 1
+
+convolutional shortcut. This approach aligns the channel features from the shortcut pathway with those from the main path of the Pruned Residual Block 2, allowing for the effective summation of outputs and thus restoring connectivity within the model. As for the main path, although no projection layer is injected, it does not suffer from topological discontinuity. Since the feature maps output from Residual Block 1 can linearly reconstruct the feature map from any channel, the subsequent convolutional layers in Residual Block 2 can readily learn the mapping from the input to the desired feature representation. 13 Pruned Residual 
+
+# Block 1 
+
+# Pruned Residual 
+
+# Block 2  Shortcut 
+
+# 1×1 Conv .
+
+Channels Subset 1 
+
+Channels Subset 2 
+
+Features Maps of Channels 
+
+from Subsets 1 
+
+Features Maps of Channels 
+
+from Subsets 2 Figure 12 Effectiveness of shortcut injection. 
+
+A.3 Gradient Mask for Training Stage 2 
+
+In the second training stage, i.e., pre-pruning retained channel enhancement, we employ a gradient mask to prevent all channels from converging towards the retained channels. Specifically, for the to-be-pruned channels, we suspend weight updates, preserving their original information while compelling the retained channels to fit the full-channel representation. 
+
+A.4 Additional Details for the Visual Comparison of Video Generation Results 
+
+Due to space constraints in the main text, we present only partial prompts. Here, we provide the complete prompts used for visual comparisons. For the visual comparison of Self Forcing, the full prompt employed is: A stylish woman strolls down a bustling Tokyo street, the warm glow of neon lights and animated city signs casting vibrant reflections. She wears a sleek black leather jacket paired with a flowing red dress and black boots, her black purse slung over her shoulder. Sunglasses perched on her nose and a bold red lipstick add to her confident, casual demeanor. The street is damp and reflective, creating a mirror-like effect that enhances the colorful lights and shadows. Pedestrians move about, adding to the lively atmosphere. The scene is captured in a dynamic medium shot with the woman walking slightly to one side, highlighting her graceful strides. 
+
+For FastVideo, the full prompt employed is: A fluffy golden retriever sits calmly in a sunlit backyard, surrounded by vibrant green grass and colorful flower beds, its eyes alert and ears perked. Suddenly, with a burst of energy, it leaps up and begins to run in joyful circles, tail wagging furiously. The camera captures its playful antics, zooming in on its gleeful expression and the way its fur catches the sunlight. As it races around, the flowers sway gently in the breeze, and the sound of its paws thumping on the ground adds to the lively atmosphere. Finally, it pauses, panting happily, before flopping down on the grass, basking in the warmth of the day. 
+
+Additionally, for the FastVideo visual comparison, we replace the VAE decoder in the Fastvideo pipeline with the original VAE decoder from Wan 2.1 to ensure fairness. Note that Fastvideo recommends an inference resolution of 
+
+448 × 832 , and its VAE decoder is specifically fine-tuned for this resolution. In contrast, both our VAE decoder and the Wan 2.1 VAE decoder are trained at a resolution of 480 × 832 . Therefore, to maintain a fair comparison at the same resolution, we use the original Wan 2.1 VAE decoder. However, it is important to note that this replacement is not applied in quantitative evaluations. 14 Resolution  Number of Frames 
+
+81  161  32 1 641480p  720p  1080 p 216 0p
+
+> Latency ( ms )
+
+10 2
+
+10 3
+
+10 2
+
+10 3
+
+LTX -VAE  Turbo -VAED -LTX  Flash -VAED -LTX      
+
+> 4.15 ×
+> 10.93 ×
+> 3.92 ×
+> 9.97 ×Figure 13 Ablation results of using different resolutions and numbers of frames.
+
+# B Supplementary Experimental Results 
+
+B.1 Ablation on Resolution and Number of Frames. 
+
+To evaluate the performance of Flash-VAED in computation-intensive scenarios, we systematically increase the resolution and the number of frames in the decoded videos, and plot the latency variations in Figure 13. It is evident that as the resolution and number of frames increase, the latency of Flash-VAED scales more slowly than that of both the original VAE decoders and Turbo-VAED. Consequently, under conditions of high resolution and large frame count, our method achieves a significant acceleration ratio, offering approximately a 10 × speedup. The experiments confirm that Flash-VAED exhibits superior scalability, which unleashes its potential in high-compute scenarios. 
+
+B.2 Latency Breakdown of Generation Pipelines 
+
+To further verify the latency bottleneck shift induced by the acceleration of the DiT, we conduct a component-wise latency breakdown of the full generation pipeline. We evaluate the original Wan 1.3B model (Wan et al., 2025) alongside the Self Forcing (Huang et al., 2025a) and FastVideo (Zhang et al., 2025) optimized variants, as detailed in Table 5. The results indicate that text encoding contributes only a negligible portion of the total latency in both the baseline and accelerated pipelines. In contrast, the relative latency associated with the decoding stage becomes significantly more pronounced, with its percentage contribution increasing by approximately 15 × following the DiT acceleration.  
+
+> Table 5 Latency breakdown of generation pipelines
+
+Model Text Encoding Denoising Video Decoding Decoding Percentage Wan 1.3B (Wan et al., 2025) 0.619 178.066 4.212 2.3% Self Forcing-Wan 1.3B (Huang et al., 2025a) 0.598 6.254 3.172 31.6% FastVideo-Wan 1.3B (Zhang et al., 2025) 0.539 5.136 3.925 40.9% 
+
+B.3 Comparison of SOTA video VAE decoders  
+
+> Table 6 To validate our choices of Wan (Wan et al., 2025) and LTX-Video (HaCohen et al., 2024) as original VAE decoders, we compare them against current SOTA video VAE decoders. Wan establishes a clear lead in both quality and speed among models with mainstream compression ratios, while LTX-Video dominates in terms of inference speed.
+
+Model (d T, dH, dW) FPS ↑ Reconstruction Quality RTX 5090D PSNR ↑ SSIM ↑ LPIPS ↓
+
+Wan 2.1 (Wan et al., 2025) (4 , 8, 8) 19.27 40.40 0.9733 0.0190 HunyuanVideo (Kong et al., 2024) (4 , 8, 8) 6.77 33.05 0.9392 0.0272 CogVideoX Yang et al. (2024) (4 , 8, 8) 4.99 32.81 0.9351 0.0302 LTX-Video (HaCohen et al., 2024) (8 , 32 , 32) 204.55 33.28 0.9253 0.0497 
+
+15

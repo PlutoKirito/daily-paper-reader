@@ -1,0 +1,935 @@
+Title: DiT-IC: Aligned Diffusion Transformer for Efficient Image Compression
+
+URL Source: https://arxiv.org/pdf/2603.13162v1
+
+Published Time: Mon, 16 Mar 2026 01:16:45 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# DiT-IC: Aligned Diffusion Transformer for Efficient Image Compression 
+
+## Junqi Shi, Ming Lu, Xingchen Li, Anle Ke, Ruiqi Zhang, Zhan Ma School of Electronic Science and Engineering, Nanjing University, Nanjing 210023, China Corresponding author: {minglu, mazhan }@nju.edu.cn 
+
+## Code: https://njuvision.github.io/DiT-IC/ (a)  Perceptual Visualization Comparison. DiT -IC achieves more consistent reconstructions with over 35% bitrate savings. 
+
+(b) Decoding latency on 1024x1024 resolution  (c) Training GPU Memory (GB)  (d) Inference GPU Memory (GB)               
+
+> ResULIC
+> StableCodec
+> DiT -IC
+> DiT -IC (FP16) Laptop GPU
+> 16GB
+> 40GB
+> 44GB
+> 30GB
+> 16GB
+> Resolution: 2048x2048 VAE
+> 20 steps
+> PerCo
+> ResULIC
+> 4 steps
+> 190ms 340ms StableCodec
+> 210ms 273ms DiT -IC 32.2 ×
+> Param: 4.3B, BD -rate: 0%
+> Param: 1B, BD -rate: -80%
+> Codec Diffusion
+> 190ms 70ms 570ms 830ms
+> 40ms 110ms
+> 55ms
+> DiT -IC (FP16) 154ms
+> 8.8s
+> 1 step
+> 1 step
+> bs=8 ResULIC
+> bs=8 StableCodec
+> bs=10 DiT -IC
+> bs=8 DiT -IC
+> RTX Pro 6000
+> 96GB
+> >96GB
+> >96GB
+> 93GB
+> 76GB
+> Resolution: 512x512
+> A100 80GB
+> ELIC
+> 0.046bpp
+> OSCAR
+> 0.043bpp
+> DiT -IC
+> 0.029bpp Original Original
+> StableCodec
+> 0.044bpp
+> PerCo
+> 0.12bpp
+> ResULIC
+> 0.048bpp
+
+Original  DiT -IC 
+
+Figure 1. Overview of reconstructed results and efficiency of our proposed DiT-IC. 
+
+## Abstract 
+
+Diffusion-based image compression has recently shown out-standing perceptual fidelity, yet its practicality is hindered by prohibitive sampling overhead and high memory usage. Most existing diffusion codecs employ U-Net architectures, where hierarchical downsampling forces diffusion to oper-ate in shallow latent spaces (typically with only 8× spatial downscaling), resulting in excessive computation. In con-trast, conventional VAE-based codecs work in much deeper latent domains ( 16 ×–64 × downscaled), motivating a key question: Can diffusion operate effectively in such compact latent spaces without compromising reconstruction quality? 
+
+To address this, we introduce DiT-IC —an Aligned Di ffusion 
+
+Transformer for Image Compression—which replaces the U-Net with a Diffusion Transformer capable of performing diffusion in latent space entirely at 32 × downscaled reso-lution. DiT-IC adapts a pretrained text-to-image multi-step DiT into a single-step reconstruction model through three key alignment mechanisms: (1) a variance-guided recon-struction flow that adapts denoising strength to latent un-certainty for efficient reconstruction; (2) a self-distillation alignment that enforces consistency with encoder-defined latent geometry to enable one-step diffusion; and (3) a 
+
+1
+
+> arXiv:2603.13162v1 [eess.IV] 13 Mar 2026
+
+latent-conditioned guidance that replaces text prompts with semantically aligned latent conditions, enabling text-free inference. With these designs, DiT-IC achieves state-of-the-art perceptual quality while offering up to 30× faster decoding and drastically lower memory usage than exist-ing diffusion-based codecs. Remarkably, it can reconstruct 
+
+2048 × 2048 images on a 16 GB laptop GPU. 
+
+## 1. Introduction 
+
+Recent diffusion-based generative models [12, 49, 61] have achieved remarkable advances in visual synthesis, produc-ing photorealistic and semantically controllable images. However, for a fundamental low-level task like image com-pression, which demands practical efficiency—low latency and memory economy—most diffusion-based compression approaches [7, 23] remain constrained by heavy sampling overhead and substantial memory usage. A key source of inefficiency lies in the spatial scale where diffusion operates. Existing diffusion-based codecs typically perform denoising in relatively shallow latent spaces (e.g., 8× spatial reduction), resulting in significant computational and memory burdens. In contrast, mod-ern learned codecs naturally operate in much deeper la-tent domains, often with 16 × [16, 32], 32 × [23], or even 
+
+64 × [11, 64] spatial reductions. This discrepancy moti-vates a central question: Can diffusion operate effectively in deeply compressed latent spaces to enable efficient re-construction without sacrificing fidelity? 
+
+Most existing diffusion-based codecs [15, 23, 30, 64] employ U-Net-based diffusion architectures, whose hier-archical downsampling further reduces the spatial scale (Fig. 2), making them poorly suited for deeply compressed latents. Recently, Diffusion Transformers (DiTs) [8, 43, 58] have emerged as a compelling alternative, replacing U-Nets with cascaded transformer blocks that maintain a constant spatial resolution throughout the denoising process. This ar-chitectural property makes DiTs naturally compatible with deeply compressed latent domain and provides a promising foundation for efficient diffusion modeling. However, directly transplanting pretrained diffusion models into compact, compression-oriented latent spaces often results in severe degradation. The core challenge lies in the mismatch between generative and reconstruc-tive objectives. Unlike text-to-image diffusion, which be-gins from pure Gaussian noise, image compression starts from structured, entropy-constrained latents that already lie near the data manifold. This structured initialization signif-icantly narrows the sampling distribution, suggesting that iterative multi-step denoising may be redundant—and that even single-step reconstruction could be achievable. Yet na¨ ıvely fine-tuning generative diffusers fails to exploit this property, often leading to misaligned feature manifolds and h/8, w/8       
+
+> h/2, w/2
+> UNet Diffuser DiT Diffuser
+> h/4, w/4
+> h, w
+> h, w
+> h, w
+> h, w
+> h, w VAE -Enc.
+> EnCodec
+> VAE -Dec.
+> Diffuser
+> DeCodec bitstream
+> Compress DeCompress
+> Diffusion -based image
+> Compression
+> Figure 2. Architectural comparison. The left panel illustrates the overall diffusion-based image compression framework. U-Net-based diffusers perform multi-stage downsampling, while DiTs maintain a constant spatial resolution throughout the denoising process, making them naturally compatible with deeply com-pressed latent inputs.
+
+suboptimal reconstructions. To overcome these challenges, we propose DiT-IC —an Aligned Di ffusion Transformer for Image 
+
+Compression—which adapts a pretrained text-to-image multi-step DiT into an efficient one-step reconstruction model operating in a 32 × latent diffusion space. Our method introduces three complementary alignment mech-anisms that jointly bridge the gap between diffusion generation and compression reconstruction: 
+
+Variance-Guided Reconstruction Flow. We reinter-pret the denoising trajectory as an adaptive reconstruction flow, where spatially varying uncertainty determines local denoising strength. By mapping latent variance to pseudo-timesteps, DiT-IC collapses iterative denoising into a single transformation that preserves fine details while maintaining decoding efficiency. 
+
+Self-Distillation Alignment. To stabilize one-step learning without external supervision, we introduce a self-distillation mechanism that enforces consistency between the denoised output and the encoder’s frozen latent repre-sentation, effectively distilling multi-step diffusion behav-ior into a single forward pass. 
+
+Latent-Conditioned Guidance. We replace text-based conditioning with a lightweight latent-conditioned projec-tion derived from compressed representations. By con-trastively co-aligning latent and textual embeddings during training, the model retains semantic priors from the pre-trained DiT while eliminating the need for text input during inference, thereby removing the heavy text encoder. With these designs, DiT-IC achieves state-of-the-art rate–distortion performance, offering up to 30× faster de-coding and substantially lower memory usage than exist-ing diffusion-based codecs. Remarkably, it can reconstruct 
+
+2048 × 2048 images on a 16 GB laptop GPU. Our findings demonstrate that pretrained diffusion transformers, when properly aligned with compression objectives, can serve as powerful one-step reconstruction priors for efficient visual compression. 2Main Enc                      
+
+> f32 ↓
+> Aux Enc
+> f16 ↓LaEnc
+> f2 ↓
+> DiT Dec
+> f32 ↑
+> Adaptor
+> ConCat  Context
+> 𝓕 :yt→c
+> LaDec f2 ↑
+> Add
+> 𝓕 :𝝈 →𝒕
+> 𝒙 𝟎
+> SQ 010
+> μ, σ
+> ෞ𝒙 𝟎 𝒚 𝟎
+> 𝒚 𝒕
+> 𝒕
+> 𝒄
+> ෞ𝒚 𝟎
+> : freeze : train or fintune SQ : scalar quantization t: timestep c: condition f: sampling factor
+> Compress Decompress
+> Latent Codec
+> Aux LaDec bitstream Figure 3. Overview of the proposed DiT-IC framework. Following StableCodec [64], we adopt ELIC [16] as our auxiliary encoder.
+
+## 2. Preliminary 
+
+Diffusion Transformers. Diffusion models [18, 52] syn-thesize data by iteratively denoising Gaussian noise toward the data manifold. Early variants typically adopt U-Net backbones [49], whose multi-scale encoder–decoder struc-tures provide strong spatial locality but suffer from lim-ited scalability and global consistency. Diffusion Trans-formers (DiTs) [43] overcome these issues by replacing the U-Net with cascaded transformer blocks that operate at a single, constant spatial resolution . This design elim-inates hierarchical downsampling, enabling globally coher-ent representation learning and improved scalability. Re-cent extensions—such as PixArt-α [8], SD3 [12], and Flux [27]—have scaled DiTs to large, multimodal gener-ation, while efficient variants like Sana [58] accelerate in-ference via linear attention mechanisms. 
+
+Flow Matching. Traditional diffusion models can be interpreted as discretized stochastic differential equations (SDEs) that gradually transform noise into data through a stochastic denoising process. Flow Matching (FM) [31, 33] reformulates this paradigm as a deterministic ordinary dif-ferential equation (ODE), where a neural network learns a velocity field that continuously transports samples from a simple prior to the data manifold [54]. Compared with stochastic diffusion, FM provides a mathematically elegant and computationally efficient framework, often enabling faster sampling and consistent results. 
+
+Diffusion-based Image Compression. Recent studies have explored integrating diffusion models into learned im-age compression (LIC) to leverage their powerful genera-tive priors for perceptually faithful reconstruction. Early methods such as DiffEIC [42], Yang and Mandt [60], and CDC [29] encode images into compact latent conditions that guide pretrained diffusion models during reconstruc-tion. Later approaches—including RDEIC [30] and Re-sULIC [23]—reinterpret the denoising trajectory as a pro-gressive reconstruction process, where each diffusion step refines the compressed representation. Other works [47, 48] employ diffusion priors for post-quantization enhancement. Recent advances—such as StableCodec [64], OneDC [59], and OSCAR [15]—further improve efficiency by collaps-ing multi-step diffusion into single-step inference. Exist-ing methods often adapts pretrained Stable Diffusion mod-els [44, 49] for practical codec deployment. 
+
+## 3. Method 
+
+We introduce DiT-IC, an aligned Diffusion Transformer framework for efficient image compression. Unlike U-Net-based diffusion models that operate in shallow latent spaces (typically 8×), DiT-IC performs diffusion directly within a deeper 32 × latent domain, achieving higher efficiency while maintaining perceptual fidelity. To adapt the gener-ative diffusion process to the reconstruction-oriented objec-tive of compression, DiT-IC incorporates a set of alignment mechanisms across three key dimensions: (1) from gen-eration to reconstruction, aligning diffusion strength with latent variance; (2) from multi-step to single-step infer-ence, improving efficiency without compromising quality; and (3) from text-guided to latent-conditioned diffusion, en-abling text-free decoding. Together, these components form an end-to-end aligned diffusion framework that delivers ef-ficient image compression, as illustrated in Fig. 3. 
+
+3.1. Variance-Guided Reconstruction Flow: From Generation to Reconstruction 
+
+Traditional flow matching [31] learns a continuous vector field to transport samples from Gaussian noise N (0 , I ) to the data distribution pdata through the probability flow ODE: 
+
+dyt
+
+dt = vθ (yt, t ), yT ∼ N (0 , I ). (1) However, in image compression, the initial state is not pure noise but a quantized latent yt that already lies close to the data manifold. This observation motivates a one-step re-construction flow , replacing the iterative denoising process with a single adaptive transformation. As shown in Fig. 4, compression noise y0 − yt ex-hibits strong spatial heterogeneity—smooth areas behave like low-noise (small-timestep) regions, while textured re-gions resemble high-noise (large-timestep) states. There-31 23
+
+1 2
+
+3𝑣 𝑡 
+
+> 𝜃
+
+𝑦 𝑡  ෞ𝑦 0
+
+𝑦 𝑛 
+
+ℱ: 𝜎 → 𝑡                   
+
+> noise
+> ，variance
+> Generation: 𝑦 𝑛 ∼𝒩 0,1
+> →𝑦 0∼𝑝 𝑑𝑎𝑡𝑎
+> Reconstruction: 𝑦 𝑡
+> →𝑦 0∼𝑝 𝑑𝑎𝑡𝑎
+> Real noise
+> 𝑦 0−𝑦 𝑡
+> Variance
+> 𝜎 (𝑦 𝑡 )
+> Noised Input
+> 𝑦 𝑡 (𝑡 <𝑛 )
+> Ideal noise
+> 𝑦 𝑛 ∼𝒩 0,1
+
+…
+
+…Figure 4. Variance-Guided Flow Matching. Unlike standard dif-fusion that starts from Gaussian noise, compression reconstruction begins from a quantized latent yt containing structured noise. The local variance σ(yt) measures spatial uncertainty, which we map to pseudo-timesteps t = F(σ) for spatially adaptive one-step flow matching. 
+
+fore, a single global timestep cannot adequately model the local noise characteristics. To address this, we introduce a variance-guided pseudo-timestep mapping. In learned compression, the latent distri-bution is typically parameterized as y ∼ N (μ, σ2), where the predicted mean μ captures the underlying image con-tent, and variance σ reflects the uncertainty within that con-tent. We leverage this inherent uncertainty to define a dif-ferentiable mapping: 
+
+t = F(proj θ (σ)) ∈ RH×W , (2) where proj θ (·) projects σ to the latent dimension, and monotonic function F converts it to pixel-wise pseudo-timesteps. Higher variance corresponds to larger t, indi-cating stronger denoising strength. Given the adaptive timestep field t = F(σ), the one-step reconstruction is computed as: 
+
+ˆy = ˜ y − vθ (˜ y, t ), (3) which effectively collapses the multi-step denoising tra-jectory into a single spatially adaptive transforma-tion—achieving high-fidelity reconstruction (Fig. 5). Recent advances also explore adaptive generation strength. UPSR [62] leverages reconstruction error to ad-just noise strength; EAR [35] modulates generation us-ing image entropy; and OSCAR [15] introduces a image-wise rate–timestep mapping for variable-rate diffusion. Our method extends this idea to a pixel-wise variance–timestep mapping , providing finer-grained adaptation for one-step reconstruction. uniform flow  adaptive flow    
+
+> LPIPS vs. Iters PSNR (dB) vs. Iters
+
+Figure 5. Ablation study of variance-guided reconstruction flow. compressor  n-step                  
+
+> diffuser
+> 𝒚 𝟎 ෞ𝒚 0
+> encoder decoder
+> 𝒚 𝒕
+> 𝑳 𝒅𝒊𝒔𝒕𝒊𝒍 𝒚 𝜽 𝒚 𝒕 ,𝒏 =𝒕 →𝒚 𝟎 ,𝒚 𝜽 𝒚 𝒕 ,𝒏 =𝟏 +𝑳 𝒓𝒅
+> ···
+> add noise denoise
+> ෝ𝒙 𝒙
+
+Figure 6. Self-Distillation Alignment. DiT-IC distills the multi-step diffusion process into a single forward pass by aligning its de-noised latent with the frozen encoder representation, while jointly optimizing the diffusion transformer and decoder. yθ (·) denotes the denoised output, and Lrd indicates the rate–distortion loss. 
+
+3.2. Self-Distillation Alignment: From Multi-Step to One-Step 
+
+While the variance-guided flow enables adaptive one-step reconstruction, fine-tuning pretrained multi-step models re-mains challenging in the absence of explicit denoising trajectory supervision. Conventional diffusion distillation frameworks [37, 50] depend on a pre-trained teacher to pro-vide intermediate denoising trajectories—an approach in-feasible for compression, where no multi-step reference ex-ists within the deep latent domain. To overcome this, we propose a self-distillation align-ment strategy that replaces external supervision with an internal reference from the encoder. The encoder’s latent output y0, which already lies close to the data manifold, naturally serves as a self-supervised target for the denoised latent ˆy0 predicted by the diffusion transformer. We freeze the encoder and jointly optimize the DiT and decoder so that 
+
+ˆy0 aligns with y0, effectively collapsing the multi-step de-noising process into a deterministic, single-step reconstruc-tion—while preserving the latent geometry defined by the encoder. The pipeline is shown in Fig. 6. 4Formally, we apply a marginal cosine alignment loss: 
+
+Ldistil = Ex∼pdata 
+
+
+
+1 − m − ⟨ˆy, y0⟩|ˆy|2|y0|2
+
+
+
+, (4) where m is a small margin encouraging angular separation between distinct latent directions. In contrast to previous diffusion-based codecs [59, 64], which partially fine-tune the encoder or freeze the decoder, our approach fixes the encoder while jointly adapting the DiT and decoder. This co-adaptation stabilizes training, en-hances perceptual fidelity, and supports efficient reconstruc-tion in deep latent spaces, as illustrated in Fig. 7. Baseline:        
+
+> Self -Distillation:
+> LPIPS vs. Iters PSNR (dB) vs. Iters
+> Enc DiT Dec
+> Enc DiT Dec
+> Figure 7. Ablation of self-distillation alignment.
+
+Conceptually, our self-distillation resembles feature-alignment paradigms used in generative modeling—such as VA-VAE [61] aligned with DINOv2 [41]—but differs in that it leverages the frozen VAE encoder itself as an intrinsic alignment target for reconstruction. Moreover, integrating recent adversarial distillation techniques [51] could further enhance the perceptual realism of reconstructed images in future work. 
+
+3.3. Latent-Conditioned Guidance: From Text to Semantic Latent Condition 
+
+Pretrained diffusion transformers typically rely on text-conditioned guidance to control semantics. However, for reconstruction-oriented tasks, textual prompts are of-ten inefficient and suboptimal: they may fail to cap-ture fine-grained spatial structures and require large vi-sion–language models (VLMs), introducing additional la-tency and stochasticity during inference. We observe that the latent representation ˆy itself encodes rich semantic and structural information, which can serve as an effective conditioning source. Motivated by this, we propose Latent-Conditioned Guidance , shown in Fig. 8, replacing the text condition ctext with a learned latent condi-tion: 
+
+clat = Proj ψ (ˆ y), (5) where Proj ψ (·) is a lightweight projection module mapping latent features into the same embedding space used by the pretrained text encoder in DiT. Image Encoder  Text Encoder   
+
+> Projector
+> Stylized blue parrot
+> on an orange
+> background· ··
+> condition
+> 𝑳 𝒄𝒐𝒏𝒅
+> alignment
+> image -agnostic condition
+> Vision -Language Model
+> ···
+> ···
+> Figure 8. Latent-Conditioned Guidance. We replace text-based guidance in DiT with a latent-conditioned projection derived from the compressed representation by aligning projected latent and text embeddings, enabling text-free conditioning at inference.
+
+To ensure semantic alignment, we perform contrastive co-alignment between projected latent and text embeddings using a CLIP-style objective [46]: 
+
+Lcond = −E(xi,t i)
+
+"
+
+log exp( ⟨clat ,i , c text ,i ⟩/τ )
+
+P 
+
+> j
+
+exp( ⟨clat ,i , c text ,j ⟩/τ )
+
+#
+
+, (6) where i and j index samples within a batch, and τ is the temperature of the contrastive distribution. fixed condition  latent condition    
+
+> LPIPS vs. Iters PSNR (dB) vs. Iters
+> Figure 9. Ablation of latent-conditioned guidance.
+
+During training, latent and text embeddings are co-aligned; at inference, the model relies solely on latent con-ditioning. Compared to fixed, image-agnostic condition-ing [64], this approach improves perceptual fidelity and semantic consistency (Fig. 9). Similar ideas appear in OneDC [59], which uses image tokenizers as supervision. Although the mechanisms differ, both underscore the criti-cal role of condition in diffusion-based reconstruction. Notably, at extremely low bitrates (e.g., < 0.01 bpp), the boundary between compression and generation becomes blurred. As observed in [23], when visual bits are highly constrained, text tokens may dominate the bit budget. In such scenarios, the latent alone may lack sufficient semantic information, and incorporating auxiliary text priors could further enhance perceptual quality, representing an promis-ing direction for future research. 5Original / bpp  DiT -IC / 0.043  StableCodec / 0.048        
+
+> DIT -IC / 0.050 StableCodec / 0.050
+> OSCAR / 0.043 ELIC / 0.052
+> OSCAR / 0.062 ELIC / 0.054 Original / bpp Figure 10. Visualization comparison. MSE-optimized ELIC [16] suffers from high-frequency detail loss, whereas diffusion-based codecs such as StableCodec [64] and OSCAR [15] produce inconsistent semantic content, e.g., incorrect numbers or window panes. In contrast, DiT-IC achieves a more favorable balance between perceptual quality and semantic consistency.
+
+3.4. End-to-End Optimization 
+
+To efficiently adapt a pretrained text-to-image diffusion transformer (SANA [58]) for compression, we insert lightweight LoRA [19] adapters, avoiding costly full-model retraining. We train DiT-IC across a wide range of bitrates using a two-stage implicit bitrate pruning (IBP) strategy [64]: Stage 1 trains the model with a small rate–distortion trade-off 
+
+λbase ∈ { 0.1, 0.5}, relaxing entropy constraints to preserve rich feature representations. Stage 2 fine-tunes the same model with a larger λtarget ∈ { 0.5, 1.0, 2.0, 4.0, 8.0, 16 .0},progressively tightening bitrate constraints and incorporat-ing adversarial objectives for enhanced perceptual quality. The overall optimization objective is formulated as: Stage 1: min λbase R + D + Lalign (7) Stage 2: min λtarget R + D + Lalign + λadv Ladv (8) 
+
+R(ˆ y, ˆz) = − log 2 pˆy(ˆ y | ˆz) − log 2 pˆz(ˆ z) (9) 
+
+D(x, ˆx) = λ1M SE + λ2LP IP S + λ3DIST S (10) 
+
+Lalign (c, ˆy0) = λ4Ldistil + λ5Lcond (11) In practice, we set the LoRA ranks to 32 for the VAE decoder and 64 for the diffusion transformer. For la-tent–semantic co-alignment, we adopt InternVL [9, 56] as the vision–language backbone, consistent with the original DiT setup. Additional implementation details are provided in the supplementary material. 
+
+## 4. Experiment 
+
+4.1. Implementation 
+
+Training. We train DiT-IC on a curated dataset of roughly 150K high-quality images with resolutions above 512 ×
+
+512 , aggregated from CLIC 2020 Professional [53], MLIC-Train-100K [21], and LSDIR [28]. Training follows a two-stage schedule: the first stage runs for 100K iterations on 
+
+256 × 256 patches with a batch size of 32, and the second stage continues for 60K iterations on 512 ×512 patches with a batch size of 16. We adopt the AdamW optimizer [34] with an initial learning rate of 1 × 10 −4, decayed by 50% at 50%, 80%, and 90% of total iterations. Consistent with diffusion model practices [12], we maintain an exponential moving average (EMA) of model with a decay rate of 0.999. 
+
+Datasets. We evaluate DiT-IC on three widely used benchmarks: the CLIC 2020 Professional test set [53], DIV2K validation set [1], and Kodak dataset [13], following the same protocol as [29, 64]. The CLIC 2020 and DIV2K sets contain 428 and 100 images at 2K resolution, while Kodak includes 24 natural images of 768 × 512 pixels. All evaluations are performed at the original image resolutions without resizing. 
+
+Metrics. We comprehensively assess the rate–distortion –perception trade-off. Bitrate is reported in bits per pixel (bpp). Reconstruction fidelity is measured using PSNR and MS-SSIM [57], and perceptual quality is evaluated with LPIPS [63] (AlexNet variant by default) and DISTS [10]. Following recent findings [7, 64], we emphasize DISTS as a more reliable indicator of perceptual similarity, particu-larly in low-bitrate regimes. 
+
+Baselines. To ensure fair and reproducible comparisons, we primarily include open-source methods as baselines. Some novel approaches, such as [48] and OneDC [59], have not yet released official implementations or publications, and are therefore excluded from our current benchmark for fairness. We plan to incorporate these methods in future revisions once official resources become available. All trainings are conducted on two NVIDIA RTX Pro 6000 GPUs, while evaluation and latency benchmarking are performed on an A100 GPU. Further implementation de-tails are provided in the supplementary material. 
+
+4.2. Main Results 
+
+Quantitative Performance Comparison. Fig. 11 and Table 1 provide a comprehensive comparison of rate–distortion efficiency and perceptual fidelity across rep-6ELIC 
+
+C3-WD 
+
+MS-ILLM 
+
+EGIC 
+
+GLC 
+
+PerCo 
+
+CorrDiff 
+
+DiffEIC 
+
+ResULIC 
+
+StableCodec 
+
+RDEIC 
+
+OSCAR 
+
+Ours 0.00 0.05 0.10 0.15                      
+
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> DISTS
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 15
+> 20
+> 25
+> 30
+> PSNR (dB)
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.4
+> 0.6
+> 0.8
+> MS-SSIM
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> DISTS
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> DIV2K 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> DISTS
+> DIV2K
+
+Figure 11. Rate-distortion-perception curve comparisons of different methods on the Kodak, CLIC2020 and DIV2K dataset. 
+
+Table 1. Comprehensive comparison with state-of-the-art methods in terms of BD-rate ( ↓) [4]. “Diff. Reso.” and “Code Reso.” denote the latent resolutions used in the diffusion and coding stages, respectively, where f indicates the spatial downsampling factor relative to the pixel domain, and d denotes the number of channels. Latency is measured as the per-image decoding time (for 1024 × 1024 resolution) on a single A100 GPU; ♣ marks FP16 inference and ♠ marks FP32. “DiT-IC (baseline)” represents the variant without the proposed alignment strategies. The best results are highlighted in red, and the second-best in blue. 
+
+Methods Diff. Code Diff. Params Latency LPIPS ↓ DISTS ↓ Average Reso. Reso. Steps Kodak CLIC DIV2K Kodak CLIC DIV2K LPIPS DISTS 
+
+INR-based 
+
+C3-WD (CVPR’25) [2] - - - - - 12.90 -47.14 - 62.25 -46.62 - -17.12 7.82 
+
+VAE-based 
+
+MS-ILLM (ICML’23) [39] - f16d256 - 181M 0.17s -38.13 -46.75 -39.52 11.54 -21.10 17.17 -41.47 2.54 EGIC (ECCV’24) [25] - f16d320 - 37M -47.93 -67.75 -61.75 0.07 -60.69 -61.19 -59.14 -40.60 GLC (TCSVT’25) [45] - f16d256 - 105M 0.18s -72.04 -78.57 -75.90 -63.21 -84.33 -87.60 -75.50 -78.38 
+
+Diffusion-based 
+
+PerCo (ICLR’24) [7, 26] f8d4 f8-64d320 20 4.3B 8.8s 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 CorrDiff (ICML’24) [36] f0d3 f16d320 8 73M -69.76 -72.94 -73.08 13.90 -57.71 -67.32 -71.93 -37.04 DiffEIC (TCSVT’24) [29] f8d4 f16d320 50 1.0B 12.4s -33.91 -40.47 -34.03 -25.37 -36.04 -39.76 -36.14 -33.72 ResULIC (ICML’25) [23] f8d4 f32d192 4 12.3B 0.83s -57.39 -66.50 -62.93 -65.31 -68.64 -62.96 -62.27 -65.64 StableCodec (ICCV’25) [64] f8d4 f64d320 1 1.5B 0.34s -78.34 -80.21 -79.02 -70.48 -90.24 -91.14 -79.19 -83.95 
+
+RDEIC (TCSVT’25) [30] f8d4 f16d256 5 1.0B 1.5s -67.99 -71.95 - -39.02 -53.05 - -69.97 -46.04 OSCAR (NeurIPS’25) [15] f8d4 f8-64d320 1 987M 0.32s -17.80 -14.74 -24.58 -46.18 -59.82 -69.15 -19.04 -58.38 
+
+DiT-IC (baseline) f32d32 f64d320 1 990M 0.27s ♠ -62.36 -68.15 -64.50 -54.20 -73.58 -73.78 -65.00 -67.19 
+
+DiT-IC (Ours) f32d32 f64d320 1 1.0B (0.15s) ♣ -81.11 -86.73 -83.11 -75.95 -94.45 -93.25 -83.65 -87.88 
+
+resentative image compression methods. Conventional VAE-based codecs [25, 39, 45] offer fast inference but are constrained by limited representational capacity, resulting in suboptimal visual realism. In contrast, early diffusion-based codecs [23, 26, 29, 30, 36] markedly improve percep-tual quality, yet suffer from excessive computational over-head—typically requiring 4–50 iterative denoising steps and over one second of decoding time per image. Recent 7Table 2. Ablation study results measured by BD-rate ↓ [4].                                 
+
+> PSNR MS-SSIM LPIPS DISTS DiT-IC 0.00% 0.00% 0.00% 0.00%
+> Loss function
+> -w/o Ladv -37.10% -21.54% -2.27% -1.80% -w/o DISTS -2.15% -1.30% -1.83% 5.69%
+> Training Strategies
+> DiT from scratch 16.80% 13.41% 22.00% 32.45% -VAE/DiT rank 16/16 8.24% 6.43% 12.77% 13.92% -VAE/DiT rank 32/32 3.10% 2.76% 5.31% 5.56% -full finetuning 3.52% 3.21% 7.95% 8.05%
+
+one-step diffusion codecs [15, 59, 64] alleviate this issue by accelerating reconstruction, but they largely depend on pretrained Stable Diffusion backbones. Due to their U-Net-based architectures, these models struggle to operate in deeper latent domains, leading to persistent inefficiency. In contrast, DiT-IC performs diffusion entirely within a deeper latent space using a transformer-based architecture, effec-tively reducing complexity while preserving expressive ca-pacity. These results highlight the advantages of our diffu-sion transformer paradigm in achieving efficient and high-fidelity image compression. 
+
+Qualitative Visualization. While MSE-optimized codecs such as ELIC [16] maintain overall semantic con-sistency, they tend to produce overly smooth textures that deviate from human perceptual preference. Diffusion-based codecs, on the other hand, enhance perceptual re-alism but often introduce color shifts or semantic distor-tions—undesirable in compression scenarios where fidelity is critical. As illustrated in Fig. 10, StableCodec [64] mis-represents fine-grained details such as the boat number and window panes, reflecting unstable semantic reconstruction. In contrast, DiT-IC achieves a better trade-off between per-ceptual quality and structural fidelity under comparable en-tropy constraints. Additional visualizations are provided in the supplementary material. 
+
+4.3. Ablations and Discussion 
+
+Ablation results, are trained on 256 × 256 images with 60K iterations, including Table 2 and those reported in Sec. 3. 
+
+Loss Formulations. Introducing the adversarial term 
+
+Ladv yields perceptually sharper and more realistic recon-structions, aligning better with human visual preference. However, this comes at the cost of slight degradation in quantitative metrics. Given its substantial improvement in perceptual realism, we retain Ladv in the final objec-tive. Additionally, incorporating the DISTS term further strengthens correlation with human perception, especially under low-bitrate regimes, albeit with a minor trade-off in distortion-oriented metrics.                                                 
+
+> Table 3. Runtime latency (s) comparison in FP32 precision.
+> Reso. VAE Codec Diffusion StableCodec -SD-VAE [51] f8 →f64 U-Net DiT-IC -SANA-VAE [58] f32 →f64 DiT StableCodec 1024 20.19 0.04 0.11 DiT-IC 1024 20.21 (+11%) 0.008 (-30%) 0.055 (-50%)
+> StableCodec 2048 20.82 0.05 0.8 DiT-IC 2048 20.85 (+4%) 0.012 (-76%) 0.12 (-85%)
+> StableCodec 4096 285 0.13 10.3 DiT-IC 4096 23.3 (-96%) 0.022 (-83%) 0.47 (-95%)
+
+Training Strategies. We initialize DiT-IC using pre-trained SANA weights [58]. Training the entire model from scratch leads to noticeable performance degradation, likely due to limited training data scale. We further examine dif-ferent LoRA configurations for both the VAE and DiT mod-ules. A rank setting of 32/64 achieves the best balance be-tween adaptation capacity and stability, whereas full fine-tuning slightly degrades performance—possibly because large-scale parameter updates distort the pretrained distri-bution manifold when trained under small-batch conditions. 
+
+Complexity. Table 3 compares the latency (in second) of DiT-IC and StableCodec [64]. For fair comparison, tiled VAE coding is disabled in both models. Despite adopting single-step diffusion in both frameworks, DiT-IC achieves consistently lower runtime, particularly at higher resolu-tions. At 1024 2 and 2048 2, diffusion latency is reduced by 50%–85%, and overall time by up to 76%, owing to its op-eration in a deeper latent space. Notably, StableCodec ex-hibits a sharp latency surge at 4096 2, likely caused by frag-mented GPU computation and excessive memory transfer overhead. In contrast, DiT-IC maintains stable scalability and efficient high-resolution reconstruction, demonstrating strong hardware adaptability. 
+
+## 5. Conclusion 
+
+We presented DiT-IC , an Aligned Diffusion Transformer for efficient image compression. By shifting the diffu-sion process into deeply compressed latent domains, DiT-IC effectively mitigates the inherent inefficiency of diffusion sampling. Through variance-guided reconstruction flow, self-distillation alignment, and latent-conditioned guidance, it aligns pretrained diffusion transformers toward the com-pression objective, enabling one-step, high-fidelity recon-struction within a 32 × latent space. Extensive exper-iments demonstrate that DiT-IC achieves state-of-the-art rate–distortion trade-offs, up to 30× faster decoding, and significantly reduced memory cost compared with existing diffusion-based codecs. We believe this alignment perspec-tive will inspire future research on generative compression and efficient visual representation learning. 8DiT-IC: Aligned Diffusion Transformer for Efficient Image Compression 
+
+# Supplementary Material 
+
+## 6. Method Details 
+
+Model Architecture. The overall architecture is illustrated in Fig. 12. Our entropy model follows the classical hyper-prior framework and further incorporates the autoregressive context model introduced in StableCodec [64]. Different from StableCodec, we replace the original context mod-ules with a lightweight DepthConvBlock [20], which sig-nificantly reduces computational complexity while preserv-ing effective spatial–channel context modeling capability. Given the quantized latent representation ˆz, the autoregres-sive module predicts the Gaussian distribution parameters 
+
+(μ, σ) via a 4-step autoregressive procedure. These param-eters are then fed into an arithmetic coder to convert quan-tized symbols into a bitstream during encoding, or to recon-struct symbols from the bitstream during decoding. 
+
+Resolution Generalization. DiT-IC adopts a Diffu-sion Transformer without positional encoding (NoPE) [22], avoiding positional extrapolation issues commonly encoun-tered in standard Transformers. By removing positional embeddings, the model does not bind representations to fixed spatial indices, thereby improving length and resolu-tion generalization. Although trained on small patches, the model generalizes reliably to higher resolutions at inference time without architectural modification. 
+
+Self-Distillation Alignment. The key idea is to collapse multi-step diffusion supervision into a self-aligned single-step objective without introducing an external teacher model. We adopt alignment-style objectives to approx-imate diffusion behavior under a one-step formulation, and term this strategy Self-Distillation Alignment to dis-tinguish it from conventional teacher–student distillation methods. This formulation preserves diffusion-style super-vision while avoiding additional model overhead. 
+
+Variance–Timestep Mapping. As shown in Fig. 4, the predicted variance exhibits a strong correlation with com-pressed noise (with cosine similarity up to 0.94). From a variational inference perspective, higher latent variance corresponds to higher conditional entropy and greater re-construction uncertainty, which manifests as stronger noise components. This observation motivates a monotonic variance-to-timestep mapping strategy: larger variance is mapped to a larger diffusion timestep, implying stronger denoising. Consequently, entropy modeling and timestep prediction are naturally aligned. Empirically, blocking gra-dients from the F : σ → t branch results in negligible bitrate change, indicating that joint optimization introduces minimal conflict between compression and diffusion objec-tives. 
+
+Distortion–Perception Trade-off. Under a fixed in-formation rate, distortion and perceptual quality can-not be simultaneously optimized, as established by the rate–distortion–perception trade-off principle [5, 6, 40]. DiT-IC adheres to this information-theoretic constraint, which explains why perceptual optimization may lead to reduced PSNR. The trade-off is controlled by the weight-ing parameter λ in Eq. (10). In practice, sweeping λ pro-duces smooth distortion–perception operating curves, al-lowing flexible control over reconstruction fidelity and per-ceptual realism. 
+
+## 7. Captions Generated by a VLM 
+
+To avoid manual annotation and ensure scalable supervi-sion, we employ a Vision–Language Model (VLM) to au-tomatically generate semantic captions for training. Specif-ically, we adopt InternVL [9, 56], which is consistent with the captioning pipeline used in the original text-to-image DiT-SANA [58] pretraining. Representative caption exam-ples produced by the VLM are shown in Fig. 13. 
+
+## 8. More Implementation Details 
+
+Our DiT-IC model is trained on two NVIDIA RTX Pro 6000 GPUs using PyTorch 2.8.0 and CUDA 12.8. For fair com-parison, we reproduce several open-source baselines within the same environment to obtain detailed results. Due to dif-ferences in software versions and numerical kernels, minor deviations from the originally reported numbers may occur. The training consists of two stages. In Stage 2, we ini-tially disable the adversarial loss by setting λadv = 0 , and enable it only after 30% of iterations to stabilize optimiza-tion. We also gradually anneal the contrastive co-alignment loss that aligns latent embeddings with text embeddings, controlled by a temperature parameter τ . This loss is used only during the initial 30% of Stage 2 to provide early semantic guidance while avoiding unstable or noisy text-driven updates in later iterations. After the two-stage training, the model typically reaches a stable convergence point. At this stage, the Self-Distillation Alignment module becomes less essential, and jointly finetuning the entire model—including the en-coder—could potentially yield further improvements. Al-though encoder finetuning is not included in this work, ex-ploring this unified training strategy remains a promising direction for future research. 1Analysis Transform 𝑔 𝑎  
+
+> SQ
+> 010
+> μ, σ
+
+𝒚 𝒕 
+
+𝒕 
+
+𝒄       
+
+> Synthesis Transform 𝑔 𝑠
+> Hyper Analysis Transform ℎ𝑎
+> Factorized Modeling
+> Context Modeling
+> AE
+> AD
+> SQ
+> 010
+> AE
+> AD
+> Hyper Synthesis Transform ℎ𝑠
+> Projector
+> 𝓕 :𝑦 𝑡 →c
+> Projector
+> 𝓕 :
+> 𝝈 →𝒕
+> Auxiliary Transform 𝑔 𝑟
+
+𝒚 𝒓 
+
+ෞ𝑦 0 = 𝑦 𝑟 + 𝑦 𝑡 − 𝜎 𝑡 ⋅ 𝑣 𝜃 𝑦 𝑡 , 𝑡 , 𝑐  
+
+> DepthConvBlock
+> Conv2d ↓2
+> DepthConvBlock
+> x N
+> x N
+
+𝒈 𝒂  
+
+> DepthConvBlock
+> PixelShuffle ↑2
+> Conv2d
+> x N
+
+𝒈 𝒔 , 𝒈 𝒓 , 𝒑𝒓𝒐𝒋  
+
+> DepthConvBlock
+> Conv2d ↓2
+> DepthConvBlock
+> x N
+> x 2
+
+𝒉 𝒂   
+
+> PixelShuffle ↑2
+> DepthConvBlock
+> DepthConvBlock x N
+> x 2
+
+𝒉 𝒔  
+
+> Pooling
+> Concat
+> MLP x N
+
+𝓕 : 𝒚 𝒕 → 𝒄 
+
+> Embed
+
+𝓕 : 𝝈 → 𝒕 
+
+(a) Latent codec architecture of proposed DiT -IC  (b) Variance -timestep mapping 
+
+(b) Module structures       
+
+> SQ : scalar quantization t: timestep c: condition AE : Arithmetic Encode AE : Arithmetic Decode
+
+Figure 12. Overall architecture of our model. The entropy model is based on the hyperprior framework and an autoregressive context model similar to StableCodec [64], but replaces heavy components with lightweight DepthConvBlocks [20]. Table 4. Quantitative perceptual comparison between DiT-IC and StableCodec ( λ = 2 .0) at similar bitrates ( ∼0.03–0.04 bpp). We report a suite of perceptual metrics including FID, KID, NIQE, CLIPIQA and MUSIQ. Lower is better for FID/KID/NIQE, and higher is better for the remaining metrics. DiT-IC consistently outperforms StableCodec across most datasets and metrics, with a slight exception on KID for CLIC2020. The best results are highlighted in red .
+
+Datasets Kodak CLIC 2020 DIV2K Average Avg. Difference Methods DiT-IC StableCodec DiT-IC StableCodec DiT-IC StableCodec DiT-IC StableCodec |∆| ↑ |∆|(%) ↑
+
+FID ↓ - - 3.750 3.940 8.650 10.350 6.200 7.145 0.945 13.23% KID ↓ - - 0.00083 0.00066 0.00060 0.00080 0.00072 0.00073 0.00002 2.06% NIQE ↓ 3.099 3.557 3.833 4.459 3.270 3.603 3.400 3.873 0.473 12.21% CLIPIQA ↑ 0.735 0.716 0.582 0.531 0.626 0.570 0.648 0.606 0.042 6.92% MUSIQ ↑ 74.494 73.177 60.606 58.663 65.818 63.822 66.972 65.221 1.752 2.69% 
+
+## 9. Complexity 
+
+Training Complexity. Multi-stage training is commonly adopted in diffusion-based codecs (e.g., StableCodec, OneDC, and ResULIC), often involving external teacher inference or multi-step diffusion supervision. In contrast, our training pipeline is strictly sequential and does not re-quire additional teacher models or iterative diffusion sam-pling during optimization. In practice, the model converges within approximately 3 days on two NVIDIA A100 GPUs. 
+
+Memory Usage. The reported 16GB memory foot-print corresponds to full-frame 2K decoding without tiling. When using 1024 ×1024 tiled decoding, peak memory con-sumption decreases to below 7GB without any observable quality degradation. Employing smaller tiles can further reduce memory usage if necessary. Moreover, applying INT8 quantization lowers memory consumption to approx-imately 4GB , making deployment feasible on consumer-grade GPUs. 
+
+## 10. Quantitative Evaluation 
+
+Rate-Distortion Curves. In Fig. 14, we present full rate–distortion curves on Kodak [13], CLIC 2020 [53], and DIV2K [1] as a supplement to Fig. 11 of main paper. As discussed in main paper, pixel-level metrics such as PSNR 2Caption : "A vibrant pink 
+
+flamingo stands gracefully in shallow 
+
+water, its long, slender legs partially 
+
+submerged, creating delicate ripples that 
+
+spread outward . The flamingo's 
+
+plumage is a soft gradient of pink and 
+
+orange, with darker accents near the tips 
+
+of its feathers . Its neck curves elegantly, 
+
+leading to a distinctive black -tipped 
+
+beak . The water reflects the flamingo's form, adding depth to the scene . The sunlight bathes the 
+
+flamingo in a warm glow, highlighting the texture and color variations in its feathers, capturing 
+
+a serene and tranquil moment in nature ."
+
+Caption : "A single vibrant yellow rose with a gradient of orange hues 
+
+stands gracefully in a dark glass bottle labeled 'Montanaro Vermouth di Torino Rosso,' 
+
+which is placed on a wooden table . The rose's green leaves are prominently visible, 
+
+adding a touch of freshness . In the 
+
+background, a window with white 
+
+frames reveals a view of a building 
+
+with a red door and a weathered roof .
+
+On the windowsill, there is a clear glass 
+
+vase holding delicate white dried 
+
+flowers, alongside a small glass jar .
+
+The scene is softly lit by natural light, 
+
+creating a warm and serene atmosphere, 
+
+enhanced by a white radiator below the 
+
+window ."
+
+Caption : "An urban cityscape with towering skyscrapers of varying heights and textures, including glass facades and concrete structures, 
+
+lining both sides of a busy street . The buildings cast long shadows, creating a dynamic interplay of light and dark . In the foreground, two bright yellow 
+
+taxis with black numbers and rooftop signs dominate the scene . The taxi on the left displays the number '4K72 ' on its rooftop sign, while the taxi on the 
+
+right shows '7V53 .' One taxi is sleek and rectangular, while the other is larger and more angular . The street is filled with other vehicles, including a
+
+silver SUV, adding to the congestion . The road stretches into the distance, flanked by buildings that narrow the view towards a bright, slightly cloudy 
+
+sky . A McDonald's sign is visible on the right side, capturing the essence of a bustling, vibrant city ."Figure 13. Illustrative VLM-generated captions used for semantic conditioning. 
+
+3ELIC 
+
+C3-WD 
+
+MS-ILLM 
+
+EGIC 
+
+GLC 
+
+PerCo 
+
+CorrDiff 
+
+DiffEIC 
+
+ResULIC 
+
+StableCodec 
+
+RDEIC 
+
+OSCAR 
+
+Ours 0.00 0.05 0.10 0.15                                  
+
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> DISTS
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 15
+> 20
+> 25
+> 30
+> PSNR (dB)
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.4
+> 0.6
+> 0.8
+> MS-SSIM
+> Kodak 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> DISTS
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 15
+> 20
+> 25
+> 30
+> PSNR (dB)
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> MS-SSIM
+> CLIC 2020 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> LPIPS
+> DIV2K 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.1
+> 0.2
+> 0.3
+> DISTS
+> DIV2K 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 15
+> 20
+> 25
+> 30
+> PSNR (dB)
+> DIV2K 0.00 0.05 0.10 0.15
+> Bit Rate (bpp)
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> MS-SSIM
+> DIV2K
+
+Figure 14. Detailed Rate-distortion-perception curve comparisons of different methods on the Kodak, CLIC2020 and DIV2K dataset. 
+
+and MS-SSIM exhibit notable limitations [7, 10, 64]. These metrics primarily emphasize pixel fidelity rather than se-mantic consistency or perceptual realism, making them less suitable for evaluating compression performance in the ul-tra–low bitrate regime. 
+
+Semantic Study. We further evaluate semantic fidelity using the OCRBench v2 evaluation pipeline [14]. This pro-tocol measures high-level semantic consistency by apply-ing a unified OCR-based recognition framework to recon-structed images and comparing semantic accuracy against ground truth. Unlike pixel-level metrics, this evaluation directly assesses whether compressed reconstructions pre-serve semantically meaningful content. As shown in Fig. 15 (right), DiT-IC maintains strong semantic consistency, indi-cating that the perceptual enhancement does not compro-mise high-level semantic integrity. 
+
+User Study. We conduct a large-scale user study with 61 participants to evaluate perceptual realism. Each partic-ipant is presented with randomized pairwise comparisons among ResULIC, PerCo, StableCodec, OSCAR, and DiT-IC at matched bitrates, and is asked to select the visu-ally more realistic reconstruction. The aggregated prefer-ence scores are 8.2% , 1.0% , 27 .5% , 6.5% , 56 .8% for Re-sULIC, PerCo, StableCodec, OSCAR, and DiT-IC, respec-tively. DiT-IC receives the highest preference by a substan-tial margin, demonstrating its clear advantage in perceptual realism under controlled bitrate settings. 
+
+Perceptual Evaluation. To provide a comprehensive perceptual assessment beyond pixel-level measures, we ad-ditionally report several widely used perceptual metrics, in-cluding FID [17], KID [3], NIQE [38], CLIPIQA [55] and MUSIQ [24]. FID and KID measure the distributional dis-crepancy between reconstructed and reference images in the feature space of pretrained classifiers, serving as holistic in-dicators of realism. NIQE is a no-reference metric that eval-uates natural scene statistics, reflecting perceived image nat-uralness. CLIPIQA leverages CLIP embeddings to assess semantic fidelity, while MUSIQ is modern deep IQA mod-els designed to capture high-level perceptual quality across diverse content and resolutions. 40.00 0.05 0.10      
+
+> 5
+> 10
+> 15
+> Rate-FID on CLIC2020
+> PerCo
+> DiffEIC
+> ResULIC
+> StableCodec
+> Ours w/o Adv loss
+> Ours 0.00 0.05 0.10 0.15
+> 10
+> 20
+> 30
+> 40
+> 50
+> Rate-FID on DIV2K
+> PerCo
+> DiffEIC
+> ResULIC
+> StableCodec
+> Ours w/o Adv loss
+> Ours 0.00 0.05 0.10
+> 10
+> 20
+> 30
+> 40
+> 50
+> Rate-Recognition Acc.(%)
+> PerCo
+> DiffEIC
+> ResULIC
+> StableCodec
+> Ours
+
+Figure 15. DiT-IC achieves superior FID and Semantic accuracy. Original  DiT -IC  DiT -IC 
+
+0.062 
+
+StableCodec 
+
+0.061 
+
+ResULIC 
+
+0.062 
+
+PerCo 
+
+0.12 
+
+ELIC 
+
+0.101 
+
+OSCAR 
+
+0.0625 
+
+Original 
+
+bpp 
+
+Figure 16. Visual examples and comparisons. 
+
+As shown in Table 4, we compare our DiT-IC with the state-of-the-art StableCodec ( λ = 2 .0) at similar bitrates (approximately 0.03 –0.04 bpp). Due to differences in im-plementation environments, our reproduced results exhibit minor deviations from the originally reported values. We neglect the FID and KID results on Kodak as it is too small for calculating. DiT-IC achieves consistent improve-ments across most perceptual metrics on Kodak, DIV2K, and CLIC2020. The only exception is KID on CLIC2020, where StableCodec shows a slight advantage, but DiT-IC maintains overall superior perceptual performance across datasets and metrics.. Fig. 15 further presents FID as a function of bitrate. DiT-IC consistently outperforms prior codecs across operating points. The performance margin on CLIC is smaller than on DIV2K, likely because StableCodec is trained on CLIC, resulting in better dataset alignment. Similar trends are ob-served for KID. In addition, incorporating adversarial train-ing further enhances perceptual realism, as evidenced by the comparison with Ours w/o Adv loss in Fig. 15. 
+
+## 11. Visualization 
+
+We provide additional qualitative results and compar-isons on high-quality images from DIV2K [1] and CLIC 2020 [53]. We compare our DiT-IC with represen-tative compression models, including StableCodec [64], ELIC [16], PerCo [26], OSCAR [15], and ResULIC[23]. As shown, DiT-IC delivers superior semantic consistency and textural realism while operating at lower bitrates than competing methods. 5Original  DiT -IC  Original 
+
+bpp 
+
+DiT -IC 
+
+0.039 
+
+StableCodec 
+
+0.042 
+
+ResULIC 
+
+0.058 
+
+PerCo 
+
+0.12 
+
+ELIC 
+
+0.044 
+
+OSCAR 
+
+0.043 
+
+Original  DiT -IC  DiT -IC 
+
+0.054 
+
+StableCodec 
+
+0.054 
+
+ResULIC 
+
+0.053 
+
+PerCo 
+
+0.12 
+
+ELIC 
+
+0.082 
+
+OSCAR 
+
+0.0625 
+
+Original 
+
+bpp Figure 17. Visual examples and comparisons. 
+
+6Original  DiT -IC 
+
+0.017 bpp 
+
+Original  DiT -IC 
+
+0.027 bpp Figure 18. Visual examples and comparisons. 
+
+7Original  DiT -IC 
+
+0.029 bpp 
+
+Original  DiT -IC 
+
+0.060 bpp Figure 19. Visual examples and comparisons. 
+
+8Acknowledgments 
+
+This work was supported in part by Natural Science Foun-dation of China (Grant No. 62401251, 62431011) and Nat-ural Science Foundation of Jiangsu Province (Grant No. BK20241226, BK20243038). The authors would like to express their sincere gratitude to the Interdisciplinary Re-search Center for Future Intelligent Chips (Chip-X) and Yachen Foundation for their invaluable support. 
+
+## References 
+
+[1] Eirikur Agustsson and Radu Timofte. Ntire 2017 challenge on single image super-resolution: Dataset and study. In Pro-ceedings of the IEEE conference on computer vision and pat-tern recognition workshops , pages 126–135, 2017. 6, 2, 5 [2] Jona Ball´ e, Luca Versari, Emilien Dupont, Hyunjik Kim, and Matthias Bauer. Good, cheap, and fast: Overfitted image compression with wasserstein distortion. In Proceedings of the Computer Vision and Pattern Recognition Conference ,pages 23259–23268, 2025. 7 [3] Mikołaj Bi´ nkowski, Danica J Sutherland, Michael Arbel, and Arthur Gretton. Demystifying mmd gans. arXiv preprint arXiv:1801.01401 , 2018. 4 [4] Gisle Bjontegaard. Calculation of average psnr differences between rd-curves. ITU SG16 Doc. VCEG-M33 , 2001. 7, 8 [5] Yochai Blau and Tomer Michaeli. The perception-distortion tradeoff. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 6228–6237, 2018. 1 [6] Yochai Blau and Tomer Michaeli. Rethinking lossy com-pression: The rate-distortion-perception tradeoff. In Inter-national Conference on Machine Learning , pages 675–685. PMLR, 2019. 1 [7] Marlene Careil, Matthew J Muckley, Jakob Verbeek, and St´ ephane Lathuili` ere. Towards image compression with per-fect realism at ultra-low bitrates. In The Twelfth International Conference on Learning Representations , 2023. 2, 6, 7, 4 [8] Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Yue Wu, Zhongdao Wang, James Kwok, Ping Luo, Huchuan Lu, et al. Pixart-α: Fast training of diffusion transformer for photorealistic text-to-image synthesis. arXiv preprint arXiv:2310.00426 , 2023. 2, 3 [9] Zhe Chen, Jiannan Wu, Wenhai Wang, Weijie Su, Guo Chen, Sen Xing, Muyan Zhong, Qinglong Zhang, Xizhou Zhu, Lewei Lu, et al. Internvl: Scaling up vision foundation mod-els and aligning for generic visual-linguistic tasks. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 24185–24198, 2024. 6, 1 [10] Keyan Ding, Kede Ma, Shiqi Wang, and Eero P Simoncelli. Image quality assessment: Unifying structure and texture similarity. IEEE transactions on pattern analysis and ma-chine intelligence , 44(5):2567–2581, 2020. 6, 4 [11] Zhihao Duan, Ming Lu, Jack Ma, Yuning Huang, Zhan Ma, and Fengqing Zhu. Qarv: Quantization-aware resnet vae for lossy image compression. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(1):436–450, 2023. 2 [12] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling recti-fied flow transformers for high-resolution image synthesis. In Forty-first international conference on machine learning ,2024. 2, 3, 6 [13] R. Franzen. Kodak lossless true color image suite. http: //r0k.us/graphics/kodak/ , 1993. Accessed: 2025-11-06. 6, 2 [14] Ling Fu, Zhebin Kuang, Jiajun Song, Mingxin Huang, Biao Yang, Yuzhe Li, Linghao Zhu, Qidi Luo, Xinyu Wang, Hao Lu, et al. Ocrbench v2: An improved benchmark for evaluat-ing large multimodal models on visual text localization and reasoning. arXiv preprint arXiv:2501.00321 , 2024. 4 [15] Jinpei Guo, Yifei Ji, Zheng Chen, Kai Liu, Min Liu, Wang Rao, Wenbo Li, Yong Guo, and Yulun Zhang. Oscar: One-step diffusion codec across multiple bit-rates. arXiv preprint arXiv:2505.16091 , 2025. 2, 3, 4, 6, 7, 8, 5 [16] Dailan He, Ziming Yang, Weikun Peng, Rui Ma, Hongwei Qin, and Yan Wang. Elic: Efficient learned image compres-sion with unevenly grouped space-channel contextual adap-tive coding. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 5718–5727, 2022. 2, 3, 6, 8, 5 [17] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 4 [18] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-fusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. 3 [19] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. ICLR ,1(2):3, 2022. 6 [20] Zhaoyang Jia, Bin Li, Jiahao Li, Wenxuan Xie, Linfeng Qi, Houqiang Li, and Yan Lu. Towards practical real-time neural video compression. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 12543–12552, 2025. 1, 2 [21] Wei Jiang and Ronggang Wang. Mlic++: Linear complex-ity multi-reference entropy modeling for learned image com-pression. In ICML 2023 Workshop Neural Compression: From Information Theory to Applications , 2023. 6 [22] Amirhossein Kazemnejad, Inkit Padhi, Karthikeyan Nate-san Ramamurthy, Payel Das, and Siva Reddy. The impact of positional encoding on length generalization in transform-ers. Advances in Neural Information Processing Systems , 36: 24892–24928, 2023. 1 [23] Anle Ke, Xu Zhang, Tong Chen, Ming Lu, Chao Zhou, Ji-awen Gu, and Zhan Ma. Ultra lowrate image compression with semantic residual coding and compression-aware diffu-sion. In Forty-second International Conference on Machine Learning , 2025. 2, 3, 5, 7 [24] Alex Kendall and Yarin Gal. What uncertainties do we need in bayesian deep learning for computer vision? Advances in neural information processing systems , 30, 2017. 4 
+
+9[25] Nikolai K¨ orber, Eduard Kromer, Andreas Siebert, Sascha Hauke, Daniel Mueller-Gritschneder, and Bj¨ orn Schuller. Egic: enhanced low-bit-rate generative image compression guided by semantic segmentation. In European Conference on Computer Vision , pages 202–220. Springer, 2024. 7 [26] Nikolai K¨ orber, Eduard Kromer, Andreas Siebert, Sascha Hauke, Daniel Mueller-Gritschneder, and Bj¨ orn Schuller. Perco (SD): Open perceptual compression. In Workshop on Machine Learning and Compression, NeurIPS 2024 , 2024. 7, 5 [27] Black Forest Labs. Flux. https://github.com/ black-forest-labs/flux , 2024. 3 [28] Yawei Li, Kai Zhang, Jingyun Liang, Jiezhang Cao, Ce Liu, Rui Gong, Yulun Zhang, Hao Tang, Yun Liu, Denis Deman-dolx, et al. Lsdir: A large scale dataset for image restoration. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1775–1787, 2023. 6 [29] Zhiyuan Li, Yanhui Zhou, Hao Wei, Chenyang Ge, and Jing-wen Jiang. Towards extreme image compression with latent feature guidance and diffusion prior. IEEE Transactions on Circuits and Systems for Video Technology , 2024. 3, 6, 7 [30] Zhiyuan Li, Yanhui Zhou, Hao Wei, Chenyang Ge, and Aj-mal Mian. Rdeic: Accelerating diffusion-based extreme im-age compression with relay residual diffusion. IEEE Trans-actions on Circuits and Systems for Video Technology , 2025. 2, 3, 7 [31] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matt Le. Flow matching for generative mod-eling. arXiv preprint arXiv:2210.02747 , 2022. 3 [32] Jinming Liu, Heming Sun, and Jiro Katto. Learned image compression with mixed transformer-cnn architectures. In 
+
+Proceedings of the IEEE/CVF conference on computer vi-sion and pattern recognition , pages 14388–14397, 2023. 2 [33] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2022. 3 [34] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 , 2017. 6 [35] Xiaoxiao Ma, Feng Zhao, Pengyang Ling, Haibo Qiu, Zhixi-ang Wei, Hu Yu, Jie Huang, Zhixiong Zeng, and Lin Ma. To-wards better & faster autoregressive image generation: From the perspective of entropy. arXiv preprint arXiv:2510.09012 ,2025. 4 [36] Yiyang Ma, Wenhan Yang, and Jiaying Liu. Correcting diffusion-based perceptual image compression with privi-leged end-to-end decoder. In International Conference on Machine Learning , pages 34075–34093. PMLR, 2024. 7 [37] Chenlin Meng, Robin Rombach, Ruiqi Gao, Diederik Kingma, Stefano Ermon, Jonathan Ho, and Tim Salimans. On distillation of guided diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 14297–14306, 2023. 4 [38] Anish Mittal, Rajiv Soundararajan, and Alan C Bovik. Mak-ing a “completely blind” image quality analyzer. IEEE Sig-nal processing letters , 20(3):209–212, 2012. 4 [39] Matthew J Muckley, Alaaeldin El-Nouby, Karen Ullrich, Herv´ e J´ egou, and Jakob Verbeek. Improving statistical fi-delity for neural image compression with implicit local like-lihood models. In International Conference on Machine Learning , pages 25426–25443. PMLR, 2023. 7 [40] Xueyan Niu, Deniz G¨ und¨ uz, Bo Bai, and Wei Han. Condi-tional rate-distortion-perception trade-off. In 2023 IEEE In-ternational Symposium on Information Theory (ISIT) , pages 1068–1073. IEEE, 2023. 1 [41] Maxime Oquab, Timoth´ ee Darcet, Th´ eo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. Dinov2: Learning robust visual features without supervision. 
+
+arXiv preprint arXiv:2304.07193 , 2023. 5 [42] Zhihong Pan, Xin Zhou, and Hao Tian. Extreme generative image compression by learning text embedding from diffu-sion models. arXiv preprint arXiv:2211.07793 , 2022. 3 [43] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 4195–4205, 2023. 2, 3 [44] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas M¨ uller, Joe Penna, and Robin Rombach. Sdxl: Improving latent diffusion mod-els for high-resolution image synthesis. arXiv preprint arXiv:2307.01952 , 2023. 3 [45] Linfeng Qi, Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu. Generative latent coding for ultra-low bitrate image and video compression. IEEE Transactions on Cir-cuits and Systems for Video Technology , 2025. 7 [46] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural language supervi-sion. In International conference on machine learning , pages 8748–8763. PmLR, 2021. 5 [47] Lucas Relic, Roberto Azevedo, Markus Gross, and Christo-pher Schroers. Lossy image compression with foundation diffusion models. In European Conference on Computer Vi-sion , pages 303–319. Springer, 2024. 3 [48] Lucas Relic, Roberto Azevedo, Yang Zhang, Markus Gross, and Christopher Schroers. Bridging the gap between gaus-sian diffusion models and universal quantization for image compression. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 2449–2458, 2025. 3, 6[49] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 2, 3 [50] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. arXiv preprint arXiv:2202.00512 , 2022. 4 [51] Axel Sauer, Dominik Lorenz, Andreas Blattmann, and Robin Rombach. Adversarial diffusion distillation. In European Conference on Computer Vision , pages 87–103. Springer, 2024. 5, 8 
+
+10 [52] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Ab-hishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equa-tions. arXiv preprint arXiv:2011.13456 , 2020. 3 [53] George Toderici, Lucas Theis, Nick Johnston, Eirikur Agustsson, Fabian Mentzer, Johannes Ball´ e, Wenzhe Shi, and Radu Timofte. Clic 2020: Challenge on learned image compression. Retrieved March , 29:2021, 2020. 6, 2, 5 [54] Alexander Tong, Kilian Fatras, Nikolay Malkin, Guillaume Huguet, Yanlei Zhang, Jarrid Rector-Brooks, Guy Wolf, and Yoshua Bengio. Improving and generalizing flow-based generative models with minibatch optimal transport. arXiv preprint arXiv:2302.00482 , 2023. 3 [55] Jianyi Wang, Kelvin CK Chan, and Chen Change Loy. Ex-ploring clip for assessing the look and feel of images. In Pro-ceedings of the AAAI conference on artificial intelligence ,pages 2555–2563, 2023. 4 [56] Weiyun Wang, Zhangwei Gao, Lixin Gu, Hengjun Pu, Long Cui, Xingguang Wei, Zhaoyang Liu, Linglin Jing, Sheng-long Ye, Jie Shao, et al. Internvl3.5: Advancing open-source multimodal models in versatility, reasoning, and efficiency. 
+
+arXiv preprint arXiv:2508.18265 , 2025. 6, 1 [57] Zhou Wang, Eero P Simoncelli, and Alan C Bovik. Multi-scale structural similarity for image quality assessment. In 
+
+The thrity-seventh asilomar conference on signals, systems & computers, 2003 , pages 1398–1402. Ieee, 2003. 6 [58] Enze Xie, Junsong Chen, Junyu Chen, Han Cai, Haotian Tang, Yujun Lin, Zhekai Zhang, Muyang Li, Ligeng Zhu, Yao Lu, et al. Sana: Efficient high-resolution image syn-thesis with linear diffusion transformers. arXiv preprint arXiv:2410.10629 , 2024. 2, 3, 6, 8, 1 [59] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Yuan Zhang, and Yan Lu. One-step diffusion-based image compression with semantic distillation. arXiv preprint arXiv:2505.16687 ,2025. 3, 5, 6, 8 [60] Ruihan Yang and Stephan Mandt. Lossy image compression with conditional diffusion models. Advances in Neural In-formation Processing Systems , 36:64971–64995, 2023. 3 [61] Jingfeng Yao, Bin Yang, and Xinggang Wang. Reconstruc-tion vs. generation: Taming optimization dilemma in latent diffusion models. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 15703–15712, 2025. 2, 5 [62] Leheng Zhang, Weiyi You, Kexuan Shi, and Shuhang Gu. Uncertainty-guided perturbation for image super-resolution diffusion model. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 17980–17989, 2025. 4[63] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 586–595, 2018. 6 [64] Tianyu Zhang, Xin Luo, Li Li, and Dong Liu. Stablecodec: Taming one-step diffusion for extreme image compression. 
+
+arXiv preprint arXiv:2506.21977 , 2025. 2, 3, 5, 6, 7, 8, 1, 4 
+
+11
