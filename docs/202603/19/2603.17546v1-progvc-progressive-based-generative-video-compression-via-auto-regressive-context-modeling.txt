@@ -1,0 +1,1470 @@
+Title: ProGVC: Progressive-based Generative Video Compression via Auto-Regressive Context Modeling
+
+URL Source: https://arxiv.org/pdf/2603.17546v1
+
+Published Time: Thu, 19 Mar 2026 01:11:51 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# ProGVC: Progressive-based Generative Video Compression via Auto-Regressive Context Modeling 
+
+Daowen Li 1†, Ruixiao Dong 1,2†, Ying Chen 1, Kai Li 1∗, Ding Ding 1, and Li Li 2 
+
+> 1
+
+Alibaba Group 
+
+{lidaowen.ldw, YingChen, kaishi.lk, liangjie.dd}@taobao.com  
+
+> 2
+
+University of Science and Technology of China 
+
+dongruixiaoyx@mail.ustc.edu.cn , lil1@ustc.edu.cn 
+
+Abstract. Perceptual video compression leverages generative priors to reconstruct realistic textures and motions at low bitrates. However, ex-isting perceptual codecs often lack native support for variable bitrate and progressive delivery, and their generative modules are weakly cou-pled with entropy coding, limiting bitrate reduction. Inspired by the next-scale prediction in the Visual Auto-Regressive (VAR) models, we propose ProGVC , a Pro gressive-based Generative Video Compression framework that unifies progressive transmission, efficient entropy coding, and detail synthesis within a single codec. ProGVC encodes videos into hierarchical multi-scale residual token maps, enabling flexible rate adap-tation by transmitting a coarse-to-fine subset of scales in a progressive manner. A Transformer-based multi-scale autoregressive context model estimates token probabilities, utilized both for efficient entropy coding of the transmitted tokens and for predicting truncated fine-scale tokens at the decoder to restore perceptual details. Extensive experiments demon-strate that as a new coding paradigm, ProGVC delivers promising per-ceptual compression performance at low bitrates while offering practical scalability at the same time. 
+
+Keywords: Perceptual video compression · Progressive coding · Visual Auto-Regressive model 
+
+1 Introduction 
+
+Driven by the explosive growth of multimedia consumption, advanced video compression technologies have become increasingly essential to reduce the bitrate cost of storing and transmitting video data. Traditional video compression standards, such as H.264/AVC [40], H.265/HEVC [32] and H.266/VVC [4], have achieved remarkable success by employing care-fully designed modules optimized towards pixel-wise distortion metrics (PSNR,  
+
+> †
+
+Equal contribution.  
+
+> ∗
+
+Corresponding author.    
+
+> arXiv:2603.17546v1 [cs.CV] 18 Mar 2026 2D. Li et al .
+
+SSIM [39], MS-SSIM [38], etc .). In recent years, end-to-end Neural Video Com-pression (NVC) models, including [3, 12, 13, 18, 31] have also demonstrated com-petitive performance against traditional standards. While these codecs are effec-tive at preserving signal fidelity, they often produce visually unpleasing recon-struction results at low bitrates. These annoying visual artifacts include blurring, blocking, and ringing, indicating that human perception diverges from such dis-tortion measures. To improve perceptual quality, researchers have explored generative video compression, leveraging powerful generative models to synthesize realistic de-tails. GAN-based methods [14, 43, 45] adopted generative adversarial network (GAN) [8], which yielded sharp-looking results but often suffered from unstable adversarial training and low-fidelity reconstructions. Recently, the advent of Vi-sion Foundation Models, particularly diffusion models [26, 27, 30], has inspired diffusion-based generative codecs [19–21] that exploit powerful priors to generate realistic textures and motions. Despite these advances, existing perceptual codecs still face several limi-tations. First, most methods lack support for scalability and variable bitrate adaptation, which are crucial under fluctuating network bandwidth. Second, diffusion-based codecs typically use diffusion model as decoding-time denoiser for the transmitted pixels or latents. Since the diffusion process is largely de-coupled from entropy coding, spatio-temporal priors of diffusion model are less utilized to remove signal redundancy. Moreover, diffusion model requires iterative denoising, which increases decoding latency and hinders real-time applications. In this paper, we aim to address these issues by introducing Visual Auto-Regressive (VAR) [9, 15, 33] models for generative video compression. The next-scale prediction mechanism in VAR utilizes a multi-scale residual quantizer to encode a video sequence into hierarchical visual token maps ( i.e ., scales). These scales are then predicted progressively utilizing a Transformer-based Auto-Regressive (AR) model. This coarse-to-fine paradigm naturally supports scalabil-ity and bitrate adaptability: the encoder can transmit the first few coarse scales and progressively refine quality by sending additional high-frequency details. Moreover, the autoregressive model provides accurate conditional probabilities for each token that can directly serve as an entropy context model. Furthermore, unlike diffusion models that rely on iterative denoising loops, VAR enables ef-ficient sampling in much fewer sampling steps, leading to substantially lower decoding latency. Motivated by these insights, we propose ProGVC (Progressive-based Gen-erative Video Compression via Auto-Regressive Context Modeling), a percep-tual video coding paradigm that unifies progressive scalability, efficient entropy modeling, and detail synthesis in a single autoregressive pipeline. Specifically, ProGVC employs a causal video VAE to extract continuous intra frame fea-tures for the first intra frame and inter frame features for subsequent frames. At encoder, a multi-scale residual quantization scheme encodes these features into K hierarchical multi-scale discrete token maps. To achieve scalability and variable bitrate control, the encoder transmits all intra frame scales, as they are Preprint 3
+
+crucial for leveraging temporal priors and incur only a small bitrate overhead, and the first k inter scales ( k ≤ K), where the different choices of k corre-spond to different bitrates. Moreover, to maximize the compression efficiency for the transmitted scales, we introduce the multi-scale autoregressive context model that acts as the entropy context model. For intra frame scales, the model captures cross-scale spatial dependencies; for inter frame scales, it explicitly con-ditions on both previously decoded intra and inter frame scales to exploit global spatio-temporal redundancy. The obtained discrete distributions for each token then drive arithmetic coding to minimize bitrate. At the decoder, ProGVC de-codes the transmitted scales losslessly and utilizes the autoregressive model to generate the discarded K − k high-frequency inter scales, enabling high-quality perceptual reconstruction with minimal additional rate. To the best of our knowledge, this is the first study to systematically in-vestigate generative video coding built upon an visual autoregressive generative model. We hope this work can shed some light on future research in this field. In summary, our core contributions are as follows: 
+
+– We introduce ProGVC, the first progressive generative video coding paradigm built upon the visual autoregressive model, enabling native scalability and variable bitrate by transmitting different subsets of hierarchical scales. 
+
+– We design a task-specific multi-scale autoregressive context model for the intra and inter token coding, unifying accurate probability estimation for entropy coding of the transmitted tokens and generative sampling for the un-transmitted details within a single framework, thereby reducing bitrate while preserving reconstruction quality. 
+
+– Extensive experimental results demonstrate that ProGVC exhibits superior perceptual quality over fidelity-oriented approaches and achieves competitive compression performance against existing perceptual video codecs. 
+
+2 Related works 
+
+2.1 Perceptual Video Compression 
+
+To improve perceptual quality of the reconstructed videos, generative models have been utilized in perceptual video compression methods. Among them, GAN-based codecs adopt adversarial learning to produce more realistic reconstruc-tions. Mentzer et al . [22] first introduced GAN into video compression. Yang et al . [43] designed recurrent conditional GAN and adversarial loss functions. Qi 
+
+et al . [28] presented a latent generative coding scheme, performing transform coding with a vector-quantized variational auto-encoder. Recently, diffusion-prior-based coding paradigms have emerged, where the diffusion foundation model is used as the denoiser in latent or pixel space to synthesize missing details and thus enhance the perceptual quality of the re-constructions. Li et al . [10] proposed a hybrid approach that combined image compression and a diffusion model for video compression. Ma and Chen [19] in-tegrated the Stable Diffusion model [30] as a latent denoiser into the conditional 4 D. Li et al .
+
+video codec. Mao et al . [21] leveraged a video diffusion transformer model to jointly enhance intra and inter frame latents through sequence-level denoising. Despite their encouraging visual results, prior perceptual video codecs have limited practicality, mainly due to the lack of native support for variable bitrate and scalable bitstream, resulting in the fact that they mostly require training separate models for different rates. In addition, diffusion models are typically leveraged as the decoder-side refiners to suppress quantization noise, rather than being tightly coupled with entropy modeling. Consequently, their powerful spatio-temporal priors are not directly translated into reducing transmitted bits. Furthermore, diffusion-based decoding typically relies on multiple iterative de-noising steps, which increases computational cost and limits their applicability in low-delay or real-time streaming scenarios. 
+
+2.2 Visual Auto-Regressive Generative Models 
+
+Unlike diffusion models which rely on iterative denoising, Auto-Regressive (AR) models generate images and videos by sequentially predicting visual tokens conditioned on prefix context. Early raster-scan AR methods operate directly in pixel domain [25, 34]. To improve efficiency and generation quality, Tam-ing Transformers [7] and VideoGPT [42] proposed a two-stage framework: first leverages a discrete tokenizer mapping visual data to latent tokens via a learned codebook, which is conceptually analogous to quantization in visual compression, and then employs the Transformer that models token distributions autoregres-sively, resembling entropy modeling in compression. Nevertheless, traditional AR models suffer from structural degradation caused by the fixed raster-scan order, which limits their generative fidelity and practical applicability. Visual Auto-Regressive (VAR) model [33] alleviates this issue with a hier-archical coarse-to-fine strategy based on a multi-scale tokenizer, progressively refining visual details via next-scale prediction. Its successors, Infinity [9] and InfinityStar [15], extend this paradigm to text-to-image and text-to-video gen-eration, achieving performance comparable to or surpassing leading diffusion-based approaches. Recently, VAR has been adapted to downstream tasks such as controllable generation [6,16], image super-resolution [29] and image compres-sion [46]. Despite these advances, the potential of visual autoregressive models for video compression remains unexplored. Notably, the hierarchical next-scale prediction mechanism of VAR naturally lends itself to a progressive and scalable perceptual video compression framework. Motivated by this, we adopt the vi-sual autoregressive model as the backbone of our perceptual video compression framework. 
+
+3 Method 
+
+This section first describes the overall framework (Sec. 3.1), highlighting on how scalable compression and variable bitrate adaptation are implemented within the visual autoregressive model. We then elaborate on the Multi-scale Residual Preprint 5
+
+> Fig. 1: Overview of the proposed ProGVC video compression framework.
+> We design a progressive generative video compression framework based on the visual autoregressive model. The left panel illustrates the output pyramid structure of the multi-scale residual quantization. Besides, the sparse attention mask used in the context model is shown on the right.
+
+Quantization module (Sec. 3.2) for multi-scale token maps generation, followed by the Multi-scale Auto-Regressive Context Model (Sec. 3.3) for efficient token transmission. 
+
+3.1 Overall Framework 
+
+We design ProGVC, a progressive perceptual video compression framework based on the visual autoregressive model, as illustrated in Fig. 1. Specifically, a causal video VAE encoder first maps the input video clip into a continuous latent. A multi-scale residual quantizer then discretizes this latent into multi-scale token maps. During encoding, the intra scales and the first k low-frequency inter token maps are losslessly encoded considering their importance in temporal consistency and global layout construction, while higher-frequency inter scales are discarded and later generated at the decoder. We can adjust k for adaptive bitrate control. A multi-scale autoregressive context model estimates the distribution of each token, which is used both for entropy coding of the transmitted tokens and for generation of the discarded scales. Finally, the VAE decoder reconstructs the video from the recovered multi-scale token maps. 
+
+Continuous Feature Extraction. For an input video clip V ∈ R(1+ T )×W ×H×3,we regard the first frame as the intra frame, and the remaining frames are in-ter frames. A causal VAE encoder E encodes V into continuous spatio-temporal latent features by f = E(V ) = {ft}1+ T 
+
+> 4
+> t=1
+
+, with ft ∈ R W   
+
+> 4×H
+> 4×64
+
+. We denote the 6 D. Li et al .
+
+intra latent features corresponding to the intra frame as f I = f1, and the inter latent features for inter frames as f P = {ft}1+ T 
+
+> 4
+> t=2
+
+.
+
+Multi-scale Residual Quantization. The employed multi-scale residual quan-tization converts the continuous latent features into multi-scale residual token maps: 
+
+R(·) = Q( f (·)) = {r(·) 
+
+> k
+
+}Kk=1 , (·) ∈ { I, P }. (1) Here, Q denotes the multi-scale residual quantization, and RI and RP are the resulting multi-scale intra and inter token maps ( i.e ., scales) respectively. The spatial resolution of the k-th scale r(·) 
+
+> k
+
+increases with k, with higher scales pro-gressively capturing more high-frequency details. Following Binary Spherical Quantization (BSQ) [47], each token in r(·) 
+
+> k
+
+is a binary code of length Lk. As k
+
+increases, the upsampling and element-wise addition result of {r(·) 
+
+> i
+
+}ki=1 progres-sively approximates the original continuous features f (·). The detailed procedure to obtain multi-scale residual token maps is presented in Sec. 3.2. 
+
+Scalability and Adaptive Bitrate Control. By transmitting multi-scale to-ken maps from coarse to fine, ProGVC first reconstructs global structure and layout from the base scales, and then progressively adds localized, high-frequency details from the later scales. This progressive structure provides explicit scalabil-ity: bitstreams containing more scales yield higher reconstruction quality, while truncating the tail scales produces a valid, lower-rate reconstruction. Selecting different subsets of scales for transmission also enables adaptive bitrate control without retraining or modifying the compression model. In practice, we primar-ily adjust the bitrate by truncating inter scale tokens, since they constitute the majority of transmitted tokens and considering that the intra scales are vital for temporal alignment in modeling inter scales distribution. The discarded higher-frequency inter scales are generated conditioned on the already reconstructed scales at the decoder side. Then the multi-scale summation over all scales is applied to reconstruct the continuous features for final video decoding. 
+
+Entropy Coding based on Context Modeling. For the transmitted scales, ProGVC further improves compression efficiency through lossless entropy cod-ing. Since each token is represented by binary codes, the resulting bit sequence naturally supports arithmetic coding, which reduces the bitrate given accurate probability estimation. Here we design a multi-scale autoregressive context model that exploits the spatio-temporal priors among scales to estimate the distribu-tion of each scale conditioned on previous scales. Modeling the distributions of intra and inter scales is discussed separately as follows. 
+
+Intra context modeling. Following the autoregressive factorization across scales in VAR, the joint distribution of intra scales is factorized as 
+
+p(rI 
+
+> 1
+
+, . . . , r IK ) = 
+
+> K
+
+Y
+
+> k=1
+
+p rIk | { rIk′ }k′<k 
+
+ , (2) where  rIk denotes the  k-th intra scale. Given the conditional probability  p(rIk |{rIk′ }k′<k ), the bitstream of the  k-th intra scale, denoted as BIk, is generated via entropy coding. Preprint 7
+
+Inter context modeling. For inter scales, only the first  κP scales ( κP ≤ K) are transmitted. Let  rPk denotes the  k-th inter scale, and  RI = {rIk}Kk=1  represents the intra scales. The joint distribution of inter scales is factorized as 
+
+p(rP 
+
+> 1
+
+, . . . , r PκP ) = 
+
+> κP
+
+Y
+
+> k=1
+
+p rPk | { rPk′ }k′<k , R I  . (3) That is, each inter scale is conditioned on all previously reconstructed inter scales as well as the intra scales. Analogously, the bitstream of the  k-th inter scale tokens, BPk , is generated according to the corresponding conditional distribution. The detailed architecture of the multi-scale autoregressive context model is described in Sec. 3.3. 
+
+Entropy Decoding and Token Generation for Video Decompression. 
+
+At the decoder, the transmitted intra and inter scale tokens are first losslessly recovered from the bitstreams via entropy decoding, denoted as {ˆrIk}Kk=1 and 
+
+{ˆrPk }κP
+
+> k=1
+
+, using the same autoregressive probability factorization as in encoding. The discarded higher-frequency inter scales are then synthesized through to-ken generation. Specifically, the discarded inter scales ( k > κ P ) are generated conditioned on the already reconstructed scales with the same conditional dis-tribution modeling mechanism, while selecting the most probable entries as 
+
+ˆrPk = arg max 
+
+> ˆrPk
+
+p
+
+
+
+ˆrPk | { ˆrPk′ }k′<k , ˆRI 
+
+, k = κP +1 , . . . , K.  (4) After obtaining the complete set of hierarchical scales, the intra and inter latent features ˆf I and ˆf P are reconstructed via multi-scale summation. Finally, the reconstructed video ˆV is obtained by feeding these latent features to the VAE decoder  D as ˆV = D( ˆf I , ˆf P ).
+
+3.2 Multi-scale Residual Quantization 
+
+To discretize the continuous latent features  f (·), we adopt a multi-scale residual quantization scheme that produces  K hierarchical scales  {r(·) 
+
+> k
+
+}Kk=1 .Specifically, at scale  k, the residual feature  e(·) 
+
+> k
+
+, which is initialized with the continous feature  f (·) at k = 1 , is first downsampled into token vectors ˜e(·) 
+
+> k
+
+:
+
+˜e(·) 
+
+> k
+
+= Dk
+
+
+
+e(·)
+
+> k
+
+
+
+, ˜e(·) 
+
+> k
+
+∈ Rwk ×hk ×T ′×Lk , e (·) 
+
+> k
+
+∈ RW/ 4×H/ 4×T ′×Lk , (5) where  Dk denotes the downsampling operator at scale  k, (wk, h k) represents the spatial resolution of k-th token map, T ′ and Lk denote the temporal and channel dimensions, respectively. Each token vector  v ∈ RLk from  ˜e(·) 
+
+> k
+
+is discretized using Binary Spherical Quantization (BSQ) [47], which binarizes each element vs of the token according to its sign and normalizes it by the token dimension: 
+
+BSQ( vs) = sign( vs)
+
+√Lk
+
+, sign( vs) ∈ {− 1, +1 }. (6) 8 D. Li et al .
+
+> Fig. 2: Overview of the multi-scale autoregressive context model . The trans-former network predicts both intra scale and inter scale tokens in an autoregressive manner. The resulting probability distributions are subsequently utilized for entropy coding and for sampling discarded tokens during reconstruction.
+
+By applying BSQ to all k-th scale tokens, the module obtains discrete residual token map r(·) 
+
+> k
+
+. r(·) 
+
+> k
+
+is then upsampled back to the latent resolution using the scale-specific upsampling operator  Uk, and further subtracted from the current residual feature to generate the residual feature e(·) 
+
+> k+1
+
+for the next scale: 
+
+e(·) 
+
+> k+1
+
+= e(·) 
+
+> k
+
+− Uk
+
+
+
+r(·)
+
+> k
+
+
+
+, k = 1 , . . . , K.  (7) Through this hierarchical residual quantization process, the latent represen-tation is progressively refined from coarse to fine scales, natively and explicitly supporting a scalable progressive generative video coding paradigm. 
+
+3.3 Multi-scale Auto-Regressive Context Modeling 
+
+In this stage, our transformer-based autoregressive context model estimates the distribution of each scale in an autoregressive manner. Fig. 2 exhibits the work-flow. Specifically, to estimate the probability of the k-th scale r(·) 
+
+> k
+
+, we first con-struct an aggregated multi-scale representation ˜f (·) 
+
+> k
+
+that serves as input to the autoregressive model for the current scale, 
+
+˜f (·) 
+
+> k
+
+= Dk(
+
+> k
+
+X
+
+> i=1
+
+Ui(r(·) 
+
+> i
+
+)) . (8) The distributions of current scale are then predicted by injecting information from the prefix scales through masked self-attention. In particular, for each at-Preprint 9            
+
+> Fig. 3: Illustration of three attention mask designs: VAR-like attention (left), InfinityStar attention (middle), and our sparse attention (right). For visualization simplicity, we illustrate the masks using three spatial scales (1, 2, 3) and a temporal length of T= 2 for inter scale tokens.
+
+tention block, the temporal-spatial priors are incorporated as: 
+
+Q = Z(·) 
+
+> k
+
+W q , K = concat 
+
+
+
+Z(·) 
+
+> k
+
+, C k
+
+
+
+W k , V = concat 
+
+
+
+Z(·) 
+
+> k
+
+, C k
+
+
+
+W v ,Z(·)′ 
+
+> k
+
+= Attention ( Q, K, V, Mask) = Softmax 
+
+
+
+Mask 
+
+
+
+QK ⊤/√d
+
+ 
+
+V,
+
+(9) where W q , W k, W v denote the query, key, and value projection matrices; Z(·)
+
+> k
+
+and Z(·)′ 
+
+> k
+
+are the input and output of this attention block corresponding to k-th scale input ˜f (·) 
+
+> k
+
+, respectively. The context set Ck depends on the token type. For intra scales, Ck consists of previous intra scale features {ZIk′ }k′<k ; and for inter scales, the context further includes prefix inter scale features {ZPk′ }k′<k 
+
+together with intra scale features {ZIk′ }k′<K . The attention mask Mask deter-mines which tokens in Z(·) 
+
+> k
+
+are visible during attention, restricting each token to attend only to its effective prefix context. Multiple masked attention blocks are stacked, followed by an MLP-based prediction head to estimate the discrete token distribution. For transmitted scales, predicted probabilities are used for lossless entropy coding, whereas truncated scales are generated by selecting the most probable discrete entries according to the estimated distribution. 
+
+Sparse attention . Theoretically, incorporating richer conditional information can reduce conditional entropy [2], thereby lowering the expected bitrate. How-ever, naively expanding the conditioning context significantly increases the com-putational cost of autoregressive video modeling, as the context grows rapidly along both spatial and temporal dimensions. Moreover, the aggregated input 
+
+˜f (·) 
+
+> k
+
+at scale  k already summarizes information from coarser scales, making full attention over all historical tokens partially redundant [35]. As shown in Fig. 3, Infinity [9] employs a block-wise causal mask that allows each scale to attend to all historical tokens, which becomes computationally expensive for long sequences. InfinityStar [15] reduces complexity by adopting a 10 D. Li et al .
+
+more restrictive attention mask (middle of Fig. 3); however, the limited receptive field weakens context utilization and may increase the bitrate. To balance compression efficiency and computational complexity, we design a sparse attention mask used in both the encoding and decoding process, as shown in the right of Fig. 3. First, this attention mask allows each scale to attend to itself with its immediately preceding scale. By stacking multiple attention layers, long-range dependencies are progressively captured without explicitly attending to the full history. Furthermore, to leverage temporal priors and maintain tem-poral consistency in reconstructions, inter scale tokens are allowed to attend to the largest intra scale, which retains rich fine-grained details and exhibits stronger temporal coherence with inter scales. As shown in Sec. 4.3, this sparse attention design achieves a favorable trade-off between compression efficiency and computational overhead. 
+
+4 Experiments 
+
+4.1 Setup Dataset . We train ProGVC on the Pexels dataset. To construct a high-quality training corpus, we compute the aesthetic and clarity scores for each video and retain only samples with scores above 4.5 and 0.65, respectively. Videos shorter than 10 seconds are discarded, and only those with aspect ratios close to stan-dard 720p resolution are kept, resulting in a large-scale, high-quality corpus of approximately 480K videos. Evaluation is conducted on widely used benchmarks, including Xiph [41], HEVC Class B [32], and MCL-JCV [36]. Since ProGVC is trained primarily on 720p content following InfinityStar, the HEVC Class B and MCL-JCV datasets are downsampled to 720p. 
+
+Training Details. The base configurations of the causal VAE and the multi-scale residual quantization are inherited from InfinityStar. We finetune the VAE jointly with the quantization module, largely following prior work [15, 37, 47]. Specifically, training is conducted on 256 ×256 ×81 video clips for 10K iterations with a batch size of 2. The training objective combines entropy loss, commitment loss, l2 reconstruction loss, GAN loss, and LPIPS perceptual loss, weighted by 0.1, 0.25, 1, 0.01 and 4, respectively. The learning rate is set to 5 × 10 −5.We train the multi-scale autoregressive context model for 60k iterations, uti-lizing the AdamW optimizer [17] with batch size of 8. The learning rate is set to 5 × 10 −5, with momentum coefficients as (β1, β 2) = (0 .9, 0.97) . Following the InfinityStar training protocol, we randomly drop the later inter scales to improve training efficiency. All videos are resized and randomly cropped to a resolution of 720p. Each training sample consists of 81 frames. 
+
+Metrics. To evaluate perceptual quality, full-reference quality metrics are adopted, including DISTS [5] and LPIPS [44], along with no-reference quality metrics rep-resented by NIQE [24]. PSNR is also used for evaluating signal fidelity. Finally, we use kilobits per second (kbps) to measure the bitrate cost for compressing a video sequence within one second. Preprint 11 
+
+Baselines. We compared ProGVC against three categories of video compres-sion methods: a) traditional video codec based on the latest VVC standard, i.e ., VTM-17.0 [4]; b) leading fidelity-oriented neural video codecs, including DCVC-FM [13] , DCVC-B [31] and SEVC [3]; c) perceptual video codecs, represented by PLVC [43], which serves as the strongest reproducible generative baseline. Among these baselines, the fidelity-oriented codecs support variable-rate con-trol but not scalable bitstreams, whereas PLVC supports neither scalability nor adaptive rate control. We adopt the random access configuration with GOP size of 32 and one intra frame for VTM-17.0, while for the other baseline methods we use their default configurations. For each test sequence, we evaluate the first 81 frames. All methods are tested in the RGB domain with the same RGB mode to ensure a fair comparison. The evaluated bitrate range is set to 300-2000 kbps. Additional implementation details are provided in the supplementary material. 
+
+4.2 Comparison Results Quantitative Results. As demonstrated in Fig. 4, ProGVC achieves consis-tently better performance in terms of DISTS than all competing methods. It also outperforms traditional and fidelity-oriented codecs under NIQE, while deliver-ing a comparable perceptual efficiency measured by LPIPS. Compared with the perceptual codec PLVC [43], ProGVC further improves the NIQE-based com-pression efficiency on the Xiph dataset. Overall, ProGVC demonstrates promis-ing performance in perception metrics, while supporting scalability and variable rate control. Tab. 1 further reports the BD-rate and the BD-metric results for all metrics using VTM-17.0 [4] as the anchor, confirming that ProGVC achieves superior or comparable perceptual quality compared to other strong baselines. 
+
+Qualitative Results. Fig. 5 illustrates the visual results of different video com-pression methods. ProGVC produces more visually pleasant reconstructions at low bitrates. Compared to fidelity-oriented baselines, including VTM-17.0 [4] and SEVC [3], ProGVC produces finer textures and higher structural integrity, mitigating blurring artifacts and fragmented edges. Compared to the perceptual baseline PLVC [43], ProGVC produces more faithful and natural textures.              
+
+> Table 2: Complexity compar-ison with other neural codecs.
+> Methods Enc. T (s) ↓Dec. T (s) ↓
+> DCVC-B [31] 1.28 1.09 SEVC [3] 1.04 0.88
+> DiffVC [19] 0.82 4.54
+> ProGVC 0.56 1.53
+
+Complexity. We also compare the encoding and decoding complexity of ProGVC with sev-eral neural video codecs, including the fidelity-oriented codecs DCVC-B [31] and SEVC [3], as well as the diffusion-based perceptual codec DiffVC [19]. The GAN-based perceptual codec PLVC [43] is excluded due to its incompat-ible implementation with the unified evalua-tion platform. For DiffVC, which has not yet been open-sourced, we implement the network architecture according to the original paper without training the model. All experiments are conducted on the same hard-ware platform, consisting of an NVIDIA H20 GPU and an Intel Xeon Platinum 8469C CPU with 192 cores. Since the encoding time of ProGVC varies with the 12 D. Li et al .500 750 1000 1250 1500 1750 2000 2250 2500 
+
+kbps 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+> DISTS
+
+Xiph 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 2250 2500 
+
+kbps 
+
+0.075 
+
+0.100 
+
+0.125 
+
+0.150 
+
+0.175 
+
+0.200 
+
+0.225 
+
+0.250 
+
+> LPIPS
+
+Xiph 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 2250 2500 
+
+kbps 
+
+5.25 
+
+5.50 
+
+5.75 
+
+6.00 
+
+6.25 
+
+6.50 
+
+6.75 
+
+> NIQE
+
+Xiph 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 2250 2500 
+
+kbps 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+36 
+
+> PSNR (dB)
+
+Xiph 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 
+
+kbps 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+> DISTS
+
+HEVC_B 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 
+
+kbps 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+> LPIPS
+
+HEVC_B 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 
+
+kbps 
+
+3.6 
+
+3.8 
+
+4.0 
+
+4.2 
+
+4.4 
+
+4.6 
+
+4.8 
+
+5.0 
+
+> NIQE
+
+HEVC_B 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 500 750 1000 1250 1500 1750 2000 
+
+kbps 
+
+22 
+
+24 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+> PSNR (dB)
+
+HEVC_B 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 200 400 600 800 1000 1200 1400 
+
+kbps 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+> DISTS
+
+MCL-JCV 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 200 400 600 800 1000 1200 1400 
+
+kbps 
+
+0.075 
+
+0.100 
+
+0.125 
+
+0.150 
+
+0.175 
+
+0.200 
+
+0.225 
+
+0.250 
+
+> LPIPS
+
+MCL-JCV 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 200 400 600 800 1000 1200 1400 
+
+kbps 
+
+4.50 
+
+4.75 
+
+5.00 
+
+5.25 
+
+5.50 
+
+5.75 
+
+6.00 
+
+6.25 
+
+> NIQE
+
+MCL-JCV 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 200 400 600 800 1000 1200 1400 
+
+kbps 
+
+24 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+36 
+
+> PSNR (dB)
+
+MCL-JCV 
+
+VTM-17.0 
+
+DCVC-FM 
+
+DCVC-B 
+
+SEVC 
+
+PLVC 
+
+ProGVC 
+
+Fig. 4: Rate and perception/fidelity curves on Xiph, HEVC B and MCL-JCV datasets. 
+
+bitrate, we report the average runtime between the lowest and highest bitrate settings. As summarized in Tab. 2, ProGVC achieves the lowest encoding com-plexity among all baselines. In terms of decoding, ProGVC attains decoding time comparable to DCVC-B [31] and SEVC [3], while clearly outperforming DiffVC, whose runtime is dominated by 50 diffusion steps even after applying complexity optimizations. 
+
+4.3 Ablation Studies 
+
+We conduct a series of ablation studies on the key components of our framework. For a fair comparison, we report BD-rate and BD-metric results on the Xiph dataset, evaluated across three metrics: DISTS, LPIPS and PSNR. 
+
+Multi-scale Auto-Regressive Context Modeling . We evaluate the pro-posed context modeling procedure for both entropy coding and discarded token generation. To quantify its contribution to lossless entropy coding, we replace the proposed context model with a uniform probability distribution. As reported in Tab. 3, the proposed context modeling reduces the bitrate by more than 50% Preprint 13 
+
+Table 1: BD-rate ↓ (%) / BD-metric ↑ on the Xiph, HEVC B, and MCL-JCV datasets. Red and Blue indicate the best and the second-best performance in terms of BD-metric, respectively. “N/A” indicates that BD-rate cannot be calculated due to the lack of quality overlap. Dataset Method DISTS LPIPS NIQE PSNR(dB) Xiph VTM-17.0 [4] 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 
+
+DCVC-FM [13] 92.0 / -0.0257 40.4 / -0.0228 71.3 / -0.2525 111.1 / -1.8623 SEVC [3] 87.7 / -0.0179 19.4 / -0.0062 41.8 / -0.1331 51.5 / -0.9035 DCVC-B [31] 63.2 / -0.0148 17.3 / -0.0065 94.7 / -0.2306 56.8 / -1.0048 PLVC [43] -40.3 / 0.0109 -83.7 / 0.0565 169.9 / -0.0902 825.9 / -5.5261 
+
+ProGVC -61.5 / 0.0300 3.5 / -0.0025 -62.2 / 0.2670 891.2 / -5.8437 HEVC-B VTM-17.0 [4] 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 
+
+DCVC-FM [13] 62.8 / -0.0231 41.0 / -0.0356 23.1 / -0.1653 50.6 / -1.2807 SEVC [3] 88.1 / -0.0193 39.2 / -0.0189 60.1 / -0.2066 20.5 / -0.5422 DCVC-B [31] 78.6 / -0.0184 41.5 / -0.0209 63.9 / -0.2300 28.7 / -0.7316 PLVC [43] -18.1 / 0.0046 -30.5 / 0.0150 -56.0 / 0.1048 705.5 / -6.1212 
+
+ProGVC -47.7 / 0.0217 30.3 / -0.0259 -52.5 / 0.3509 879.6 / -6.8492 MCL-JCV VTM-17.0 [4] 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 
+
+DCVC-FM [13] 49.2 / -0.0215 32.9 / -0.0241 28.6 / -0.2241 68.8 / -1.4598 SEVC [3] 52.0 / -0.0164 20.1 / -0.0102 30.6 / -0.1601 11.8 / -0.2967 DCVC-B [31] 77.5 / -0.0247 44.2 / -0.0224 68.4 / -0.3514 37.2 / -0.9451 PLVC [43] -28.8 / 0.0108 -45.1 / 0.0322 N/A / 0.5959 571.2 / -5.7383 
+
+ProGVC -46.2 / 0.0238 3.3 / -0.0016 -65.5 / 0.5287 893.8 / -6.6569 
+
+Table 3: Effect of multi-scale autoregressive context modeling . “uniform prob.” denotes utilizing uniform probability distribution. Model Variants BD-rate ↓(%) / BD-metric ↑
+
+DISTS LPIPS PSNR Base 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 w/o context model (uniform prob.) 122.4 / -0.0259 119.6 / -0.0360 119.4 / -2.3437 w/o token generation N/A / -0.1183 280.9 / -0.1273 189.9 / -3.8102 
+
+compared to the uniform baseline. Moreover, the proposed context modeling further improves both perceptual and fidelity metrics via token generation. 
+
+Attention mask design . We conduct ablation studies to evaluate the effec-tiveness of the proposed sparse attention mask. In particular, we investigate the trade-off between the bitrate reduction by exploiting sufficient contextual information from previous scales and maintaining computational efficiency. We begin by analyzing temporally aligned intra–intra and inter–inter atten-tion masks, where tokens attend to context from the same frame(s) at earlier scales. Specifically, we compare three variants: (1) InfinityStar-like self-only at-tention , where each scale attends only to itself; (2) VAR-like full causal attention ,where each scale attends to all prefix scales; and (3) our proposed design , in which each scale attends only to itself together with its immediately preceding scale. As reported in Tab. 4, the proposed design achieves a favorable BD-rate–complexity trade-off. Compared with self-only attention, it consistently improves BD-rate 14 D. Li et al .        
+
+> Ground Truth VTM-17.0 [4] SEVC [3] PLVC [43] ProGVC
+> Bitrate ↓/DISTS ↓444.15 kbps/0.1174 751.66 kbps/0.1330 745.69 kbps/0.0717 355.6 kbps/0.0621
+> Bitrate ↓/DISTS ↓395.5 kbps/0.1291 754.13 kbps/0.1281 682.1 kbps/0.0956 345.5 kbps/0.0688
+
+Fig. 5: Visual comparisons with baselines on the Kimono sequence in the Xiph dataset and the ParkScene sequence in the HEVC B dataset. Table 4: Effect of three different temporal-aligned attention masks . The per-frame encoding and decoding times (Enc. T and Dec. T) are averaged over the lowest and highest bitrates. Attn. Variants BD-rate ↓(%) / BD-metric ↑ Enc. T (s) ↓ Dec. T (s) ↓              
+
+> DISTS LPIPS PSNR Ours 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.56 1.53 Self-only 6.8 / -0.0021 12.8 / -0.0062 10.9 / -0.3482 0.50 1.23 Full causal -6.5 / 0.0021 -3.8 / 0.0019 0.5 / -0.0184 0.64 1.96
+
+across all three metrics. Moreover, it matches the compression performance of full causal attention while substantially reducing computational overhead. To preserve temporal consistency, inter scales should incorporate informa-tion from intra scales. As shown in Tab. 5, we compare the proposed largest-intra-scale conditioning strategy with three alternatives: no intra scales con-ditioning, conditioning on the smallest intra scale, and conditioning on intra scales at the same spatial resolution. The results indicate that attending to the largest intra scale consistently improves the compression performance of inter frames. The largest intra scale, operating at the finest spatial resolution, provides high-frequency details that better match inter scales than low-frequency scales, thereby offering a stronger predictive prior. Meanwhile, the computational cost of the proposed strategy remains comparable across all variants. Based on these observations, the largest intra scale is adopted as one of the reference context for inter-scale token modeling. Preprint 15 
+
+Table 5: Effect of different intra scales to the context modeling of inter scales . The per-frame encoding and decoding times (denoted as Enc. T and Dec. T) are averaged across the lowest and highest bitrate settings. Attn. Variants BD-rate ↓(%) / BD-metric ↑ Enc. T (s) ↓ Dec. T (s) ↓               
+
+> DISTS LPIPS PSNR Ours (largest scale) 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.56 1.53 No intra reference 37.3 / -0.0171 41.7 / -0.0254 46.6 / -1.6698 0.53 1.46 Smallest scale 42.7 / -0.0191 40.4 / -0.0252 46.8 / -1.6803 0.53 1.46 Same resolution scale 11.7 / -0.0042 12.2 / -0.0064 14.4 / -0.5131 0.54 1.49
+
+5 Conclusion and Future Work 
+
+In this paper, we introduce ProGVC (Progressive-based Generative Video Com-pression via Auto-Regressive Context Modeling), the first perceptual video cod-ing paradigm based on the visual autoregressive model that unifies progressive scalability, efficient entropy coding, and detail synthesis within a single frame-work. By integrating a multi-scale residual quantizer with a task-specific multi-scale autoregressive context model, ProGVC achieves lossless compression of low-frequency global structures while generating high-frequency details. Exper-imental results demonstrate that our model exhibits consistent improvements in perceptual quality over fidelity-oriented codecs and competitive performance compared to perceptual baselines, while maintaining native scalability, adaptive rate control, and low encoding-decoding latency. Despite these advantages, ProGVC still leaves room for further optimization. First, the supported video resolution and duration are currently constrained by the training configuration of the autoregressive model. Second, the current adap-tive rate control strategy operates in a coarse-grained manner, where bitrates are adjusted by transmitting or discarding entire scales. Consequently, the achiev-able rate points are discrete rather than continuously adjustable. Future work will explore resolution- and length-agnostic architectures, as well as finer-grained rate control mechanisms, to enable smoother bitrate adaptation and broaden the applicability of ProGVC in practical streaming scenarios. 16 D. Li et al .
+
+References 
+
+1. Alshina, E., Ascenso, J., Ebrahimi, T.: Jpeg ai: The first international standard for image coding based on an end-to-end learning-based approach. IEEE MultiMedia 
+
+31 (4), 60–69 (2024) 19 2. Bengio, Y., Ducharme, R., Vincent, P., Jauvin, C.: A neural probabilistic language model. Journal of machine learning research 3(Feb), 1137–1155 (2003) 9 3. Bian, Y., Tang, C., Li, L., Liu, D.: Augmented deep contexts for spatially embedded video coding. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 2094–2104 (2025) 2, 11, 12, 13, 14, 19, 26 4. Bross, B., Wang, Y.K., Ye, Y., Liu, S., Chen, J., Sullivan, G.J., Ohm, J.R.: Overview of the versatile video coding (vvc) standard and its applications. TCSVT 
+
+31 (10), 3736–3764 (2021) 1, 11, 13, 14, 26 5. Ding, K., Ma, K., Wang, S., Simoncelli, E.P.: Image quality assessment: Unify-ing structure and texture similarity. IEEE transactions on pattern analysis and machine intelligence 44 (5), 2567–2581 (2020) 10 6. Dong, R., Wang, Z., Liu, K., Li, L., Chen, Y., Li, K., Li, D., Li, H.: Echogen: Gen-erating visual echoes in any scene via feed-forward subject-driven auto-regressive model. In: The Fourteenth International Conference on Learning Representations (2026), https://openreview.net/forum?id=ctmyCjo18u 47. Esser, P., Rombach, R., Ommer, B.: Taming transformers for high-resolution image synthesis. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 12873–12883 (2021) 4 8. Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., Bengio, Y.: Generative adversarial networks. Communications of the ACM 63 (11), 139–144 (2020) 2 9. Han, J., Liu, J., Jiang, Y., Yan, B., Zhang, Y., Yuan, Z., Peng, B., Liu, X.: In-finity: Scaling bitwise autoregressive modeling for high-resolution image synthesis. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 15733–15744 (2025) 2, 4, 9 10. Li, B., Liu, Y., Niu, X., Bai, B., Deng, L., Gündüz, D.: Extreme video compression with pre-trained diffusion models. arXiv preprint arXiv:2402.08934 (2024) 3 11. Li, J., Li, B., Lu, Y.: Deep contextual video compression. Advances in Neural Information Processing Systems 34 (2021) 21, 23 12. Li, J., Li, B., Lu, Y.: Neural video compression with diverse contexts. In: Proceed-ings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 22616–22626 (2023) 2 13. Li, J., Li, B., Lu, Y.: Neural video compression with feature modulation. In: Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-tion. pp. 26099–26108 (2024) 2, 11, 13, 19 14. Li, M., Shi, Y., Wang, J., Huang, Y.: High visual-fidelity learned video compression. In: Proceedings of the 31st ACM International Conference on Multimedia. pp. 8057–8066 (2023) 2 15. Liu, J., Han, J., Yan, B., Zhu, F., Wang, X., Jiang, Y., PENG, B., Yuan, Z., et al.: Infinitystar: Unified spacetime autoregressive modeling for visual generation. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems 2, 4, 9, 10 16. Liu, K., Wang, Z., Zhou, W., Xu, S., Dong, R., Li, H.: Scaleweaver: Weaving effi-cient controllable t2i generation with multi-scale reference attention. arXiv preprint arXiv:2510.14882 (2025) 4 Preprint 17 17. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. In: ICLR (2019) 10 18. Lu, G., Ouyang, W., Xu, D., Zhang, X., Cai, C., Gao, Z.: Dvc: An end-to-end deep video compression framework. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 11006–11015 (2019) 2, 21, 23 19. Ma, W., Chen, Z.: Diffusion-based perceptual neural video compression with tem-poral diffusion information reuse. ACM Transactions on Multimedia Computing, Communications and Applications 21 (12), 1–22 (2025) 2, 3, 11, 20, 21 20. Ma, W., Chen, Z.: Diffvc-osd: One-step diffusion-based perceptual neural video compression framework. arXiv preprint arXiv:2508.07682 (2025) 2 21. Mao, Q., Cheng, H., Yang, T., Jin, L., Ma, S.: Generative neural video compression via video diffusion prior. arXiv preprint arXiv:2512.05016 (2025) 2, 4, 20, 21 22. Mentzer, F., Agustsson, E., Ballé, J., Minnen, D., Johnston, N., Toderici, G.: Neu-ral video compression using gans for detail synthesis and propagation. In: European Conference on Computer Vision. pp. 562–578. Springer (2022) 3 23. Mentzer, F., Toderici, G.D., Tschannen, M., Agustsson, E.: High-fidelity generative image compression. Advances in Neural Information Processing Systems 33 (2020) 20 24. Mittal, A., Soundararajan, R., Bovik, A.C.: Making a “completely blind” image quality analyzer. IEEE Signal processing letters 20 (3), 209–212 (2012) 10 25. Van den Oord, A., Kalchbrenner, N., Espeholt, L., Vinyals, O., Graves, A., et al.: Conditional image generation with pixelcnn decoders. Advances in neural informa-tion processing systems 29 (2016) 4 26. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 4195–4205 (2023) 227. Podell, D., English, Z., Lacey, K., Blattmann, A., Dockhorn, T., Müller, J., Penna, J., Rombach, R.: Sdxl: Improving latent diffusion models for high-resolution image synthesis. arXiv preprint arXiv:2307.01952 (2023) 2 28. Qi, L., Jia, Z., Li, J., Li, B., Li, H., Lu, Y.: Generative latent coding for ultra-low bitrate image and video compression. IEEE Transactions on Circuits and Systems for Video Technology (2025) 3 29. Qu, Y., Yuan, K., Hao, J., Zhao, K., Xie, Q., Sun, M., Zhou, C.: Visual autoregres-sive modeling for image super-resolution. In: Forty-second International Conference on Machine Learning 4 30. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 10684–10695 (2022) 2, 331. Sheng, X., Li, L., Liu, D., Wang, S.: Bi-directional deep contextual video compres-sion. IEEE Transactions on Multimedia (2025) 2, 11, 12, 13, 19, 20 32. Sullivan, G.J., Ohm, J.R., Han, W.J., Wiegand, T.: Overview of the high efficiency video coding (hevc) standard. IEEE Transactions on circuits and systems for video technology 22 (12), 1649–1668 (2012) 1, 10 33. Tian, K., Jiang, Y., Yuan, Z., Peng, B., Wang, L.: Visual autoregressive modeling: Scalable image generation via next-scale prediction. Advances in neural information processing systems 37 , 84839–84865 (2024) 2, 4 34. Van Den Oord, A., Kalchbrenner, N., Kavukcuoglu, K.: Pixel recurrent neural networks. In: International conference on machine learning. pp. 1747–1756. PMLR (2016) 4 18 D. Li et al .35. Voronov, A., Kuznedelev, D., Khoroshikh, M., Khrulkov, V., Baranchuk, D.: Switti: Designing scale-wise transformers for text-to-image synthesis. arXiv preprint arXiv:2412.01819 (2024) 9 36. Wang, H., Gan, W., Hu, S., Lin, J.Y., Jin, L., Song, L., Wang, P., Katsavounidis, I., Aaron, A., Kuo, C.C.J.: Mcl-jcv: a jnd-based h. 264/avc video quality assessment dataset. In: 2016 IEEE international conference on image processing (ICIP). pp. 1509–1513. IEEE (2016) 10 37. Wang, J., Jiang, Y., Yuan, Z., Peng, B., Wu, Z., Jiang, Y.G.: Omnitokenizer: A joint image-video tokenizer for visual generation. Advances in Neural Information Processing Systems 37 , 28281–28295 (2024) 10 38. Wang, Z., Simoncelli, E., Bovik, A.: Multiscale structural similarity for image qual-ity assessment. In: The Thrity-Seventh Asilomar Conference on Signals, Systems & Computers, 2003. vol. 2, pp. 1398–1402 Vol.2 (2003). https://doi.org/10.1109/ ACSSC.2003.1292216 239. Wang, Z., Bovik, A., Sheikh, H., Simoncelli, E.: Image quality assessment: from error visibility to structural similarity. IEEE Transactions on Image Processing 
+
+13 (4), 600–612 (2004). https://doi.org/10.1109/TIP.2003.819861 240. Wiegand, T., Sullivan, G.J., Bjøntegaard, G., Luthra, A.: Overview of the h. 264/avc video coding standard. IEEE Transactions on circuits and systems for video technology 13 (7), 560–576 (2003) 1 41. Xiph.org: Video test media, https://media.xiph.org/video/derf/ 10 42. Yan, W., Zhang, Y., Abbeel, P., Srinivas, A.: Videogpt: Video generation using vq-vae and transformers. arXiv preprint arXiv:2104.10157 (2021) 4 43. Yang, R., Timofte, R., Van Gool, L.: Perceptual learned video compression with recurrent conditional gan. In: IJCAI. pp. 1537–1544 (2022) 2, 3, 11, 13, 14, 20, 26 44. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 10 45. Zhang, S., Mrak, M., Herranz, L., Blanch, M.G., Wan, S., Yang, F.: Dvc-p: Deep video compression with perceptual optimizations. In: 2021 International Confer-ence on Visual Communications and Image Processing (VCIP). pp. 1–5. IEEE (2021) 2 46. Zhang, Z., Xia, Y., Chen, B., Zhang, T., Wang, H., Qiu, H.: Autoregressive-based progressive coding for ultra-low bitrate image compression. In: The Fourteenth In-ternational Conference on Learning Representations (2026), https://openreview. net/forum?id=FXu4G5T5QZ 447. Zhao, Y., Xiong, Y., Krähenbühl, P.: Image and video tokenization with binary spherical quantization. arXiv preprint arXiv:2406.07548 (2024) 6, 7, 10 Preprint 19 
+
+Supplementary Material A Test Settings 
+
+Most compared methods operate in the RGB color space, whereas the raw videos are stored in YUV420 format. To minimize the impact of color space conversion on the source content, each codec is run in its native color space. Codecs that support YUV format are tested in YUV color space, while the others operate in RGB color space. For evaluation, all decoded outputs are converted to RGB format so that quality metrics are computed consistently across methods. 
+
+A.1 Test Sequences 
+
+The raw videos are stored in YUV420 format and converted to RGB format using the BT.709 standard. For evaluation, we extract the first 81 frames of each sequence. For 1080p sequences, they are further downsampled to the resolution of 720p. For baselines that reconstruct in YUV color space, the decoded YUV420 videos are further converted to RGB color space by applying the BT.709 YCbCr-to-RGB transform, following JPEG-AI standard [1]. 
+
+A.2 Traditional Codecs 
+
+For VTM-17.0 1, We use the official random-access configuration in the YUV420 domain. Specifically, only the first frame is encoded as I-frame, with all sub-sequent frames coded as inter frames to maximize compression efficiency. The detailed parameters to encode each test sequence are set as follows: -c encoder_randomaccess_vtm.cfg –InputFile= {input file name} 
+
+–InputBitDepth=8 –OutputBitDepth=8 –OutputBitDepthC=8 –InputChromaFormat=420 –FrameRate= {frame rate} 
+
+–FramesToBeEncoded= {frame number} –SourceWidth= {width} 
+
+–SourceHeight= {height} –IntraPeriod=-1 –QP= {qp} 
+
+–BitstreamFile= {bitstream file name} 
+
+A.3 Neural-based Codecs DCVC-FM [13] We use the official code and checkpoints provided in the au-thors’ GitHub repository 2. YUV420 format is used during compression. The GOP size is set to 81. 
+
+DCVC-B [31] / SEVC [3] We use the official implementation and checkpoints from the authors’ GitHub repository 34 . The GOP size is 81.     
+
+> 1https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM
+> 2https://github.com/microsoft/DCVC/tree/main/DCVC-family/DCVC-FM
+> 3https://github.com/xhsheng-ustc/DCVC-B
+> 4https://github.com/EsakaK/SEVC
+
+20 D. Li et al .1000 1500 2000 2500 3000 3500 4000 4500 5000                         
+
+> kbps
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> DISTS
+> UVG
+> VTM-17.0
+> DCVC-FM
+> DCVC-B
+> SEVC
+> PLVC
+> ProGVC 1000 1500 2000 2500 3000 3500 4000 4500 5000
+> kbps
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18
+> 0.20
+> LPIPS
+> UVG
+> VTM-17.0
+> DCVC-FM
+> DCVC-B
+> SEVC
+> PLVC
+> ProGVC 1000 1500 2000 2500 3000 3500 4000 4500 5000
+> kbps
+> 4.4
+> 4.6
+> 4.8
+> 5.0
+> 5.2
+> 5.4
+> 5.6
+> 5.8
+> NIQE
+> UVG
+> VTM-17.0
+> DCVC-FM
+> DCVC-B
+> SEVC
+> PLVC
+> ProGVC 1000 1500 2000 2500 3000 3500 4000 4500 5000
+> kbps
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> PSNR (dB)
+> UVG
+> VTM-17.0
+> DCVC-FM
+> DCVC-B
+> SEVC
+> PLVC
+> ProGVC
+
+Fig. 6: Rate and perception/fidelity curves on UVG datasets. 
+
+PLVC [43] PLVC is evaluated using the official implementation and pre-trained weights 5. Since PLVC uses HiFiC [23] for I-frame coding, the official HiFiC implementation 6 is adopted. 
+
+ProGVC ProGVC is tested with the transmitted inter scales of 10, 11, 12, 13 and 14. These configuration settings help to keep the bitrate within a practical range. 
+
+B More Quantitative Results 
+
+B.1 Additional Testing Dataset 
+
+Following prior work [31,43], ProGVC is additionally evaluated on UVG dataset, which is downsampled from the resolution of 1080p to 720p. As shown in Fig. 6, ProGVC consistently outperforms all competing methods in terms of DISTS. It also surpasses traditional and fidelity-oriented codecs under NIQE, while achiev-ing comparable perceptual efficiency as measured by LPIPS. Compared to PLVC, ProGVC performs worse on LPIPS and NIQE, but achieves better PSNR per-formance over a wide bitrate range. Overall, ProGVC demonstrates promising perceptual performance while supporting scalability and variable-rate control. 
+
+B.2 Comparison with Diffusion-based Perceptual Codecs 
+
+We also compare the performance of ProGVC with the latest diffusion-based per-ceptual codecs, including GNVC-VD [21] and DiffVC [19]. However, ProGVC is evaluated under 720p/81-frame configuration, which differs from the 1080p/96-frame setup used by diffusion-based codecs, and the latter are not open-sourced yet. Therefore, we adopt VTM-17.0 as a common intermediate anchor and ob-tain the diffusion-based results from their published papers. By comparing each method’s relative compression performance over VTM-17.0, we assess the coding efficiency of ProGVC versus the diffusion-based codecs. Here, to align with the test configurations of GNVC-VD and DiffVC, we adopt VTM-17.0 results under the low-delay configuration as ProGVC’s anchor. As demonstrated in Tab. 6, ProGVC achieves smaller relative improvements than GNVC-VD on DISTS, but remains competitive with DiffVC. On LPIPS,  
+
+> 5
+
+https://github.com/RenYang-home/PLVC  
+
+> 6
+
+https://github.com/tensorflow/compression/tree/master/models/hific Preprint 21 
+
+Table 6: Relative BD-rate ↓ (%) / BD-metric ↑ on MCL-JCV, UVG and HEVC B datasets using VTM-17.0 low-delay (LD) configuration as anchor. 
+
+Diffusion-based results are taken from the published papers and are reported under 1080p/96-frame setting, whereas ProGVC is evaluated under 720p/81-frame setting. “N/A” indicates that BD-rate cannot be calculated due to the lack of quality overlap. “-” means data is not available. Red marks the best diffusion-based result. Dataset Anchor (VTM-17.0 LD) Method DISTS LPIPS NIQE PSNR (dB) MCL-JCV 1080p, 96f GNVC-VD [21] -88.3 / 0.0882 N/A / 0.1470 - / - N/A / -2.2600                             
+
+> DiffVC [19] N/A / 0.0555 N/A / 0.0946 N/A / 0.9003 N/A / -5.7767 720p, 81f ProGVC -64.4 / 0.0416 -30.3 / 0.0269 N/A / 0.8172 533.5 / -5.5354
+> UVG 1080p, 96f GNVC-VD [21] -86.5 / 0.0670 N/A / 0.1263 - / -120.5 / -1.8390
+> DiffVC [19] N/A / 0.0423 N/A / 0.0657 N/A / 0.9939 N/A / -5.4513 720p, 81f ProGVC -63.9 / 0.0322 -35.5 / 0.0236 N/A / 0.7499 744.6 / -5.2541
+> HEVC-B 1080p, 96f GNVC-VD [21] N/A / 0.0827 N/A / 0.1907 - / -62.76 / -1.2583
+> DiffVC [19] - / -- / -- / -- / -720p, 81f ProGVC -69.5 / 0.0410 -17.3 / 0.0162 -43.6 / 0.6302 569.0 / -5.4982
+
+ProGVC attains the lowest relative improvement among the compared methods. Since GNVC-VD does not report NIQE results, we compare only with DiffVC on this metric, where ProGVC achieves comparable gain. For PSNR metric, ProGVC exhibits a coding-efficiency loss similar to DiffVC, while underperform-ing GNVC-VD. Overall, GNVC-VD delivers the strongest performance, while ProGVC is generally competitive with DiffVC across both perceptual and fi-delity metrics, indicating that ProGVC is a promising new coding paradigm based on autoregressive modeling. 
+
+B.3 Comparison with More Baselines 
+
+The codecs compared in the main manuscript and above are all well-optimized video compression methods. As an early exploration of progressive perceptual video compression with autoregressive modeling, direct comparisons of ProGVC against state-of-the-art, extensively engineered codecs may not fully reflect its longer-term potential. Therefore, we additionally compare ProGVC with pio-neering neural video codecs that have inspired many subsequent designs, aiming to provide a cleaner and more interpretable reference. Specifically, we include DVC [18] 7 and DCVC [11] 8 for comparison. Fig. 7 shows detailed rate–perception/fidelity curves of all methods on the Xiph, HEVC B, MCL-JCV and UVG datasets. As reported, ProGVC consis-tently outperforms DVC and DCVC in terms of perceptual metrics, including DISTS, LPIPS and NIQE. Meanwhile, its fidelity loss relative to DVC remains controlled, with PSNR dropping by approximately 2 dB at comparable bitrates.  
+
+> 7
+
+https://github.com/RenYang-home/OpenDVC  
+
+> 8
+
+https://github.com/microsoft/DCVC/tree/main/DCVC-family/DCVC 22 D. Li et al .1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+> DISTS
+
+Xiph 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+> LPIPS
+
+Xiph 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+5.2 
+
+5.4 
+
+5.6 
+
+5.8 
+
+6.0 
+
+6.2 
+
+> NIQE
+
+Xiph 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+> PSNR (dB)
+
+Xiph 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+0.06 
+
+0.07 
+
+0.08 
+
+0.09 
+
+0.10 
+
+0.11 
+
+0.12 
+
+0.13 
+
+0.14 
+
+> DISTS
+
+HEVC-B 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+0.100 
+
+0.125 
+
+0.150 
+
+0.175 
+
+0.200 
+
+0.225 
+
+0.250 
+
+> LPIPS
+
+HEVC-B 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+3.8 
+
+4.0 
+
+4.2 
+
+4.4 
+
+4.6 
+
+4.8 
+
+> NIQE
+
+HEVC-B 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+22 
+
+24 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+> PSNR (dB)
+
+HEVC-B 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+> DISTS
+
+MCL-JCV 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+> LPIPS
+
+MCL-JCV 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+4.8 
+
+5.0 
+
+5.2 
+
+5.4 
+
+5.6 
+
+5.8 
+
+6.0 
+
+6.2 
+
+> NIQE
+
+MCL-JCV 
+
+ProGVC 
+
+DVC 
+
+DCVC 500 1000 1500 2000 2500 3000 3500 4000 
+
+kbps 
+
+24 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+36 
+
+> PSNR (dB)
+
+MCL-JCV 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+> DISTS
+
+UVG 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+> LPIPS
+
+UVG 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+4.8 
+
+5.0 
+
+5.2 
+
+5.4 
+
+5.6 
+
+5.8 
+
+6.0 
+
+6.2 
+
+> NIQE
+
+UVG 
+
+ProGVC 
+
+DVC 
+
+DCVC 1000 2000 3000 4000 5000 6000 
+
+kbps 
+
+26 
+
+28 
+
+30 
+
+32 
+
+34 
+
+36 
+
+> PSNR (dB)
+
+UVG 
+
+ProGVC 
+
+DVC 
+
+DCVC 
+
+Fig. 7: Rate and perception/fidelity curves on Xiph, HEVC B, MCL-JCV and UVG datasets, comparing with previous pioneering neural video codecs. 
+
+These results suggest that ProGVC provides a good starting point for future in-vestigation. Tab. 7 further presents the detailed BD-rate and BD-metric results. 
+
+C Study on Dropping Intra Scales 
+
+In this part, we explain the reason for not dropping intra scales in the proposed ProGVC. First, as shown in Tab. 8, intra scale bits account for a relatively small fraction of the total sequence bit cost, with no more than 16% across all test datasets. This suggests that discarding inter scales is generally a more effective approach for adaptive rate control. Based on inter scale dropping, we further investigate the effect of addition-ally dropping intra scales. To remain consistent with the main manuscript, we Preprint 23 
+
+Table 7: BD-rate ↓ (%) / BD-metric ↑ on the Xiph, HEVC B, MCL-JCV and UVG datasets, comparing with previous pioneering neural video codecs. 
+
+“N/A” indicates that BD-rate cannot be calculated due to the lack of quality overlap. 
+
+Red indicates the best performance. The best model in terms of PSNR metric is estimated from Fig. 7. Dataset Method DISTS LPIPS NIQE PSNR(dB) Xiph                                           
+
+> ProGVC 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 DVC [18] 1171.4 / N/A 437.40 / N/A 1306.9 / N/A N/A / N/A DCVC [11] 1352.8 / N/A 321.4 / N/A 302.3 / N/A N/A / N/A
+> HEVC-B
+> ProGVC 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 DVC [18] 937.9 / N/A 336.0 / N/A 731.3 / N/A N/A / N/A DCVC [11] 999.5 / N/A 229.1 / N/A N/A / N/A N/A / N/A
+> MCL-JCV
+> ProGVC 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 DVC [18] 736.4 / N/A 396.0 / N/A 740.8 / N/A N/A / N/A DCVC [11] 612.7 / -0.0828 202.2 / -0.0704 N/A / -1.1917 N/A / 3.6673
+> UVG
+> ProGVC 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000 DVC [18] 827.0 / N/A 433.8 / N/A 1120.3 / N/A N/A / N/A DCVC [11] 780.7 / -0.0839 278.6 / -0.0831 N/A / -1.2234 N/A / 3.2310
+
+Table 8: Minimum and maximum ratios of intra scale bit cost to the total sequence bit cost across datasets. 
+
+Xiph HEVC-B MCL-JCV UVG Min ratio 11.1% 13.8% 12.2% 13.4% Max ratio 15.8% 15.4% 15.6% 15.5% 
+
+conduct this study on the Xiph dataset. Because the intra scale conditioning strategy used for inter scale modeling affects the results of intra scale dropping, we evaluate all four types of intra scale conditioning strategies. As demonstrated in Tab. 9, compression efficiency consistently degrades as more intra scales are dropped. This is expected because intra scales are crucial for temporal align-ment when modeling inter scales’ distribution. Discarding intra scales therefore weakens the context for inter scale probability estimation, leading to error prop-agation in context modeling and less accurate probability prediction. Besides, it’s noticed that after dropping the largest intra scale, two intra scale conditioning strategies yield compression efficiency improvement, i.e . con-ditioning inter scales on the largest intra scale or on the same resolution scale. However, as indicated by Tab. 10, more than half of test sequences exhibit BD-rate degradation. This suggests that the average improvement is driven by a subset of sequences and does not generalize reliably. Consequently, intra scale dropping is not adopted in our final design. 
+
+D Comparison with Progressive Image Compression 
+
+We further compare the proposed progressive video compression paradigm with a frame-wise progressive image compression baseline to analyze the effect of 24 D. Li et al .
+
+Table 9: BD-rate ↓ (%) / BD-metric ↑ on the Xiph, analyzing the impact of dropping intra scales under different intra scale conditioning strategies. 
+
+The anchor is ProGVC, i.e . inter scales attend to the largest intra scale and no intra scale is dropped. “drop1” and “drop2” denote dropping the largest intra scale and the two largest intra scales, respectively. Blue indicates method that shows compression efficiency improvement. Conditioning Strategy Dropping Strategy DISTS LPIPS PSNR largest no drop 0.0 / 0.0000 0.0 / 0.0000 0.0 / 0.0000                        
+
+> drop1 -13.3 / 0.0020 -17.4 / 0.0015 -22.5 / 0.1398
+> drop2 16.8 / -0.0060 9.3 / -0.0092 16.4 / -0.9551 no intra drop1 7.2 / -0.0021 9.7 / 0.0050 13.4 / -0.4636 drop2 1.4 / -0.0010 0.6 / -0.0033 6.5 / -0.4308 smallest drop1 14.3 / -0.0045 9.8 / -0.0050 13.9 / -0.4784 drop2 9.1 / -0.0030 1.2 / -0.0032 7.6 / -0.4549 same resolution drop1 -11.2 / 0.0019 -13.6 / 0.0009 -12.0 / 0.0055
+> drop2 5.6 / -0.0037 -5.0 / 0.0053 4.6 / -0.6926
+
+Table 10: Ratio of sequences exhibiting BD-rate performance degradation. 
+
+“drop1” denotes dropping the largest intra scale. Conditioning Strategy Dropping Strategy DISTS LPIPS PSNR largest drop1 50.00% 62.50% 50.00% same resolution drop1 56.25% 56.25% 56.25% 
+
+temporal modeling. In the image compression baseline, each frame is compressed independently using the proposed intra scale coding scheme of ProGVC, where the context model only captures cross-scale dependencies within a single frame. In contrast, ProGVC additionally models temporal dependencies across frames. As reported in Tab. 11, ProGVC consistently outperforms the frame-wise progressive image compression baseline, achieving approximately 50% BD-rate gain. This result indicates that incorporating temporal dependencies into the autoregressive context model effectively reduces the bitrate of inter scale tokens. In addition, we compare ProGVC with two alternative attention mask variants that attend to different sets of previous scales. Consistent with the findings in the main manuscript, the results further validate that ProGVC achieves the most favorable BD-rate–complexity trade-off, demonstrating a better balance between context utilization and computational cost than the alternative designs. With the frame-wise progressive image compression as anchor, we further evaluate different intra scale reference strategies for inter scale coding. As shown in Tab. 12, conditioning on the largest intra scale, as adopted in ProGVC, again achieves the best compression performance while maintaining comparable com-putational complexity across all variants. This observation is consistent with the findings in the main manuscript, suggesting that the largest intra scale provides Preprint 25 
+
+Table 11: Progressive image compression vs. progressive video compres-sion with three temporal-aligned attention masks. The anchor is frame-wise progressive image compression scheme, where each frame adopts the proposed intra scale coding of ProGVC. “AVG” denotes the average BD-rate performance over DISTS, LPIPS and PSNR. The per-frame encoding and decoding times (Enc. T and Dec. T) are averaged over the lowest and highest bitrates. Attn. Variants BD-rate ↓ (%) Enc. T (s) ↓ Dec. T (s) ↓                   
+
+> AVG DISTS LPIPS PSNR ProGVC -51.6 -51.5 -49.4 -53.8 0.56 1.53 Self-only -46.4 -46.3 -43.8 -49.2 0.50 1.23 Full causal -52.9 -53.4 -51.2 -54.0 0.64 1.96
+
+Table 12: Effect of different intra scale references for inter scale coding. The anchor is frame-wise progressive image compression scheme, with each frame utilizes the proposed intra scale coding of ProGVC. “AVG” denotes the average BD-rate per-formance over DISTS, LPIPS and PSNR. The per-frame encoding and decoding times (Enc. T and Dec. T) are averaged over the lowest and highest bitrates. Attn. Variants BD-rate ↓ (%) Enc. T (s) ↓ Dec. T (s) ↓                         
+
+> AVG DISTS LPIPS PSNR ProGVC (largest scale) -51.6 -51.5 -49.4 -53.8 0.56 1.53 No intra reference -24.5 -25.8 -22.3 -25.4 0.53 1.46 Smallest scale -24.4 -25.9 -22.1 -25.1 0.53 1.46 Same resolution scale -45.5 -45.6 -43.9 -46.9 0.54 1.49
+
+richer details that serve as stronger contextual guidance for predicting inter scale tokens. 
+
+E More Qualitative Results 
+
+We provide additional qualitative comparisons at below. As demonstrated in Fig. 8, ProGVC produces more realistic details and delivers higher reconstruction fidelity with the lowest bitrate cost, outperforming all compared baselines. 26 D. Li et al .
+
+Ground Truth VTM-17.0 [4] SEVC [3] PLVC [43] ProGVC 
+
+Bitrate ↓/DISTS ↓ 632.5 kbps/0.1254 625.6 kbps/0.1544 1035.9 kbps/0.0869 584.8 kbps/0.0784 
+
+Bitrate ↓/DISTS ↓ 371.6 kbps/0.1654 3404.14kbps/0.1160 1413.93kbps/0.0575 366.4 kbps/0.0554 
+
+Bitrate ↓/DISTS ↓ 302.2 kbps/0.1283 462.72 kbps/0.1259 766.5 kbps/0.0771 300.2 kbps/0.0590 
+
+Bitrate ↓/DISTS ↓ 475.55 kbps/0.0736 579.04 kbps/0.1097 720.46 kbps/0.1047 390.1 kbps/0.0443 
+
+Bitrate ↓/DISTS ↓ 450.8 kbps/0.1218 990.92 kbps/0.0937 1024.8 kbps/0.0524 445.02 kbps/0.0382 
+
+Fig. 8: Visual comparisons with baselines across several test sequences. 
+
+Zoom-in patches highlight area with perceptual differences.

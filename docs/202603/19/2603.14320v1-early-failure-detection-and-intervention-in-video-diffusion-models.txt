@@ -1,0 +1,1043 @@
+Title: Early Failure Detection and Intervention in Video Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2603.14320v1
+
+Published Time: Tue, 17 Mar 2026 04:43:31 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# EARLY FAILURE DETECTION AND INTERVENTION IN 
+
+# VIDEO DIFFUSION MODELS 
+
+Kwon Byung-Ki 1 Sohwi Lim 2 Nam Hyeon-Woo 3 Moon Ye-Bin 3 Tae-Hyun Oh 41Grad. School of Artificial Intelligence, POSTECH 2School of Electrical Engineering, KAIST 
+
+> 3
+
+Dept. of Electrical Engineering, POSTECH 4School of Computing, KAIST w. Ours      
+
+> Time Overhead (%)
+> VBench  Score  w. Regeneration
+> CogVideoX -5B 2.64x less
+> time overhead
+> Latent Video
+> Diffusion
+> “A pink bird on a branch"
+> At every denoising step
+> Early
+> Failure
+> Intermediate video Diagnostic
+> Intervention
+> Latent
+> Intervened video
+> 39.2 ms
+> Real -time
+> Inspection
+> Inspection
+
+Figure 1: Real-time inspection enables early failure detection in latent video diffusion. By decoding intermediate latents at every denoising step, our method identifies failing trajectories early and selectively intervenes. Compared to post-hoc regeneration, we achieve comparable VBench scores with 2.64× lower time overhead. 
+
+## ABSTRACT 
+
+Text-to-video (T2V) diffusion models have rapidly advanced, yet generations still occasionally fail in practice, such as low text–video alignment or low perceptual quality. Since diffusion sampling is non-deterministic, it is difficult to know during inference whether a generation will succeed or fail, incurring high computational cost due to trial-and-error regeneration. To address this, we propose an early failure detection and diagnostic intervention pipeline for latent T2V diffusion models. For detection, we design a Real-time Inspection (RI) module that converts latents into intermediate video previews, enabling the use of established text–video alignment scorers for inspection in the RGB space. The RI module completes the conversion and inspection process in just 39.2 ms. This is highly efficient considering that CogVideoX-5B requires 4.3 s per denoising step when generating a 480p, 49-frame video on an NVIDIA A100 GPU. Subsequently, we trigger a hierarchical and early-exit intervention pipeline only when failure is predicted. Experiments on CogVideoX-5B and Wan2.1-1.3B demonstrate consistency gains on VBench with up to 2.64 × less time overhead compared to post-hoc regeneration. Our method also generalizes to a higher-capacity setting, remaining effective on Wan2.1-14B with 720p resolution and 81-frame generation. Furthermore, our pipeline is plug-and-play and orthogonal to existing techniques, showing seamless compatibility with prompt refinement and sampling guidance methods. We also provide evidence that failure signals emerge early in the denoising process and are detectable within intermediate video previews using standard vision–language evaluators. Code: https://github.com/kaist-ami/Early-failure-video-diffusion. 
+
+Keywords Video Diffusion Models · Early Failure Detection · Real-time Inspection · Test-time Intervention 
+
+> arXiv:2603.14320v1 [cs.CV] 15 Mar 2026
+
+## 1 Introduction 
+
+Text-to-video (T2V) generation [ 1, 2 , 3, 4, 5, 6, 7 , 8, 9] has progressed rapidly, producing realistic videos from text prompts. Recent video diffusion models are trained on large-scale datasets and employ stochastic sampling, enabling diverse outputs from a single prompt. However, T2V generation still occasionally fails in practice. The output can suffer from poor temporal consistency, weak text–video alignment, or low perceptual quality [ 10 , 11 , 12 , 13 , 14 ]. Such failures can stem from missing semantic coverage in training or simply from unlucky stochastic trajectories [ 15 , 16 , 17 , 18 , 19 ]. Given the scale of training data and the non-deterministic nature of sampling, it is difficult to know when a pretrained T2V model will succeed or fail, making trial-and-error regeneration expensive [20]. To address this, prior studies improve generation by modifying the model behavior, e.g ., via fine-tuning with extra conditions [ 21 , 22 ], training-free guidance [ 23 , 24 , 25 ], or control methods [ 26 , 27 ]. While effective, these approaches focus primarily on steering the generation process rather than monitoring its progression, leaving a key question unanswered: Is the current video generation likely to succeed or fail? This gap motivates an early failure detection and selective intervention strategy, where we monitor denoising processes and intervene only when a potential failure is detected. By identifying failures early, we circumvent the inefficient cycle of full generation, inspection, and retrial. In this paper, we introduce a pipeline designed for early failure detection and selective intervention. As depicted in Fig. 1, the proposed Real-time Inspection (RI) module enables real-time monitoring of intermediate video previews in the RGB space, allowing for the detection of text-video alignment failures throughout the denoising process with a low latency of 39.2 ms per preview. When a failure is detected, we trigger a diagnostic intervention framework with a hierarchical, early-exit design. It first applies low time overhead corrections and escalates to progressively higher time overhead interventions only when necessary; even our most expensive intervention incurs only 56% of the overhead of full regeneration. This adaptive allocation of compute improves final generation quality while reducing the inspect–discard–retry overhead (Fig. 1). As a core component of the RI module, we introduce a Latent-to-RGB (L2R) converter that decodes latents into video previews in just 19.7 ms, which is over 200 × faster than the CogVideoX decoder [ 1] while using only 0.059M parameters. Integrated with a dynamic failure detector, it monitors video previews at every denoising step and facilitates sample-adaptive failure detection to address the sample-dependent convergence of diffusion models [11, 28]. Through extensive experiments, we demonstrate the effectiveness and efficiency of our pipeline on CogVideoX-5B [ 1]and Wan2.1-1.3B [ 2]. We further show that the method extends to Wan2.1-14B, remaining effective in a higher-resolution, longer-video setting with 720p resolution and 81-frame generation. Furthermore, the RI module leverages the text–video alignment score, yet our method achieves consistent improvement on diverse VBench metrics. We also show that failure signals emerge early in the denoising process, allowing an early diagnosis. Because of its plug-and-play design, our method consistently improves performance in VBench [ 11 ] when combined with prompt refinement and various sampling guidance methods. We summarize our contributions as follows: • We propose a plug-and-play framework for latent T2V diffusion models that monitors the denoising process on-the-fly and triggers hierarchical, selective interventions only when failure is predicted. This strategy improves final generation quality while substantially reducing time overhead compared to naive trial-and-error regeneration. • We develop the Real-time Inspection module enabling step-wise RGB monitoring during generation with only 39.2 ms latency. Using this, we provide empirical evidence that failure signals emerge early in the denoising process and can be reliably detected using standard vision–language evaluators. 
+
+## 2 Related Work 
+
+Evaluation and Failure Diagnosis in Diffusion Models. In image diffusion, several studies analyze intermediate diffusion states to evaluate [ 29 , 30 , 31 ] or guide generation [ 24 , 25 , 32 , 33 ]. Ramos et al . [ 30 ] propose a noise-aware alignment scorer that measures text–image alignment directly from noisy intermediate states. Other approaches [ 34 , 35 ,19 ] exploit intermediate predictions for online guidance, such as selecting promising candidates from partially denoised states or rejecting low-quality trajectories during sampling. In parallel, failure diagnosis has also been studied from an offline perspective: DiffDoctor [ 36 ] trains artifact detectors to diagnose generation errors, while adversarial search has been used to discover failure modes of text-guided diffusion models. However, early evaluation and failure diagnosis remain largely underexplored in video diffusion. Compared to images, videos are higher-dimensional and involve an additional temporal dimension, requiring the evaluation of both spatial fidelity and temporal consistency. This substantially increases the complexity of step-wise monitoring. As a result, prior work typically relies on post-hoc analysis or resource-intensive strategies. For instance, Choi et al . [ 37 ]improves text–video coherence through neuro-symbolic feedback applied after generation. Other methods [ 38 , 39 ]2Intervention  
+
+> Yes
+> No ✘
+
+…𝒛 !"# 𝒛 $ 
+
+> Latent -to -RGB
+> Converter
+
+𝒙 #𝟎 |𝒕 Alignment  
+
+> Scorer
+> Video
+> Preview Text Prompt
+
+𝒛 $𝟎 |𝒕  
+
+> Intermediate
+> Latent
+> Success?
+> Real -time Inspection (RI ) Module
+> Video diffusion sampling step
+> Text
+> Prompt
+
+𝒛 ( 𝒛 !…𝒛 ("#  
+
+> Fig. 3 Fig. 4
+> 19.7ms 19.5ms
+
+Figure 2: Overall early failure detection and intervention pipeline. The Real-time Inspection (RI) module converts predicted clean latents into RGB video previews and evaluates their semantic alignment with the input prompt (19.7 ms + 19.5 ms). Intervention is triggered based on the semantic alignment score. formulate video diffusion as a search problem and allocate additional compute resources during sampling to maintain multiple candidate generation processes and select promising ones based on intermediate evaluations. While effective, these approaches require substantially increased inference-time computation due to maintaining multiple candidate trajectories. In contrast, our work investigates whether generation failure can be identified on-the-fly without parallel processes. By enabling early-exit or selective intervention only for predicted failures, our approach improves generation quality with less than 20% additional time overhead compared to the original diffusion process, avoiding the necessity of exhaustive search or redundant multi-generation. 
+
+Sampling Guidance for Video Diffusion Model. Following the success of classifier-free guidance (CFG) [ 33 ], prior work has explored guidance techniques for video diffusion models by steering the denoising trajectory considering the temporal characteristics of video. Prior works [ 32 , 25 , 24 , 23 ] improve video quality and temporal coherence by modifying attention, skipping spatiotemporal layers, or suppressing the variation of noise predictions. While these guidance methods are effective, they do not ensure success for every prompt and sampling trajectory. Orthogonal to them, our plug-and-play module can be integrated alongside such guidance to detect failure generation and intervene selectively when necessary. 
+
+## 3 Method 
+
+In this section, we introduce an early failure detection and intervention framework (Fig. 2). It consists of two components: a Real-time Inspection (RI) module that monitors semantic alignment during sampling, and a diagnostic intervention mechanism that corrects misaligned trajectories. In Sec. 3.1, we introduce an RI module for early failure detection that rapidly decodes intermediate latents into video previews and evaluates their semantic alignment within only 39.2 ms, thereby enabling seamless real-time inspection by bypassing the heavy VAE decoding process. Then, in Sec. 3.2, we selectively intervene in the generation process only when text-video misalignment is detected, enabling early-stage correction with minimal time overhead. 
+
+3.1 Early Failure Detection 
+
+As shown in Fig. 2, given a text prompt, a latent T2V model iteratively synthesizes a latent sequence zT , . . . , z0. Our Real-time Inspection (RI) module enables the monitoring of this process by decoding latents into video previews ˆx0|t
+
+and assessing their semantic alignment with the text prompt. At each denoising step t, we estimate the clean latent ˆz0|t
+
+according to the model’s native training objective. This latent is then decoded into the RGB pixel space as: 
+
+ˆx0|t = L2R(ˆ z0|t), (1) where L2R denotes the real-time Latent-to-RGB converter. Subsequently, an alignment scorer evaluates the semantic alignment score st between the decoded video preview ˆx0|t and the text prompt. To ensure real-time performance, we employ ViCLIP [ 40 ] as our scorer, optimized by caching the text encoder outputs and eliminating internal CPU bottlenecks. Consequently, L2R conversion and alignment scoring take only 19.7ms and 19.5ms, respectively, for a 3𝐹 × 𝐻 × 𝑊 × 𝐶  𝐹 × 8𝐻 × 8𝑊 × 3  
+
+> Latent
+> RGB video
+> Spatio -temporal
+> learned upsampling
+> Causal 3D
+> conv. block
+> Proj .
+> layer
+> (b) Reconstruction results (a) Overall architecture
+> Causal 3D
+> conv. block
+> Original decoder
+> (CogvideoX -5B) L2R converter
+
+Figure 3: Real-time Latent-to-RGB (L2R) converter. (a) Our L2R architecture maps latents to an RGB video using causal 3D convolutional blocks, spatio-temporal learned upsampling, and a projection layer. It runs in 19.7 ms with only 0.059 M parameters. (b) The reconstruction result from the L2R converter shows reasonable visual quality compared to the result produced by the original decoder. No ✘
+
+Video 
+
+Preview Success? Text Prompt 
+
+Trial 0 :
+
+Base gen eration 
+
+Trial 1 :
+
+Single -frame 
+
+semantic injection 
+
+Single -frame 
+
+Preview 
+
+1-frame 
+
+better? 
+
+Semantic 
+
+Injection 
+
+Continue 
+
+generation 
+
+Trial 2 :
+
+Observation -driven 
+
+prompt refinement Refine Text Prompt 
+
+Full -frame 
+
+Generation Still fails? Apply Trial 1
+
+once  
+
+> Yes
+> Yes
+> No ✘
+
+Figure 4: Diagnostic intervention framework. If the current generation is predicted to succeed, Trial 0 continues to generate video without intervention. When failure is predicted, the next Trials are applied, escalating from inexpensive to more costly fixes. Trial 1 performs a single-frame probe and injects its latent; Trial 2 refines the prompt via a VLM and restarts generation. If Trial 2 also fails, Trial 1 is attempted once more. 480p video with 49 frames. The resulting step-wise predictions are subsequently used to identify failure samples and trigger an immediate intervention. Motivated by our empirical finding in Sec. 4.2 that the final alignment score s⋆ 
+
+> 0
+
+is predictable from an intermediate score sk (e.g., k ≈ T −10 ), we detect potential failures from intermediate alignment signals. Here, s⋆ 
+
+> 0
+
+denotes the score computed on the final video decoded by the model’s native decoder, and we use T =50 denoising steps in all experiments. Since the denoising progress varies across samples, we additionally use a dynamic failure detector that aggregates a short sequence of intermediate scores {sk} to predict the final score ˜s0. See the details of the dynamic detector in the supplementary material. We classify a generation as successful if ˜s0 ≥ τ and failure otherwise. Combined with L2R converter, it monitors video previews at every denoising step and facilitates sample-adaptive failure detection to address the sample-dependent convergence of diffusion models [ 11 , 28 ]. On average, potential failures are determined at steps 11 and 10 for CogVideoX and Wan, respectively. 
+
+Real-time Latent-to-RGB (L2R) Converter. RGB-space evaluation provides robust inspection but is computationally prohibitive; decoding via the CogVideoX decoder takes ∼4s on a single A100 GPU. To address this, we design an extremely lightweight L2R converter of only 0.059M parameters. Our model design is motivated by two observations. First, latents can be projected into a plausible RGB space using a linear approximation [ 41 ]. However, such linear mappings alone do not recover the full spatial resolution. Second, prior work has shown that high-resolution reconstruction can benefit from learnable upsampling [ 42 ]. Building on these insights, we develop an efficient L2R converter that combines fast latent-to-RGB projection with a spatio-temporal learned upsampling module. Figure 3 illustrates the L2R converter architecture. It consists of two causal 3D convolution blocks, a spatio-temporal learned upsampling module, and a lightweight projection layer. To achieve low latency, we keep the intermediate feature dimensionality identical to the latent channel dimension throughout the network and apply the 3-channel RGB projection only at the end. Given an input latent of shape F × H × W × C, the converter 4outputs an RGB video preview of shape F × 8H × 8W × 3. This restores the compressed spatial resolution without temporal upsampling, consistent with our empirical finding that several video quality metrics are more sensitive to spatial than temporal resolution (Sec. 4.2). L2R provides an RGB preview for 480p, 49-frame video generation in 19.7 ms, over 200 × faster than the model’s native decoder. With only 0.059M parameters and a 0.138 MB memory footprint, it enables efficient yet reliable RGB-space inspection for real-time failure detection. Implementation details are provided in the supplementary material. 
+
+3.2 Diagnostic Intervention Framework 
+
+We trigger intervention only for the samples predicted as failures; otherwise, we continue with the generation process. This strategy is designed to leverage the inherent capabilities of the base model without modifying its learned parameters. As shown in Fig. 4, our intervention framework consists of up to three Trials, with subsequent Trials skipped once a satisfactory outcome is achieved. Because only the failed samples are allocated to the next stage, the overall time overhead is drastically reduced. Importantly, even in the worst-case scenario where a sample undergoes all three trials, the accumulated cost is only about 56% of the cost of a completely new generation, as discussed in Sec. 4.1. 
+
+Trial 0. Base Generation. If the predicted score satisfies ˜s0 ≥ τ , generation proceeds without intervention. 
+
+Trial 1. Single-frame Semantic Injection. Even when base video generation fails, the model can often produce a semantically well-aligned single-image preview for the same prompt, suggesting that semantic understanding is preserved while temporal consistency is degraded. Using the same T2V model, we generate a single-image preview up to step kimg and estimate its predicted alignment score ˜simg with the dynamic detector. Trial 1 is triggered only when the single-image prediction exceeds the current video prediction by a margin, i.e ., ˜simg ≥ ˜s0 + δ. If triggered, we reuse the single-image intermediate prediction ˆzimg 0|kimg as a semantic anchor to reinitialize video generation, leveraging the model’s inherent semantic understanding. The injection is restricted to the initial 1–2 denoising steps by reapplying the noise level consistent with each timestep. Since generating a single frame is orders of magnitude more efficient than a video due to the absence of the temporal dimension, this process is completed within seconds. 
+
+Trial 2. Observation-driven Prompt Refinement. If the single-image prediction also yields low alignment, Trial 1 is not activated, indicating that the failure cannot be resolved by reducing the temporal dimension. In this case, we invoke a Visual Language Model (VLM) to refine the prompt. Given the failed video preview, the VLM evaluates the original prompt against the faulty output to produce an intent-preserving refined prompt that addresses specific visual artifacts. We then restart generation and monitor the updated alignment score. If the score remains below τ , we perform Trial 1 using the refined prompt and subsequently terminate the intervention to bound time overhead. We set τ and δ as 0.22 and 0.05, respectively. 
+
+## 4 Experiments 
+
+In this section, we evaluate the proposed early failure detection and intervention pipeline on the most popular open-source models, i.e ., CogVideoX-5B [ 1 ] and Wan2.1-1.3B [ 2]. In Sec. 4.1, we present the main results, demonstrating the effectiveness and efficiency of our pipeline. In Sec. 4.2, we provide quantitative evidence that early alignment signals are predictive of final outcomes, explaining why our failure detector works. In Sec. 4.3, we validate the isolated effect of failure detection and intervention framework. For clarity, we adopt VBench [ 11 ] terminology, which refers to the semantic alignment score measured by the alignment scorer (ViCLIP) [40] as Overall Consistency .
+
+4.1 Early Failure Detection and Intervention Pipeline 
+
+We evaluate the effectiveness of early failure detection on generation quality. Unless otherwise specified, all experiments are conducted on VBench [ 11 ]. For fair comparison, we use identical inference settings and random seeds for CogVideoX-5B [ 1 ] and Wan2.1-1.3B [ 2]. Furthermore, generations flagged as early failures are also processed to full completion without any intervention. This paired baseline setup allows us to isolate the specific impact of our intervention, accounting for potential run-to-run stochasticity arising from GPU non-determinism, even when using identical random seeds. Following prior work [ 11 ], text–video alignment in VBench, Overall Consistency, is computed using the original user prompts, regardless of any VLM-based prompt refinement applied during generation. We use GPT-5-mini as the VLM in all experiments. 
+
+Efficiency–Effectiveness Comparison with Regeneration. We compare our method against a strong and intuitive baseline, i.e ., regeneration on failure samples. In regeneration , videos are first generated from the original prompts. 5Table 1: Comparison with regeneration. We report the Final, Quality, and Semantic VBench scores along with average time overhead relative to base generation. Our method achieves higher performance on CogVideoX-5B with 
+
+2.64 × less additional time overhead, and demonstrates a consistent gain over the base generation on Wan2.1-1.3B while requiring 2.52 × less additional time overhead. 
+
+CogVideoX-5B Wan2.1-1.3B VBench Score Time VBench Score Time Method Final Quality Semantic Overhead (%) Final Quality Semantic Overhead (%) 
+
+Original prompt 0.778 0.803 0.680 0.00 0.789 0.811 0.700 0.00 + Regeneration 0.793 0.813 0.716 43.73 0.815 0.823 0.783 51.25 + Ours 0.800 0.816 0.735 16.55 0.805 0.817 0.756 20.30 0         
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> Ours
+> CogvideoX -5B
+> Regeneration
+> 9.94 %
+> 4.12% 2.41%
+> 16.55%
+> 43.73%
+> Overall Overhead (%)  CogvideoX -5B
+> Trial 0 Trial 1 Trial 2 Trial
+> 2→1Regeneration
+> 59.4%
+> 9.6% 13.2% 17.8%
+> 42.1%
+> 25.0% 31.0%
+> 56.0%
+> 103.9%
+> Per -sample overhead (%)
+> 0.2%
+> Frequency (% of Total Samples)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120 70
+> 60
+> 50
+> 40
+> 30
+> 20
+> 10
+> 0
+
+(a) Overall time overhead (avg. over all samples)  (b) Per -sample time overhead vs. Frequency 
+
+Trial 1  Trial 2  Trial 2→1 
+
+Figure 5: Efficiency of selective early intervention. (a) Overall time overhead relative to base generation. Ours incurs only +16.6% additional overhead, substantially lower than the regeneration of failure samples (+43.7%). (b) Per-sample cost increases with deeper trials, yet remains cheaper than regeneration. Since deeper trials are triggered for only a subset of samples (red curve), the overall time overhead stays modest. If the generated video is classified as a failure ( Overall Consistency < 0.22 ), a VLM refines the prompt based on the failed output, and the video is regenerated from scratch. In Table 1, we report performance in VBench and average time overhead (including VLM API latency and all detection/intervention stages) against the regeneration. Our method requires 2.64 × and 2.52 × lower additional compute than regeneration on the CogVideoX and Wan2.1 models, respectively. Figure 5 explains this efficiency in more detail. The per-sample cost rises with deeper trials (see Fig. 5b); however, only a small fraction of samples reach these expensive stages (red curve), while most samples finish without refinement or are corrected early. As a result, the overall time overhead remains modest (Fig. 5a). We measured inspection, failure, and VLM costs for each trial. The number of regenerated samples is slightly different from the number of early failure because the process depends on the final output quality. Including VLM overhead, the per-sample time overhead of regeneration is 103.9% of the base generation cost. Results for Wan2.1 are provided in the supplementary material. 
+
+Plug-and-Play Orthogonality to Existing Enhancements. We examine whether our intervention remains beneficial when combined with refined prompts and training-free sampling enhancement methods. Table 2 summarizes the results. We first replace the original user prompt with a VLM-refined prompt and then apply our pipeline. Although refined prompts improve base generation, our method still yields consistent gains across all metrics. Due to the plug-and-play nature of our pipeline, we also integrate our pipeline with training-free sampling enhancements, including Enhance-A-Video [24] and Spatiotemporal Skip Guidance (STG) [25]. As a result, our method consistently improves Final and Semantic scores across both CogVideoX-5B and Wan2.1-1.3B. In addition, Fig. 6 presents qualitative comparisons between baseline generations with and without our method on samples predicted as failures. The baseline sometimes outputs drift toward semantically misaligned content or exhibits weak subject depiction, whereas our pipeline mitigates these failure modes through early detection and selective intervention. 6Table 2: Plug-and-play orthogonality of our method. Our method consistently improves VBench scores across both CogVideoX and Wan2.1 when applied on top of VLM-refined prompts and training-free sampling enhancements (Enhance-A-Video [24] and STG [25]). These gains come from early detection and intervention. 
+
+Method CogVideoX-5B Wan2.1-1.3B Final Quality Semantic Final Quality Semantic 
+
+Original prompt (baseline) 0.778 0.803 0.680 0.789 0.811 0.700 + Ours 0.800 0.816 0.735 0.805 0.817 0.756 
+
+Refined prompt 0.787 0.818 0.663 0.815 0.820 0.796 + Ours 0.813 0.822 0.776 0.820 0.822 0.809 
+
+Original prompt + Enhance-A-Video 0.766 0.794 0.656 0.794 0.813 0.718 + Ours 0.790 0.804 0.736 0.814 0.824 0.775 
+
+Original prompt + STG 0.784 0.811 0.679 0.794 0.822 0.683 + Ours 0.802 0.822 0.722 0.806 0.825 0.728 “Iron Man flying in the sky "  
+
+> CogvideoX -5B
+> + Ours
+> “A confused panda in calculus class"
+> Wan2.1 -1.3B
+> + Ours
+> “A corgi's head depicted as an explosion of a nebula "“A couple in formal evening wear going home get caught in a heavy
+> downpour with umbrellas by Hokusai, in the style of Ukiyoss "
+
+Figure 6: Qualitative results. Compared to baseline models, our method improves prompt adherence and visual fidelity by correcting early-failure generations. 
+
+Evaluation on an Additional Video Quality Metric. Beyond VBench, we additionally evaluate our method with VideoScore2 [ 43 ], a learned video evaluator designed as a human-aligned, multi dimensional, and interpretable framework for assessing generated videos. In particular, it scores visual quality, text-to-video alignment, and physical consistency, corresponding to perceptual fidelity, prompt faithfulness, and plausibility of the generated content, respectively. This provides a complementary perspective to VBench and allows us to verify whether the gains from selective early intervention remain consistent under a more human-aligned evaluator. Table 3 reports VideoScore2 results on the full VBench evaluation set of 946 text prompts for both CogVideoX-5B and Wan2.1-1.3B. We consider three comparisons. First, we compare the overall results before and after applying our method on the full evaluation set, denoted as Original Prompt (baseline) and Original Prompt + Ours . Second, we focus on the subset predicted as failure by the dynamic failure detector and compare the scores before and after selective intervention, denoted as Predicted Failure (wo. Intervention) and Predicted Failure + Ours . Third, we compare the initial generations of samples predicted as success or failure, denoted as Predicted Success (wo. Intervention) 
+
+and Predicted Failure (wo. Intervention) , to examine whether the detector identifies lower-quality samples prior to intervention. Across both CogVideoX-5B and Wan2.1-1.3B, our method consistently improves VideoScore2 scores over the baseline outputs. The gains are larger on the predicted failure subset, indicating that selective intervention is particularly effective 7Table 3: Additional evaluation with VideoScore2. We report VideoScore2 scores on CogVideoX-5B and Wan2.1-1.3B under three comparisons. First, Original Prompt (baseline) and Original Prompt + Ours compare the overall performance before and after applying our method on the full evaluation set. Second, Predicted Failure (wo. Intervention) 
+
+and Predicted Failure + Ours compare the initially detected failure subset before and after selective intervention. Third, 
+
+Predicted Success (wo. Intervention) and Predicted Failure (wo. Intervention) compare the initial generations of samples predicted as success or failure by the dynamic failure detector, respectively. Model Setting Visual Quality Text-Video Alignment Physical Consistency CogVideoX-5B Original Prompt (baseline) 3.86 3.82 3.66 Original Prompt + Ours 3.93 (+0.07) 3.96 (+0.14) 3.74 (+0.08) Predicted Failure (wo. Intervention) 3.77 3.55 3.56 Predicted Failure + Ours 3.94 (+0.17) 3.91 (+0.35) 3.74 (+0.18) Predicted Success (wo. Intervention) 3.92 4.00 3.74 Predicted Failure (wo. Intervention) 3.77 3.55 3.56 Wan2.1-1.3B Original Prompt (baseline) 3.70 3.73 3.54 Original Prompt + Ours 3.82 (+0.12) 3.86 (+0.13) 3.62 (+0.08) Predicted Failure (wo. Intervention) 3.59 3.54 3.49 Predicted Failure + Ours 3.84 (+0.25) 3.82 (+0.27) 3.67 (+0.18) Predicted Success (wo. Intervention) 3.80 3.90 3.58 Predicted Failure (wo. Intervention) 3.59 3.54 3.49 Wan2.1 -14B 
+
+> + Ours
+> Wan2.1 -14B
+> + Ours
+
+“A person is tai chi" 
+
+“A person is cheerleading” 
+
+Figure 7: Qualitative results on Wan2.1-14B at 720p and 81 frames. While the main experiments use 480p, 49-frame generation with CogVideoX-5B and Wan2.1-1.3B, here we show that our method also applies to a larger-model and more demanding setting. In both examples, the baseline Wan2.1-14B generations fail to match the prompts, whereas our intervention produces outputs that are substantially better aligned with the intended human actions. on failure-prone samples. Moreover, before intervention, samples flagged as failures by the RI module’s alignment scorer already receive lower VideoScore2 scores than those predicted as successes. This suggests that the early failure signals captured by the RI module’s alignment scorer are consistent with the judgments of a human-aligned video evaluator. 
+
+Extension to a Higher-Resolution and Larger-Model Regime. The previous experiments are conducted on 480p, 49-frame generation with CogVideoX-5B and Wan2.1-1.3B. To further examine the applicability of our framework beyond this setting, we additionally test it on Wan2.1-14B in a more demanding regime of 720p and 81 frames. As 8Single -frame  Preview                        
+
+> 14 /50 Steps
+> No ✘
+> Success?
+> “Iron Man
+> flying in the sky”
+> Semantic
+> Injection
+> Video Preview Trial 1 output
+> 20 /50 Steps (8.5s)
+> Success?
+> (a) Result of Trial 1
+> Yes
+> No ✘
+> Success?  Refine
+> Text Prompt
+> “A bed on the left
+> of a tv, front view”
+> “A minimalist bedroom interior with the bed positioned to the left
+> of a wall -mounted flat -screen TV ( TV on the right) ”20 /50 Steps (8.5s) 11 /50 Steps
+> Success?
+> Single -frame Preview Video Preview
+> (b) Result of Trial 2
+> No ✘
+> Trial 2 output
+
+Figure 8: Case visualization of diagnostic interventions. Top: although the early video preview poorly reflects the prompt, the single-frame preview captures the semantics. Our method applies single-frame semantic injection (Trial-1). 
+
+Bottom: both of the video and the single-frame previews fail to satisfy the intended spatial relationship (TV on the left), indicating a persistent prompt misalignment. The intervention framework automatically invokes VLM-based 
+
+observation-driven prompt refinement (Trial-2). shown in Fig. 7, our method remains effective in this larger-model, higher-resolution, and longer-video setting. In both examples, the baseline generation exhibits clear semantic failures, while our intervention recovers outputs that are substantially better aligned with the prompts. These results suggest that our early failure detection and intervention framework is not limited to the main experimental resolution or model scale. 
+
+Figure 9: Sensitivity of video quality metrics to tem-poral subsampling and spatial downsampling. Com-pared to temporal subsampling, spatial downsampling causes larger deviations in VBench scores from the orig-inal videos. 
+
+Hierarchical Diagnostic Trials. Figure 8 shows how the in-tervention framework performs hierarchical diagnostic trials. The Real-time Inspection (RI) module analyzes intermediate previews and predicts potential failures early in the denoising process, triggering targeted interventions with an early-exit strategy. In the top example, the early video preview poorly reflects the prompt, while the single-frame preview captures the se-mantics. Accordingly, our pipeline triggers single-frame semantic injection (Trial-1), which corrects the subject ap-pearance without VLM. In contrast, the bottom example shows a persistent prompt misalignment: both the preview and Trial-1 fail to satisfy the intended spatial relationship (the TV appearing on the left). The pipeline, therefore, es-calates to text prompt refinement (Trial-2) via a VLM-based diagnostic action. Since single-frame previews are much faster, we use a more conservative dynamic failure detector for single-frame inspection than for video-preview inspection. 
+
+4.2 Empirical Analysis of Design Choices 
+
+In this section, we show that video diffusion models exhibit early signals of unsuccessful generation, and that standard vision and vision–language scorers can detect them. We further analyze how the text–video alignment score [ 40 ]correlates with other video quality metrics. 
+
+Spatiotemporal Sensitivity of VBench Metrics. For real-time latent inspection, our L2R converter asymmetrically decodes the spatiotemporal dimensions, fully restoring the 8× spatial compression to preserve high-fidelity visual structures while retaining the 4× temporal compression inherent to the latent space. This design is motivated by an empirical analysis of the inspection metrics under controlled spatiotemporal degradation. Specifically, we collect 1,024 real videos from Pexels [ 44 ], apply spatial downsampling and temporal subsampling, and measure the changes in 9Denoising step ( 𝑡 ) Denoising step ( 𝑡 )
+
+> Normalized error
+> Normalized error
+
+CogvideoX -5B  Wan2.1 -1.3B Figure 10: Early predictability of final video quality. For CogVideoX and Wan2.1 (1,800 prompts), we compute VBench metrics on intermediate L2R previews and report the normalized MAE to the final metrics of the final videos using the original VAE. Errors drop sharply by ∼10 steps, notably for Overall Consistency. Quantile 𝑞 
+
+> PR -AUC
+> PR -AUC
+
+Quantile 𝑞 
+
+> PR -AUC
+
+CogvideoX -5B  Wan2.1 -1.3B 
+
+Figure 11: Overall Consistency as a proxy for other VBench metrics. Using all VBench prompts, we measure PR-AUC for predicting whether a sample falls into the top-q or bottom-q group of each target metric ( q ∈ { 0.1, 0.2, 0.3})using Overall Consistency. All scores exceed the random baseline (0.5), indicating that Overall Consistency captures quality variations reflected by other metrics. Overall Consistency, Aesthetic Quality, and Imaging Quality [ 11 ] relative to the original videos. In Fig. 9, we find that the metrics are substantially more sensitive to spatial resolution: even mild spatial downsampling ( ×2) yields a larger normalized MAE than temporal subsampling ( ×4). 
+
+Early Predictability and Adaptive Prediction. A core premise of our pipeline is that the final video quality can be reliably estimated from early denoising steps. To validate this, we generate videos using CogVideoX-5B and Wan2.1-1.3B across a total of 1,800 prompts. This evaluation set comprises the complete suite of 946 prompts from VBench and 854 prompts randomly sampled from Panda70M [ 45 ]. During the 50 denoising steps, we convert every intermediate latent into a video preview using our L2R converter, compute VBench metrics at each step, and compare them with the scores of the final videos decoded by the original VAE. We report the normalized error, which divides the MAE by the dynamic range (max–min) of each metric to account for differing score scales. In Fig. 10, the prediction error of key metrics, especially Overall Consistency, drops sharply within the first 10 steps and then plateaus, indicating that early intermediate scores are reasonable proxies for final quality. 
+
+Overall Consistency as a Proxy for Video Quality. For real-time inspection, we rely on a single alignment-based signal, Overall Consistency , enabling minimal time overhead (19.5 ms) in the RI module. We examine whether it serves as a reliable proxy for broader video quality, i.e ., whether it can discriminate quality changes captured by other VBench metrics. To this end, we generate videos using the full set of 946 VBench prompts and compute multiple VBench scores. For each target metric, we form a balanced binary classification task by selecting samples from the top-q and 10 Density      
+
+> ROC -AUC
+> Overall consistency
+> 0.22 Overall Consistency
+> Text -Video Alignment Video Quality
+> 0.18 0.22 0.26 Real Video (n=1024)
+> Wan2.1 -1.3B (n=1800)
+> CogVideoX -5B (n=1800)
+
+Figure 12: Selecting the failure threshold τ for Overall Consistency. Left: Distributions of Overall Consistency for generated and real videos. Real videos concentrate at higher scores; we set τ = 0 .22 so that the retained generated samples better match the real-video regime. Right: A human study with 26 participants over 30 samples (780 responses) validates the perceptual boundary: scores of 0.18 are often judged as failures, whereas scores ≥0.22 are considered reasonable. bottom-q quantiles ( q ∈ { 0.1, 0.2, 0.3}), and predict whether a sample belongs to the top or bottom group using Overall Consistency. We report PR-AUC with 10-fold cross-validation; since the subsets are balanced, a random classifier yields PR-AUC ≈ 0.5.In Fig. 11, Overall Consistency consistently achieves notable AUC scores. Performance is generally highest at q = 0 .1,suggesting improved separability when focusing on more extreme cases. The metric is particularly predictive of Aesthetic Quality and Background Consistency, while remaining informative for Subject Consistency and Imaging Quality. These results indicate that a single alignment-based signal can capture diverse visual failure modes, which translates to performance improvements across multiple VBench metrics in Sec. 4.3. 
+
+Threshold Selection for Failure Detection. We set the success/failure threshold τ by combining distributional evidence and human study. On the left side of Fig. 12, we plot Overall Consistency distributions for generated videos (1,800 samples from VBench+Panda70M prompts) and real videos (1,024 samples from Pexels). For real videos, we obtain text descriptions using GPT-5-mini and compute Overall Consistency with the same alignment scorer [ 40 ] for a fair comparison. The real-video scores concentrate in a higher range, whereas T2V outputs exhibit a pronounced left tail corresponding to misaligned and degraded samples. Choosing τ = 0 .22 effectively removes this low-quality tail, making the remaining generated distribution better match the real-video regime. On the right side of Fig. 12, we also validate this boundary with a user study on samples involving 26 participants evaluating 30 samples (780 responses in total) at different score levels (0.18/0.22/0.26): videos around 0.18 are frequently perceived as failures, while those at or above 0.22 are consistently rated as perceptually reasonable. These results align with the human preference findings in VBench [ 11 ]. Based on both analyses, we use τ = 0 .22 as the intervention trigger. 
+
+4.3 Analysis of Detection and Intervention Behaviors 
+
+To better understand our pipeline, we analyze the effects of early detection and intervention by comparing the CDFs of final-generation metrics with and without our method. Since VBench provides only 946 prompts, the resulting distributions can be relatively sparse. To obtain denser and more reliable CDF estimates, we combine VBench prompts with additional prompts sampled from Panda70M, forming a combined set of 1,800 prompts. We generate videos for all prompts and compute VBench metrics on this unified set. 
+
+Effectiveness of Intervention on Failure Cases. We evaluate the impact of our intervention on samples identified as early failures. Because early failure detection is performed separately for each model, the number of detected failures differs slightly across models. Out of the 1,800 prompts from VBench and Panda70M, 872 samples are identified as early failures for CogVideoX-5B, while 811 are identified for Wan2.1-1.3B. Figure 13 compares the metric CDFs of these samples generated with and without our intervention strategy. Although we detect early failures based on Overall Consistency, intervention consistently improves multiple VBench dimensions, with clear rightward shifts in Overall Consistency, Subject Consistency, Imaging Quality, Temporal Flickering, and Motion Smoothness across both CogVideoX and Wan2.1. 11 CogvideoX -5B Wan2.1 -1.3B       
+
+> Overall Consistency Subject Consistency Background Consistency Temporal Flickering Motion Smoothness
+> Predicted Failure (No Intervention) Predicted Failure (With Intervention by ours)
+
+Figure 13: Intervention improves detected failure cases. CDFs of VBench metrics for samples predicted as failures, but forced generated, and our intervention. Despite using Overall Consistency for detection, ours shifts multiple Vbench metrics rightward. Overall Consistency  Overall Consistency 
+
+Predicted Failure (forced completion)  Predicted Success (continued) 
+
+> 0.22
+> 0.8693
+> 0.1584
+> 0.22
+> 0.8422
+> 0.1314
+
+∆CDF: 0.7109  ∆CDF: 0.7107 
+
+CogvideoX -5B  Wan2.1 -1.3B 
+
+Figure 14: Accuracy of early failure detection. Final Overall Consistency distributions for samples predicted to pass or fail (failures forced to complete without intervention). Strong separation across models demonstrates reliable early discrimination. 
+
+Accuracy of Early Failure Detection. Our dynamic failure detector detects potential failures early, at an average of step 11/50 for CogVideoX and step 10/50 for Wan. We show that our early failure detector effectively separates successful generations from failing ones. Out of the 1,800 prompts, it flags 928 samples as passes and 872 as failures for CogVideoX-5B, and 989 samples as passes and 811 as failures for Wan2.1-1.3B. To validate this, samples predicted as early failures are also generated to completion (without intervention) to obtain their final scores. Figure 14 compares the Overall Consistency distributions of samples predicted to succeed versus predicted to fail. The predicted success samples are distinctly shifted toward higher Overall Consistency scores, with a large separation margin for CogVideoX-5B and Wan2.1-1.3B. This indicates that our detector reliably identifies low-quality generations early, before full denoising completes. 
+
+## 5 Conclusion 
+
+We present an early failure detection and diagnostic intervention pipeline for latent text-to-video diffusion models. Our approach monitors the denoising process and selectively intervenes only when a failure is predicted, reducing the need for costly trial-and-error regeneration. To enable this, we introduce a Real-time Inspection (RI) module that efficiently decodes intermediate latents into RGB using a real-time latent-to-RGB converter and evaluates semantic alignment. This makes step-wise inspection of intermediate generations practical in real time. Through extensive experiments on CogVideoX-5B and Wan2.1-1.3B, we demonstrate that failure signals emerge early in the denoising process and can be reliably detected using established visual and vision–language evaluators once intermediate states are decoded into RGB. By combining early detection with diagnostic interventions, our method improves generation quality with less than 20% additional average time overhead. Furthermore, thanks to its plug-and-play design, our framework consistently complements existing prompt refinement and sampling guidance techniques. 
+
+Discussion on Scope and Limitations. Our method is designed for a practical real-time setting, where inspection and intervention must be performed during generation with low additional cost. To achieve this, the current pipeline uses a lightweight alignment scorer, ViCLIP, which can score intermediate previews efficiently. While our method improves performance on VBench and the additional benchmarks in the supplementary material, the current scorer is still not a complete measure of video quality or user intent, and it may not fully align with human preferences. In particular, some subtle failures, such as fine-grained motion errors, or complex compositional preferences, may not always be fully captured by the current scoring signal. 12 This is partly a limitation of the real-time setting itself, since heavy evaluators would greatly reduce the practical value of intervention during generation. We believe that future lightweight and more expressive video evaluation models could further improve the pipeline by better capturing both prompt intent and perceptual video quality, while remaining efficient enough for online use. 
+
+## References 
+
+[1] Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024. [2] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianx-iao Yang, et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 ,2025. [3] Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 , 2024. [4] Shoufa Chen, Chongjian Ge, Yuqi Zhang, Yida Zhang, Fengda Zhu, Hao Yang, Hongxiang Hao, Hui Wu, Zhichao Lai, Yifei Hu, et al. Goku: Flow based video generative foundation models. In CVPR , 2025. [5] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. [6] Yixin Liu, Kai Zhang, Yuan Li, Zhiling Yan, Chujie Gao, Ruoxi Chen, Zhengqing Yuan, Yue Huang, Hanchi Sun, Jianfeng Gao, et al. Sora: A review on background, technology, limitations, and opportunities of large vision models. arXiv preprint arXiv:2402.17177 , 2024. [7] Yoav HaCohen, Nisan Chiprut, Benny Brazowski, Daniel Shalem, Dudu Moshe, Eitan Richardson, Eran Levin, Guy Shiran, Nir Zabari, Ori Gordon, et al. Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 , 2024. [8] Omer Bar-Tal, Hila Chefer, Omer Tov, Charles Herrmann, Roni Paiss, Shiran Zada, Ariel Ephrat, Junhwa Hur, Guanghui Liu, Amit Raj, et al. Lumiere: A space-time diffusion model for video generation. In SIGGRAPH Asia 2024 Conference Papers , 2024. [9] Thaddäus Wiedemer, Yuxuan Li, Paul Vicol, Shixiang Shane Gu, Nick Matarese, Kevin Swersky, Been Kim, Priyank Jaini, and Robert Geirhos. Video models are zero-shot learners and reasoners. arXiv preprint arXiv:2509.20328 , 2025. [10] Muhammad Tanveer Jan, Mohammed G Al-Jassani, Martinraj Nadar, Emmanuel Melchizedek Vunnava, Vang-mai Chakrapani, Hayat Ullah, Abbas Khan, Sardar Ali Abbas, and Borko Furht. Text-to-video generators: a comprehensive survey. Journal of Big Data , 12(1):253, 2025. [11] Ziqi Huang, Yinan He, Jiashuo Yu, Fan Zhang, Chenyang Si, Yuming Jiang, Yuanhan Zhang, Tianxing Wu, Qingyang Jin, Nattapol Chanpaisit, et al. Vbench: Comprehensive benchmark suite for video generative models. In CVPR , 2024. [12] Qihao Liu, Adam Kortylewski, Yutong Bai, Song Bai, and Alan Yuille. Discovering failure modes of text-guided diffusion models via adversarial search. arXiv preprint arXiv:2306.00974 , 2023. [13] Zhen Xing, Qijun Feng, Haoran Chen, Qi Dai, Han Hu, Hang Xu, Zuxuan Wu, and Yu-Gang Jiang. A survey on video diffusion models. ACM Computing Surveys , 57(2):1–42, 2024. [14] Kaiyue Sun, Kaiyi Huang, Xian Liu, Yue Wu, Zihan Xu, Zhenguo Li, and Xihui Liu. T2v-compbench: A comprehensive benchmark for compositional text-to-video generation. In CVPR , 2025. [15] Yukai Shi, Jiarong Ou, Rui Chen, Haotian Yang, Jiahao Wang, Xin Tao, Pengfei Wan, Di Zhang, and Kun Gai. Imbalance in balance: Online concept balancing in generation models. In ICCV , 2025. [16] Esther Rodriguez, Monica Welfert, Samuel McDowell, Nathan Stromberg, Julian Antolin Camarena, and Lalitha Sankar. Coral: Disentangling latent representations in long-tailed diffusion. arXiv preprint arXiv:2506.15933 ,2025. [17] Dvir Samuel, Rami Ben-Ari, Simon Raviv, Nir Darshan, and Gal Chechik. Generating images of rare concepts using pre-trained diffusion models. In AAAI , 2024. 13 [18] Katherine Xu, Lingzhi Zhang, and Jianbo Shi. Good seed makes a good crop: Discovering secret seeds in text-to-image diffusion models. In WACV , 2025. [19] Vignav Ramesh and Morteza Mardani. Test-time scaling of diffusion models via noise trajectory search. In 
+
+NeurIPS , 2025. [20] Nanye Ma, Shangyuan Tong, Haolin Jia, Hexiang Hu, Yu-Chuan Su, Mingda Zhang, Xuan Yang, Yandong Li, Tommi Jaakkola, Xuhui Jia, et al. Inference-time scaling for diffusion models beyond scaling denoising steps. 
+
+arXiv preprint arXiv:2501.09732 , 2025. [21] Hila Chefer, Uriel Singer, Amit Zohar, Yuval Kirstain, Adam Polyak, Yaniv Taigman, Lior Wolf, and Shelly Sheynin. Videojam: Joint appearance-motion representations for enhanced motion generation in video models. In 
+
+ICML , 2025. [22] Xiang Wang, Hangjie Yuan, Shiwei Zhang, Dayou Chen, Jiuniu Wang, Yingya Zhang, Yujun Shen, Deli Zhao, and Jingren Zhou. Videocomposer: Compositional video synthesis with motion controllability. In NeurIPS , 2023. [23] Ariel Shaulov, Itay Hazan, Lior Wolf, and Hila Chefer. Flowmo: Variance-based flow guidance for coherent motion in video generation. In NeurIPS , 2025. [24] Yang Luo, Xuanlei Zhao, Mengzhao Chen, Kaipeng Zhang, Wenqi Shao, Kai Wang, Zhangyang Wang, and Yang You. Enhance-a-video: Better generated video for free. arXiv preprint arXiv:2502.07508 , 2025. [25] Junha Hyung, Kinam Kim, Susung Hong, Min-Jung Kim, and Jaegul Choo. Spatiotemporal skip guidance for enhanced video diffusion sampling. In CVPR , 2025. [26] Sicheng Mo, Fangzhou Mu, Kuan Heng Lin, Yanli Liu, Bochen Guan, Yin Li, and Bolei Zhou. Freecontrol: Training-free spatial control of any text-to-image diffusion model with any condition. In CVPR , 2024. [27] Michal Geyer, Omer Bar-Tal, Shai Bagon, and Tali Dekel. Tokenflow: Consistent diffusion features for consistent video editing. In ICLR , 2024. [28] Xinyin Ma, Gongfan Fang, and Xinchao Wang. Deepcache: Accelerating diffusion models for free. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 15762–15772, 2024. [29] Xin Xie and Dong Gong. Dymo: Training-free diffusion model alignment with dynamic multi-objective scheduling. In CVPR , 2025. [30] Vasco Ramos, Regev Cohen, Idan Szpektor, and Joao Magalhaes. Beyond the noise: Aligning prompts with latent representations in diffusion models. arXiv preprint arXiv:2512.08505 , 2025. [31] Zhaoyang Wang, Bo Hu, Mingyang Zhang, Jie Li, Leida Li, Maoguo Gong, and Xinbo Gao. Diffusion model-based visual compensation guidance and visual difference analysis for no-reference image quality assessment. 
+
+IEEE Transactions on Image Processing , 34:263–278, 2025. [32] Donghoon Ahn, Hyoungwon Cho, Jaewon Min, Wooseok Jang, Jungwoo Kim, SeonHwa Kim, Hyun Hee Park, Kyong Hwan Jin, and Seungryong Kim. Self-rectifying diffusion sampling with perturbed-attention guidance. In 
+
+ECCV , 2024. [33] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. In NeurIPS , 2021. [34] Nanye Ma, Shangyuan Tong, Haolin Jia, Hexiang Hu, Yu-Chuan Su, Mingda Zhang, Xuan Yang, Yandong Li, Tommi Jaakkola, Xuhui Jia, et al. Scaling inference time compute for diffusion models. In CVPR , 2025. [35] Vineet Jain, Kusha Sareen, Mohammad Pedramfar, and Siamak Ravanbakhsh. Diffusion tree sampling: Scalable inference-time alignment of diffusion models. In NeurIPS , 2025. [36] Yiyang Wang, Xi Chen, Xiaogang Xu, Sihui Ji, Yu Liu, Yujun Shen, and Hengshuang Zhao. Diffdoctor: Diagnosing image diffusion models before treating. In ICCV , 2025. [37] Minkyu Choi, SP Sharan, Harsh Goel, Sahil Shah, and Sandeep Chinchali. We’ll fix it in post: Improving text-to-video generation with neuro-symbolic feedback. arXiv preprint arXiv:2504.17180 , 2025. [38] Fangfu Liu, Hanyang Wang, Yimo Cai, Kaiyan Zhang, Xiaohang Zhan, and Yueqi Duan. Video-t1: Test-time scaling for video generation. In ICCV , 2025. [39] Yuta Oshima, Masahiro Suzuki, Yutaka Matsuo, and Hiroki Furuta. Inference-time text-to-video alignment with diffusion latent beam search. In NeurIPS , 2025. [40] Yi Wang, Yinan He, Yizhuo Li, Kunchang Li, Jiashuo Yu, Xin Ma, Xinhao Li, Guo Chen, Xinyuan Chen, Yaohui Wang, et al. Internvid: A large-scale video-text dataset for multimodal understanding and generation. In ICLR ,2024. 14 [41] Gal Metzer, Elad Richardson, Or Patashnik, Raja Giryes, and Daniel Cohen-Or. Latent-nerf for shape-guided generation of 3d shapes and textures. In CVPR , 2023. [42] Zachary Teed and Jia Deng. Raft: Recurrent all-pairs field transforms for optical flow. In ECCV , 2020. [43] Xuan He, Dongfu Jiang, Ping Nie, Minghao Liu, Zhengxuan Jiang, Mingyi Su, Wentao Ma, Junru Lin, Chun Ye, Yi Lu, et al. Videoscore2: Think before you score in generative video evaluation. arXiv preprint arXiv:2509.22799 ,2025. [44] Pexels. Pexels, royalty-free stock footage website. https://www.pexels.com . Accessed: 2024-09-30. [45] Tsai-Shien Chen, Aliaksandr Siarohin, Willi Menapace, Ekaterina Deyneka, Hsiang-wei Chao, Byung Eun Jeon, Yuwei Fang, Hsin-Ying Lee, Jian Ren, Ming-Hsuan Yang, et al. Panda-70m: Captioning 70m videos with multiple cross-modality teachers. In CVPR , 2024. [46] Ya Zou, Jingfeng Yao, Siyuan Yu, Shuai Zhang, Wenyu Liu, and Xinggang Wang. Turbo-vaed: Fast and stable transfer of video-vaes to mobile devices. In AAAI , 2026. [47] Ollin Boer Bohan. Taehv: Tiny autoencoder for hunyuan video. https://github.com/madebyollin/taehv ,2025. [48] Jordi Pont-Tuset, Federico Perazzi, Sergi Caelles, Pablo Arbeláez, Alex Sorkine-Hornung, and Luc Van Gool. The 2017 davis challenge on video object segmentation. arXiv preprint arXiv:1704.00675 , 2017. [49] Yang Jin, Zhicheng Sun, Ningyuan Li, Kun Xu, Hao Jiang, Nan Zhuang, Quzhe Huang, Yang Song, Yadong Mu, and Zhouchen Lin. Pyramidal flow matching for efficient video generative modeling. arXiv preprint arXiv:2410.05954 , 2024. 15 Supplementary Material Early Failure Detection and Intervention in Video Diffusion Models 
+
+# Contents 
+
+A. Implementation Details 
+
+A.1. Experiment Details A.2. Real-time Inspection (RI) Module A.3. Dynamic Failure Detector A.4. Diagnostic Intervention Framework 
+
+B. Analysis of Time Overhead 
+
+B.1. Efficiency of Selective Early Intervention on Wan2.1-1.3B B.2. Computation of Time Overhead 
+
+C. Additional Experiments 
+
+C.1. Overhead Comparison with Test-time Scaling Methods C.2. Comparison with a Simple Best-of-3 Baseline C.3. Threshold Sensitivity of Early Failure Detection C.4. Disaggregated Analysis of Intervention Effects 
+
+D. Additional Qualitative Results 
+
+## A Implementation Details 
+
+A.1 Experiment Details 
+
+For VBench evaluation, we generate one video per text prompt using the same inference settings and seed across all methods. For CogVideoX-5B [ 1] and Wan2.1-1.3B [ 2], we use the default seed and guidance scale provided in the official codebases. To enable comparison with base generation, we force the sampling process to continue full completion without any intervention, even when early failures are flagged. This allows direct comparison against the base generation under the same evaluation setting. Following prior work [ 11 ], the text–video alignment metric in VBench, Overall Consistency , is computed using the original user prompts, regardless of any VLM-based prompt refinement applied during generation. We use GPT-5-mini as the VLM in all experiments. We also report all VBench results across all dimensions in Table S7. These results show that our method improves most VBench dimensions on both models, indicating that selective early intervention benefits not only alignment-related metrics but also broader perceptual and temporal aspects of video quality. 
+
+A.2 Real-time Inspection (RI) Module 
+
+The Real-time Inspection (RI) module is designed to monitor the denoising process of T2V diffusion models in real time. To do so, it first converts intermediate latent representations into RGB video previews, and then evaluates how well the current generation aligns with the input text using an alignment scorer. In this way, the RI module provides an online estimate of semantic alignment during sampling. In the following, we describe the implementation details of the Latent-to-RGB (L2R) converter and the alignment scorer used in the RI module. 
+
+Latent-to-RGB (L2R) Converter. The design of our Latent-to-RGB (L2R) converter is primarily motivated by the need for an efficient preview module that balances low latency with moderate visual quality. Our architecture is 16 𝐹 ×𝐻 ×𝑊 ×𝐶 𝐹 ×8𝐻 ×8𝑊 ×3
+
+Latent 
+
+RGB video 
+
+> Spatio -temporal
+> learned upsampling
+> Causal 3D
+> conv. block
+> Proj .
+> layer
+> (a) Overall architecture
+> Causal 3D
+> conv. block
+
+# +Causal              
+
+> 3D conv.
+> Causal
+> 3D conv.
+> Causal
+> 3D conv.
+> Causal
+> 3D conv.
+> ReLU
+> ReLU
+> ReLU
+> Input output
+> 𝑤 !𝑤 "𝑤 #
+> 𝑤 $𝑤 %𝑤 &
+> 𝑤 '𝑤 (𝑤 )
+> 𝑤 !* 𝑤 !! 𝑤 !"
+> 𝑤 !# 𝑤 !$ 𝑤 !%
+> 𝑤 !& 𝑤 !' 𝑤 !(
+> Upsampled
+> current latent Learned parameters
+
+Σ = 
+
+> Weighted
+> sum
+> Previous
+> latent
+> Current
+> latent
+> time time
+
+## +     
+
+> (b) Causal 3D convolution block (c) Spatio -temporal learned upsampling
+
+Figure S1: Architecture of Latent-to-RGB (L2R) converter. (a) Overall architecture. The converter takes a latent video tensor as input and produces an RGB video preview through two causal 3D convolution blocks, a spatio-temporal learned upsampling, and a projection layer. (b) Causal 3D convolution block with a main branch and a skip branch. (c) Illustration of spatio-temporal learned upsampling for a single red target location. Given the previous and current latents, learned parameters are used to predict the upsampled latent at the current step by weighted summation. In practice, this operation is implemented densely as a 3D convolution over the latent. Table S1: Efficiency and quality of latent-to-RGB converter. We measure PSNR on DAVIS and Pexels. Then, we measure the decoding time/memory at 480 ×720. L2R offers moderate PSNR with the lowest latency and memory, providing previews suitable for inspection for both models.                                                           
+
+> CogVideoX-5B Wan2.1-1.3B DAVIS Pexels DAVIS Pexels Decoder Param. (M) PSNR ↑PSNR ↑Time (s) Mem (MB) Param. (M) PSNR ↑PSNR ↑Time (s) Mem (MB)
+> Original 123.4 32.80 35.30 3.990 242.5 73.30 32.68 35.41 1.702 140.4 TinyAE 11.32 26.56 27.35 0.116 21.60 11.32 30.50 33.46 0.116 21.60 Turbo-VAED 40.69 32.03 35.03 0.599 114.6 -----Ours 0.059 30.00 32.50 0.0197 0.138 0.059 28.98 31.40 0.0197 0.138
+
+informed by the observation in Latent-NeRF [ 41 ] that linear approximations are often sufficient for decoding latent representations into plausible RGB colors, as well as the findings in RAFT [ 42 ] regarding the superiority of learned upsampling over bilinear interpolation for recovering fine-grained spatial details. Figure S1(a) shows the overall architecture of the L2R converter. The model consists of two causal 3D convolution blocks, one spatio-temporal learned upsampling module, and a final projection layer. To keep the model lightweight, all hidden features use the same channel dimension as the input latent, and the channel dimension is reduced to RGB only at the final layer. As shown in Fig. S1(b), each causal 3D convolution block is built with a main branch and a skip branch, followed by nonlinear activations. We use a kernel size of 2 × 3 × 3 for time, height, and width dimensions, which allows the network to incorporate temporal context from previous frames. Figure S1(c) illustrates how the spatio-temporal learned upsampling works for a single target location. For clarity, we show a 3× upsampling example. Given the previous and current latents, the module predicts the target latent at the current step by taking a weighted sum with learned parameters. In practice, this local operation is applied densely to all output locations and implemented efficiently as a 3D convolution. Finally, the projection layer converts the refined latent features into RGB using two 2D convolution layers with kernel sizes 9 × 9 and 3 × 3.Training requires only the pretrained VAE encoder and is independent of the diffusion model. We collect 33k real-world video clips from Pexels [ 44 ] with sufficient temporal dynamics (mean optical-flow > 0.5 via RAFT), encode them into latents using the VAE encoder, and train on latent–RGB pairs. Training completes in 11 hours on a single NVIDIA A100 GPU. Table S1 compares our L2R converter against the original decoders and efficient VAE baselines, including Turbo-VAED [ 46 ] and TinyAE [ 47 ]. We train separate converters for CogVideoX and Wan2.1 to match their respective VAE latent spaces, and evaluate reconstruction quality on the DAVIS-2017 [ 48 ] test split with videos truncated to 49 frames and resized to 480 ×720. We additionally construct a Pexels test set consist-17 Happy dog wearing a yellow turtleneck, studio,                 
+
+> portrait, facing camera, dark background
+> Ashark is swimming in the ocean, featuring
+> asteady and smooth perspective
+> Step8 Step10
+> Step16
+> Step50
+> Step14
+> Step20
+> Initial
+> Step12
+> Step18
+> Step10
+> Step16
+> Step50
+> Step8
+> Step14
+> Step20
+> Initial
+> Step12
+> Step18
+
+Figure S2: Semantic convergence varies across samples in video diffusion. We visualize the center frame (24th frame out of 49) decoded from intermediate denoising steps for two text-to-video generations. While the dog sample exhibits recognizable semantics at an early stage, the shark sample remains ambiguous until later steps. This illustrates that semantic convergence in video diffusion is highly sample-dependent, motivating the dynamic failure detector rather than relying on a fixed early step. ing of 500 videos and compare reconstruction performance as well. For L2R, PSNR is computed against ground-truth RGB frames under the same temporal subsampling setting. While the original decoders achieve higher PSNR, our L2R attains moderate PSNR with drastically reduced decoding time and memory usage. Table S2: Overall Consistency between fixed-step vs. dy-namic failure detector. Despite nearly identical average prediction steps, the dynamic strategy achieves lower nor-malized error across both models.                       
+
+> Model Method Avg. Step Normalized Error
+> (×10 −2↓)
+> CogVideoX-5B Fixed 11 6.67 ±0.45
+> Dynamic 11.05 5.73 ±0.41
+> Wan2.1-1.3B Fixed 10 5.24 ±0.34
+> Dynamic 10.33 4.70 ±0.30
+
+Compared to efficient VAE baselines, L2R uses sub-stantially fewer parameters and achieves faster inference while maintaining moderate reconstruction quality across both models, making it well-suited for inspection along-side generation. 
+
+Alignment Scorer. We measure the semantic alignment between the video preview and the input text prompt using ViCLIP [ 40 ] because it offers a strong balance be-tween accuracy and efficiency, making it suitable for real-time inspection. Importantly, VBench’s Overall Consis-tency is based on the same ViCLIP video–text similarity computation used in our real-time inspection module. Built upon the VBench implementation, for online use during denoising, we apply several implementation-level optimizations. We move the frame preprocessing and similarity computation to the GPU, and cache the text feature since the prompt remains fixed for each sample. As a result, the alignment scorer takes only 19.5 ms in our experimental setting. Note that we use the official VBench codebase for the final VBench scores reported in our experiments. 
+
+A.3 Dynamic Failure Detector 
+
+In Fig. 9 of the main paper, we show that several final video quality metrics are already predictable from early denoising steps. Specifically, the error between the metric measured from an intermediate video preview and that of the final generated video drops sharply within the first ∼ 10 denoising steps. However, the convergence behavior of diffusion models is known to be sample-dependent [ 11 , 28 ]. We further observe that semantic convergence in text-to-video generation also differs substantially across prompts, as shown in Fig. S2. This suggests that monitoring only a fixed denoising step is less effective than using a sample-dependent monitoring strategy. Since our RI module inspects a video preview in only 39.2 ms (L2R + alignment scorer), we use a dynamic failure detector that monitors the alignment score at every denoising step. Rather than making a decision from a single fixed 18 Algorithm 1: Trial 1: Single-frame Semantic Injection 
+
+Require: Single-frame preview latent zimg , initial video latent zT , denoising timesteps {tk}Nk=2 , text condition c,scheduler, T2V model, injection length K = 2  
+
+> 1:
+
+Expand zimg with a temporal dimension  
+
+> 2:
+
+Set the reference noise to the initial latent: ϵ ← zT 
+
+> 3:
+
+Initialize the latent z at t2: z ← AddNoise( zimg , ϵ, t 2) 
+
+> 4:
+
+for k = 2 , . . . , N do  
+
+> 5:
+
+if k ≤ K + 1 then  
+
+> 6:
+
+ˆz ← AddNoise( zimg , ϵ, t k) 
+
+> 7:
+
+wk ← SoftMask( tk) 
+
+> 8:
+
+z ← wk ⊙ ˆz + (1 − wk) ⊙ z 
+
+> 9:
+
+end if  
+
+> 10:
+
+z = Scheduler(T2V( z, c, t k))  
+
+> 11:
+
+end for  
+
+> 12:
+
+return Decoder( z)step, the detector maintains a short history of intermediate scores and their step-wise changes, while also tracking the best score observed within a predefined inspection budget. Our dynamic failure detector is a simple rule-based algorithm. Let {sk} denote the alignment scores measured during denoising. For the video preview inspection, the detector begins making decisions from step 8 and inspects the trajectory up to step 14. Within this inspection window, it applies simple stopping rules based on the score level, recent trend, and local stability. Specifically, it triggers early reject when the score is low and remains nearly unchanged for several steps, give up when the score is low and continues to decrease, early accept when the score is already high and stable, and stable stop when the score has sufficiently converged. If none of these conditions are met within the inspection budget, the detector stops at the budget limit and returns the best score observed so far. We use the returned score as the predicted final alignment score, denoted by ˜s0. A sample is then classified as successful if ˜s0 ≥ τ , and as a failure otherwise. Table S2 compares the dynamic failure detector with a fixed-step predictor under the same experimental setting as Fig. 9 in the main paper. For each model, we use the average prediction step of the dynamic detector as the corresponding fixed step. Even under this matched comparison, the dynamic detector achieves lower normalized error on CogVideoX-5B and Wan2.1-1.3B. This result suggests that a sample-dependent stopping strategy provides a more accurate estimate of the final alignment score than monitoring a single fixed denoising step. Notably, this improvement is achieved even though the detector includes failure-oriented policies such as early reject , rather than focusing purely on final score prediction. For single-frame preview inspection, we use a later inspection window, starting from step 20 and continuing up to step 30, since single-frame denoising progresses substantially faster than video denoising. 
+
+A.4 Diagnostic Intervention Framework 
+
+As shown in Sec. 3.2 of the main paper, our diagnostic intervention framework intervenes only on current generation processes that are identified as potential failures. The intervention is observation-driven: rather than applying a fixed correction to every sample, we use the intermediate preview to decide how to continue the generation. 
+
+Trial 0: Base Generation. This trial corresponds to the default generation process without any modification. When the detector predicts that a generation process is likely to succeed, we simply continue standard denoising with the original prompt. 
+
+Trial 1: Single-frame Semantic Injection. When the score of a video preview, ˜s0, does not exceed the threshold τ ,we test whether the single-frame preview yields a higher alignment score, i.e ., whether ˜simg > ˜s0 + δ. We set δ = 0 .05 .If this condition is satisfied, we apply single-frame semantic injection. Algorithm 1 describes the detailed procedure of Trial 1. For simplicity, we denote the single-image intermediate prediction ˆzimg 0|kimg as zimg . To make it compatible with video generation, we first expand zimg along the temporal dimension. We then add noise so that it matches the latent at the second timestep where single-frame injection begins. During the following two denoising steps, we apply a soft temporal mask that assigns a weight of 1 to the starting frame and linearly decays to 0 over time, blending the injected latent with the model-updated latent. After these two steps, the remaining denoising process proceeds in the same manner as the base generation. 19 0        
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> Ours
+> Wan2.1 -1.3B
+> Regeneration
+> 11.48 %
+> 5.91% 2.61%
+> 20.30%
+> 51.25%
+> Overall Overhead (%)  Wan2.1 -1.3B
+> Trial 0 Trial 1 Trial 2 Trial
+> 2→1Regeneration
+> 53.8%
+> 11.2% 16.0% 19.0%
+> 45.9%
+> 23.3%
+> 37.0%
+> 60.3%
+> 111.7%
+> Per -sample overhead (%)
+> 0.6%
+> Frequency (% of Total Samples)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120 70
+> 60
+> 50
+> 40
+> 30
+> 20
+> 10
+> 0
+
+(a) Overall time overhead (avg. over all samples)  (b) Per -sample time overhead vs. Frequency 
+
+Trial 1  Trial 2  Trial 2→1 Figure S3: Efficiency of selective early intervention on Wan2.1-1.3B. (a) Overall time overhead relative to base generation. Ours incurs only +20.3% additional time overhead, substantially lower than the regeneration of failure samples (+51.25%). (b) Per-sample cost increases with deeper trials, yet remains cheaper than regeneration. Since deeper trials are triggered for only a subset of samples (red curve), the overall time overhead stays modest. 
+
+Trial 2: Observation-driven Prompt Refinement. If the condition ˜simg > ˜s0 + δ is not satisfied, we bypass Trial 1 and proceed directly to Trial 2. In this trial, we provide the video preview and the original text prompt to a visual language model (VLM), and ask it to analyze why the current generation fails to achieve sufficient semantic alignment. Based on this analysis, the VLM returns a refined prompt and, optionally, a negative prompt. Figure S10 presents the instruction template used for this step. We then regenerate the video using the refined prompt. This trial is particularly effective when the failure is caused by missing semantic cues, incorrect actions, or weak style descriptions that are difficult to correct through latent injection alone. 
+
+## B Analysis of Time Overhead 
+
+We provided the efficiency results of selective early intervention for Wan2.1-1.3B, alongside those of CogVideoX-5B shown in Fig. 5 of the main paper. Now, we present a detailed breakdown of how the time overhead is computed. 
+
+B.1 Efficiency of Selective Early Intervention on Wan2.1-1.3B 
+
+Figure S3 provides a detailed breakdown of the efficiency of selective early intervention on Wan2.1-1.3B. As shown in Fig. S3(b), the per-sample time overhead increases with intervention depth, rising from 23.3% for Trial 1 to 37.0% for Trial 2 and 60.3% for Trial 2 →1. In contrast, naive regeneration incurs a much larger per-sample time overhead of 111.7% including VLM. Despite this increasing per-sample time cost, only a relatively small fraction of samples reach the more expensive stages. Most samples either finish without intervention or are handled by earlier trials, which keeps the average cost low. As a result, the overall time overhead remains modest at 20.30% over all samples, substantially lower than regeneration at 51.25%, as shown in Fig. S3(a). 
+
+B.2 Computation of Time Overhead 
+
+We compute time overhead from executions over the full VBench evaluation set of 946 prompts, using two measured quantities: (i) the average runtime of each primitive operation in Table S3, and (ii) the average number of times each operation is executed in each branch in Table S4. For each branch, the total runtime is obtained by summing the costs of all executed operations, including video denoising, video preview inspection, single-frame denoising, single-frame preview inspection, and VLM calls. We define the original generation time as the runtime of the default 50-step video generation without inspection or intervention. Even Trial 0 incurs a small non-zero overhead due to the preview inspection step. The per-sample time overhead is therefore computed as the additional runtime of each branch relative to the original generation time. 20 Table S3: Measured execution time of each primitive operation. We report the average runtime of each primitive operation used in our framework, including video denoising, video preview inspection, single-frame denoising, single-frame preview inspection, and VLM calls. We also report the average detection step of the dynamic failure detector for video previews and single-frame previews. These measured runtimes are used together with the branch-wise execution counts in Table S4 to compute the per-sample and overall time overhead. 
+
+Dynamic failure detector Execution time (s) average step 
+
+Video Video Single-frame Single-frame VLM Video Single-frame 
+
+Models denoising steps preview inspections denoising steps preview inspections calls preview preview CogVideoX-5B 4.343 0.0392 0.405 0.0218 8.541 11.05 24.00 Wan2.1-1.3B 1.460 0.0392 0.103 0.0218 8.541 10.33 24.00 
+
+Table S4: Detailed breakdown of execution statistics and time overhead. We report the number of denoising steps, inspection operations, and wall-clock runtime for each execution branch. Per-sample time overhead measures the additional runtime relative to the original generation time when the branch is executed, while Overall time overhead 
+
+represents the dataset-averaged contribution.                                                                                           
+
+> CogVideoX-5B: original generation time: 217.15 s (50 steps) Execution statistics Runtime Time overhead Branch Samples / Total Video denoising steps Video preview inspections Single-frame denoising steps Single-frame preview inspections VLM calls Average time (s) Additional time (s) Per-sample time overhead (%) Overall time overhead (%) Trial 0 562 / 946 50 11.05 000217.58 0.43 0.20 0.12 Trial 1 91 / 946 60.05 11.05 24 24 0271.47 54.32 25.02 2.41 Trial 2 125 / 946 61.05 11.05 24 24 1284.36 67.21 30.95 4.09 Trial 2 →Trial 1 168 / 946 71.10 22.10 48 48 1338.68 121.53 55.97 9.94
+> Total overall time overhead: 16.55% Wan2.1-1.3B: original generation time: 73.00 s (50 steps) Execution statistics Runtime Time overhead Branch Samples / Total Video denoising steps Video preview inspections Single-frame denoising steps Single-frame preview inspections VLM calls Average time (s) Additional time (s) Per-sample time overhead (%) Overall time overhead (%) Trial 0 509 / 946 50 10.33 00073.40 0.40 0.55 0.30 Trial 1 106 / 946 60.05 10.33 24 24 090.02 17.02 23.32 2.61 Trial 2 151 / 946 61.05 10.33 24 24 1100.02 27.02 37.02 5.91 Trial 2 →Trial 1 180 / 946 71.10 20.66 48 48 1117.04 44.04 60.34 11.48
+> Total overall time overhead: 20.30%
+
+The overall time overhead is computed over the full evaluation set. Specifically, we measure the total runtime of applying our method to all 946 prompts, subtract the total runtime of original generation on the same 946 prompts, and divide the difference by the total original generation time. As a result, deeper branches can have high per-sample overhead, while their contribution to the final average time overhead remains limited because they are triggered less often. For example, on Wan2.1-1.3B, Trial 1 takes 90.02 s on average, compared with the original generation time of 73.00 s, resulting in 17.02 s additional runtime and 23.32% per-sample time overhead. The numbers of video preview and single-frame preview inspections are determined by the average detection steps of the dynamic failure detector. For Trial 1 and Trial 2 →1, single-frame semantic injection follows Algorithm 1 that starts from the second denoising step. Therefore, the corresponding single-frame denoising process uses 49 steps instead of 50. 
+
+## C Additional Experiments 
+
+C.1 Overhead Comparison with Test-time Scaling Methods 
+
+Our goal is related to recent test-time scaling methods for video generation [ 38 , 39 ], in that all of these approaches aim to improve generation quality during inference. However, the mechanisms are different: these methods allocate additional compute to search over multiple candidate trajectories, whereas our method monitors a single generation trajectory and applies selective intervention only when a likely failure is detected. In particular, although Video-T1 [ 38 ] provides a public repository, both the paper and the released code are centered on Pyramid-Flow [ 49 ], rather than a directly comparable public setup for CogVideoX-5B or Wan2.1-1.3B. As a workaround, we provide a rough compute-level comparison with DLBS [ 39 ] based on its published method description. For DLBS, the reported inference computation is given in terms of the number of function evaluations (NFE). In their setting, the base generation cost is 50 NFE, while DLBS requires 1200–2400 NFE and DLBS-LA requires 2500–5000 21 Table S5: Comparison with a simple Best-of-3 baseline. For Best-of-3 , we generate three videos per prompt from the original prompt using different random seeds, score them with our alignment scorer (ViCLIP), and select the sample with the highest semantic alignment score. Since this requires three full generations, it incurs 200% additional time overhead relative to single-sample generation. CogVideoX-5B Wan2.1-1.3B Method Final Quality Semantic Overhead (%) Final Quality Semantic Overhead (%) Original prompt (baseline) 0.778 0.803 0.680 0.00 0.789 0.811 0.700 0.00 Best-of-3 0.787 0.802 0.728 200.00 0.796 0.812 0.730 200.00 Original prompt + Ours 0.800 0.816 0.735 16.55 0.805 0.817 0.756 20.30 
+
+Table S6: Effect of the success and failure threshold. We compare the original prompt baseline with our selective early intervention under different failure thresholds τ . Higher thresholds make the detector more conservative, increasing the number of samples that receive intervention. As a result, VBench scores may improve further, but at the cost of substantially higher time overhead. CogVideoX-5B Wan2.1-1.3B Method Final Quality Semantic Overhead (%) Final Quality Semantic Overhead (%) Original prompt (baseline) 0.778 0.803 0.680 0.00 0.789 0.811 0.700 0.00 Original prompt + Ours ( τ = 0 .22 ) 0.800 0.816 0.735 16.55 0.805 0.817 0.756 20.30 Original prompt + Ours ( τ = 0 .26 ) 0.807 0.824 0.740 32.61 0.807 0.823 0.743 35.96 Original prompt + Ours ( τ = 0 .30 ) 0.806 0.827 0.725 39.47 0.812 0.826 0.756 42.77 NFE, depending on the search budget and model. Although this is not a direct runtime comparison, it suggests that search-based test-time scaling methods generally incur substantially larger additional inference compute than our selective early intervention, which adds only 16.55% time overhead on CogVideoX-5B and 20.30% on Wan2.1-1.3B. 
+
+C.2 Comparison with a Simple Best-of-3 Baseline 
+
+To further contextualize the efficiency–quality trade-off of our method, we compare it with a simple inference-time scaling baseline based on multi-seed sampling. For each prompt, we generate three videos from the original prompt using three different random seeds, compute the semantic alignment score of each sample using our alignment scorer (ViCLIP), and select the sample with the highest score to form the final evaluation set. We denote this baseline as 
+
+Best-of-3 . Since it requires three full generations per prompt, it incurs 200% additional time overhead relative to single-sample generation. Table S5 compares Best-of-3 with the original prompt baseline and our method on VBench. On CogVideoX-5B, 
+
+Best-of-3 improves the semantic score over the original baseline, but our method achieves a higher final score (0.800 vs. 0.787) and higher quality score (0.816 vs. 0.802) with only 16.55% overhead, compared with 200% for Best-of-3 . On Wan2.1-1.3B, Best-of-3 yields competitive final and semantic scores, but also requires substantially larger inference cost. These results suggest that, even compared with a simple multi-seed selection strategy using the same alignment scorer, our selective early intervention provides a substantially more favorable efficiency–quality trade-off. 
+
+C.3 Threshold Sensitivity of Early Failure Detection 
+
+We study the sensitivity of our method to the failure threshold τ used by the dynamic failure detector. As shown in Table S6, increasing τ causes more samples to be treated as likely failures and therefore receive intervention. This can further improve VBench scores, but it also leads to substantially larger time overhead on both CogVideoX-5B and Wan2.1-1.3B. This trend is consistent with the observation in Fig. 11 of the main paper. The distribution of Overall Consistency for generated videos is already shifted to the left of the real-video distribution. As a result, increasing the threshold moves a larger portion of generated samples into the failure region, which raises the intervention trigger frequency. Consequently, higher thresholds can improve aggregate scores by intervening on more borderline samples, but they also increase inference cost significantly. Consistent with this observation, increasing τ from 0.22 to 0.26 and 0.30 improves the final VBench score on both models, while substantially increasing time overhead. These results show that the failure threshold acts as a practical control knob for the quality–efficiency trade-off of selective early intervention. 22 CogvideoX -5B Wan2.1 -1.3B           
+
+> Overall Consistency Subject Consistency Background Consistency Temporal Flickering Motion Smoothness
+> Predicted Failure (No Intervention) Predicted Failure (With Trial1 &Trial 2→1Intervention by ours)
+
+Figure S4: Effect of the single-frame-based intervention family on detected failure cases. We compare the CDFs of VBench metrics between predicted failure samples generated to completion without intervention and those corrected by the single-frame-based intervention family (Trial 1 and Trial 2 →1). Across both CogVideoX-5B and Wan2.1-1.3B, the intervention shifts the distributions toward better scores over multiple VBench dimensions. CogvideoX -5BWan 2.1 -1.3 B        
+
+> Overall Consistency Subject Consistency Background Consistency Temporal Flickering Motion Smoothness
+> Predicted Failure (No Intervention) Predicted Failure (With Trial 2Intervention by ours)
+
+Figure S5: Effect of observation-driven prompt refinement on detected failure cases. We compare the CDFs of VBench metrics between predicted failure samples generated to completion without intervention and those corrected by observation-driven prompt refinement (Trial 2). Across both CogVideoX-5B and Wan2.1-1.3B, this branch also shifts the distributions toward better scores over multiple VBench dimensions. 
+
+C.4 Disaggregated Analysis of Intervention Effects 
+
+As shown in Fig. 12 of the main paper, we analyze the effect of intervention on samples identified as failures. We further decompose the results into two parts: the Single-frame-based Intervention family, which includes Trial 1 and Trial 2 →1, and Observation-driven Prompt Refinement (Trial 2). 
+
+Single-frame-based Intervention Family . Figure S4 analyzes the intervention family that applies single-frame semantic injection as the final correction step. We group Trial 1 and Trial 2 →1 together, since both branches share the same final-stage intervention. Compared with predicted failure samples generated without intervention, the corrected samples show consistent rightward shifts in the CDFs across multiple VBench dimensions on both CogVideoX-5B and Wan2.1-1.3B. This experiment includes 629 samples on CogVideoX-5B and 505 samples on Wan2.1-1.3B, out of 1,800 prompts. 
+
+Observation-driven Prompt Refinement . Figure S5 analyzes the effect of Trial 2, which performs observation-driven prompt refinement before continuing generation. As in the main paper, we compare predicted failure samples without intervention against those corrected by this branch. The resulting CDF shifts show that prompt refinement also improves multiple VBench dimensions. This experiment includes 243 samples on CogVideoX-5B and 306 samples on Wan2.1-1.3B, out of 1,800 prompts. 
+
+## D Additional Qualitative Results 
+
+In this section, we provide additional qualitative results for the proposed intervention framework. Specifically, we present representative examples of Trial 1 (single-frame semantic injection ) and Trial 2 (observation-driven prompt refinement ) to illustrate how the proposed method corrects early failure trajectories during generation in Fig. S6 and Fig. S7, respectively. We also provide qualitative comparisons between the native decoders of CogVideoX and Wan2.1 and the corresponding outputs of the proposed L2R converter in Fig. S8 and Fig. S9, respectively, showing that L2R preserves the key semantic content and visual structure needed for real-time inspection. 23 Single -frame  Preview     
+
+> 9/50 Steps
+> No ✘
+> Success?
+
+“An apple and a 
+
+cell phone ”Semantic 
+
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 20 /50 Steps
+> Success?
+> Yes
+
+Single -frame  Preview     
+
+> 14 /50 Steps
+> No ✘
+> Success?
+
+“A man and a woman 
+
+are standing in front of a 
+
+blue background, smiling 
+
+at the camera” 
+
+> Semantic
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 20 /50 Steps
+> Success?
+> Yes
+
+Single -frame  Preview     
+
+> 9/50 Steps
+> No ✘
+> Success?
+
+“A raccoon that looks 
+
+like a turtle , digital art” 
+
+> Semantic
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 20 /50 Steps
+> Success?
+> Yes
+
+Single -frame  Preview     
+
+> 10 /50 Steps
+> No ✘
+> Success?
+
+“A woman is standing 
+
+in front of a white 
+
+kitchen counter, 
+
+wearing a red apron 
+
+and a white shirt …” 
+
+> Semantic
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 22 /50 Steps
+> Success?
+> Yes
+
+Single -frame  Preview     
+
+> 14 /50 Steps
+> No ✘
+> Success?
+
+“Two men are sitting 
+
+in chairs and talking to 
+
+each other …” 
+
+> Semantic
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 24 /50 Steps
+> Success?
+> Yes
+
+Single -frame  Preview     
+
+> 11 /50 Steps
+> No ✘
+> Success?
+
+“Barbie doll in a pink 
+
+room with a dresser …” 
+
+> Semantic
+> Injection
+
+Video Preview  Trial 1 output    
+
+> 20 /50 Steps
+> Success?
+> Yes
+
+CogVideoX -5B 
+
+Wan2.1 -1.3B Figure S6: Additional qualitative results of Trial 1 (single-frame semantic injection). We present additional qualitative results from CogVideoX-5B (top) and Wan2.1-1.3B (bottom). For generations predicted as failures from early video previews, we further examine a single-frame preview. If the single-frame preview is better than the video preview, we apply semantic injection. These examples show that Trial 1 improves prompt fidelity by recovering missing objects, attributes, and subject composition in the final outputs across different models and failure cases. 24 No  ✘
+
+> Success?  VLM
+
+“A shark is swimming in the 
+
+ocean, black and white ”
+
+“Black -and -white cinematic side view of a single 
+
+shark (full body visible) steadily swimming  …”    
+
+> 12 /50 Steps
+
+Video Preview 
+
+“Color tint, multiple sharks …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output  
+
+> No ✘
+> Success?  VLM
+
+“A sheep taking 
+
+a peaceful walk” 
+
+“One sheep walking peacefully across a grassy 
+
+meadow, full -body side profile, medium shot …”    
+
+> 10 /50 Steps
+
+Video Preview 
+
+“Extra animals , neon green edges …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output  
+
+> No ✘
+> Success?  VLM
+
+“A corgi is playing 
+
+drum kit” 
+
+“Medium -side shot of a corgi (short legs, tan -and -white 
+
+markings) sitting on a low stool and playing a full drum kit …”    
+
+> 14 /50 Steps
+
+Video Preview 
+
+“Human , out -of -frame subject …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output  
+
+> No ✘
+> Success?  VLM
+
+“In a still frame, a
+
+stop sign ”
+
+“Still frame of a single traffic stop sign , full view. Frontal, 
+
+centered composition showing the entire red …”    
+
+> 14 /50 Steps
+
+Video Preview 
+
+“Hands, partial occlusion …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output  
+
+> No ✘
+> Success?  VLM
+
+“Yoda playing 
+
+guitar on the 
+
+stage” 
+
+“Small green Yoda -like humanoid with large pointed ears and wrinkled face, 
+
+wearing a simple brown Jedi robe, standing center stage playing an acoustic guitar…”    
+
+> 11 /50 Steps
+
+Video Preview 
+
+“Oversized human figure, off -center composition …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output  
+
+> No ✘
+> Success?  VLM
+
+“A person is 
+
+ironing ”
+
+“A person ironing a garment on an ironing board , medium close -up from an 
+
+above -right angle so both hands and the entire iron are clearly visible in frame…”    
+
+> 14 /50 Steps
+
+Video Preview 
+
+“Distorted hands, warped iron …” 
+
+Refined prompt: 
+
+Negative prompt: 
+
+Trial 2 output 
+
+CogVideoX -5B 
+
+Wan2.1 -1.3B Figure S7: Additional qualitative results of Trial 2 (observation-driven prompt refinement). We present additional qualitative results from CogVideoX-5B (top) and Wan2.1-1.3B (bottom). For generations predicted as failures based on early video previews, Trial 2 uses a vision–language model (VLM) to refine the prompt according to the observed failure patterns. The refined prompt strengthens the desired semantics, while the negative prompt suppresses undesired content or artifacts. These examples show that Trial 2 improves prompt fidelity by correcting subject identity, object count, composition, and visual attributes across different models and failure cases. 25 CogVideoX 
+
+> Decoder
+> L2R
+> CogVideoX
+> Decoder
+> L2R
+> CogVideoX
+> Decoder
+> L2R
+> CogVideoX
+> Decoder
+> L2R
+
+Figure S8: Qualitative comparison between the native CogVideoX decoder and L2R converter. We compare the reconstruction results between two methods. Across diverse scenes and multiple frames, L2R produces lightweight video previews that preserve the key semantic content and visual structure of the native CogVideoX decoder. These previews are sufficiently informative for real-time inspection and failure detection. 26 Wan2.1 
+
+> Decoder
+> L2R
+> Wan2.1
+> Decoder
+> L2R
+> Wan2.1
+> Decoder
+> L2R
+> Wan2.1
+> Decoder
+> L2R
+
+Figure S9: Qualitative comparison between the native Wan2.1 decoder and L2R converter. We compare the reconstruction results between two methods. Across diverse scenes and multiple frames, L2R produces lightweight video previews that preserve the key semantic content and visual structure of the native Wan2.1 decoder. These previews are sufficiently informative for real-time inspection and failure detection. 27 Table S7: All VBench results across all dimensions. We report all individual VBench dimension scores, along with the aggregated Semantic, Quality, and Final scores, for the original prompt baseline and our method on CogVideoX-5B and Wan2.1-1.3B. Overall, our method improves most VBench dimensions on both models, indicating that selective early intervention benefits not only alignment-related metrics but also broader perceptual and temporal aspects of video quality. 
+
+## Dimension CogVideoX-5B Wan2.1-1.3B Original Prompt + Ours Original Prompt + Ours 
+
+## Subject Consistency 0.957 0.967 0.949 0.964 
+
+## Background Consistency 0.953 0.964 0.959 0.972 
+
+## Temporal Flickering 0.969 0.973 0.991 0.992 
+
+## Motion Smoothness 0.981 0.985 0.970 0.979 
+
+## Dynamic Degree 0.542 0.542 0.542 0.403 Aesthetic Quality 0.592 0.600 0.590 0.610 
+
+## Imaging Quality 0.610 0.634 0.644 0.668 
+
+## Object Class 0.815 0.866 0.828 0.900 
+
+## Multiple Objects 0.495 0.656 0.630 0.697 
+
+## Human Action 0.870 0.960 0.770 0.910 
+
+## Color 0.843 0.859 0.934 0.943 
+
+## Spatial Relationship 0.450 0.498 0.687 0.705 
+
+## Scene 0.393 0.472 0.289 0.398 
+
+## Appearance Style 0.229 0.231 0.222 0.223 
+
+## Temporal Style 0.238 0.244 0.238 0.244 
+
+## Overall Consistency 0.258 0.267 0.243 0.256 Semantic Score 0.680 0.735 0.700 0.756 Quality Score 0.803 0.816 0.811 0.817 Final Score 0.778 0.800 0.789 0.805 
+
+> 28
+
+You are given sampled frames from an early-stage video generation preview. This is not a final output. Goal: Improve overall consistency while preserving the original intent. Inputs: - original_prompt: "{prompt_en}" - predicted_score_at_stop: {pred_score:.6f} - score_range: 0.0 to 1.0 (higher is better) Task: - Evaluate the original prompt and preview frames together. - Refine the prompt to better match the intended subject, action, and scene while fixing visible issues. Guidelines: - Base your revision on both the original prompt and what is visible in the preview. - Make the prompt clearer, more concrete, and visually stable. - Clarify subject visibility, action, framing, or scene when needed. - Do not change the core meaning or add unrelated objects/actions. - Keep the final prompt concise. Negative prompt: - Optional, single comma-separated string - Short noun phrases only - No instruction-style wording - Maximum 5 items Return ONLY valid JSON: {"refined_prompt": "...", "negative_prompt": "..." }
+
+Figure S10: Prompt template for observation-driven prompt refinement. The VLM receives the original prompt, preview video, and the predicted preview score, and returns a refined prompt with an optional negative prompt in JSON format. 29
