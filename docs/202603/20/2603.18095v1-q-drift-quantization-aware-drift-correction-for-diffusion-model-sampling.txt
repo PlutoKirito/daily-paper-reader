@@ -1,0 +1,967 @@
+Title: Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling
+
+URL Source: https://arxiv.org/pdf/2603.18095v1
+
+Published Time: Fri, 20 Mar 2026 00:07:27 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 
+
+Sooyoung Ryu 1, Mathieu Salzmann 2, and Saqib Javed 2,3 
+
+> 1
+
+Department of Computer Science and Engineering, Seoul National University, Seoul, South Korea  
+
+> 2
+
+School of Computer and Communication Sciences, EPFL, Lausanne, Switzerland  
+
+> 3
+
+Meta Reality Labs, Redmond, USA 
+
+Abstract. Post-training quantization (PTQ) is a practical path to de-ploy large diffusion models, but quantization noise can accumulate over the denoising trajectory and degrade generation quality. We propose Q-Drift, a principled sampler-side correction that treats quantization error as an implicit stochastic perturbation on each denoising step and derives a marginal-distribution-preserving drift adjustment. Q-Drift estimates a timestep-wise variance statistic from calibration, in practice requiring as few as 5 paired full-precision/quantized calibration runs. The result-ing sampler correction is plug-and-play with common samplers, diffusion models, and PTQ methods, while incurring negligible overhead at in-ference. Across six diverse text-to-image models (spanning DiT and U-Net), three samplers (Euler, flow-matching, DPM-Solver++), and two PTQ methods (SVDQuant, MixDQ), Q-Drift improves FID over the cor-responding quantized baseline in most settings, with up to 4.59 FID re-duction on PixArt-Σ (SVDQuant W3A4), while preserving CLIP scores. 
+
+Keywords: Diffusion Model · Quantization 
+
+# 1 Introduction 
+
+Diffusion models have emerged as a dominant paradigm for high-quality im-age generation [16, 53]. Modern text-to-image systems such as Stable Diffusion have demonstrated the practical effectiveness of diffusion models in real-world generation tasks [39, 42]. However, due to the inherent iterative denoising pro-cess and the increasing model scale, diffusion models incur substantial com-putational and memory costs, posing significant challenges for deployment in resource-constrained or latency-critical settings [19, 48]. Post-training quantization (PTQ) converts a pretrained full-precision model into a low-bit representation by quantizing its weights and activations using only a small calibration dataset, avoiding the substantial training cost of quantization-aware training (QAT). As a result, PTQ offers significant memory savings and inference acceleration with only a small calibration cost, making it a practical and widely adopted approach for compressing diffusion models. Nevertheless, despite recent progress, quantization-induced performance degradation remains  
+
+> arXiv:2603.18095v1 [cs.CV] 18 Mar 2026 2S. Ryu et al.
+
+a persistent challenge in diffusion models, especially under aggressive low-bit settings or when combined with fast, few-step samplers [13, 26, 47]. Several recent works have sought to mitigate this degradation by improving the fidelity of quantized diffusion models to their full-precision counterparts. For example, SVDQuant absorbs extreme outliers into low-rank components to sta-bilize low-bit quantization [23], while MixDQ uses metric-decoupled sensitivity analysis and integer-programming-based mixed-precision bit allocation to pre-serve both image quality and text alignment [69]. These approaches significantly reduce model-level quantization error, yet noticeable degradation in generation quality often persists in practice [13, 64]. A key limitation shared by most PTQ methods applied to diffusion is that quantization error is treated as a step-local error, i.e., a model approximation error that is independent across the sampling steps. Corrections are typically de-signed to minimize layer-wise reconstruction error at individual steps, implicitly assuming that improved model fidelity at each step directly translates into im-proved generation quality. However, diffusion-based generation proceeds as an iterative process, where the output of the denoiser at one step directly deter-mines the input to the next, allowing small local errors to accumulate along the sampling trajectory [24]. This suggests that quantization error interacts with the sampling process rather than remaining purely step-local. Motivated by these observations, we revisit quantized diffusion sampling from a distributional perspective. Quantization error can be viewed as implicit noise injected into the denoiser output at each step [66], which is not explicitly ac-counted for by standard samplers. Thus, even if model-level quantization im-proves per-step prediction fidelity, it does not guarantee correct target marginals at each timestep. Accumulated perturbations can shift the sampling trajectory and degrade sample quality. This suggests correcting the sampling dynamics to preserve marginal distri-bution, rather than only enforcing step-level denoiser fidelity. Accordingly, we in-troduce Quantization-Aware Drift Correction (Q-Drift) , a sampler-side method that models quantization error as an implicit Gaussian perturbation and derives a first-order drift correction from diffusion SDE principles [19, 53] to restore distributional correctness during sampling. Unlike prior PTQ approaches, Q-Drift is orthogonal to model-level quanti-zation techniques. Rather than replacing or modifying existing PTQ methods, it complements them by addressing quantization-induced errors that arise dur-ing sampling. As a result, Q-Drift can be seamlessly combined with methods such as SVDQuant or MixDQ [23, 69] and does not depend on specific model architectures or quantization schemes. Empirically, we show that Q-Drift con-sistently recovers a meaningful fraction of quantization-induced performance degradation across different models and samplers. Through extensive analysis, we show that Q-Drift calibration remains effective with as few as 5 paired full-precision/quantized calibration runs. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 3
+
+# 2 Related Work 
+
+2.1 Diffusion Sampling and SDE Perspectives 
+
+Diffusion models generate image samples by iteratively denoising from a simple Gaussian and have become a central paradigm for high-fidelity generation [7, 16,35,49]. A continuous-time formulation connects diffusion sampling to reverse-time SDEs and the probability-flow ODE [2, 11, 51, 53], providing a principled lens for discretization, schedules, and the accuracy–efficiency tradeoff in infer-ence [19, 48]. This perspective has driven extensive research on inference-time acceleration without retraining, including improved discretization schemes and higher-order ODE/SDE solvers [28, 31, 32, 50, 62, 67, 70]. In parallel, distillation-based methods have produced few-step generators and consistency mappings, ranging from progressive distillation and consistency/latent consistency mod-els to recent adversarial and distribution-matching objectives [33, 45, 46, 52, 65]. While these lines of work substantially reduce the number of function evalua-tions (NFEs), deployment still faces significant memory and compute costs for large diffusion backbones [37, 42], motivating complementary compression and acceleration techniques discussed below. 
+
+2.2 Quantizing Diffusion Models 
+
+PTQ is a standard approach for compressing large generative models and is par-ticularly attractive for diffusion models because it avoids retraining [26, 34, 47]. A key challenge is that activation and output statistics shift substantially across denoising timesteps, and sequential generation can amplify small approximation errors, making calibration and distribution alignment central to maintaining generation quality [6, 13, 17, 24–26, 30, 47, 58]. Accordingly, many PTQ methods adapt reconstruction-based quantization (e.g., block-wise reconstruction) to the multi-timestep setting and combine it with diffusion-specific calibration or mixed-precision choices [26, 27, 47, 54, 58]. Beyond calibration, specialized designs tar-get temporal/conditioning pathways and modality-specific backbones, including temporal feature alignment and extensions to video diffusion quantization [17,56]. For text-to-image diffusion, additional sensitivity arises in cross-attention and conditioning modules, motivating progressive calibration/activation-relaxation and metric-driven mixed-precision schemes, as well as distribution-aware group-ing [36, 44, 55, 69]. When PTQ quality drops at aggressive bitwidths, QAT or se-lective fine-tuning becomes increasingly important, including efficient fine-tuning and low-rank adaptation for low-bit diffusion models [10, 12, 43, 59]. As diffusion backbones have moved from U-Nets to transformer-based archi-tectures (DiTs), quantization research has extended to transformer-specific sen-sitivity analyses and PTQ pipelines designed for timestep-dependent behaviors and structured outliers [3, 5, 8, 29, 37, 60, 63]. For aggressive settings (e.g., 4-bit), recent work increasingly emphasizes outlier- and distribution-aware quantization to preserve quality under stronger compression [22, 23, 68]. 4 S. Ryu et al. 
+
+2.3 Quantization Noise Compensation During Sampling 
+
+Since diffusion sampling is a sequential procedure where each denoiser output becomes the next-step input, small approximation errors can propagate and am-plify across timesteps [24]. For quantized diffusion models, a growing body of work explicitly models quantization noise during sampling and proposes step-or timestep-dependent correction mechanisms. PTQD [13] decomposes quantiza-tion noise into correlated and residual components and compensates the induced mean/variance mismatch in the denoising process. TAC-Diffusion [64] proposes a timestep-aware correction that dynamically adjusts quantization errors dur-ing inference. D 2-DPM [66] introduces a dual denoising mechanism to mitigate quantization-induced noise accumulation during iterative sampling. Our work is most closely related to sampler-time compensation approaches, but differs in objective and mechanism. Rather than improving per-step recon-struction fidelity of the quantized denoiser, we focus on restoring the marginal dis-tribution at each timestep by analytically correcting the drift under quantization-induced perturbations. This makes our approach complementary to other model-level PTQ methods. 
+
+# 3 Preliminaries 
+
+3.1 Diffusion Sampling as a Generalized SDE 
+
+A forward diffusion process can be written as an Itô stochastic differential equa-tion (SDE) 
+
+dx = f (x, t ) dt + g(t) dwt, (1) where wt is a standard Wiener process, f (·, t ) is the drift coefficient, and g(t) is the diffusion coefficient [16, 49, 53]. Sampling corresponds to simulating the associated reverse-time dynamics. As such, stochastic sampling follows the reverse-time SDE 
+
+dx =
+
+h
+
+f (x, t ) − g(t)2∇x log pt(x)
+
+i
+
+dt + g(t) d ¯wt, (2) where pt(x) denotes the marginal density at time t and ¯wt is a Wiener process where time flows backward [2, 11, 53]. Deterministic sampling is often expressed by the probability flow ODE whose marginal distributions match those of the reverse-time SDE [53], i.e., 
+
+dx =
+
+h
+
+f (x, t ) − 12 g(t)2∇x log pt(x)
+
+i
+
+dt.  (3) In practice, the score ∇x log pt(x) is approximated by a trained model via score matching [18, 51, 53]. Following the common noise-prediction parameteri-zation, we use 
+
+sθ (xt, t ) ≜ − ϵθ (xt, t )
+
+σt
+
+, (4) Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 5
+
+where σt denotes the noise level (standard deviation) at time t, and ϵθ (xt, t )
+
+denotes the model-predicted noise in the forward process xt = x0 + σtϵ, with 
+
+ϵ ∼ N (0, I) [16, 19, 53]. We commonly refer to this noise-prediction form—i.e., parameterizing the score via a model that directly predicts the additive noise 
+
+ϵθ —as the ϵ-parameterization. We adopt the generalized SDE framework introduced by [19]. Following their noise-level parameterization, we express the target marginals pt(x) in terms of the noise level σ(t) and identify pt(x) ≡ p(x; σ(t)) . Here, σ(t) is a monotonically decreasing noise schedule and ˙σ(t) = dσ (t)/dt denotes its time derivative. The corresponding probability flow ODE, which deterministically transports samples while preserving the target marginals, is given by [19, 53] 
+
+dx = − ˙σ(t)σ(t)∇x log p(x; σ(t)) dt.  (5) A key insight of [19] is that this deterministic dynamics can be augmented with Langevin diffusion processes without altering the target marginals. Specifi-cally, the generalized reverse-time SDE is expressed as 
+
+dx = − ˙σ(t)σ(t)∇x log p(x; σ(t)) dt 
+
+− β(t)σ(t)2∇x log p(x; σ(t)) dt 
+
++ p2β(t) σ(t) dwt,
+
+(6) where β(t) ≥ 0 is a free function controlling the amount of stochasticity, and wt
+
+denotes a standard Wiener process [19]. Different choices of β(t) induce different sampling trajectories, yet all SDEs in this family share the same target marginals 
+
+pt(x) [19]. The role of β(t) can be interpreted as controlling the rate of noise replace-ment during sampling. Using the standard denoising identity (a Tweedie-style relation) [1,9,57], the additional Langevin drift in Eq. (6) acts as a deterministic noise decay, while the paired diffusion term injects fresh Gaussian noise at a matching rate [19, 21, 41]. As a result, β(t) directly controls the sampler stochas-ticity. It interpolates between deterministic probability-flow sampling ( β(t) = 0 )and increasingly stochastic dynamics, while leaving the target marginal distribu-tion at each noise level unchanged [19]. 
+
+3.2 Euler–Maruyama Discretization 
+
+Consider a general Itô SDE of the form 
+
+dx = a(x, t ) dt + b(t) dwt, (7) where a(x, t ) and b(t) denote the drift and diffusion terms, respectively. Given a time grid {ti}Ni=0 with step sizes ∆t i ≜ ti+1 − ti, the Euler–Maruyama discretiza-tion [20] yields the update 
+
+xi+1 = xi + a(xi, t i) ∆t i + b(ti)p|∆t i| zi, (8) 6 S. Ryu et al. 
+
+where zi ∼ N (0, I). The drift term scales with ∆t i, while the diffusion term scales with p|∆t i|.When applied to the reverse-time SDE of diffusion models in Eq. (2) [53], where a(x, t ) = f (x, t ) − g(t)2sθ (x, t ) and b(t) = g(t), the Euler–Maruyama discretization yields 
+
+xi+1 = xi +
+
+h
+
+f (xi, t i) − g(ti)2 sθ (xi, t i)
+
+i
+
+∆t i + g(ti)p|∆t i| zi. (9) 
+
+3.3 Empirical Joint Gaussianity of Quantization Noise and Output 
+
+We follow the empirical characterization of quantization effects reported in D 2-DPM [66]. At a fixed timestep (equivalently, a fixed noise level), let ϵ(t) 
+
+> θ
+
+denote the full-precision noise prediction output and ˆϵ(t) 
+
+> θ
+
+its quantized counterpart. We define the quantization noise as 
+
+∆ϵ (t) 
+
+> θ
+
+≜ ˆϵ(t) 
+
+> θ
+
+− ϵ(t) 
+
+> θ
+
+. (10) The authors of [66] report that, at each timestep, both the quantization noise and the quantized output are well-approximated by Gaussian distributions, i.e., 
+
+∆ϵ (t) 
+
+> θ
+
+≈ N  μ(t) 
+
+> ∆
+
+, Σ (t)
+
+> ∆
+
+, ˆϵ(t) 
+
+> θ
+
+≈ N  μ(t)ˆϵ , Σ (t)ˆϵ
+
+. (11) Moreover, they empirically observe a clear correlation between ˆϵ(t) 
+
+> θ
+
+and ∆ϵ (t) 
+
+> θ
+
+,and visualize that their joint density is approximately elliptical, suggesting a joint Gaussian approximation at each timestep. Accordingly, D 2-DPM models the joint distribution of the quantized output and quantization noise as 
+
+"
+
+ˆϵ(t)
+
+> θ
+
+∆ϵ (t)
+
+> θ
+
+#
+
+∼ N 
+
+"
+
+μ(t)ˆϵ
+
+μ(t)
+
+> ∆
+
+#
+
+,
+
+"
+
+Σ(t)ˆϵˆϵ Σ(t)ˆϵ∆ 
+
+Σ(t) 
+
+> ∆ˆϵ
+
+Σ(t)
+
+> ∆∆
+
+#! 
+
+. (12) Under the joint Gaussian model in Eq. (12), the conditional distribution ∆ϵ (t) 
+
+> θ
+
+|
+
+ˆϵ(t) 
+
+> θ
+
+= ˆ ϵ is Gaussian, i.e., 
+
+∆ϵ (t) 
+
+> θ
+
+| ˆϵ(t) 
+
+> θ
+
+= ˆ ϵ ∼ N  μ(t)cond (ˆ ϵ), Σ (t)cond 
+
+, (13) where the conditional mean and covariance admit closed-form expressions: 
+
+μ(t)cond (ˆ ϵ) = μ(t) 
+
+> ∆
+
++ Σ(t)
+
+> ∆ˆϵ
+
+ Σ(t)ˆϵˆϵ
+
+−1 ˆϵ − μ(t)ˆϵ
+
+, (14) 
+
+Σ(t)cond = Σ(t) 
+
+> ∆∆
+
+− Σ(t)
+
+> ∆ˆϵ
+
+ Σ(t)ˆϵˆϵ
+
+−1Σ(t)ˆϵ∆ . (15) Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 7
+
+3.4 Practical Simplifications for Joint Gaussian Modeling 
+
+Directly estimating the full covariance blocks in Eq. (12) is impractical due to the high dimensionality. Following D 2-DPM [66], we adopt calibration-friendly simplifications: (i) element-wise independence , using diagonal covariance blocks, while retaining per-element correlation between ˆϵ(t) 
+
+> θ
+
+and ∆ϵ (t) 
+
+> θ
+
+via a diagonal cross-covariance Σ(t)ˆϵ∆ (and its transpose); (ii) isotropic parameterization for each covariance block (e.g., Σ ≈ σ2I) to reduce the number of parameters and stabilize estimation; and (iii) time-step-aware estimation , maintaining separate statistics for each t, since quantization effects vary across noise levels. These assumptions enable stable estimation from a small calibration set, which is crucial for practical PTQ settings. 
+
+# 4 Method 
+
+4.1 Overview 
+
+We aim to improve the distributional correctness of quantized diffusion sampling. As reviewed in Sec. 3.1–3.2, diffusion sampling is a discretized simulation of a reverse-time SDE (or its probability flow ODE), whose design is guided by pre-serving the target marginal distribution at each noise level. However, under PTQ, the denoiser output is perturbed at every step, and these step-local perturbations can accumulate and bias the sampling trajectory. Our key perspective is that quantization error behaves as an implicit noise injection that is not explicitly modeled by standard deterministic samplers. Mo-tivated by the empirical Gaussianity and correlation structure reported in D 2-DPM (Sec. 3.3–3.4), we estimate a lightweight timestep-aware statistic—the con-ditional variance of the quantization noise—and use it to derive a paired drift correction from the marginal-preserving generalized SDE family in Eq. (6). This yields Q-Drift , a one-line modification to common samplers that better preserves the intended marginals without retraining. 
+
+4.2 Derivation for a First-Order Euler Sampler 
+
+We now derive Q-Drift by (i) reparameterizing the marginal-preserving gener-alized SDE family (Eq. (6)) in terms of the noise level σ; (ii) showing that its deterministic component recovers the standard Euler sampler update used in practice; and (iii) interpreting quantization error as an additional one-step vari-ance that can be compensated by the paired drift term. 
+
+σ-parameterized marginal-preserving SDE family. Starting from Eq. (6) and using the noise-level parameterization σ = σ(t) with dσ = ˙ σ(t) dt , we can repa-rameterize the reverse-time dynamics in σ as 
+
+dx = −σ ∇x log p(x; σ) dσ − ˜βσ (σ) σ2 ∇x log p(x; σ) dσ + σ
+
+q
+
+2 ˜βσ (σ) dwσ , (16) 8 S. Ryu et al. 
+
+where ˜βσ (σ) ≜ β(t)/(− ˙σ(t)) ≥ 0, and wσ is a Wiener process indexed by σ
+
+(so Var( dwσ ) = |dσ |). Crucially, ˜βσ simultaneously controls the injected noise (Langevin diffusion) and the paired deterministic noise decay (Langevin drift) that preserves the same marginals [19]. 
+
+Euler sampler from the probability-flow ODE. Setting ˜βσ (σ) = 0 in Eq. (16) yields the probability-flow ODE in σ:
+
+dx = −σ ∇x log p(x; σ) dσ.  (17) Under the ϵ-parameterization (Eq. (4)), we obtain dx = ϵθ (x, σ, c ) dσ . Applying the Euler–Maruyama discretization (Eq. (8)) to Eq. (17) gives 
+
+xi+1 = xi + ∆σ i ϵθ (xi, σ i, c ), (18) which matches standard Euler samplers under ϵ-prediction [19]. 
+
+Quantization as an implicit one-step noise. With post-training quantization, the sampler uses ˆϵθ = ϵθ + ∆ϵ . Substituting this into Eq. (18) gives 
+
+xi+1 = xi + ∆σ i ϵθ (xi, σ i, c ) + ∆σ i ∆ϵ i, (19) where ∆ϵ i denotes the quantization noise term. Conditioned on the quantized output, the last term behaves as an implicit stochastic increment with one-step variance (∆σ i)2Vσi . In Sec. 4.3, we detail how Vσi is estimated via calibration (Eq. (25)). 
+
+Matching the equivalent diffusion strength. To connect this implicit increment to Eq. (16), consider an Euler–Maruyama step of the diffusion term in Eq. (16), whose diffusion coefficient is σi
+
+q
+
+2 ˜βσ,i , i.e., 
+
+xi+1 = xi + ( · · · )∆σ i + σi
+
+q
+
+2 ˜βσ,i 
+
+p|∆σ i| zi, (20) where zi ∼ N (0, I). Matching its injected variance σ2 
+
+> i
+
+· 2 ˜βσ,i · | ∆σ i| with the implicit variance (∆σ i)2Vσi yields 
+
+˜βσ,i = |∆σ i|
+
+2σ2
+
+> i
+
+Vσi . (21) 
+
+Marginal-preserving paired drift correction. In Eq. (16), introducing noise injec-tion with ˜βσ,i also introduces the paired deterministic noise-decay term along the same score direction, which preserves the same marginals [19]. Under the 
+
+ϵ-parameterization (Eq. (4)), the paired drift is exactly aligned with the origi-nal drift direction (i.e., the Euler update direction). As a result, compensating for the effective diffusion in Eq. (21) amounts to scaling the deterministic Euler update by a factor of (1 + ci), where 
+
+ci ≜ ˜βσ,i σi = |∆σ i|
+
+2σi
+
+Vσi . (22) Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 9
+
+Final Q-Drift update. The final Q-Drift step is 
+
+xi+1 = xi + ∆σ i (1 + ci) ˆ ϵθ (xi, σ i, c ), with ci = |∆σ i|
+
+2σi
+
+Vσi . (23) This modification is the deterministic marginal-preserving correction implied by the generalized SDE family (Eq. (16)) and requires only the precomputed Vσi .
+
+Extension to various samplers. The same drift-rescaling principle can be derived for other samplers, including the Flow-matching sampler and DPM-Solver(++). We provide derivations and scope discussion for these samplers in the supple-mentary material. 
+
+4.3 Calibration: Estimating the Conditional Variance Statistic 
+
+We now describe the calibration procedure to estimate the step-wise statistic 
+
+Vσi . Let ϵθ (x, σ, c ) denote the full-precision noise prediction at noise level σ with conditioning c, and let ˆϵθ (x, σ, c ) be its quantized counterpart. At a discrete noise level σi, we define the quantization noise 
+
+∆ϵ i ≜ ˆϵθ (x, σ i, c ) − ϵθ (x, σ i, c ). (24) On a calibration set, we record paired outputs (ϵθ , ˆϵθ ) along a full-precision sampling trajectory. Q-Drift uses a step-wise statistic that quantifies the residual variance of the implicit perturbation induced by quantization noise: 
+
+Vσi ≜ E
+
+h
+
+Var  ∆ϵ i | ˆϵθ (x, σ i, c )i
+
+. (25) In our implementation, we estimate Vσi per latent channel and apply the re-sulting correction factors channel-wise during sampling. We observe meaningful channel-to-channel variation in the calibrated values, and channel-wise correc-tion is empirically more robust than using a single scalar per step. 
+
+4.4 Algorithm 
+
+Algorithm 1 summarizes the overall Q-Drift procedure, including offline calibra-tion and online sampling. 
+
+# 5 Experiments 
+
+5.1 Experimental Setup 
+
+Models. Following [23], we evaluate Q-Drift on six text-to-image models spanning DiT and U-Net backbones. The DiT models are FLUX.1-dev (20 steps), its distilled variant FLUX.1-schnell (4 steps), PixArt-Σ [4] (20 steps), and Sana [61] (20 steps). The UNet models are SDXL [39] (30 steps) and its distilled variant SDXL-Turbo [46] (4 steps). Unless otherwise noted, we use each model’s default inference configuration. 10 S. Ryu et al. 
+
+Algorithm 1 Q-Drift: Quantization-Aware Drift Correction (Calibration + Sam-pling) 
+
+1: Input: full-precision denoiser ϵθ , quantized denoiser ˆϵθ , conditioning c, schedule 
+
+{σi}Mi=0 , calibration set Dcal , number of samples N .2: Output: {x(n) 
+
+> σM
+
+}Nn=1 .3: Offline calibration. 
+
+4: for each conditioning ccal ∈ D cal do 
+
+5: Sample xσ0 ∼ N (0, σ 20 I).6: for i = 0 to M − 1 do 
+
+7: ϵ ← ϵθ (xσi , σ i, c cal )
+
+8: ˆϵ ← ˆϵθ (xσi , σ i, c cal )
+
+9: ∆ϵ ← ˆϵ − ϵ
+
+10: Store paired outputs (ˆ ϵ, ∆ϵ ) at σi
+
+11: ∆σ i ← σi+1 − σi
+
+12: xσi+1 ← xσi + ∆σ i ϵ
+
+13: end for 
+
+14: end for 
+
+15: for i = 0 to M − 1 do 
+
+16: Fit the Gaussian model to stored pairs at σi (Sec. 3.3–3.4) 17: Compute channel-wise Vσi (Eq. (25)) 18: end for 
+
+19: Online sampling (first-order Euler sampler). 
+
+20: for n = 1 to N do 
+
+21: Sample x(n) 
+
+> σ0
+
+∼ N (0, σ 20 I).22: for i = 0 to M − 1 do 
+
+23: ∆σ i ← σi+1 − σi
+
+24: ˆϵ ← ˆϵθ (x(n) 
+
+> σi
+
+, σ i, c )
+
+25: ci ← |∆σ i|
+
+2σi
+
+Vσi (channel-wise) 26: x(n) 
+
+> σi+1
+
+← x(n) 
+
+> σi
+
++ ∆σ i
+
+ (1 + ci) ⊙ ˆϵ
+
+27: end for 
+
+28: end for 
+
+29: return {x(n) 
+
+> σM
+
+}Nn=1 .
+
+Samplers. We use each model’s standard sampler: flow-matching for FLUX.1-dev and FLUX.1-schnell, first-order Euler for SDXL and SDXL-Turbo, and DPM-Solver++(2M, midpoint) for PixArt-Σ and Sana following their official pipelines [31]. 
+
+Datasets. Following the SVDQuant protocol [23], we sample 5K prompts from MJHQ-30K [38] for calibration and 5K for evaluation. The two subsets are dis-joint (different random seeds), and all methods are evaluated on the same eval-uation subset for fair comparison. The 5K calibration split is used to ensure stable and reliable main result re-porting. Calibration efficiency under much smaller calibration subsets is analyzed separately in Sec. 5.4. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 11 
+
+Baseline quantization methods. Our quantized baselines are SVDQuant [23] and MixDQ [69]. We select them as representative recent PTQ methods for text-to-image diffusion model with publicly available implementations. 
+
+Compared variants. We report three variants for each model: (1) FP: the original model executed in full precision; (2) Quantized: the quantized model specified in the model column; (3) Q-Drift: our method applied on top of the same quantized model at sampling time. Q-Drift does not introduce fine-tuning and does not modify network weights; it only corrects the sampler dynamics. 
+
+Metrics. We measure both image fidelity and prompt alignment. For fidelity, we report FID (lower is better) [15], computed on images generated from the MJHQ prompt set. For prompt alignment, we report CLIP Score (higher is better) [14, 40]. We additionally report PSNR, LPIPS, and SSIM for similarity between each method’s outputs and the FP outputs. 
+
+Comparison with D 2-DPM. We additionally compare with a D 2-DPM-style bias correction that subtracts the conditional mean in Eq. (14) [66] in the supplemen-tary material. In our text-to-image settings, this method is often detrimental, leading to higher FID. 
+
+5.2 Main Results 
+
+Table 1 summarizes results for the full-precision baseline, the quantized base-line, and the quantized baseline with a Q-Drift-augmented sampler across di-verse model families and quantization settings. Q-Drift improves FID over the corresponding quantized baseline in all evaluated settings, regardless of diffu-sion backbone, PTQ method, or sampler. The effect is particularly clear when viewed in terms of recovery from quantization-induced degradation. For exam-ple, for SDXL-Turbo under SVDQuant W3A4, Q-Drift reduces FID from 29.33 to 27.75, moving the quantized model closer to the full-precision reference of 24.77. On PixArt-Σ, where aggressive quantization causes larger degradation, Q-Drift yields a larger absolute gain, lowering FID from 48.85 to 44.26. Even in a comparatively robust setting such as Sana, Q-Drift improves FID from 17.32 to 16.52, recovering roughly 60% of the gap between the quantized and full-precision models. Additional results under milder settings are provided in the supplementary material. CLIP scores remain essentially unchanged, suggesting that Q-Drift preserves prompt alignment while improving distributional fidelity. Since Q-Drift applies only a lightweight, step-wise drift rescaling, it incurs negli-gible inference overhead. We emphasize that Q-Drift is not designed to minimize per-sample error with respect to the FP output, but rather to preserve the sampling marginals through step-wise drift correction. As a result, because the correction can alter the generation trajectory early in denoising, similarity met-rics computed with respect to FP outputs (PSNR/LPIPS/SSIM) may be worse than those of the quantized baseline even when distributional fidelity (e.g., FID) improves. 12 S. Ryu et al. 
+
+Table 1: Main results on MJHQ-30K under aggressive quantization settings. SVDQuant rows use W3A4 quantization, and MixDQ row uses W4A8 quantization. Boldface in the FID column indicates the lower value between the quantized baseline and Q-Drift for each setting. Model Method FID ↓ CLIP ↑ PSNR ↑ LPIPS ↓ SSIM ↑
+
+FLUX.1-dev FP 20.68 25.80 – – –(SVDQuant W3A4) Quantized 24.14 24.66 16.13 0.491 0.621 Q-Drift 24.05 24.71 16.15 0.488 0.623 FLUX.1-schnell FP 19.18 26.55 – – –(SVDQuant W3A4) Quantized 23.10 25.43 13.75 0.529 0.519 Q-Drift 22.21 25.53 13.79 0.518 0.530 SDXL FP 17.20 27.40 – – –(SVDQuant W3A4) Quantized 31.73 26.39 14.88 0.549 0.552 Q-Drift 30.43 26.37 14.88 0.547 0.551 SDXL-Turbo FP 24.77 26.38 – – –(SVDQuant W3A4) Quantized 29.33 26.38 14.31 0.455 0.456 Q-Drift 27.75 26.38 14.35 0.456 0.457 SDXL-Turbo FP 24.77 26.38 – – –(MixDQ W4A8) Quantized 28.14 25.87 12.59 0.584 0.352 Q-Drift 27.16 25.86 12.64 0.586 0.357 PixArt-Sigma FP 16.52 26.71 – – –(SVDQuant W3A4) Quantized 48.85 24.41 13.53 0.547 0.503 Q-Drift 44.26 24.54 13.60 0.544 0.504 Sana FP 15.98 27.30 – – –(SVDQuant W3A4) Quantized 17.32 27.19 16.71 0.284 0.616 Q-Drift 16.52 27.22 16.68 0.286 0.612 
+
+5.3 Qualitative Visual Comparisons 
+
+We provide representative visual comparisons for SDXL (SVDQuant W3A4) (Fig. 1) under identical prompts and initial noise. Across examples, Q-Drift yields subtle but consistent improvements in fine details or structure relative to the quantized baseline. For example, in the first three rows, Q-Drift generally sharpens local image details. In the fourth row, it resolves an anatomically im-plausible leg-overlap artifact visible in the quantized baseline. In the fifth row, it yields a structure that differs noticeably from both FP16 and the quantized sample while preserving prompt alignment and perceptual quality. This behavior is consistent with our quantitative finding that similarity metrics computed with respect to FP outputs can be worse than those of the quantized baseline. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 13     
+
+> FP Quantized Q-Drift Quantized zoom Q-Drift zoom
+
+Fig. 1: Visual comparisons on SDXL (SVDQuant W3A4). For readability, prompt texts are provided in the supplementary material. Zoom is shown only for rows where local detail comparison is informative. 
+
+5.4 Calibration Efficiency: Estimating Correction Factors from Small Calibration Subsets 
+
+In principle, estimating a timestep-dependent statistic may suggest the need for a large calibration set. In Q-Drift, calibration affects inference only through the per-step correction factors ci (Eq. (22) and Eq. (23)). Thus, calibration sample-efficiency reduces to how reliably {ci} can be estimated from small paired subsets. We evaluate this on SDXL (SVDQuant W3A4): using the standard 5K-prompt calibration run as a reference {c(ref)  
+
+> i
+
+}, we construct 200 nested subsamples at 
+
+K ∈ { 50 , 10 , 5, 1} and re-estimate {ci}. Fig. 2 shows that even for small sub-14 S. Ryu et al. 
+
+sets ( K = 5 ), the min–max envelopes across 200 subsamples remain tight over timesteps, indicating low sensitivity to subset choice. We additionally verify in the supplementary material that these small-subset estimates preserve down-stream quality.        
+
+> Fig. 2: Sample-efficiency of the correction factor. Per-timestep correction factor
+> ci(Eq. (22)) for SDXL (SVDQuant W3A4, 30 steps). The solid curve is the reference es-timate from the standard 5K calibration run. For each calibration size K∈ { 50 ,10 ,5,1},the shaded band shows the min–max envelope over 200 nested subsamples, and the dashed line shows the median. Channel-wise values are averaged into a single scalar for visualization.
+
+# 6 Conclusion 
+
+We presented Q-Drift, a quantization-aware drift correction that revisits quan-tized diffusion sampling from a distributional perspective. As a drop-in method agnostic to sampler, architecture, and baseline PTQ method, it generally im-proves FID over quantized baselines while keeping CLIP scores comparable. Q-Drift adds negligible inference overhead and requires only a small number of paired full-precision/quantized calibration runs. Q-Drift currently relies on calibration-friendly assumptions such as simplified covariance structure, and fu-ture work will relax these assumptions with richer adaptive noise models while retaining calibration efficiency. Code will be released. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 15 
+
+# Supplementary Material A Additional Derivations and Extensions 
+
+A.1 Extension to Flow-Matching Sampler 
+
+Many flow-matching and rectified-flow samplers use a first-order update of the form 
+
+xi+1 = xi + ∆σ i vθ (xi, σ i, c ), (26) where the model output is interpreted as a velocity field vθ at noise level σ.This has the same numerical role as the ϵ-prediction in the Euler update (as in Eq. (18)). 
+
+Q-Drift for Flow-matching. With quantization, the sampler uses ˆvθ = vθ + ∆v .Applying the same derivation with ˆϵθ replaced by ˆvθ and with Vσi defined as in Eq. (25) (with ∆v i in place of ∆ϵ i) yields the same correction factor ci = |∆σ i| 
+
+> 2σi
+
+Vσi
+
+(using the same drift-rescaling form as Eq. (22)), and the corresponding Q-Drift update becomes 
+
+xi+1 = xi + ∆σ i (1 + ci) ˆ vθ (xi, σ i, c ). (27) 
+
+Scope of the equivalence. This extension should be viewed as a heuristic. Un-less the learned velocity corresponds to the probability-flow ODE for the same marginal path p(x; σ) used in our SDE-based derivation, marginal preservation is not guaranteed. 
+
+A.2 Marginal-Preserving Q-Drift for DPM-Solver(++) in Log-SNR Form 
+
+We derive a marginal-preserving Q-Drift correction for DPM-Solver(++) sam-plers [31] by rewriting the Karras marginal-preserving generalized SDE fam-ily [19] in the log-SNR parameterization and matching it to the λ-form exact solution used by DPM-Solver(++). The derivation follows the same logic as our Euler-based development in Sec. 4.2: it interprets quantization as an implicit diffusion with matched variance and applies the corresponding paired drift to preserve the same marginals. 
+
+Log-SNR notation and VE reparameterization. We use the standard DPM-Solver notation for the forward marginal: 
+
+xt = αt x0 + σt ϵ, ϵ ∼ N (0, I), (28) and define the log-SNR 
+
+λt ≜ log αt
+
+σt
+
+⇐⇒ σt
+
+αt
+
+= e−λt . (29) 16 S. Ryu et al. 
+
+To match the “noise-level” parameterization of the Karras family, we work in the normalized variable yt ≜ xt/α t, for which 
+
+yt = x0 + ¯ σt ϵ, ¯σt ≜ σt
+
+αt
+
+= e−λt . (30) Thus, the trajectory in y-space follows a VE-type marginal path [53] (unit signal scale, noise level ¯σ). 
+
+Karras generalized family in λ (in y-space). Applying the noise-level reparam-eterized generalized SDE in Eq. (6) to the y-space VE path with noise level ¯σ
+
+gives 
+
+dy− = −¯σ ∇y log p(y; ¯ σ) d¯σ − ˜β¯σ (¯ σ) ¯ σ2 ∇y log p(y; ¯ σ) d¯σ + ¯ σ
+
+q
+
+2 ˜β¯σ (¯ σ) dw¯σ (31) with Var( dw¯σ ) = |d¯σ|. Using ¯σ = e−λ, we have d¯σ = −¯σ dλ and |d¯σ| = ¯ σ|dλ |.Defining the λ-parameterized diffusion strength as ˜βλ(λ) ≜ ¯σ ˜β¯σ (¯ σ) ≥ 0 and using the ϵ-parameterization −¯σ∇y log p(y; ¯ σ) = ϵθ (y, λ, c ) (using the score-to-noise parameterization in Eq. (4)), we obtain the λ-parameterized marginal-preserving family: 
+
+dy− = −(1 + ˜βλ(λ)) ¯ σ(λ) ϵθ (y, λ, c ) dλ + ¯ σ(λ)
+
+q
+
+2 ˜βλ(λ) dwλ, (32) where Var( dwλ) = |dλ |. As in Eq. (6), ˜βλ simultaneously controls the injected diffusion and the paired drift that preserves the same marginals [19]. 
+
+Exact matching to the DPM-Solver(++) λ-form solution. Setting ˜βλ = 0 in Eq. (32) yields the y-space probability-flow ODE: 
+
+dy = −e−λ ϵθ (y, λ, c ) dλ.  (33) Integrating gives the exact solution 
+
+yt = ys −
+
+Z λs
+
+> λt
+
+e−λ ϵθ (yλ, λ, c ) dλ,  (34) which is precisely the λ-domain integral that DPM-Solver(++) approximates (via its closed-form coefficients in Eq. (8) and the multi-step update in Algo-rithm 2 of [31]) under an equivalent reparameterization. 4
+
+Implicit diffusion variance matching. Any DPM-Solver(++) update (single- or multi-step, order 1/2/3) can be written in y-space as 
+
+yi = yi−1 + X
+
+> j∈J i
+
+wi,j ˆϵθ,j , (35)          
+
+> 4DPM-Solver(++) typically presents the exact solution in the original xvariable using an xθ-parameterization; dividing by αyields the y-space form in Eq. (34) with the same integration limits in λ.
+
+Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 17 
+
+where the weights wi,j are the solver’s (known) quadrature coefficients for approx-imating the integral in Eq. (34), and ˆϵθ,j denotes the quantized model output at step j under the ϵ-parameterization. With quantization, ˆϵθ,j = ϵθ,j +∆ϵ j , and the perturbation on the update is ∆y(q) 
+
+> i
+
+= P 
+
+> j
+
+wi,j ∆ϵ j . Under the same conditional-independence simplification used in Sec. 3.4 and defining Vj ≜ E[Var( ∆ϵ j | ˆϵθ,j )] 
+
+as in Eq. (25), we approximate the injected variance by ignoring cross-step co-variances between {∆ϵ j } for tractability. The injected one-step variance is ap-proximated by 
+
+Var( ∆y(q) 
+
+> i
+
+) ≈ X
+
+> j∈J i
+
+w2 
+
+> i,j
+
+Vj . (36) On the other hand, the diffusion term in Eq. (32) is additive (state-independent), so its one-step increment over [λi−1, λ i] is exactly Gaussian with covariance 
+
+2 R λi
+
+> λi−1
+
+˜βλ(λ)¯ σ(λ)2 dλ I (Itô isometry). Approximating ˜βλ as piecewise constant on the step yields the exact injected variance ˜βλ,i |¯σ2 
+
+> i−1
+
+− ¯σ2 
+
+> i
+
+|, where ¯σi = e−λi .Matching the two variances yields 
+
+˜βλ,i =
+
+P 
+
+> j∈J i
+
+w2 
+
+> i,j
+
+Vj
+
+|¯σ2 
+
+> i−1
+
+− ¯σ2 
+
+> i
+
+| . (37) 
+
+Paired drift and the DPM-Solver Q-Drift factor. Introducing diffusion in Eq. (32) also introduces a paired drift term aligned with the deterministic probability-flow direction, exactly as in Eq. (16)–Eq. (22). Thus, the marginal-preserving correction is a drift rescaling of the solver update (following the same drift-rescaling form as Eq. (22)): 
+
+ci ≜ ˜βλ,i . (38) The corresponding marginal-preserving DPM-Solver Q-Drift step is 
+
+yi = yi−1 + (1 + ci) X
+
+> j∈J i
+
+wi,j ˆϵθ,j , xi = αi yi. (39) 
+
+Instantiation: DPM-Solver++(2M, midpoint). We instantiate the above generic construction for DPM-Solver++(2M) with the midpoint solver [31], assuming the network predicts noise ˆϵθ (xt, t, c ) (epsilon-parameterization). DPM-Solver++ operates in the xθ -parameterization, which is obtained from ˆϵθ via the standard conversion 
+
+ˆxθ,i ≜ xti − σti ˆϵθ,i 
+
+αti
+
+= yti − ¯σti ˆϵθ,i , ¯σti = σti
+
+αti
+
+= e−λti . (40) Let hi ≜ λti − λti−1 and ri ≜ hi−1/h i. The second-order multistep midpoint update (Algorithm 2 in [31]) can be written as 
+
+xti = σti
+
+σti−1
+
+xti−1 − αti
+
+ e−hi − 1 ˆDi, ˆDi =
+
+
+
+1 + 12ri
+
+
+
+ˆxθ,i −1 − 12ri
+
+ˆxθ,i −2,
+
+(41) 18 S. Ryu et al. 
+
+with the usual first-step warmup using the first-order update. In y-space, the stochastic perturbation induced by quantization enters only through the model outputs. Writing ˆϵθ,k = ϵθ,k + ∆ϵ k and using ∆ˆxθ,k = −¯σtk ∆ϵ k from Eq. (40), the one-step perturbation on y implied by Eq. (41) is 
+
+∆y(q) 
+
+> i
+
+=  e−hi − 1  
+
+1 + 12ri
+
+
+
+¯σti−1 ∆ϵ i−1 − 12ri
+
+¯σti−2 ∆ϵ i−2
+
+
+
+. (42) Thus, Eq. (36) specializes to two effective quadrature weights, 
+
+wi,i −1 =  e−hi − 1 
+
+1 + 12ri
+
+
+
+¯σti−1 , wi,i −2 = − e−hi − 1 12ri
+
+¯σti−2 , (43) yielding the closed-form diffusion-strength estimate (Eq. (37)) 
+
+˜βλ,i =
+
+ e−hi − 12
+
+
+
+1 + 12ri
+
+2
+
+¯σ2 
+
+> ti−1
+
+Vi−1 +
+
+ 12ri
+
+2
+
+¯σ2 
+
+> ti−2
+
+Vi−2
+
+
+
+|¯σ2 
+
+> ti−1
+
+− ¯σ2 
+
+> ti
+
+| , ci = ˜βλ,i .
+
+(44) Finally, the marginal-preserving Q-Drift correction rescales the deterministic solver increment in Eq. (41): 
+
+xti = σti
+
+σti−1
+
+xti−1 − (1 + ci) αti
+
+ e−hi − 1 ˆDi, (45) which is equivalent to applying Eq. (39) to the DPM-Solver++(2M, midpoint) quadrature. 
+
+# B Additional Experiments 
+
+Unless otherwise noted, all supplementary experiments follow the same setup as in the main experiments. 
+
+B.1 Additional Results (Milder Quantization Settings) 
+
+Table 2 reports additional results under milder quantization settings for SVDQuant and includes an additional PTQ method, ViDiT-Q [68]. Under these milder set-tings, the quantized baseline can already match or outperform full precision in FID, leaving less headroom for improvement. Accordingly, the gains from Q-Drift are mixed across settings. 
+
+B.2 Downstream Quality with Small Calibration Subsets 
+
+This subsection complements Sec. 5.4. There, we showed that the estimated timestep-wise correction factors {ci} vary little across nested subsamples. Here, we verify that this stability carries over to generation quality. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 19 
+
+Table 2: Additional results on MJHQ-30K (milder quantization settings). Rows labeled W4A4 use W4A4 quantization for SVDQuant; ViDiT-Q rows use W8A8 quantization. Model Method FID ↓ CLIP ↑ PSNR ↑ LPIPS ↓ SSIM ↑
+
+FLUX.1-dev FP 20.68 25.80 – – –(SVDQuant W4A4) Quantized 20.49 25.68 22.95 0.194 0.830 Q-Drift 20.55 25.68 22.98 0.193 0.830 FLUX.1-schnell FP 19.18 26.55 – – –(SVDQuant W4A4) Quantized 18.62 26.41 18.44 0.251 0.728 Q-Drift 18.69 26.44 18.42 0.251 0.727 SDXL FP 17.20 27.40 – – –(SVDQuant W4A4) Quantized 17.05 27.27 20.41 0.270 0.728 Q-Drift 17.17 27.29 20.41 0.270 0.727 SDXL-Turbo FP 24.77 26.39 – – –(SVDQuant W4A4) Quantized 24.75 26.37 18.44 0.242 0.656 Q-Drift 24.51 26.42 12.85 0.549 0.380 PixArt-Sigma FP 16.52 26.71 – – –(SVDQuant W4A4) Quantized 19.61 26.37 16.75 0.360 0.629 Q-Drift 19.65 26.36 16.71 0.368 0.619 PixArt-Sigma FP 16.52 26.71 – – –(ViDiT-Q W8A8) Quantized 15.67 26.65 21.11 0.176 0.774 Q-Drift 15.62 26.67 21.08 0.176 0.775 Sana FP 15.98 27.30 – – –(SVDQuant W4A4) Quantized 15.74 27.23 17.27 0.260 0.637 Q-Drift 15.68 27.24 17.16 0.270 0.626 
+
+To test whether estimates based on only five paired runs also preserve down-stream quality, we select a small set of representative K = 5 subsamples from the same pool of 200 and evaluate Q-Drift on the evaluation set. Using ∆c i ≜
+
+ci − c(ref)  
+
+> i
+
+defined in Sec. 5.4, we choose three stress-test cases: the subsets that maximize PTi=1 |∆c i| and maximize/minimize PTi=1 ∆c i, where T is the number of denoising steps. We then compare the quantized baseline (no correction), Q-Drift with the standard 5K-calibration reference, and Q-Drift with each selected 
+
+K = 5 calibration. Table 3 reports the resulting FID and CLIP score on the evaluation set. Even in the most deviated stress-test case, the K = 5 calibration remains clearly better than the quantized baseline in downstream quality. The three tested stress-test subsets achieve FID values of 31.06, 30.80, and 30.65, compared with 31.73 for the quantized baseline and 30.43 for the 5K-calibration reference, while CLIP scores remain nearly unchanged. 20 S. Ryu et al. Variant FID ↓ CLIP score ↑                      
+
+> Quantized baseline 31.73 26.39 Q-Drift (5K calibration reference) 30.43 26.37
+> K= 5 , max P
+> i|∆c i|31.06 26.36
+> K= 5 , min P
+> i∆c i30.80 26.37
+> K= 5 , max P
+> i∆c i30.65 26.37
+> Table 3: Downstream quality under small calibration subsets on SDXL (SVDQuant W3A4). The three K= 5 rows correspond to stress-test subset selections from the 200 nested subsamples used in Sec. 5.4.
+
+B.3 Comparison with D 2-DPM-style Bias Correction 
+
+We additionally examine a D 2-DPM-style bias correction [66], which subtracts the conditional mean implied by the joint Gaussian model of quantization noise (Sec. 3.3). Recall the quantization noise definition ∆ϵ ≜ ˆϵ − ϵ (Eq. (10)). Bias correction aims to approximate the full-precision prediction by subtracting the conditional mean of the quantization noise: 
+
+˜ϵ ≜ ˆϵ − E[∆ϵ | ˆϵ] = E[ϵ | ˆϵ] . (46) Under the joint Gaussian model (Eq. (12)), the conditional mean admits a closed form (Eq. (14)). With the isotropic parameterization in Sec. 3.4, it reduces to the same scalar linear regression applied element-wise: 
+
+μ(t)cond (ˆ ϵ) = μ(t) 
+
+> ∆
+
++ at
+
+ ˆϵ − μ(t)ˆϵ
+
+, at = Cov( ∆ϵ, ˆϵ)Var(ˆ ϵ) (47) 
+
+˜ϵ = ˆ ϵ − μ(t)cond (ˆ ϵ) = (1 − at)ˆ ϵ + atμ(t)ˆϵ − μ(t) 
+
+> ∆
+
+(48) Eq. (48) shows that when at > 0, bias correction primarily shrinks the effec-tive noise prediction by a factor (1 − at). In quantized diffusion sampling, at can become large at late timesteps, so the corrected prediction is no longer driven pri-marily by sample-specific model output and instead becomes strongly influenced by a mean shared across samples. Fig. 3 shows that the channel-wise average of 
+
+at grows substantially at late timesteps, reaching about 0.78 at the final timestep. Correspondingly, the coefficient on the quantized output, (1 − at), is reduced to roughly 0.22, which helps explain the observed quality degradation. 
+
+Results. Table 4 reports results on SDXL with SVDQuant W3A4 across four evaluation variants. Bias correction is consistently detrimental in this setting. FID worsens from 31.73 to 75.09 when applied to the quantized baseline, and remains far above the baseline even when Q-Drift is also enabled. 
+
+B.4 Empirical Validation of the Modeling Assumptions 
+
+We empirically validate the modeling assumptions introduced in Sec. 3.3–Sec. 3.4 on SDXL with SVDQuant W3A4, using the same 5K paired full-precision and Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 21                
+
+> Fig. 3: Late-timestep growth of aton SDXL (SVDQuant W3A4), shown as a channel-wise average. Variant FID ↓CLIP score ↑
+> Quantized baseline 31.73 26.39 Quantized + Q-Drift 30.43 26.37 Quantized + bias correction 75.09 25.60 Quantized + bias correction + Q-Drift 69.34 25.79
+> Table 4: Comparison with bias correction on SDXL (SVDQuant W3A4). Bias correc-tion subtracts the conditional mean, while Q-Drift denotes enabling our drift correction.
+
+quantized calibration set used for Q-Drift calibration. We examine three repre-sentative timesteps, chosen as the nearest discrete indices to 0.9T , 0.5T , and 
+
+0.1T .
+
+Marginal and joint Gaussianity. This experiment directly probes the joint Gaus-sian modeling assumption introduced in Sec. 3.3. Fig. 4 shows that the marginal distributions of ˆϵ(t) 
+
+> θ
+
+and ∆ϵ (t) 
+
+> θ
+
+at the selected coordinate are well-approximated by fitted Gaussians across timesteps. The corresponding joint densities are ap-proximately elliptical, with the fitted Gaussian ellipse capturing the dominant orientation and spread of the samples. These observations support the use of a timestep-wise joint Gaussian approximation as a practical model of (ˆ ϵ(t) 
+
+> θ
+
+, ∆ϵ (t) 
+
+> θ
+
+).We emphasize that this is an approximation rather than an exact distributional identity, but it is sufficiently accurate for the lightweight calibration setting tar-geted by Q-Drift. 
+
+Diagonal covariance as a tractable approximation. The more restrictive assump-tion in Sec. 3.4 is the diagonal approximation to the covariance blocks Σ(t)ˆϵˆϵ ,
+
+Σ(t)
+
+> ∆∆
+
+, and Σ(t)ˆϵ∆ . This simplification is practically necessary since with only 5K calibration samples, directly estimating a covariance block over a latent tensor of size C × H × W = 4 × 64 × 64 = 16 ,384 would be statistically unstable. In 22 S. Ryu et al.        
+
+> Fig. 4: Empirical validation of marginal and joint Gaussianity on SDXL (SVDQuant W3A4). Top: Histograms of ˆϵ(t)
+> θand ∆ϵ (t)
+> θat a latent coordinate, overlaid with fit-ted Gaussian curves. Bottom: The corresponding 2D joint densities with fitted Gaus-sian ellipses. All 1D and 2D visualizations are shown at the same latent coordinate,
+> (c, h, w ) = (0 ,64 ,64) .
+
+this regime, the ambient dimensionality already exceeds the number of available samples, so the resulting sample covariance would be severely underdetermined and its off-diagonal structure would be poorly estimated. To assess whether the off-diagonal entries are negligible in practice, we com-pare the empirical distribution of absolute correlations from random off-diagonal pairs against a shuffled baseline. The shuffled baseline is obtained by randomly permuting a variable in each pair, which preserves the marginal distribution of each element while removing pairwise dependence. This comparison is nec-essary because finite-sample estimation produces nonzero empirical correlations even under independence. Accordingly, the shuffled baseline estimates the finite-sample noise floor associated with the 5K calibration set, so agreement with this baseline indicates that the corresponding off-diagonal dependence is effectively negligible at the resolution supported by the available data. Fig. 5 reports three complementary checks: off-diagonal entries of Σ(t)ˆϵˆϵ , off-diagonal entries of Σ(t)
+
+> ∆∆
+
+,and off-diagonal cross-block entries of Σ(t)ˆϵ∆ for i̸ = j.Two observations are important. First, the off-diagonal entries of Σ(t)ˆϵˆϵ and the off-diagonal cross-block entries of Σ(t)ˆϵ∆ are generally close to the shuffled baseline. Second, the off-diagonal entries of Σ(t) 
+
+> ∆∆
+
+exhibit non-negligible dependence at the earliest, highest-noise timestep, while the gap to the shuffled baseline becomes much smaller at later timesteps. Therefore, the diagonal covariance model should be viewed as a calibration-friendly approximation rather than an exact descrip-Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 23 
+
+Fig. 5: Empirical validation of the diagonal-covariance simplification. For each selected timestep, we compare the distribution of absolute correlations from 10,000 random off-diagonal pairs, with each correlation estimated over 5,000 calibration samples, against a shuffled baseline. The shuffled baseline is obtained by randomly permuting a variable in each pair. In each panel, the inset reports the mean, median (med), and 95th percentile (p95) of the absolute-correlation distribution, listed as actual vs shuffled. Top: off-diagonal entries of Σ(t)ˆϵˆϵ . Middle: off-diagonal entries of Σ(t)
+
+> ∆∆
+
+. Bottom: off-diagonal cross-block entries of Σ(t)ˆϵ∆ for i̸ = j.
+
+tion. Even so, it remains sufficiently faithful to capture the dominant low-order statistics needed by Q-Drift. 
+
+Channel-wise isotropic parameterization of diagonal covariance blocks. In Sec. 4.2, the marginal-preserving correction requires a single variance statistic for each cor-rection unit. Concretely, the calibrated statistic Vσi and the resulting drift factor 
+
+ci in Eq. (22) are computed from one variance value for the corresponding block at each step. A single global scalar at each timestep would satisfy this require-ment, but is empirically too coarse. We therefore examine whether the diagonal statistics are relatively coherent within each channel while remaining distinct across channels. To assess this, we directly examine the diagonal entries within 24 S. Ryu et al. 
+
+Fig. 6: Empirical validation of channel-wise isotropic parameterization for diagonal covariance blocks. For each timestep and each diagonal covariance block, the marker denotes the channel-wise mean of the diagonal entries and the error bar denotes the within-channel standard deviation across spatial locations. This illustrates the practical channel-wise scalarization used to compute Vσi and the drift factor ci.
+
+each block through two complementary quantities: the spread of diagonal entries across spatial locations inside a channel, and the variation of their channel-wise means across the four latent channels. Fig. 6 reports these quantities for Σ(t)ˆϵˆϵ ,
+
+Σ(t)
+
+> ∆∆
+
+, and Σ(t)ˆϵ∆ at the three representative timesteps. Several consistent patterns emerge. In representative cases such as Σ(t) 
+
+> ∆∆
+
+at the high-noise timestep and Σ(t)ˆϵ∆ at the high-noise timestep, the diagonal entries within each channel cluster tightly around their channel mean, while the channel means remain visibly distinct. In the remaining cases, the within-channel spread is more pronounced, but the channel means still differ appreciably. Taken to-gether, these results suggest that a single global scalar would be overly coarse, whereas channel-wise block parameterization preserves a meaningful level of het-erogeneity while remaining stable enough to estimate from a small calibration set. Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 25 
+
+# C Prompts for the Qualitative Visual Comparisons 
+
+The prompts corresponding to the five rows in Fig. 1 are listed below in row order. Row 1: “pingüino con auriculares puestos subiendo las aletas en la piscina del hotel monge tibetano poniendole unos auriculares a un tigre blanco ultra realistic 3d photo v5.” Row 2: “Futuristic Lace dress, Fashion Concept, led lights. Sexy attractive pose. Hotpants. Beautiful, cinematic lighting, 8K, sharp details. Crystal clear feel, High quality, Fineart print, HQ. Tron vibes. Futuristic background. colourful. Hy-permaximalist, hyperdetailed, awardwinning fashion photography, professional colour grading, clean sharp focus. Clean details.” Row 3: “a moment in time of a stunning, cute couple, grinding on each other.” Row 4: “wellbuilt, beefy, stout, heavyset, mature man, wide shot, Realistic edi-torial photography session featuring a stocky very handsome in his fourties with light brown hair and fair skin, handsome, attractive, interesting background, art by Jean Baptiste Monge, Lisa frank, Boris Vallejo, shot photography by Wes Anderson, Nikon Photography Symmetrical Frontal Portrait, High Definition, 8K, 200mm.” Row 5: “an image of a shop owner for a sustainable business.” 26 S. Ryu et al. 
+
+# References 
+
+1. Alain, G., Bengio, Y.: What regularized auto-encoders learn from the data-generating distribution. Journal of Machine Learning Research 15 (1), 3563–3593 (2014) 2. Anderson, B.D.O.: Reverse-time diffusion equation models. Stochastic Processes and their Applications 12 (3), 313–326 (1982). https://doi.org/10.1016/0304-4149(82)90051-5 
+
+3. Bao, F., Nie, S., Xue, K., Cao, Y., Li, C., Su, H., Zhu, J.: All are worth words: A vit backbone for diffusion models. In: IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2023) 4. Chen, J., Ge, C., Xie, E., Wu, Y., Yao, L., Ren, X., Wang, Z., Luo, P., Lu, H., Li, Z.: Pixart-
+
+sigma : Weak-to-strong training of diffusion transformer for 4k text-to-image gen-eration. arXiv preprint arXiv:2403.04692 (2024), https://arxiv.org/abs/2403. 04692 
+
+5. Chen, L., Meng, Y., Tang, C., Ma, X., Jiang, J., Wang, X., Wang, Z., Zhu, W.: Q-dit: Accurate post-training quantization for diffusion transformers. In: IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2025) 6. Chu, H., Wu, W., Zang, C., Yuan, K.: Qncd: Quantization noise correction for diffusion models. In: ACM International Conference on Multimedia (ACM MM) (2024) 7. Dhariwal, P., Nichol, A.: Diffusion models beat gans on image synthesis. In: Ad-vances in Neural Information Processing Systems (NeurIPS) (2021) 8. Dong, Z., Zhang, S.Q.: Ditas: Quantizing diffusion transformers via enhanced ac-tivation smoothing. arXiv preprint arXiv:2409.07756 (2024), https://arxiv.org/ abs/2409.07756 
+
+9. Efron, B.: Tweedie’s formula and selection bias. Journal of the American Statistical Association 106 (496), 1602–1614 (2011). https://doi.org/10.1198/jasa.2011. tm11181 
+
+10. Guo, H., Li, Y., Dai, T., Xia, S.T., Benini, L.: Intlora: Integral low-rank adaptation of quantized diffusion models. arXiv preprint arXiv:2410.21759 (2024), https:// arxiv.org/abs/2410.21759 
+
+11. Haussmann, U.G., Pardoux, É.: Time reversal of diffusions. The Annals of Proba-bility 14 (4), 1188–1205 (1986). https://doi.org/10.1214/aop/1176992362 
+
+12. He, Y., Liu, J., Wu, W., Zhou, H., Zhuang, B.: Efficientdm: Efficient quantization-aware fine-tuning of low-bit diffusion models. arXiv preprint arXiv:2310.03270 (2023), https://arxiv.org/abs/2310.03270 
+
+13. He, Y., Liu, L., Liu, J., Wu, W., Zhou, H., Zhuang, B.: Ptqd: Accurate post-training quantization for diffusion models. In: Advances in Neural Information Processing Systems (2023) 14. Hessel, J., Holtzman, A., Forbes, M., Le Bras, R., Choi, Y.: CLIPScore: A reference-free evaluation metric for image captioning (2021), https://arxiv.org/abs/2104. 08718 
+
+15. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S.: GANs trained by a two time-scale update rule converge to a local nash equilibrium. In: Advances in Neural Information Processing Systems (NeurIPS) (2017) 16. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. In: Advances in Neural Information Processing Systems (NeurIPS) (2020) Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 27 17. Huang, Y., Gong, R., Wu, K., Liang, D., Wang, L., Lin, C.: Tfmq-dm: Temporal feature maintenance quantization for diffusion models. In: IEEE/CVF Conference on Computer Vision and Pattern Recognition (2024) 18. Hyvärinen, A.: Estimation of non-normalized statistical models by score matching. Journal of Machine Learning Research 6(24), 695–709 (2005) 19. Karras, T., Aittala, M., Aila, T., Laine, S.: Elucidating the design space of diffusion-based generative models. In: Advances in Neural Information Processing Systems (2022) 20. Kloeden, P.E., Platen, E.: Numerical Solution of Stochastic Differential Equations. Stochastic Modelling and Applied Probability, Springer (1992) 21. Langevin, P.: Sur la théorie du mouvement brownien. Comptes Rendus de l’Académie des Sciences (Paris) 146 , 530–533 (1908) 22. Lee, D., et al.: Dmq: Dissecting outliers of diffusion models for post-training quan-tization. In: IEEE/CVF International Conference on Computer Vision (ICCV) (2025) 23. Li, M., Lin, Y., Zhang, Z., Cai, T., Li, X., Guo, J., Xie, E., Meng, C., Zhu, J.Y., Han, S.: Svdquant: Absorbing outliers by low-rank components for 4-bit diffusion models. In: International Conference on Learning Representations (ICLR) (2025) 24. Li, Y., van der Schaar, M.: On error propagation of diffusion models. In: Interna-tional Conference on Learning Representations (ICLR) (2024) 25. Li, Y., Xu, S., Cao, X., Sun, X., Zhang, B.: Q-dm: An efficient low-bit quantized diffusion model. In: Advances in Neural Information Processing Systems (NeurIPS) (2023) 26. Li, Y., Zhang, T., Chen, J.: Q-diffusion: Quantizing diffusion models. In: Interna-tional Conference on Computer Vision (ICCV) (2023) 27. Li, Y., Gong, R., Tan, X., Yang, Y., Hu, P., Zhang, Q., Yu, F., Wang, W., Gu, S.: Brecq: Pushing the limit of post-training quantization by block reconstruction. arXiv preprint arXiv:2102.05426 (2021), https://arxiv.org/abs/2102.05426 
+
+28. Liu, L., Ren, Y., Lin, Z., Zhao, Z.: Pseudo numerical methods for diffusion models on manifolds. In: International Conference on Learning Representations (2022) 29. Liu, W., Zhang, S.Q.: Hq-dit: Efficient diffusion transformer with fp4 hybrid quan-tization. arXiv preprint arXiv:2405.19751 (2024), https://arxiv.org/abs/2405. 19751 
+
+30. Liu, X., Li, Z., Xiao, J., Gu, Q.: Eda-dm: Enhanced distribution alignment for post-training quantization of diffusion models. arXiv preprint arXiv:2401.04585 (2024), 
+
+https://arxiv.org/abs/2401.04585 
+
+31. Lu, C., Zhou, Y., Bao, F., Chen, J., Li, C., Zhu, J.: Dpm-solver: A fast ode solver for diffusion probabilistic model sampling. In: Advances in Neural Information Processing Systems (2022) 32. Lu, C., Zhou, Y., Bao, F., Chen, J., Li, C., Zhu, J.: Dpm-solver-v3: Improved diffusion ode solver with phase-aware parameterization. In: Advances in Neural Information Processing Systems (NeurIPS) (2023) 33. Luo, S., Tan, Y., Huang, L., Li, J., Zhao, H.: Latent consistency models: Synthesiz-ing high-resolution images with few-step inference. arXiv preprint arXiv:2310.04378 (2023), https://arxiv.org/abs/2310.04378 , openReview: duBCwjb68o 34. Nagel, M., Amjad, R.A., van Baalen, M., Louizos, C., Blankevoort, T.: Up or down? adaptive rounding for post-training quantization. In: International Conference on Learning Representations (ICLR) (2020) 35. Nichol, A., Dhariwal, P.: Improved denoising diffusion probabilistic models. In: International Conference on Machine Learning (ICML) (2021) 28 S. Ryu et al. 36. Pandey, N.P., Fournarakis, M., Patel, C., Nagel, M.: Softmax bias correction for quantized generative models. In: Proceedings of the IEEE/CVF International Con-ference on Computer Vision (ICCV) (2023) 37. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: IEEE/CVF International Conference on Computer Vision (ICCV) (2023) 38. PlaygroundAI: MJHQ-30K dataset. https : / / huggingface . co / datasets / playgroundai/MJHQ-30K (2024) 39. Podell, D., English, Z., Lacey, K., Blattmann, A., Dockhorn, T., Müller, J., Penna, J., Rombach, R.: SDXL: Improving latent diffusion models for high-resolution im-age synthesis. In: International Conference on Learning Representations (ICLR). OpenReview.net (2024) 40. Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J.: Learning transferable visual models from natural language supervision. In: International Conference on Machine Learning (ICML) (2021) 41. Roberts, G.O., Tweedie, R.L.: Exponential convergence of langevin distributions and their discrete approximations. Bernoulli 2(4), 341–363 (1996). https://doi. org/10.2307/3318418 
+
+42. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 10674– 10685 (2022) 43. Ryu, H., Lim, S., Shim, H.: Memory-efficient fine-tuning for quantized diffusion model. In: European Conference on Computer Vision (ECCV) (2024) 44. Ryu, H., Park, N., Shim, H.: Dgq: Distribution-aware group quantization for text-to-image diffusion models. In: International Conference on Learning Representa-tions (ICLR) (2025) 45. Salimans, T., Ho, J.: Progressive distillation for fast sampling of diffusion models. In: International Conference on Learning Representations (ICLR) (2022) 46. Sauer, A., Lorenz, D., Blattmann, A., Rombach, R.: Adversarial diffusion distilla-tion. In: European Conference on Computer Vision (ECCV) (2024) 47. Shang, Y., Wang, H., Li, Z., Chen, J.: Ptq4dm: Post-training quantization for dif-fusion models. In: IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (2023) 48. Shen, H., Zhang, J., Xiong, B., Hu, R., Chen, S., Wan, Z., Wang, X., Zhang, Y., Gong, Z., Bao, G., Tao, C., Huang, Y., Yuan, Y., Zhang, M.: Efficient diffusion models: A survey. arXiv preprint arXiv:2502.06805 (2025), https://arxiv.org/ abs/2502.06805 
+
+49. Sohl-Dickstein, J., Weiss, E.A., Maheswaranathan, N., Ganguli, S.: Deep unsu-pervised learning using nonequilibrium thermodynamics. In: Advances in Neural Information Processing Systems (NeurIPS) (2015) 50. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. In: International Conference on Learning Representations (2021) 51. Song, Y., Ermon, S.: Generative modeling by estimating gradients of the data distribution. In: Advances in Neural Information Processing Systems (2019) 52. Song, Y., Meng, C., Ermon, S.: Consistency models. In: International Conference on Machine Learning (ICML) (2023) 53. Song, Y., Sohl-Dickstein, J., Kingma, D.P., Kumar, A., Ermon, S., Poole, B.: Score-based generative modeling through stochastic differential equations. In: Interna-tional Conference on Learning Representations (ICLR) (2021) Q-Drift: Quantization-Aware Drift Correction for Diffusion Model Sampling 29 54. Sun, H., Tang, C., Wang, Z., Meng, Y., Ma, X., Zhu, W., et al.: Tmpq-dm: Joint timestep reduction and quantization precision selection for efficient diffusion mod-els. arXiv preprint arXiv:2404.09532 (2024), https://arxiv.org/abs/2404.09532 
+
+55. Tang, S., Wang, X., Chen, H., Guan, C., Wu, Z., Tang, Y., Zhu, W.: Post-training quantization with progressive calibration and activation relaxing for text-to-image diffusion models. In: European Conference on Computer Vision (ECCV) (2024) 56. Tian, S., Chen, H., Lv, C., Liu, Y., Guo, J., Liu, X., Li, S., Yang, H., Xie, T.: Qvd: Post-training quantization for video diffusion models. In: ACM International Conference on Multimedia (ACM MM) (2024) 57. Vincent, P.: A connection between score matching and denoising autoencoders. Neural Computation 23 (7), 1661–1674 (2011). https://doi.org/10.1162/NECO_ a_00142 
+
+58. Wang, C., Wang, Z., Xu, X., Tang, Y., Zhou, J., Lu, J.: Towards accurate post-training quantization for diffusion models. In: Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition (CVPR) (2024) 59. Wang, H., Shang, Y., Yuan, Z., Wu, J., Yan, J., Yan, Y.: Quest: Low-bit diffusion model quantization via efficient selective finetuning. arXiv preprint arXiv:2402.03666 (2024), https://arxiv.org/abs/2402.03666 
+
+60. Wu, J., Wang, H., Shang, Y., Shah, M., Yan, Y.: Ptq4dit: Post-training quanti-zation for diffusion transformers. In: Advances in Neural Information Processing Systems (NeurIPS) (2024) 61. Xie, E., Chen, J., Chen, J., Cai, H., Tang, H., Lin, Y., Zhang, Z., Li, M., Zhu, L., Lu, Y., Han, S.: Sana: Efficient high-resolution image synthesis with linear diffusion transformers. arXiv preprint arXiv:2410.10629 (2024), https://arxiv.org/abs/ 2410.10629 
+
+62. Xue, S., Yi, M., Luo, W., Zhang, S., Sun, J., Li, Z., Ma, Z.M.: Sa-solver: Stochastic adams solver for fast sampling of diffusion models. In: Advances in Neural Infor-mation Processing Systems (2023) 63. Yang, Y., Wang, J., Dai, X., Zhang, P., Zhang, H.: An analysis on quantizing diffusion transformers. arXiv preprint arXiv:2406.11100 (2024), https://arxiv. org/abs/2406.11100 
+
+64. Yao, Y., Tian, F., Chen, J., Lin, H., Dai, G., Liu, Y., Wang, J.: Timestep-aware correction for quantized diffusion models. In: European Conference on Computer Vision (2024) 65. Yin, T., et al.: Improved distribution matching distillation for fast image synthesis. In: Advances in Neural Information Processing Systems (NeurIPS) (2024) 66. Zeng, Q., Song, J., Zheng, H., Jiang, H., Song, M.: D 2-dpm: Dual denoising for quantized diffusion probabilistic models. In: AAAI Conference on Artificial Intelli-gence (2025) 67. Zhang, Q., Chen, Y.: Fast sampling of diffusion models with exponential integrator. In: International Conference on Learning Representations (ICLR) (2023) 68. Zhao, T., et al.: Vidit-q: Efficient and accurate quantization of diffusion trans-formers for image and video generation. In: International Conference on Learning Representations (ICLR) (2025) 69. Zhao, T., Ning, X., Fang, T., Liu, E., Huang, G., Lin, Z., Yan, S., Dai, G., Wang, Y.: Mixdq: Memory-efficient few-step text-to-image diffusion models with metric-decoupled mixed precision quantization. In: European Conference on Computer Vision (ECCV) (2024) 70. Zhao, W., Bai, L., Rao, Y., Zhou, J., Lu, J.: Unipc: A unified predictor-corrector framework for fast sampling of diffusion models. In: Advances in Neural Informa-tion Processing Systems (NeurIPS) (2023)

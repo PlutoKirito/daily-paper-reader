@@ -1,0 +1,1058 @@
+Title: TMPDiff: Temporal Mixed-Precision for Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2603.14062v1
+
+Published Time: Tue, 17 Mar 2026 02:18:59 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# TMPDiff: Temporal Mixed-Precision for Diffusion Models 
+
+Basile Lewandowski 1∗, Simon Kurz 2,5∗, Aditya Shankar 3, Robert Birke 4,Jian-Jia Chen 2,5, and Lydia Y. Chen 1,3 
+
+> 1
+
+University of Neuchâtel, Switzerland  
+
+> 2
+
+TU Dortmund University, Germany  
+
+> 3
+
+TU Delft, Netherlands  
+
+> 4
+
+University of Turin, Italy  
+
+> 5
+
+LAMARR Institute, Germany 
+
+Abstract. Diffusion models are the go-to method for Text-to-Image generation, but their iterative denoising processes has high inference latency. Quantization reduces compute time by using lower bitwidths, but applies a fixed precision across all denoising timesteps, leaving an entire optimization axis unexplored. We propose TMPDiff, a temporal mixed-precision framework for diffusion models that assigns different nu-meric precision to different denoising timesteps. We hypothesize that quantization errors accumulate additively across timesteps, which we then validate experimentally. Based on our observations, we develop an adaptive bisectioning-based algorithm, which assigns per-step precisions with linear evaluation complexity, reducing an otherwise exponential search problem. Across four state-of-the-art diffusion models and three datasets, TMPDiff consistently outperforms uniform-precision baselines at matched speedup, achieving 10 to 20% improvement in perceptual quality. On FLUX.1-dev, TMPDiff achieves 90% SSIM relative to the full-precision model at a speedup of 2.5× over 16-bit inference. 
+
+1 Introduction 
+
+Diffusion models are now ubiquitous in generative tasks, with text-to-image (T2I) systems being a leading application. As interest in these models has grown, so has their scale, with recent models surpassing ten billion parameters [13]. At inference, this scale compounds with the iterative denoising process of diffusion models. Generating an image requires several sequential forward passes through a multi-billion parameter model, making latency the primary limitation [40]. A common approach to speed up inference is to use lower bitwidth arith-metic through quantization . Early models relied on 32-bit floating point (fp32), but the field quickly shifted to 16-bit (fp16/bf16), with 8- and 4-bit formats now widespread [40], and even lower precisions under exploration [44]. Reduced bitwidth improves speed [42], but it also degrades output quality. Quantization  
+
+> ∗
+
+Equal contribution.  
+
+> arXiv:2603.14062v1 [cs.CV] 14 Mar 2026 2B. Lewandowski, S. Kurz et al.
+
+techniques therefore seek the best tradeoff between computational efficiency 
+
+and output fidelity .Prior work on diffusion quantization highlighted that quantization errors evolve throughout the denoising process [8, 16, 28], inspiring spatial mixed-precision methods [5, 12, 43] that assign higher bitwidth to more sensitive model components. While effective, these approaches are fundamentally static at run-time: the precision assignment is fixed during calibration and applied uniformly across all diffusion timesteps. The aforementioned approach is spatial quantization, i.e., precision varies only across model components, disregarding varying sensitivities across timesteps. We address this gap by introducing the notion of temporal mixed precision ,which optimizes precision along the complementary temporal axis across dif-fusion steps. Concretely, we develop TMPDiff, a novel temporal mixed-precision framework for diffusion models, that assigns different bitwidths to the model at different denoising timesteps. Our approach is guided by three observations. First, per-timestep quantization errors vary significantly in magnitude and im-pact. Second, these errors accumulate in a predictable, approximately additive manner. Third, this structure enables a principled assignment of precision across timesteps, avoiding costly brute-force search. Through extensive experiments across four state-of-the-art (SoTA) diffusion models (FLUX.1-dev [13], PixArt-Σ [2], Sana [36] and StableDiffusion XL [25]) and three benchmark datasets (COCO [18], DCI [33] and MJHQ [14]), we show that TMPDiff consistently outperforms uniform-precision baselines at matched speedups. Specifically, TMPDiff yields 10 to 20% improvement in perceptual quality metrics (SSIM [35], LPIPS [41], PSNR) compared to both full-precision and uniformly quantized pipelines. On FLUX.1-dev we achieve excellent fidelity (90% SSIM) while delivering a speedup of 2.5× over the 16-bit baseline, reducing inference latency by 60% with minimal quality degradation. We also show that our temporal precision schedules balance the tradeoffs between the high quality of all full-precision pipelines and the speed of quantized ones. We summarize our contributions as follows: 
+
+① Additive Error Model and Validation : We propose an additive error model for temporal mixed-precision diffusion schedules and empirically validate it across two models and three datasets, demonstrating that per-timestep quantization er-rors accumulate approximately additively in the final latent (Sec. 3). 
+
+② TMPDiff: A Framework for Temporal Precision Scheduling : Building on the additive error model, we propose TMPDiff, a framework with an adaptive bisectioning algorithm that identifies the optimal per-timestep precision assign-ment with calibration in linear time, reducing an otherwise exponential combi-natorical search to a greedy procedure (Sec. 4). 
+
+③ Generality of Temporal Sensitivity Scoring : We show that per-timestep sen-sitivity scoring captures a fundamental property of the denoising process. When applied beyond quantization to mixing models of different sizes across timesteps (Sec. 5.4), TMPDiff outperforms evolutionary search based approaches, demon-strating broader applicability of temporal scheduling. TMPDiff: Temporal Mixed-Precision for Diffusion Models 3
+
+2 Background and Problem Definition 
+
+Diffusion models generate data in a Markovian fashion by iteratively removing noise [10, 30]. The model, parameterized by θ, starts from pure Gaussian noise 
+
+xT ∼ N (0 , I d), and applies T denoising steps to recover a clean sample x0 ∈ Rd.At each timestep t ∈ { T, T − 1, .., 1}, the model operates on an intermediate sample xt ∈ Rd. It predicts the noise component μθ (xt, t ) ∈ Rd contained in xt,and removes it to give the reverse step xt → xt−1. Under the Denoising Diffusion Implicit Model (DDIM) formulation [30], the update is deterministic, given by: 
+
+xt−1 =
+
+√αt−1
+
+√αt
+
+xt + Btμθ (xt, t ), (1) where αt ∈ (0 , 1) is a monotonically decreasing noise schedule, and 
+
+Bt = p1 − αt−1 −
+
+pαt−1(1 − αt)
+
+√αt
+
+.
+
+Quantization discretizes the model parameters θ into ˆθ, introducing a local error δt at each denoising step. We decompose the quantized noise prediction into the full-precision prediction and a local additive error term ϵt ∈ Rd with 
+
+μˆθ (xt +δt, t ) = μθ (xt +δt, t )+ ϵt. Here, δt ∈ Rd denotes the cumulative deviation in the latent caused by local errors of all previous denoising steps, with δT = 0.Inserting the quantized denoising into the DDIM update rule (1) with noisy input xt + δt yields: 
+
+xt−1 + δt−1 =
+
+√αt−1
+
+√αt
+
+(xt + δt) + Bt(μθ (xt + δt, t ) + ϵt) (2) To obtain a closed-form solution for the accumulated deviation δt−1 in the output, Liu et al . [20] approximate the full-precision model evaluated at the perturbed input μθ (xt + δt, t ) by linearizing around the "clean" value xt via first-order Taylor expansion: 
+
+μθ (xt + δt, t ) = μθ (xt, t ) + Jθ δt, (3) where Jθ ∈ Rd×d is the Jacobian of the noise prediction model. Substituting (3) into (2) and subtracting the clean DDIM update from (1) eliminates all error-free terms. What remains is a recursion purely over deviations: 
+
+δt−1 =
+
+√αt−1
+
+√αt
+
+δt + Bt(Jθ δt + ϵt) (4) Grouping δt terms into At = √αt−1 
+
+> √αt
+
+I + BtJθ , yields the compact recursion: 
+
+δt−1 = Atδt + Btϵt (5) Recursively unrolling (5) from timestep T to 0, assuming δT = 0 (no initial cumulative error), yields a closed-form expression for the final deviation: 4 B. Lewandowski, S. Kurz et al. 
+
+δ0 =
+
+> T
+
+X
+
+> t=1
+
+
+
+> t−1
+
+Y
+
+> j=1
+
+Aj
+
+ Btϵt. (6) This analysis holds across other denoising schedules, as shown by Liu et al. [20]. Minimizing the final accumulated error in (6) is the main objective of quantiza-tion in diffusion models. However, (6) implicitly assumes that all timesteps are executed in quantized precision, i.e ., that local quantization errors are injected at every reverse step. But inference can be performed under a mixed-precision 
+
+regime, where only a subset of timesteps are quantized while others remain in full precision, yielding a more general formulation in which quantization errors are injected selectively across time. 
+
+Problem definition. Let Z ∈ { 0, 1}T denote a temporal precision schedule ,where zt = 1 indicates full-precision execution and zt = 0 indicates quantized execution at timestep t. The schedule Z determines at which timesteps local quantization errors are introduced into the recursive deviation dynamics in (5). Let δ0(Z) denote the final deviation induced by executing the reverse pro-cess under schedule Z. When zt = 0 for all t, i.e., δ0(0), it reduces to the fully-quantized case in (6). More generally, different schedules induce different accumulated deviations due to the recursive propagation of selectively injected local errors. Let K = |Z| denote the number of full-precision timesteps, which directly controls the inference latency budget. We define the Temporal Mixed-Precision (TMP) problem as finding a precision schedule Z∗ that minimizes the final deviation under a budget of K full-precision steps: 
+
+Z∗ = arg min  
+
+> Z:|Z|=K
+
+δ0(Z) (7) 
+
+3 Additive Error Model and Empirical Analysis 
+
+We first propose an additive ansatz (Sec. 3.1) to model final deviations under arbitrary temporal precision schedules. We then empirically validate this addi-tive model in Secs. 3.2 and 3.3, demonstrating that it accurately captures error propagation in mixed-precision diffusion and provides a tractable foundation for optimizing the TMP schedule. 
+
+3.1 Additive Error Ansatz for Mixed Precision Schedules 
+
+To solve the TMP optimization problem defined in (7), we need an analytical model of δ0(Z) for arbitrary temporal precision schedules. The formulation in (6) proposed in [20] implicitly assumes that zt = 0 for all t, i.e., that all steps are fully quantized. How should we modify this if some steps are executed in full precision and others quantized? We take a natural approach, and propose the following additive ansatz ; essentially a conjectured extension: TMPDiff: Temporal Mixed-Precision for Diffusion Models 5
+
+δ0(Z) = 
+
+> T
+
+X
+
+> t=1
+
+
+
+> t−1
+
+Y
+
+> j=1
+
+Aj
+
+ Btϵt (1 − zt). (8) Equation (8) models the final deviation as a weighted sum of propagated per-timestep error contributions, gated by the precision schedule. As a sanity check, our additive ansatz captures both extremes: setting zt = 0 for all t recovers the fully-quantized case of (6), while setting zt = 1 for all t corresponds to the fully-precise case, where no quantization error is injected. In the following two subsections, to support the proposed additive model in (6), we empirically validate how it captures the behavior of δ0(Z) under mixed precision. 
+
+3.2 Validation 1: Single Timestep Error Contributions 
+
+The additive model predicts that a quantized single timestep t contributes to the final deviation δ0 by the t-th addend in (6): 
+
+δ(t)0 =
+
+
+
+> t−1
+
+Y
+
+> j=1
+
+Aj
+
+ Btϵt (9) To test this simple case first, we change the precision for a single timestep 
+
+t while keeping all others fixed and measure the resulting change in the final output x0. To this end, we define E(Z) as a general measure of the deviation of the final output x0 under any mixed-precision schedule Z from the full-precision reference by condensing the deviation vector into a scalar via its L2-norm: 
+
+E(Z) = ∥x(Z)0 − x(1)0 ∥2 (10) The change of a single timestep can be done in two ways: upcasting only a timestep to full-precision, starting from all timesteps being quantized, or down-casting by only quantizing a timestep, starting from all timesteps being full-precision. We use E(Z) to define the upcasting gain ∆↑ 
+
+> t
+
+and downcasting loss 
+
+∆↓ 
+
+> t
+
+as the change in deviation resulting from a single precision change at timestep 
+
+t accordingly: 
+
+∆↑ 
+
+> t
+
+= E(0) − E(et), ∆↓ 
+
+> t
+
+= E(1 − et) − E(1), (11) with 0 denoting the fully quantized schedule, 1 the full-precision schedule, and et
+
+the one-hot encoded schedule with full-precision used only for timestep t. That is, ∆↑ 
+
+> t
+
+measures the deviation reduction gained by upcasting timestep t to full-precision in an otherwise fully quantized schedule. ∆↓ 
+
+> t
+
+conversely measures the deviation increase by quantizing only timestep t in an otherwise full-precision schedule. We perform the following correlation analysis between ∆↑ 
+
+> t
+
+and ∆↓ 
+
+> t
+
+:6 B. Lewandowski, S. Kurz et al. 18 16 14 12 10 8 6 4 2 0                
+
+> Timestep Index
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> t / t
+> tUpcasting (W4A4 to FP16)
+> tDowncasting (FP16 to W4A4)
+> (a) Pixart 18 16 14 12 10 86420
+> Timestep Index
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> t / t
+> tUpcasting (W4A4 to FP16)
+> tDowncasting (FP16 to W4A4) (b) Sana
+
+Fig. 1: Change in final latent error E(Z) from single-timestep up- and downcasting. 
+
+– Linear correlation: Pearson r [24] and R2 [4] directly test the linearity as-sumption of our additive model, where a value of 1 indicates a perfectly linear fit and R2 additionally quantifies the fraction of variance in E(Z) explained by the predictor. 
+
+– Rank-order agreement: Spearman ρ [31] and Kendall τ [11] measure rank-order agreement, the property that directly governs schedule selection, while being robust to monotonic nonlinearities and outliers. Kendall τ further admits a direct probabilistic interpretation via P = ( τ + 1) ÷ 2, where P is the probability that a randomly chosen pair of schedules is ranked correctly by the predictor and τ = 0 corresponds to the 50% random baseline. In Figure 1, we evaluate ∆↑ 
+
+> t
+
+and ∆↓ 
+
+> t
+
+on 128 samples from the MJHQ dataset [14], using Sana [36] and PixArt-Σ [2] with T = 20 denoising steps and SVDQuant [15] for quantization of weights and activations to 4-bit (denoted as, W4A4). The two curves for each model in Figure 1 follow similar trends across timesteps. A Pearson r > 0.94 and R2 > 0.88 across both models confirms a strong linear re-lationship between ∆↑ 
+
+> t
+
+and ∆↓ 
+
+> t
+
+, with over 88% of the variance of one curve being explained by the other, leaving less than 12% as residual. Critical for sched-ule scoring, Spearman ρ > 0.97 and Kendall τ > 0.88 , imply that over 94% of random pairwise rankings are correct, confirming that rankings are consistent. Together, these results support that per-timestep errors captured by ∆↑ 
+
+> t
+
+and 
+
+∆↓ 
+
+> t
+
+accumulate additively up to a ranking-neutral residual, indicating that the additive error model holds even when evaluated at the extreme reference points of a fully quantized and a complete full-precision schedule. 
+
+3.3 Validation 2: Multistep Error Contributions 
+
+We now further stress-test whether the approximate additivity observed for sin-gle precision changes extends to schedules of multiple precision toggles K = |Z|
+
+with 1 < K < T . Since errors from individual timesteps accumulate additively, single-toggle measurements alone should suffice to rank multi-toggle schedules, without requiring direct evaluation of E(Z) for each candidate. Specifically, the downcasting error reduction of a schedule Z relative to a fully quantized reference schedule is approximately PTt=1 ∆↑ 
+
+> t
+
+zt, where zt gates the upcasting gains of the selected full-precision timesteps. For predicting the error gain from quantized timesteps based on ∆↓ 
+
+> t
+
+, we use the fact that PTt=1 ∆↓ 
+
+> t
+
+(1 − zt) = TMPDiff: Temporal Mixed-Precision for Diffusion Models 70.40 0.35 0.30 0.25 0.20 0.15 0.10 0.05 0.00           
+
+> S(Z)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Measured Error  Spearman = 0.994
+> Pearson r = 0.986
+> Kendall = 0.943
+> R2= 0.972 K=2 ( =0.766)
+> K=6 ( =0.758)
+> K=10 ( =0.821)
+> K=14 ( =0.863)
+> K=18 ( =0.977)
+> y=0.367x+0.182
+
+(a) Downcasting Predictor Performance 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00            
+
+> S(Z)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Measured Error  Spearman = 0.992
+> Pearson r = 0.984
+> Kendall = 0.933
+> R2= 0.968 K=2 ( =0.825)
+> K=6 ( =0.874)
+> K=10 ( =0.842)
+> K=14 ( =0.737)
+> K=18 ( =0.871)
+> y=1.111x+0.181
+
+(b) Upcasting Predictor Performance 
+
+Fig. 2: Linear fit between the measured final latent error E(Z) and the schedule scoring functions S↑(Z) and S↓(Z) for upcasting K timesteps for Sana. 
+
+PTt=1 ∆↓
+
+t − PTt=1 ∆↓
+
+t zt with PTt=1 ∆↓
+
+t being a constant to express the error gain in terms of zt instead of 1 − zt. We therefore define the following two scoring functions with sign correction for the lower the better ranking: 
+
+S↑(Z) = −
+
+TX
+
+t=1 
+
+∆↑
+
+t zt, S↓(Z) = −
+
+TX
+
+t=1 
+
+∆↓
+
+t zt (12) Similar to Section 3.2, we analyze the measured final latent errors E(Z),reporting Spearman ρ, Pearson r, R2, and Kendall τ for each K between the measured error and either S↑(Z) or S↓(Z). The tests are conducted as follows: We directly measure E(Z) of 20 random schedules for each K ∈ { 2, 6, 10 , 14 , 18 }
+
+using the same 128 MJHQ samples used to compute ∆↑
+
+t and ∆↓
+
+t and compare them against the schedule scores of S↑(Z) and S↓(Z).Figure 2 illustrates the results of the above test. It shows a strong linear fit between E(Z) and S↑(Z) or S↓(Z) (Pearson r > 0.98 , R2 > 0.96 ) and high rank-order agreement (Kendall τ > 0.93 , Spearman ρ > 0.99 ), confirming that quantization errors accumulate approximately additively across timesteps. Single-toggle measurements reliably predict the ranking of multi-toggle sched-ules, validating the additive error model for practical schedule search. The strong correlations persist on held-out COCO [18] and DCI [33] dataset samples (Spearman ρ = 0 .99 , Kendall τ ≥ 0.825 across all K, full results in Sec. A), confirming generalization beyond the calibration distribution. Sched-ules optimized for low mean error also yield lower output variance across diverse prompts, reducing outlier failure risk. Results also stay consistent across differ-ent amounts of calibration samples, as shown in Sec. B. The final output error 
+
+E(Z) strongly correlates with perceptual image-space metrics as shown in Sec. C. Hence, we can use it as a calibration proxy without the large sample sizes that image-space metrics require for stable estimates [3]. 
+
+4 TMPDiff: A Mixed-Precision Scheduling Framework 
+
+TMPDiff is a framework that learns an optimized temporal precision sched-ule offline using calibration data to dynamically switch precision across diffu-sion timesteps at inference. Section 4.1 characterizes the quality-latency design 8 B. Lewandowski, S. Kurz et al. 
+
+space to identify where these schedule decisions have the greatest impact. Sec-tion 4.2 provides a theory-grounded sampling strategy that makes optimal sched-ule search via single-timestep error gains (or losses) tractable for large models. Section 4.3 presents the complete TMPDiff algorithm, including hardware con-siderations for practical deployment. 
+
+4.1 Targeting High Speedups 
+
+We characterize the latency-design space to make an informed decision on K,the number of full-precision denoising steps. Targeting an end-to-end speedup r
+
+requires at most K full-precision timesteps, describing a hyperbolic relationship governed by Amdahl’s law [6]: 
+
+r = TK + T −Kλ
+
+⇐⇒ K = T (λ − r)
+
+r(λ − 1) , (13) where T is the number of denoising steps and λ is a fixed per-timestep speedup from quantization. The right-hand side specifies how many full-precision steps K
+
+a given total speedup target r permits. Crucially, this relationship is hyperbolic in K. That is, the first few full-precision steps introduced into an otherwise quantized pipeline come at the steepest speedup penalty, while each additional full-precision step costs progressively less. Consequently, the regime of small K is where precision allocation decisions matter most, and each full precision timestep must be placed where it recovers the most image quality. Since small K corresponds to schedules closer to the fully-quantized baseline, 
+
+S↑(Z) is the more natural scoring function. This is confirmed empirically in Fig-ure 2, where S↑(Z) achieves higher Kendall τ than S↓(Z) for small K. Figure 4 confirms that TMPDiff fills the quality-latency between the fully-quantized and full-precision denoising pipelines across the entire range of K.
+
+4.2 Temporal Search Space Exploration 
+
+Computing the per-timestep upcasting gain ∆↑ 
+
+> t
+
+for schedule scoring requires a full forward pass per timestep, resulting in T calibration evaluations in total. For small models this is acceptable, for large multi-billion parameter diffusion models and long denoising pipelines it becomes a practical bottleneck. Exhaus-tive evaluation is, however, not necessary if the error gain/loss curve can be reconstructed accurately from a small number of samples. Figure 1 shows that this is indeed the case as the per-timestep error gain/loss curve exhibits two properties that make sparse sampling viable. First, it is smooth with a few spikes, allowing reliable interpolation between points. Second, timesteps of high gains/losses concentrate in early denoising steps with a global trend towards lower gains or losses at the end. Both properties are visible for all models shown in Figure 1, consistent with the structural role of early timesteps in establishing the global image layout during denoising [9]. These two properties motivate an adaptive bisection strategy that takes tar-geted measures where the gain/loss curve is highest and interpolates everywhere TMPDiff: Temporal Mixed-Precision for Diffusion Models 93 4 5 6 7 8 9   
+
+> Number of Samples
+> 5
+> 10
+> 15
+> Rank
+> K=2
+> K=3
+> K=4
+> K=5
+> Fig. 3: Rank deviation per Kover the number of sampled timesteps for calibration on the COCO dataset for the Sana model.
+
+else. We start from the first, middle, and last timestep as three anchor points, and group all unsampled timesteps into segments [tL, t R]. Each segment is scored by the average error gain (or loss) of its already sampled endpoints via 12 (∆↑ 
+
+> tL
+
++∆↑ 
+
+> tR
+
+),reflecting the expected error gain of the region it spans. We then sample the mid-point of the highest-scoring segment, split it into two new segments and repeat. This procedure is a form of adaptive bisectioning . However, unlike binary search, which halves a fixed interval, it refines regions flanked by high upcasting gain, concentrating evaluations on the critical areas of the curve for schedule selection. The plausibility of sparse sampling rests on Lipschitz continuity of ∆↑ 
+
+> t
+
+. Since the ground-truth upcasting gains ∆↑ 
+
+> t
+
+for timesteps t ∈ { 1, ..., T } are finite in magnitude, we can upper-bound the interpolation error between two already sampled timesteps tL and tR by a positive Lipschitz constant L:
+
+max  
+
+> t∈[tL,t R]
+
+|∆↑ 
+
+> t
+
+− ∆↑
+
+> t,interp.
+
+| ≤ L
+
+2 · | tL − tR|. (14) Refining any segment reduces the global interpolation error 
+
+ε = max 
+
+> [tL,t R]
+
+ L
+
+2 · | tL − tR|
+
+
+
+. (15) This motivates concentrating evaluations on regions where the gain is highest, rather than sampling uniformly. The interpolated top-K timesteps for any num-ber K of full-precision timesteps are provably correct if 2ε < ∆ K with ∆K ≥ 0 as the difference between the K-th and ( K+1)-th largest ∆↑ of the measurements. Intuitively, the error for every interpolated timestep is upper bounded via ε,so in the worst case the K-th ∆↑ is underestimated by −ε while the ( K+1)-th ∆↑ is overestimated by +ε. Then, 2ε > ∆ K and we confuse K with K+1. Conversely, once the bisection drives ε below ∆K /2, no furhter sampling can change the top-K set of timesteps. Importantly, L and ∆K are not estimated at runtime, so the Lipschitz bound provides a qualitative justification rather than a computable termination condition. In practice, the algorithm runs for a fixed sampling budget B (Algorithm 1). To evaluate convergence, we measure how quickly our sampling recovers the optimal schedule compared to a fully evaluated reference. At each iteration, we 10 B. Lewandowski, S. Kurz et al. 
+
+Algorithm 1: TMPDiff Algorithm 
+
+Input: Full-precision model F , quantized model Q, calibration data D,denoising steps T , target speedup r, per-timestep speedup λ, sampling budget B
+
+Output: Precision schedule Z∗, accelerated image x0 
+
+> 1
+
+K ← ⌊ T (λ−r) 
+
+> r(λ−1)
+
+⌋ ; // Latency budget (13)  
+
+> 2
+
+A ← { 1, ⌊T / 2⌋, T }, compute ∆↑ 
+
+> t
+
+∀t ∈ A ; // Anchor init.  
+
+> 3
+
+while |A| ≤ B ; // Sparse sampling, Sec. 4.2  
+
+> 4
+
+do  
+
+> 5
+
+s∗ ← argmax [tL,t R] 12 (∆↑ 
+
+> tL
+
++ ∆↑ 
+
+> tR
+
+) ; // Best segment  
+
+> 6
+
+t∗ ← ⌊ (tL + tR)/2⌋, compute ∆↑ 
+
+> t∗
+
+; 
+
+> 7
+
+A ← A ∪ { t∗}; 
+
+> 8
+
+∆↑ 
+
+> t
+
+← interpolate (A) ∀t / ∈ A ; // Fill gains  
+
+> 9
+
+Z∗ ← top-K indices of ∆↑ 
+
+> t
+
+; // Greedy schedule  
+
+> 10
+
+for t = T, . . . , 1 do // Inference  
+
+> 11
+
+xt−1 ← F (xt, t ) if t ∈ Z∗ else Q(xt, t ) 
+
+> 12
+
+return x0;
+
+reconstruct missing error gains/losses via linear interpolation, derive the greedy optimal schedule ˆU (K) for target size K, and rank it against the top schedules of the fully measured reference. Figure 3 shows that starting from three anchor points, the rank deviation drops to zero within fewer than ten iterations across 
+
+K ∈ { 2, 3, 4, 5} on the Sana model for calibration on COCO samples. 
+
+4.3 Adaptive Bisection Algorithm for Precision Scheduling 
+
+Algorithm 1 outlines the TMPDiff framework, integrating the latency-aware derivation of K of Sec. 4.1 and the search space exploration of Sec. 4.2 into an end-to-end calibration and inference pipeline. First, given a latency target, it computes how many timesteps K can run in full precision (line 1). Explo-ration is initialized with the first, last and middle diffusion steps as anchors (line 2) before undergoing sparse sampling. We then iteratively sample midpoints of high-gain segments until the calibration budget is exhausted (lines 4-7). Then, the gain curve is interpolated across all timesteps, and the top-K greedily-chosen timesteps with the largest gains form the precision schedule (lines 8-9). At inference, TMPDiff switches between the full-precision and the quantized model between denoising steps according to the optimal schedule Z∗. This can be done in practice through different software systems depending on the hardware resources available, as discussed in Sec. D. Crucially, the naive 2T combinatorial search (lines 4–7) collapses to a linear-time procedure: measure each timestep’s single-toggle upcasting gain or down-casting loss, then rank them. This reduction follows directly from the additive error model established in Sec. 3. TMPDiff: Temporal Mixed-Precision for Diffusion Models 11 
+
+5 Experimental Results 
+
+We first describe our experimental setup in Sec. 5.1 before evaluating TMPDiff across four diffusion models and three datasets. Sec. 5.2 characterizes the qualtiy-latency design space by empirically evaluating the Pareto frontier over K, con-necting to the speedup analysis of Sec. 4.1. We then evaluate image quality against uniform precision baselines at matched speedups in Sec. 5.3, before demonstrating the broader applicability of our temporal scheduling framework beyond quantization in Sec. 5.4 by mixing models of different sizes. 
+
+5.1 Experimental Setup Metrics . Since quantization aims to accelerate inference while preserving generation quality, we use the full-precision model output as reference and re-port Peak Signal-to-Noise Ratio (PSNR), Structural Similarity Index Measure (SSIM) [35], and Learned Perceptual Image Patch Similarity (LPIPS) [41] to measure fidelity alongside achieved speedup. Using full-precision model outputs as reference provides a direct and sensitive measure of quantization-induced per-formance degradation, grounded in well-characterized model behavior. Reference-free metrics are less discriminative in this controlled setting but are reported in Tab. 4 of Sec. E as corroborative evidence. Speedups are measured on our testbed described in Sec. F. 
+
+Models . We consider four models of various architectures and sizes in our experiments: FLUX.1-dev [13], PixArt-Σ [2], Sana [36] as transformer-based diffusion models and StableDiffusion XL [25] for its convolutional backbone, with 12B, 0.6B, 1.6B and 3.5B parameters respectively. We use 16-bit floating point formats as default full-precision, either as fp16 for PixArt and SDXL or bf16 for FLUX and Sana. All images are generated using 20 inference steps and unconditional guidance. 
+
+Datasets . We evaluate the models on three datasets: Microsoft Common Objects in COntext (COCO, [18]), Densely Captioned Images (DCI, [33]), and MidJourney HQ (MJHQ, [14]). We use the summarised version of DCI where captions fit within 77 tokens. 
+
+Quantization. For quantized inference in TMPDiff, we mainly use SVD-Quant [15] to produce int4-quantized models. Unless specified otherwise, the quantization setup is 4-bits for weight and activation and a rank-32 correction adapter (W4A4R32 6). As a second quantization technique, we also consider the 8-bit quantized baseline using the TensorRT SDK 7.
+
+5.2 Pareto Optimality 
+
+The varying timestep error gains in Sec. 3.2 together with the hyperbolic relation-ship between the end-to-end speedup r and the number of full-precision denoising        
+
+> 6Throughout this article, we will denote by W xAya quantization method where model weights and activations are quantized to xand ybits, respectively. When SVDQuant is used, we also refer to the adapter rank with R z.
+> 7https://developer.nvidia.com/tensorrt
+
+12 B. Lewandowski, S. Kurz et al. 1.00 1.25 1.50 1.75 2.00 2.25 2.50 2.75 3.00   
+
+> Speedup
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> SSIM  SSIM ( )
+> LPIPS ( )
+> bf16
+> int4
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> LPIPS
+
+Fig. 4: Performance metrics over different speedup factors on FLUX W4A4R32. 
+
+steps K of Sec. 4.1 implies that a small number of well-chosen full-precision steps can recover substantial quality while preserving most of the speedup. We verify this empirically by evaluating TMPDiff on FLUX.1-dev for K = {4, 8, 12 , 16 }
+
+resulting in speedups of 1.4 × to 2.6× under a total of T = 20 denoising steps. Figure 4 confirms that TMPDiff successfully fills the quality-latency tradeoff gap between the full-precision and uniformly quantized model. Every point on the TMPDiff Pareto curve is both faster than the unquantized model and of higher quality than the uniformly quantized one. At the high speedup end, a schedule with 80% quantized denoising steps achieves a significant improvement in image quality (+10 percentage points (pp.) of SSIM & -12pp. LPIPS) with a limited impact on latency (+27% w.r.t. quantized speed). At the low speedup end, a schedule with only 20% quantized steps shows minimal degradation (-3pp. SSIM & +1pp. LPIPS) with a notable latency reduction (-17% w.r.t. initial speed). Therefore, TMPDiff allows making deliberate decisions on the tradeoff between quality and speed. 
+
+5.3 Image Quality 
+
+We evaluate TMPDiff against uniform precision baselines using a schedule with 
+
+75% quantized timesteps (15 out of 20 steps, 15+5). To ensure fair compari-son, we match speedups across methods by adjusting the number of denoising steps, ensuring that any quality advantage of TMPDiff cannot be attributed to a more favourable latency budget. Specifically, for PixArt and Sana, we compare against a full-precision model with 8 timesteps (2.5 × speedup) and a uniformly quantized W4A4 SVDQuant model with 25 steps (2.6 × speedup). Both refer-ence pipelines achieve similar speedups to our TMPDiff pipeline. For FLUX and SDXL we compare against the TensorRT 8-bit quantization baseline. As SVDQuant does not yet support efficient hardware deployment of PixArt, no speedup is reported. Sana provides a representative speedup estimate for PixArt given their architecture similarity. Table 1 shows that we consistently outperform the uniform precision base-lines across all models and datasets. TMPDiff achieves strongest results on FLUX and SDXL, with exceptional fidelity throughout all datasets and metrics at 2.5×
+
+speedup for FLUX and 1.33 × speedup for SDXL. The latter result is particu-larly notable. Despite running in plenty 8-bit precision, the TensorRT baseline TMPDiff: Temporal Mixed-Precision for Diffusion Models 13 
+
+Table 1: Comparison across different models and datasets. The reference point for similarity evaluation are the images generated by the unquantized (16 bits) model. To compare models with similar speedups, we scale the number of timesteps depending on the data type. Model Method MJHQ COCO sDCI Speedup SSIM ↑ PSNR ↑ LPIPS ↓ SSIM ↑ PSNR ↑ LPIPS ↓ SSIM ↑ PSNR ↑ LPIPS ↓                                                                                                    
+
+> Pixart FP16 (8 steps) 0.58 15.3 0.41 0.61 15.4 0.40 0.53 15.1 0.41 2.5 W4A4 (25 steps) 0.63 16.8 0.36 0.61 15.6 0.40 0.54 15.4 0.40 –Ours (15+5 steps) 0.69 19.4 0.27 0.69 18.4 0.30 0.61 17.8 0.31 –Sana BF16 (8 steps) 0.54 14.6 0.38 0.53 13.5 0.41 0.45 12.0 0.44 2.5 W4A4 (25 steps) 0.63 17.0 0.26 0.60 15.6 0.31 0.56 15.3 0.30 2.6 Ours (15+5 steps) 0.70 19.2 0.19 0.70 18.8 0.20 0.64 17.6 0.20 2.68 SDXL TensorRT int8 0.42 12.2 0.67 0.46 12.4 0.69 0.38 12.5 0.69 1.24 Ours 0.85 28.0 0.10 0.87 28.5 0.11 0.83 27.6 0.11 1.33 FLUX TensorRT fp8 0.46 11.0 0.71 0.47 10.2 0.75 0.37 9.0 0.81 1.57 Ours 0.91 28.1 0.08 0.91 27.4 0.07 0.87 25.3 0.10 2.5
+
+Table 2: Result of mixing models 
+
+Method SSIM ↑ PSNR ↑ LPIPS ↓
+
+Small Sana 0.47 13.0 0.48 DDSM heuristic 0.80 22.7 0.09 Ours 0.82 23.3 0.08 
+
+degrades substantially, while TMPDiff preserves high fidelity at high speedup. On Sana and PixArt, TMPDiff similarly outperforms both baselines by 10 to 20% across all metrics, though the absolute fidelity is lower due to the more aggressive W4A4 quantization that these models are evaluated under. 
+
+5.4 Mix of Models 
+
+To demonstrate that our TMPDiff framework principle generalizes beyond quan-tization, we apply it to mixing models of different sizes across denoising steps. Specifically, we combine the 1.6B and 600M parameter versions of Sana in a 16+4 step pipeline, using our sensitivity scores to assign the smaller model to the four least sensitive timesteps. Table 2 shows that TMPDiff outperforms the heuristic of Yang et al . [37], who place the smaller model at the end of the pipeline based on hand-crafted rules, on all three evaluated metrics. Notably, our sensitivity-based schedule only requires linear-time for calibration, while the evolutionary search based approach of [37], termed Denoising Diffusion Step-aware Models (DDSM), requires costly explo-ration of the scheduling space and is not scalable to larger models. This shows that per-timestep sensitivity scoring captures something fundamental about the denoising process that extends beyond quantization error. 14 B. Lewandowski, S. Kurz et al. 
+
+6 Related Work 
+
+Extensive research has addressed the quantization of diffusion models [7, 16, 17, 26, 29, 32, 38], predominantly through post-training quantization [8, 28, 34, 39], where pre-trained full-precision models are adapted to integer arithmetic. SVDQuant [15], the current state-of-the art low bitwidth quantization and our primary quantization method used, achieves practical 4-bit quantization by using low-rank Singular Value Decomposition (SVD) adapters in parallel with quan-tized layers. However, it applies a fixed quantization over all model parameters and timesteps [42], limiting control over quality-efficiency tradeoffs. Although 
+
+spacial quantization [5, 12, 43] addresses this limitation by assigning different bitwidths to layers, blocks, or channels, these approaches use fixed bitwidths at runtime, disregarding per-timestep error sensitivities under quantization. Prior work on error accumulation for quantized diffusion forms our theoretical foundation. He et al . [8] observe the correlation between a quantized layer’s input and output, decomposing it into a linear correlation with a normally distributed noise. Li et al . [16] report that the accumulated quantization error converges towards the end of the denoising process without modeling the phenomenon. Liu et al . [20] derive the closed-form error accumulation we build on in Sec. 3 , but without experimental validation across different schedules or models. The idea of changing model configuration across the denoising process has been explored in different contexts beyond quantization. Liu et al. [19], Yang et al. [37] assign different model sizes per timestep using hand-crafted heuristics or evolutionary search, the latter of which we directly outperform in Sec. 5.4 with a simpler, linear-time scheduling procedure. CacheQuant [21], DeepCache [22] and FORA [27] exploit temporal redundancies through activation caching, com-plementary and combinable as illustrated in Section G. 
+
+7 Conclusion 
+
+We explore mixed-precision quantization along the temporal axis of diffusion steps for text-to-image generation. We propose an additive error model for tem-poral mixed-precision diffusion and empirically verify it on four distinct models and three datasets. The additive model enables temporal precision scheduling as a practical and principled optimization axis for efficient diffusion model inference, complementary to existing spatial mixed-precision approaches. We then intro-duce TMPDiff, a temporal mixed-precision framework with a greedy adaptive bisectioning algorithm for assigning different numeric precisions to different de-noising steps. Across four diffusion models and three datasets, TMPDiff achieves 10 to 20% improvement in perceptual quality over uniform-precision baselines at matched speedups, reaching 90% SSIM on FLUX.1-dev at 2.5× speedup. 
+
+Limitations: Efficient kernel-level integration of precision switching is left for future work. Weight offloading [1] could reduce the memory overhead of storing both full-precision and quantized weight sets, while nested quantization, i.e. one model supporting both precisions, such as AnyPrecisionLLM [23], suggest a path towards eliminating it entirely. TMPDiff: Temporal Mixed-Precision for Diffusion Models 15 
+
+Acknowledgement 
+
+This research has been funded by the Federal Ministry of Education and research of Germany and the state of North Rhine-Westphalia as part of the Lamarr Institute for Machine Learning and Artificial Intelligence. 
+
+References 
+
+1. Aminabadi, R.Y., Rajbhandari, S., Awan, A.A., Li, C., Li, D., Zheng, E., Ruwase, O., Smith, S., Zhang, M., Rasley, J., He, Y.: Deepspeed-inference: enabling efficient inference of transformer models at unprecedented scale. In: Proceedings of the International Conference on High Performance Comput-ing, Networking, Storage and Analysis, SC ’22, IEEE Press (2022), ISBN 9784665454445 2. Chen, J., Ge, C., Xie, E., Wu, Y., Yao, L., Ren, X., Wang, Z., Luo, P., Lu, H., Li, Z.: Pixart-Σ: Weak-to-strong training of diffusion transformer for 4k text-to-image generation. In: European Conference on Computer Vision, pp. 74–91, Springer (2024) 3. Chong, M.J., Forsyth, D.: Effectively unbiased fid and inception score and where to find them. arXiv preprint arXiv:1911.07023 (2019) 4. Draper, N.R., Smith, H.: Applied Regression Analysis. Wiley Series in Prob-ability and Statistics, Wiley, New York, 3rd edn. (1998) 5. Feng, W., Qin, H., Yang, C., An, Z., Huang, L., Diao, B., Wang, F., Tao, R., Xu, Y., Magno, M.: Mpq-dm: Mixed precision quantization for extremely low bit diffusion models. Proceedings of the AAAI Conference on Artificial Intel-ligence 39 (16), 16595–16603 (Apr 2025), https://doi.org/10.1609/aaai. v39i16.33823 , URL https://ojs.aaai.org/index.php/AAAI/article/ view/33823 
+
+6. Gustafson, J.L.: Reevaluating amdahl’s law. Commun. ACM 31 (5), 532–533 (May 1988), ISSN 0001-0782, https://doi.org/10.1145/42411.42415 ,URL https://doi.org/10.1145/42411.42415 
+
+7. He, Y., Liu, J., Wu, W., Zhou, H., Zhuang, B.: Efficientdm: Efficient quantization-aware fine-tuning of low-bit diffusion models. In: The Twelfth International Conference on Learning Representations (2024) 8. He, Y., Liu, L., Liu, J., Wu, W., Zhou, H., Zhuang, B.: Ptqd: Accurate post-training quantization for diffusion models. In: Advances in Neural In-formation Processing Systems 2023, Neural Information Processing Systems (NIPS) (2023) 9. Hertz, A., Mokady, R., Tenenbaum, J., Aberman, K., Pritch, Y., Cohen-Or, D.: Prompt-to-prompt image editing with cross-attention control. In: The Eleventh International Conference on Learning Representations (2023), URL https://openreview.net/forum?id=_CDixzkzeyb 
+
+10. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Ad-vances in neural information processing systems 33 , 6840–6851 (2020) 16 B. Lewandowski, S. Kurz et al. 
+
+11. Kendall, M.G.: A new measure of rank correlation. Biometrika 30 (1-2), 81– 93 (06 1938), ISSN 0006-3444, https://doi.org/10.1093/biomet/30.1-2.81 , URL https://doi.org/10.1093/biomet/30.1-2.81 
+
+12. Kim, D., Hwang, J., Oh, C., Park, J.: Mixdit: Accelerating image diffusion transformer inference with mixed-precision mx quantization. IEEE Com-puter Architecture Letters (2025) 13. Labs, B.F.: Flux. https://github.com/black-forest-labs/flux (2024) 14. Li, D., Kamko, A., Akhgari, E., Sabet, A., Xu, L., Doshi, S.: Playground v2.5: Three insights towards enhancing aesthetic quality in text-to-image generation (2024) 15. Li, M., Lin, Y., Zhang, Z., Cai, T., Guo, J., Li, X., Xie, E., Meng, C., Zhu, J.Y., Han, S.: SVDQuant: Absorbing outliers by low-rank component for 4-bit diffusion models. In: The Thirteenth International Conference on Learning Representations (2025), URL https://openreview.net/forum? id=vWR3KuiQur 
+
+16. Li, X., Liu, Y., Lian, L., Yang, H., Dong, Z., Kang, D., Zhang, S., Keutzer, K.: Q-diffusion: Quantizing diffusion models. In: Proceedings of the IEEE/CVF International Conference on Computer Vision, pp. 17535–17545 (2023) 17. Li, Y., Xu, S., Cao, X., Sun, X., Zhang, B.: Q-dm: An efficient low-bit quan-tized diffusion model. Advances in neural information processing systems 
+
+36 , 76680–76691 (2023) 18. Lin, T.Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan, D., Dollár, P., Zitnick, C.L.: Microsoft coco: Common objects in context. In: European conference on computer vision, pp. 740–755, Springer (2014) 19. Liu, E., Ning, X., Lin, Z., Yang, H., Wang, Y.: Oms-dpm: Optimizing the model schedule for diffusion probabilistic models. In: International Confer-ence on Machine Learning, pp. 21915–21936, PMLR (2023) 20. Liu, S., Liu, H., Chen, F., Peng, X., Yan, C., Fu, L., Mei, X.: Error propaga-tion mechanisms and compensation strategies for quantized diffusion. arXiv preprint arXiv:2508.12094 (2025) 21. Liu, X., Li, Z., Gu, Q.: Cachequant: Comprehensively accelerated diffusion models. In: Proceedings of the Computer Vision and Pattern Recognition Conference, pp. 23269–23280 (2025) 22. Ma, X., Fang, G., Wang, X.: Deepcache: Accelerating diffusion models for free. In: The IEEE/CVF Conference on Computer Vision and Pattern Recog-nition (2024) 23. Park, Y., Hyun, J., Cho, S., Sim, B., Lee, J.W.: Any-precision llm: Low-cost deployment of multiple, different-sized llms. In: Proceedings of the 41st International Conference on Machine Learning (2024) 24. Pearson, K.: Vii. note on regression and inheritance in the case of two par-ents. Proceedings of the Royal Society of London 58 (347-352), 240–242 (12 1895), ISSN 0370-1662, https://doi.org/10.1098/rspl.1895.0041 , URL 
+
+https://doi.org/10.1098/rspl.1895.0041 
+
+25. Podell, D., English, Z., Lacey, K., Blattmann, A., Dockhorn, T., Müller, J., Penna, J., Rombach, R.: Sdxl: Improving latent diffusion models for TMPDiff: Temporal Mixed-Precision for Diffusion Models 17 
+
+high-resolution image synthesis. In: The Twelfth International Conference on Learning Representations (2024) 26. Ryu, H., Park, N., Shim, H.: Dgq: Distribution-aware group quantization for text-to-image diffusion models. In: The Thirteenth International Conference on Learning Representations (2025) 27. Selvaraju, P., Ding, T., Chen, T., Zharkov, I., Liang, L.: Fora: Fast-forward caching in diffusion transformer acceleration (2024), URL https://arxiv. org/abs/2407.01425 
+
+28. Shang, Y., Yuan, Z., Xie, B., Wu, B., Yan, Y.: Post-training quantization on diffusion models. In: CVPR (2023) 29. So, J., Lee, J., Ahn, D., Kim, H., Park, E.: Temporal dynamic quantization for diffusion models. Advances in neural information processing systems 36 ,48686–48698 (2023) 30. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. In: In-ternational Conference on Learning Representations (2021) 31. Spearman, C.: The proof and measurement of association between two things. International Journal of Epidemiology 39 (5), 1137–1150 (10 2010), ISSN 0300-5771, https://doi.org/10.1093/ije/dyq191 , URL https: //doi.org/10.1093/ije/dyq191 
+
+32. Tang, S., Wang, X., Chen, H., Guan, C., Wu, Z., Tang, Y., Zhu, W.: Post-training quantization with progressive calibration and activation relaxing for text-to-image diffusion models. In: European Conference on Computer Vision, pp. 404–420, Springer (2024) 33. Urbanek, J., Bordes, F., Astolfi, P., Williamson, M., Sharma, V., Romero-Soriano, A.: A picture is worth more than 77 text tokens: Evaluating clip-style models on dense captions. In: Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition, pp. 26700–26709 (2024) 34. Wang, C., Wang, Z., Xu, X., Tang, Y., Zhou, J., Lu, J.: Towards accu-rate post-training quantization for diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 16026–16035 (2024) 35. Wang, Z., Bovik, A., Sheikh, H., Simoncelli, E.: Image quality assessment: from error visibility to structural similarity. IEEE Transactions on Image Processing 13 (4), 600–612 (2004), https://doi.org/10.1109/TIP.2003. 819861 
+
+36. Xie, E., Chen, J., Chen, J., Cai, H., Tang, H., Lin, Y., Zhang, Z., Li, M., Zhu, L., Lu, Y., Han, S.: Sana: Efficient high-resolution image synthesis with linear diffusion transformer (2024), URL https://arxiv.org/abs/2410.10629 
+
+37. Yang, S., Chen, Y., Wang, L., Liu, S., Chen, Y.C.: Denoising diffusion step-aware models. In: The Twelfth International Conference on Learning Rep-resentations (2024) 38. Yao, Y., Tian, F., Chen, J., Lin, H., Dai, G., Liu, Y., Wang, J.: Timestep-aware correction for quantized diffusion models. In: European Conference on Computer Vision, pp. 215–232, Springer (2024) 39. Ye, J., Wang, Z., Jiang, L.: Pqd: Post-training quantization for efficient diffusion models. In: Proceedings of the Winter Conference on Applications of Computer Vision, pp. 150–156 (2025) 18 B. Lewandowski, S. Kurz et al. 
+
+40. Zeng, Q., Hu, C., Song, M., Song, J.: Diffusion model quantization: A review (2025), URL https://arxiv.org/abs/2505.05215 
+
+41. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 586–595 (2018) 42. Zhao, T., Fang, T., Huang, H., Wan, R., Soedarmadji, W., Liu, E., Li, S., Lin, Z., Dai, G., Yan, S., Yang, H., Ning, X., Wang, Y.: Vidit-q: Efficient and accurate quantization of diffusion transformers for image and video gen-eration. In: The Thirteenth International Conference on Learning Represen-tations (2025), URL https://openreview.net/forum?id=E1N1oxd63b 
+
+43. Zhao, T., Ning, X., Fang, T., Liu, E., Huang, G., Lin, Z., Yan, S., Dai, G., Wang, Y.: Mixdq: Memory-efficient few-step text-to-image diffusion models with metric-decoupled mixed precision quantization. In: European Confer-ence on Computer Vision, pp. 285–302, Springer (2024) 44. Zheng, X., Liu, X., Bian, Y., Ma, X., Zhang, Y., Wang, J., Guo, J., Qin, H.: Bidm: Pushing the limit of quantization for diffusion models. Advances in Neural Information Processing Systems 37 , 39009–39035 (2024) TMPDiff: Temporal Mixed-Precision for Diffusion Models 1
+
+# Supplementary Material 
+
+A Validations on Out-of-Distribution samples 
+
+Having studied the additivity of individual timestep errors in Sec. 3.3 using the same 128 samples for both single-toggle measurements and multi-toggle vali-dation, we verify that these findings generalize to a held-out dataset not used during calibration to reflect the actual deployment scenario. We evaluate the predictor on 20 random schedules for K ∈ { 2, 6, 10 , 14 , 18 } using 128 new sam-ples from the Microsoft Common Objects in COntext (COCO, [18]) and Densely Captioned Images (DCI, [33]) datasets each. Figure 5 shows that the strong correlations observed persists on out-of-distribution samples. The predictor scores also correlate with directly measured variance as shown in Figure 6, indicating that a schedule optimized for low mean error also produces more consistent results across diverse prompts. Hence, sched-ules performing well on average are also less likely to produce outlier failures. 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00          
+
+> Score
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Ground Truth Error
+> Spearman = 0.990
+> Pearson r = 0.972
+> Kendall = 0.920
+> R2= 0.944 K=2 ( =0.825)
+> K=6 ( =0.853)
+> K=10 ( =0.853)
+> K=14 ( =0.884)
+> K=18 ( =0.871)
+> y=1.569x+0.261
+
+Fig. 5: Linear fit between ranking scores 
+
+S↑(Z) and measured ground truth vari-ance for the Sana model on new COCO samples. 0.010 0.008 0.006 0.004 0.002 0.000 0.002 0.004         
+
+> Score
+> 0.000
+> 0.005
+> 0.010
+> 0.015
+> 0.020
+> 0.025
+> 0.030
+> 0.035
+> Ground Truth Variance  Spearman = 0.851
+> Pearson r = 0.859
+> Kendall = 0.664
+> R2= 0.739
+> K=2 ( =0.589)
+> K=6 ( =0.589)
+> K=10 ( =0.600)
+> K=14 ( =0.526)
+> K=18 ( =0.251)
+> y=2.537e+00x+2.430e-02
+
+Fig. 6: Linear fit between the ranking scores of S↑(Z) and measured ground truth variance for the Sana model on DCI samples. 
+
+B Ablations on TMPDiff Calibration 
+
+We conduct ablations on how the number of calibration samples and their source used to compute the upcasting gain ∆↑
+
+t impacts ranking. Figure 7 illustrates that samples from different datasets and different amounts of calibration samples im-pact which timesteps rank highest. Since the ground-truth order of timesteps depends on the data distribution, obtaining it for large and diverse datasets is infeasible. Hence, with a finite calibration set, we try to capture tendencies, not a unique universal order. Despite such differences, the scoring functions S↑(Z) con-structed using different amounts of calibration samples m ∈ { 64 , 128 , 256 , 512 }2 B. Lewandowski, S. Kurz et al. 
+
+all show a strong linear fit when tested on different datasets as shown in Figures 8 to 10. For our main deployment setting with K = 5 full-precision timesteps, the practical impact of calibration differences diminishes. Once the top-5 most sensi-tive timesteps are captured, their internal ordering does not matter for schedule quality anymore. Therefore, we adopt m = 128 calibration samples in our exper-iments for more stability over 64 samples, but refrain from using more samples due to diminishing returns. 18 16 14 12 10 8 6 4 2 0
+
+Timestep Index 
+
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> Upcasting Gain  COCO
+> MJHQ
+> DCI
+
+(a) Upcasting gain for samples from different datasets. 18 16 14 12 10 8 6 4 2 0
+
+Timestep Index 
+
+> 0.000
+> 0.005
+> 0.010
+> 0.015
+> 0.020
+> 0.025
+> 0.030
+> Upcasting Gain  64 samples
+> 128 samples
+> 256 samples
+> 512 samples
+
+(b) Upcasting gain for different numbers of sam-ples. 
+
+Fig. 7: Final latent error δ0 reduction for single-timestep upcasting, with the upcasting gain ∆↑
+
+t computed on 128 samples of the MJHQ, DCI and COCO datasets respectively (Figure 7a) and for 64, 128, 256 and 512 samples from the MJHQ dataset (Figure 7b) on the Sana model. 0.16 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Ground Truth Error  Spearman = 0.990
+> Pearson r = 0.981
+> Kendall = 0.924
+> R2= 0.963 K=2 ( =0.842)
+> K=6 ( =0.821)
+> K=10 ( =0.874)
+> K=14 ( =0.716)
+> K=18 ( =0.836)
+> Linear Fit
+
+(a) MJHQ test - gains from MJHQ (64 calibra-tion samples) 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Ground Truth Error  Spearman = 0.992
+> Pearson r = 0.984
+> Kendall = 0.934
+> R2= 0.968 K=2 ( =0.842)
+> K=6 ( =0.874)
+> K=10 ( =0.842)
+> K=14 ( =0.737)
+> K=18 ( =0.871)
+> Linear Fit
+
+(b) MJHQ test - gains from MJHQ (128 cali-bration samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Ground Truth Error  Spearman = 0.992
+> Pearson r = 0.983
+> Kendall = 0.929
+> R2= 0.966 K=2 ( =0.853)
+> K=6 ( =0.768)
+> K=10 ( =0.884)
+> K=14 ( =0.758)
+> K=18 ( =0.778)
+> Linear Fit
+
+(c) MJHQ test - gains from MJHQ (256 calibra-tion samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> Ground Truth Error  Spearman = 0.993
+> Pearson r = 0.984
+> Kendall = 0.937
+> R2= 0.968 K=2 ( =0.863)
+> K=6 ( =0.779)
+> K=10 ( =0.832)
+> K=14 ( =0.832)
+> K=18 ( =0.801)
+> Linear Fit
+
+(d) MJHQ test - gains from MJHQ (512 cali-bration samples) 
+
+Fig. 8: Linear fits between MJHQ ground-truth final latent errors δ0 (128 test samples; 20 schedules per K ∈ { 2, 6, 10 , 14 , 18 }) and the scoring function S↑(Z). Upcasting gains 
+
+∆↑
+
+t are computed on MJHQ with m ∈ { 64 , 128 , 256 , 512 } calibration samples. TMPDiff: Temporal Mixed-Precision for Diffusion Models 30.16 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Ground Truth Error  Spearman = 0.973
+> Pearson r = 0.967
+> Kendall = 0.874
+> R2= 0.935 K=2 ( =0.789)
+> K=6 ( =0.726)
+> K=10 ( =0.695)
+> K=14 ( =0.695)
+> K=18 ( =0.848)
+> Linear Fit
+
+(a) DCI test - gains from MJHQ (64 calibration samples) 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Ground Truth Error  Spearman = 0.969
+> Pearson r = 0.965
+> Kendall = 0.862
+> R2= 0.931 K=2 ( =0.789)
+> K=6 ( =0.716)
+> K=10 ( =0.663)
+> K=14 ( =0.716)
+> K=18 ( =0.860)
+> Linear Fit
+
+(b) DCI test - gains from MJHQ (128 calibra-tion samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Ground Truth Error  Spearman = 0.976
+> Pearson r = 0.969
+> Kendall = 0.877
+> R2= 0.940 K=2 ( =0.842)
+> K=6 ( =0.779)
+> K=10 ( =0.747)
+> K=14 ( =0.779)
+> K=18 ( =0.789)
+> Linear Fit
+
+(c) DCI test - gains from MJHQ (256 calibration samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00 
+
+Score          
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Ground Truth Error  Spearman = 0.982
+> Pearson r = 0.974
+> Kendall = 0.894
+> R2= 0.949 K=2 ( =0.874)
+> K=6 ( =0.811)
+> K=10 ( =0.779)
+> K=14 ( =0.832)
+> K=18 ( =0.813)
+> Linear Fit
+
+(d) DCI test - gains from MJHQ (512 calibra-tion samples) 
+
+Fig. 9: Linear fits between DCI ground-truth final latent errors δ0 (128 test samples; 20 schedules per K ∈ { 2, 6, 10 , 14 , 18 }) and the scoring function S↑(Z). Upcasting gains 
+
+∆↑
+
+t are computed on MJHQ with m ∈ { 64 , 128 , 256 , 512 } calibration samples. 
+
+C Latent Errors as Image Metric Proxy 
+
+Since image-space metrics (FID, LPIPS, CLIP Score) require large sample sizes to produce stable estimates [3], making them unreliable for comparing individ-ual schedules during calibration, we use the final latent error E(Z) as a proxy throughout this paper. This choice is supported by its strong correlation with perceptual metrics as shown in Tab. 3. 
+
+Table 3: Pearson ( rp) and Spearman ( rs) correlation coefficients between image quality metrics and final latent errors. 
+
+Model IR ↑ CLIPS ↑ LPIPS ↓ SSIM ↑ PSNR ↑
+
+PixArt rp -0.69 -0.74 0.73 -0.59 -0.92 
+
+rs -0.72 -0.78 0.82 -0.67 -0.93 Sana rp -0.67 -0.42 0.84 -0.67 -0.74 
+
+rs -0.72 -0.41 0.90 -0.74 -0.87 
+
+D Mixed Memory 
+
+Once the optimal schedule Z∗ is obtained, we use it to switch between the full-precision and the quantized model between denoising steps during inference. The easiest way is to have both models stored in memory at the same time, causing 4 B. Lewandowski, S. Kurz et al. 0.16 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00          
+
+> Score
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Ground Truth Error  Spearman = 0.992
+> Pearson r = 0.973
+> Kendall = 0.928
+> R2= 0.947 K=2 ( =0.863)
+> K=6 ( =0.842)
+> K=10 ( =0.821)
+> K=14 ( =0.821)
+> K=18 ( =0.860)
+> Linear Fit
+
+(a) COCO test - gains from MJHQ (64 calibra-tion samples) 0.14 0.12 0.10 0.08 0.06 0.04 0.02 0.00          
+
+> Score
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Ground Truth Error  Spearman = 0.990
+> Pearson r = 0.972
+> Kendall = 0.922
+> R2= 0.945 K=2 ( =0.842)
+> K=6 ( =0.853)
+> K=10 ( =0.853)
+> K=14 ( =0.884)
+> K=18 ( =0.871)
+> Linear Fit
+
+(b) COCO test - gains from MJHQ (128 cali-bration samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00          
+
+> Score
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Ground Truth Error  Spearman = 0.991
+> Pearson r = 0.971
+> Kendall = 0.924
+> R2= 0.942 K=2 ( =0.916)
+> K=6 ( =0.789)
+> K=10 ( =0.853)
+> K=14 ( =0.821)
+> K=18 ( =0.801)
+> Linear Fit
+
+(c) COCO test - gains from MJHQ (256 calibra-tion samples) 0.12 0.10 0.08 0.06 0.04 0.02 0.00          
+
+> Score
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Ground Truth Error  Spearman = 0.992
+> Pearson r = 0.972
+> Kendall = 0.929
+> R2= 0.945 K=2 ( =0.884)
+> K=6 ( =0.800)
+> K=10 ( =0.821)
+> K=14 ( =0.853)
+> K=18 ( =0.825)
+> Linear Fit
+
+(d) COCO test - gains from MJHQ (512 cali-bration samples) 
+
+Fig. 10: Linear fits between COCO ground-truth final latent errors δ0 (128 test sam-ples; 20 schedules per K ∈ { 2, 6, 10 , 14 , 18 }) and the scoring function S↑(Z). Upcasting gains ∆↑
+
+t are computed on MJHQ with m ∈ { 64 , 128 , 256 , 512 } calibration samples. 
+
+no latency overhead at all. Otherwise, reported speedups must assume that the precision-switching overhead can be hidden at the hardware level. However, ef-ficient kernel-level integration remains an open engineering problem that is left for future work. Weight offloading [1], which offloads the weights of the current model as soon as they are no longer needed and the weights of the incoming model are streamed in ahead of the precision switch, represents a natural di-rection for realizing TMPDiff without requiring both weight sets to be stored in GPU memory simultaneously. Alternatively, nested quantization [23], which derives lower-precision representations directly from shared higher-precision pa-rameters, could eliminate the need for storing multiple models entirely. We report in Figure 11 the impact on latency of keeping only one model in memory. Sampling with 15 quantized and 5 floating point steps, we consider the case where both models remain on the GPU (0 switch) and the cases where we have to swap the model once (1 switch) or twice (2 switches). We additionally consider the case where we keep one separate GPU for each model and switch the noisy latent during inference instead (gpu-gpu switch). The results shows switching the memory shows a limited overhead, not comparable to the cost of using a full-precision model. 
+
+E Evaluation on Reference-free Metrics 
+
+In the main body we assess the impact of TMPDiff on output fidelity by using the full-precision model as reference, reporting PSNR, SSIM and LPIPS. Reference-free metrics are less discriminative in our controlled setting but are reported TMPDiff: Temporal Mixed-Precision for Diffusion Models 5fixed   
+
+> precision
+> 2 switches 1 switch gpu-gpu
+> switch
+> 0 switch
+> 6
+> 8
+> 10
+> 12
+> 14
+> 16
+> 18
+> 20
+
+Fig. 11: Sampling speed (seconds) for FLUX on several memory transfer strategies. 
+
+in Tab. 4 as corroborative evidence for improved image quality over uniform precision baselines at matched end-to-end speedup. 
+
+Table 4: Comparison of Image Reward, CLIP Score, and FID (w.r.t. ground truth images) across datasets. The model evaluated is Sana, using identical settings to the experiment reported in Tab. 1. 
+
+Dataset Metric Ours bfloat16 w4a4r32 COCO 
+
+IR ( ↑) 1.0434 0.9476 1.0413 CLIP ( ↑) 27.021 26.925 26.907 FID ( ↓) 71.243 71.548 71.839 
+
+MJHQ 
+
+IR ( ↑) 1.0438 0.9239 1.0424 CLIP ( ↑) 27.163 26.971 27.172 
+
+FID ( ↓) 55.990 57.196 55.947 
+
+sDCI 
+
+IR ( ↑) 1.0155 0.8131 1.0172 
+
+CLIP ( ↑) 26.728 26.540 26.707 FID ( ↓) 62.468 67.037 62.447 
+
+F Evaluation and System Setup 
+
+Experiments were run on Ubuntu 22.04 with Python 3.12 and Pytorch 2.7 for CUDA 12.6. The hardware platform consists of one Nvidia RTX 4090 GPU with one Intel Core i7-14700KF CPU. The results reported in Tabs. 1 and 4 were run on 1024 samples of each dataset, generated with a 1024 ×1024 resolution with guidance scale 4.5. We additionally ran PixArt experiments with 5,000 images as a sanity check, but they did not show any significant difference in the evaluation results. All speedups are computed over 16 end-to-end backbone inference runs following 10 warmup iterations, excluding the text encoding and image decoding stages. 6 B. Lewandowski, S. Kurz et al. 
+
+G Orthogonality of TMPDiff to Caching-Based Acceleration 
+
+An additional benefit of using temporal mixed quantization as an acceleration vector is that it maintains the ability to set up other classic acceleration frame-works. To illustrate, we consider the results of running TMPDiff on a DeepCache-accelerated sampler. DeepCache [22] is an acceleration technique that skips parts of the denoising process by reusing features from previous steps. We report in Tab. 5 the experimental results of using the different methods on SDXL with the MJHQ dataset. We observe that both methods provide a significant increase in sampling speed with a slight decrease in image quality. With our chosen setup, the trade-off leans more towards speed for DeepCache. The results when the two approaches are combined show a substantial increase in speed (+22% w.r.t. DeepCache only) with minimal generation decay. This confirms TMPDiff can be used seamlessly with existing acceleration frameworks without requiring adaptation or specific setups.
