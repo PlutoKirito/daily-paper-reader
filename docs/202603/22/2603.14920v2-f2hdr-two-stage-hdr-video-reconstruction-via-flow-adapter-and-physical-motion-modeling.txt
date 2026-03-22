@@ -1,0 +1,372 @@
+Title: F2HDR: Two-Stage HDR Video Reconstruction via Flow Adapter and Physical Motion Modeling
+
+URL Source: https://arxiv.org/pdf/2603.14920v2
+
+Published Time: Thu, 19 Mar 2026 00:43:48 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# F2HDR: Two-Stage HDR Video Reconstruction via Flow Adapter and Physical Motion Modeling 
+
+## Huanjing Yue 1,2 Dawei Li 1,2 Shaoxiong Tu 3 Jingyu Yang 1*
+
+> 1
+
+## School of Electrical and Information Engineering, Tianjin University 
+
+> 2
+
+## State Key Laboratory of Smart Power Distribution Equipment and System, Tianjin University 
+
+> 3
+
+## Huawei Technologies Co., Ltd. 
+
+{huanjing.yue, dwli, yjy}@tju.edu.cn, tushaoxiong1@hisilicon.com 
+
+## Abstract 
+
+Reconstructing High Dynamic Range (HDR) videos from sequences of alternating-exposure Low Dynamic Range (LDR) frames remains highly challenging, especially un-der dynamic scenes where cross-exposure inconsistencies and complex motion make inter-frame alignment difficult, leading to ghosting and detail loss. Existing methods often suffer from inaccurate alignment, suboptimal fea-ture aggregation, and degraded reconstruction quality in motion-dominated regions. To address these challenges, we propose F2HDR , a two-stage HDR video reconstruc-tion framework that robustly perceives inter-frame mo-tion and restores fine details in complex dynamic scenar-ios. The proposed framework integrates a flow adapter that adapts generic optical flow for robust cross-exposure alignment, a physical motion modeling to identify salient motion regions, and a motion-aware refinement network that aggregates complementary information while remov-ing ghosting and noise. Extensive experiments demonstrate that F 2HDR achieves state-of-the-art performance on real-world HDR video benchmarks, producing ghost-free and high-fidelity results under large motion and exposure varia-tions. Our code is available at https://github.com/ wei1895/F2HDR .
+
+## 1. Introduction 
+
+Compared to Low Dynamic Range (LDR) videos, High Dynamic Range (HDR) videos offer richer details and su-perior visual quality. However, constrained by the hard-ware capabilities of consumer-grade cameras, the dynamic range of real-world scenes often far exceeds the record-ing range of image sensors, resulting in detail loss in  
+
+> *This work was supported in part by the National Natural Science Foundation of China under Grant 62472308 and Grant 62231018. Cor-responding author: Jingyu Yang
+
+Our HDR Result (Tonemapped )
+
+HDRFlow NECHDR Ours GT 
+
+LDR 
+
+t+1 
+
+Ref . t
+
+t-1
+
+Figure 1. Comparison on the real-world HDR video reconstruc-tion benchmark [30] with state-of-the-art methods [6, 35]. The challenging scene involves both global and local motion, while the reference frames suffer from severe information loss. Our F2HDR 
+
+achieves the most robust optical flow estimation and the most ac-curate detail restoration. 
+
+both overexposed and underexposed regions. Unlike HDR video acquisition methods that rely on specialized hard-ware [9, 11, 25, 26, 29], reconstructing HDR frames from sequences of LDR frames with alternating long and short exposures is a more cost-effective approach. Furthermore, HDR content also facilitates downstream high-level vision tasks such as object detection [27] and segmentation [24]. Multi-frame based HDR reconstruction methods can be generally categorized into two types: single-stage and two-stage approaches. The single-stage methods [13, 35, 42] follow the alignment–fusion paradigm, directly merging 1
+
+> arXiv:2603.14920v2 [cs.CV] 18 Mar 2026
+
+the aligned LDR frames to obtain the final HDR result. Such networks are characterized by high computational ef-ficiency and fewer parameters. However, achieving pre-cise alignment across frames with varying exposures is challenging for dynamic scenes. LDR inputs often ex-hibit incomplete information since long-exposure frames are prone to saturation while short-exposure frames fail to preserve details in dark regions. Consequently, obtaining accurately aligned frames becomes difficult, especially in the presence of occlusions or fast-moving objects. These limitations frequently lead to ghosting and color-shift ar-tifacts in the fused HDR outputs, particularly in saturated and low-light areas. To address this issue, two-stage net-works [2, 3, 6, 30, 39, 41] are proposed, which divides the reconstruction process into coarse HDR reconstruction (or coarse aligned result) and HDR refinement stages. The coarse stage focuses on recovering global structures and lu-minance, providing a stable foundation for subsequent re-finement. The refinement stage alleviates the misalignment of the previous stage and achieves better feature aggrega-tion to mitigate ghosting artifacts. Compared to single-stage methods, two-stage approaches typically yield better HDR reconstruction by leveraging the complementary strengths of the coarse and refinement stages. However, there are still two challenges to be solved. 
+
+How to generate well-aligned frames in the first stage? 
+
+Current two-stage methods usually adopt simple alignment strategy in the first stage, such as optical flow based align-ment [2, 3, 6, 13] or global motion estimation [30], which cannot generate well aligned results and the errors will propagate to the second stage. We observe that the optical flow models pretrained on extensive optical flow datasets often struggle to align occluded regions across varying ex-posures in HDR scenarios [2, 3]. On the other hand, the retrained task-oriented flow models [6, 35] cannot generate fine edge details. The main reason is that there is no suit-able flow dataset for HDR reconstruction and the current flow network is trained by HDR reconstruction loss rather than flow prediction loss. Although the pretrained flow network can generate offset with fine edges but they can-not deal with over-exposed or under-exposed regions well. To leverage the advantages of pretrained optical flow and meet cross-exposure alignment requirements, we propose to learn residual flow via a learnable flow adapter. We first utilize a pretrained optical flow model to generate a coarse flow with well-preserved edge details, and then refine it with the residual flow to make it adapt to HDR reconstruction. As illustrated in Fig. 1, our flow adapter generates accurate flow offsets with clear edges for the over-exposed regions. 
+
+How to refine the artifacts in the second stage? The first stage can generate a coarse HDR result, which still may suf-fer from ghosting and noise in the motion regions. There-fore, the main task in the second stage is to refine these artifacts. Previous methods usually fuse the same modality images to generate the final result. For example, Chen et al. 
+
+fed the coarse HDR results into a fine-scale alignment and fusion network to generate the final HDR result [2]. Yan et al. fed the corrected LDRs into the second stage for HDR generation [39]. The work in [3] fed the aligned LDR re-sult into the second stage for inpainting and reconstruction. Different from them, the work in [6] fed the original LDRs, generated LDRs, and coarse HDR features into the second-stage blending network. By using the three modalities, it achieves better HDR reconstruction results. However, there is no guidance for the blending process, which cannot han-dle the difficult regions in a more targeted manner. Shu et al. [30] introduced an exposure mask into the second stage. However, the mask mainly depicts the bright regions rather than difficult regions. Therefore, in this work, we propose physical motion modeling to guide the fusion process. Con-sidering that our flow obtained in the first stage depicts the motion regions, we extract the motion mask based on the flow, and then utilize the motion mask to modulate the fea-tures extracted from aligned LDR features. These features are further fused together with the coarse HDR result to generate the final HDR result. Since our motion mask is ex-tracted from the flow, the optimization of the second stage can also optimize the flow result, which further leads to a better alignment result in the first stage. In summary, our contributions are as follows. • We propose a two-stage HDR video reconstruction frame-work named F 2HDR, which utilizes the flow information in two different manners. In the first stage, we propose a flow adapter based on pretrained flow models, which generate robust flow for alternating exposures. • In the second stage, we propose a physical motion model-ing module based on the flow to predict the regions with noise and ghosting artifacts. The aligned LDR features are first modulated by the mask, and then fused with the coarse HDR result after enhancement. The second stage selectively aggregates reliable cues from different sources to compensate for missing or corrupted details. • Extensive quantitative and qualitative experiments demonstrate that F2HDR achieves state-of-the-art 
+
+performance on real-world HDR video benchmarks. 
+
+## 2. Related Work 
+
+Multi-Exposure HDR Image Reconstruction. The most popular paradigm in HDR image reconstruction is to merge multiple images captured under different exposure settings. Most single-stage HDR reconstruction approaches perform a single Alignment-Fusion operation [1, 12, 17, 20, 37] or rely solely on feature-level fusion [31, 38, 40] to pro-duce an HDR-domain output. These methods typically de-sign convolutional or attention-based architectures to fuse multi-exposure information. However, due to inevitable 2information loss and misalignment during the registration process, such approaches often suffer from noticeable ar-tifacts. To achieve more precise alignment, two-stage HDR reconstruction frameworks [17, 19] adopt a coarse-to-fine design that progressively refines the HDR results, demonstrating stronger reconstruction performance. Re-cent foundation model-based works [3, 39] formulate multi-exposure HDR reconstruction as a two-stage segmenta-tion–inpainting pipeline. Yan et al. [39] use SAM and Sta-ble Diffusion to handle motion and misalignment, but such methods demand heavy computation and suffer from low fidelity and poor temporal consistency. 
+
+HDR Video Reconstruction. Hardware-based HDR video methods [4, 10, 18, 25, 32] use specialized designs but are too complex for widespread deployment. A more accessible line of work reconstructs HDR videos from LDR sequences captured with alternating exposures. Traditional methods are built upon explicit motion compensation, where inter-frame motion is modeled and corrected using hand-crafted alignment schemes [14, 15, 22]. With the emergence of deep learning, Kalantari et al . [13] proposed a CNN frame-work that employs optical flow for alignment and learns pixel-wise fusion weights for HDR synthesis. Recent studies have explored single-stage HDR video re-construction from various perspectives. Chung et al. [5] em-ploy a luminance-based attention mechanism for alignment and a dedicated hallucination module to handle saturated regions. Xu et al. [35] design a task-specific optical flow network, achieving lightweight and real-time HDR video reconstruction. Guan et al. [8] introduce a latent diffusion framework that incorporates exposure-aware conditioning and temporal alignment for HDR reconstruction. However, such single-stage designs still struggle to achieve robust alignment under complex motion and exposure variations, and accurate optical flow estimation across differently ex-posed frames remains a challenging problem. Chen et al. [2] were the first to propose a coarse-to-fine two-stage framework for HDR video reconstruction, which performs coarse fusion within grouped frames fol-lowed by feature-domain alignment and refinement using deformable convolutions. In a different approach, Cui et al. [6] first reconstruct exposure-compensated reference frames and coarse HDR results through a feature pyramid network, and then conduct a second-stage weighted fusion to enhance temporal consistency. However, existing two-stage HDR video reconstruction methods remain limited by alignment accuracy in the first stage, and often overlook the role of motion cues in guiding HDR detail refinement dur-ing the second stage, which may lead to error accumulation and inefficient computation. Unlike previous works, our method introduces alightweight Flow Adapter that effectively transforms the predictions of a general optical flow model into task-adaptive flow fields tailored for HDR video reconstruction. This design enables our framework to obtain more accu-rate HDR results and precise motion cues already in the first stage. Furthermore, we introduce motion-guided fea-ture modulation to direct the network’s attention toward re-gions with a high likelihood of containing artifacts. 
+
+## 3. Method 
+
+Capturing video frames with two alternating exposures is more feasible than that with multiple alternating exposures. Therefore, in this work, we take the LDR video sequence 
+
+{Lt|t = 1 , 2, ..., n } with two alternating exposures as input. We aim to reconstruct high quality HDR frames {Ht|t =1, 2, ..., n } by fusing neighboring LDR frames. The middle frame Lt is selected as the reference, and its two neighbors 
+
+Lt−1 and Lt+1 are used to assist the reconstruction process. The overall framework of the proposed F 2HDR is il-lustrated in Fig. 2. It consists of two stages. The first stage is coarse fusion stage, which includes flow estima-tion, weighted fusion, and motion modeling. The second stage is refinement stage, which includes feature modula-tion, enhancement, and fusion modules. At the coarse fu-sion stage, we first estimate the optical flows ft→t−1 and 
+
+ft→t+1 via our proposed flow adapter. Then, we align the HDR domain input It−1 and It+1 obtained from Lt−1 and 
+
+Lt+1 with the reference frame It based on the flow, and the aligned frames are fused together to generate a coarse HDR result Hcoarse . Meanwhile, we extract the physical motion information from the flow via a motion modeling module. At the refinement stage, we extract features from the LDR input, which are aligned with the reference based on the flow ft→t−1 and ft→t+1 . Hereafter, these aligned features are modulated by the coded motion features. Then these features are enhanced and fused with the feature extracted from the coarse HDR result, after going through a decoder leading to the final HDR result Hfinal .Following previous works, we map each LDR frame to the linear HDR domain through gamma correction: 
+
+It = Lγt
+
+et
+
+, (1) where et is the exposure for frame Lt and γ = 2 .2.
+
+3.1. Stage I: Coarse Fusion Stage 
+
+3.1.1. Flow Estimation with Flow Adapter 
+
+Considering that the pretrained optical flow network can-not adapt to HDR scenarios, and the retrained flow network cannot produce flows with clear edges. As shown in Fig. 1, the flow maps generated by the retrained flow network in [6, 35] are blurry. In contrast, we propose a flow adapter to predict residual flow, which refines the pre-trained flow prior and tailors it for HDR scenarios. 3Pre -trained   
+
+> Optical Flow
+> Network
+> Alignment
+> Flow Adapter
+> Initial Flow
+> Cross -Expo. Flow
+> Weight ed Fusion
+> U-Net
+> Motion Mask
+> Motion
+> Modeling
+
+(a) Stage I: Coarse Fusion Stage (b) Stage II: Refinement Stage Shared -Weight   
+
+> Encoder
+> Motion -Guided
+> Feature Modulation
+> Motion
+> Encoding
+> Feature
+> Alignment
+> C
+> DCB(D=1 )
+> DCB(D=2)
+> DCB(D=4)
+> Feature Fusion
+> Feature Enhancement
+> Coarse Final Motion
+> Mask
+> CFrozen
+> Trainable
+> Concat
+> Multiply
+> ·
+> ·
+> ·
+> DCB Dilated
+> ConvBlock Feature
+
+Figure 2. Network architecture of the proposed F 2HDR, which includes coarse fusion stage and refinement stage. 
+
+Given three consecutive LDR frames {Lt−1, L t, L t+1 }
+
+with their respective exposures {et−1, e t, e t+1 }, we first normalize the exposure of the reference frame Lt to match its neighboring frames. In this way, we can get two inputs with the same exposure, which is the setting of pretrained optical flow networks. Specifically, 
+
+gt→t−1(Lt) = clip 
+
+
+
+(( Lγt /e t)et−1)
+
+> 1/γ
+
+
+
+,gt→t+1 (Lt) = clip 
+
+
+
+(( Lγt /e t)et+1 )
+
+> 1/γ
+
+
+
+, (2) where γ = 2 .2 is the gamma correction coefficient. Then, 
+
+{Lt−1, g t→t−1(Lt)} is fed into the pretrained optical flow network SEA-RAFT [33] to obtain the initial flow ft→t−1.Similarly, ft→t+1 is obtained for {Lt+1 , g t→t+1 (Lt)}. The initial flow is not good for over-exposed or under-exposed regions. Therefore, we further refine it with a flow adapter. The adapter is constructed by a shallow residual CNN that refines the coarse flows using both image content and motion cues. Given three consecutive LDR frames 
+
+{Lt−1, L t, L t+1 } and the coarse flows ft→t−1 and ft→t+1 ,we first form the concatenated input 
+
+xt = Lt−1, L t, L t+1 , f t→t−1/λ, f t→t+1 /λ , (3) where λ = 20 is a fixed normalization factor. The adapter consists of several Conv–PReLU blocks with different dila-tion rates and predicts residual flows 
+
+∆ft→t−1, ∆ft→t+1 
+
+ = A(xt), (4) where A(·) denotes the flow adapter. The refined flows are obtained by residual correction: 
+
+˜ft→t−1 = ft→t−1 + λ ∆ft→t−1, (5) 
+
+˜ft→t+1 = ft→t+1 + λ ∆ft→t+1 . (6) Trained jointly with the HDR reconstruction network, this adapter effectively tailors the pretrained optical flow to HDR scenes and occlusion regions, yielding flows with sharper and more reliable motion boundaries. Since the adapter is trained with normalized HDR inputs, it adapts to the HDR scenes well. After going through the flow adapter, we obtain the refined flow ˜ft→t−1 and ˜ft→t+1 .After obtaining the refined flow maps, we warp the LDR inputs and fuse them together to generate a coarse HDR result. Specifically, we map the LDR inputs to HDR do-main via Eq. 1. Then, It−1 and It+1 are aligned with It
+
+using the estimated optical flows with the backward warp-ing operation, resulting in ˜It−1 and ˜It+1 . Considering the original It−1 and It+1 are beneficial for fusion in static re-gions, we also feed them into the fusion network. In sum-4mary, { ˜It−1, ˜It+1 , I t, I t+1 , I t−1} are concatenated and fed into the fusion network. The fusion network follows a U-Net style encoder– decoder structure with skip connections. The encoder pro-gressively extracts features at multiple scales using resid-ual blocks, while the decoder reconstructs the spatial res-olution through upsampling layers. The network outputs five weight maps {Wi}5 
+
+> i=1
+
+corresponding to the five HDR frames used for fusion. The initial HDR reconstruction is obtained via weighted averaging: 
+
+Hinit =
+
+P5 
+
+> i=1
+
+Wi ⊙ Ii
+
+P5 
+
+> i=1
+
+Wi + ϵ , (7) where ⊙ denotes element-wise multiplication and ϵ = 10 −8
+
+ensures numerical stability. 
+
+3.1.2. Physical Motion Modeling 
+
+The ghosting and noise artifacts usually occur in the re-gions with motion. Therefore, it is important to extract mo-tion information from the input LDRs. Prior approaches include deriving occlusion masks from optical flow [3] or segmenting motion masks using a pretrained Segment Any-thing model [39]. However, these masks are binary and fail to capture the continuous physical characteristics of motion. Different from them, we propose to derive the motion mask from the physical decomposition of the optical flow field. Given an optical flow f = [ u, v ], we first compute its first-order spatial derivatives using Sobel operators: 
+
+ux = ∂u ∂x , uy = ∂u ∂y ,vx = ∂v ∂x , vy = ∂v ∂y . (8) These derivatives describe the local velocity gradient ten-sor ∇f , from which we extract four physically interpretable motion components: 
+
+Translation: ∥f ∥2 = pu2 + v2, (9) 
+
+Divergence: ∇· f = ux + vy , (10) 
+
+Curl: ∇× f = vx − uy , (11) 
+
+Shear: S = 12 (uy + vx), (12) These components correspond respectively to physical mo-tion phenomena in the scene. Translation represents global displacement magnitude, divergence encodes scale changes, curl measures rotation, and shear captures local non-rigid deformation. We then form a unified motion en-ergy that integrates these physical cues:                          
+
+> Em=wt⊙ ∥ f∥2+wd⊙ |∇· f|+wc⊙ |∇× f|+ws⊙ | S|
+> wt+wd+wc+ws+ϵ.
+
+(13) Here wt, w d, w c, w s are adaptive weights learned by a con-volution block with the learned optical flow as input. This formulation ensures that the mask reflects not only the am-plitude of motion but also the physical type and local struc-ture of movement. For instance, a region with large curl but small divergence corresponds to pure rotation, while high divergence indicates zoom-like expansion. To further emphasize physically salient regions, a multi-scale contrast mechanism is applied: 
+
+Es = Em ⊙ (1 + 2 Smulti ), (14) where Smulti measures the center–surround motion contrast over scales {1, 2, 4}. In this way, the motion energy with large contrast (such as edges) can be enhanced. We then compute an adaptive Otsu-style threshold τ from the en-ergy histogram to distinguish significant motion from back-ground drift, and derive a soft motion mask: 
+
+M = 12
+
+1 + tanh  8( Es − τ ) . (15) The resulting M is a continuous value field normalized to 
+
+[0 , 1] , preserving spatial coherence while maintaining dif-ferentiability for end-to-end training. This physically inspired construction ensures the mask captures genuine motion semantics, not just amplitude cues. It highlights physically inconsistent regions (e.g., occlu-sion boundaries, reflections, moving objects) where ghost-ing arises, guiding second-stage fusion to adaptively sup-press artifacts while preserving spatial consistency. 
+
+3.2. Stage II: Refinement Stage 
+
+3.2.1. Motion Guided Feature Modulation 
+
+While the fusion network produces a reasonable initial HDR result, residual ghosting artifacts and noise may per-sist in regions with complex motion or occlusions. To ad-dress this, we introduce the refinement stage. Considering that weighted fusion of the original input is good at preserving the image structures but cannot eliminate artifacts, such as ghosting and noise, in this stage, different from the coarse fusion stage, we propose to process the in-puts in feature domain. Specifically, for each input frame 
+
+Lt and its linear HDR counterpart It, we extract its features via an encoder E, generating FLt and FIt . The two features are then fused together via a 1 × 1 convolution, namely 
+
+FLI t = Conv 1×1 ([ FLt , F It ]) . (16) Then, the neighboring frame features FLI t−1 and FLI t+1 
+
+are aligned with the central frame feature using the optical flow ˜ft→t−1 and ˜ft→t+1 , generating ˜FLI t−1 and ˜FLI t+1 . A straightforward solution is directly fusing the aligned fea-ture with FLI t . However, this cannot make the network focus on the regions with artifacts. Therefore, we further propose to encode the motion information and use the mo-tion features to modulate the aligned features. Specifically, 5LDR Frames Our HDR Result (Tonemapped ) LDR Patches              
+
+> Chen21 HDRFlow NECHDR Motion Mask Ours GT
+> LDR Frames Our HDR Result (Tonemapped )LDR Patches
+> Chen21 HDRFlow NECHDR Our Flow Ours GT
+
+Figure 3. Qualitative comparisons with state-of-the-art methods on DeepHDRVideo dataset [2]. Chen21 LAN-HDR HDRFlow NECHDR Ours GT            
+
+> LDR Frames Our HDR Result (Tonemapped )LDR Patches
+> Chen21 LAN-HDR HDRFlow NECHDR Ours GT
+> LDR Frames Our HDR Result (Tonemapped )LDR Patches
+
+Figure 4. Qualitative comparisons with state-of-the-art methods on Real-HDRV dataset [30]. 
+
+the motion feature is obtained by 
+
+Gt±1 = σ
+
+
+
+Conv 
+
+
+
+[∥ ˜ft→t±1∥2/ ˜fmax , M t±1, 1]
+
+ 
+
+, (17) where Conv is a convolution block, ˜fmax is the maximum flow magnitude, and 1 is a constant channel that provides bias information. σ is the sigmoid function, which maps the motion features into the range [0,1]. Then Gt±1 is used to modulate the aligned features via 
+
+¯FLI t±1 = Gt±1 ⊙ ˜FLI t±1 (18) Therefore, the regions with obvious motions will be empha-sized and the static regions will be suppressed. 
+
+3.2.2. Feature Enhancement and Fusion 
+
+After obtaining the modulated features, we further combine it with the central frame feature FLI t . Then, these features go through a feature enhancement module, which is con-structed by three dilated branches. In this way, we can use correlations in a large receptive field to reduce noise and ar-tifacts. Then we fuse the features extracted from the coarse fusion result Hcoarse obtained in the first stage with these en-hanced features. Finally, the fused features go through the decoder, reconstructing the final HDR result Hfinal .
+
+3.2.3. Training Loss 
+
+Following previous works [13, 34, 37], we use the differen-tiable μ-law function as the tonemapping function T :
+
+T (H) = log(1 + μH )log(1 + μ) , (19) where μ is set to 5,000. We compute the reconstruction loss 
+
+L between the predicted Hfinal and ground-truth Hgt using 
+
+L1 loss: 
+
+L =∥ T (Hfinal ) − T (Hgt ) ∥1 . (20) 
+
+## 4. Experiments 
+
+4.1. Experimental Setup 
+
+Datasets. To ensure a fair comparison, we also adopt the Vimeo-90K [36] dataset as training data. Following prior works [2, 5, 6, 35], we generate the corresponding alternating-exposure LDR sequences through a simulation pipeline. During training, we apply random flipping and rotation, followed by randomly cropping the augmented frames to 256 ×256 patches as network inputs. To evaluate the models’ capability of reconstructing HDR content from real-world data, we adopt the two 6Table 1. Quantitative comparisons on the DeepHDRVideo dataset [2], including both image-based [14, 21, 28, 37] and video-based methods [2, 5, 6, 8, 13, 35]. * indicates additional training with the Sintel dataset. Red Bold : best, Blue Bold : second best. 
+
+Methods PSNR T SSIM T
+
+HDR-VDP-2 
+
+Kalantari13 [14] TOG2013 40.33 0.9409 –AHDRNet [37] CVPR2019 40.54 0.9452 Prabhakar [28] CVPR2021 40.21 0.9414 HDR-Transformer [21] ECCV2022 41.51 0.9458 Kalantari19 [13] CGF2019 39.91 0.9329 –Chen21 [2] ICCV2021 43.32 0.9551 78.37 
+
+LAN-HDR [5] ICCV2023 41.83 0.9499 76.00 NECHDR [6] MM24 43.44 0.9558 77.28 HDRFlow [35] CVPR2024 43.03 0.9518 77.58 HDRFlow* [35] CVPR2024 43.25 0.9515 78.07 HDR-V-Diff [8] ECCV2024 42.07 0.9604 –
+
+Ours 43.87 0.9573 78.88 
+
+Table 2. Quantitative comparison of different methods on the Real-HDRV dataset [30]. * indicates additional training with the Sintel dataset. Red Bold : best, Blue Bold : second best. 
+
+Methods PSNR T SSIM T HDR-VDP-2 PSNR L SSIM L
+
+Chen21 [2] 40.79 0.9510 76.50 50.30 0.9943 LAN-HDR [5] 39.79 0.9448 74.43 46.54 0.9928 HDRFlow [35] 40.34 0.9481 75.82 49.72 0.9941 HDRFlow* [35] 40.28 0.9450 76.08 49.87 0.9941 NECHDR [6] 40.88 0.9518 76.77 50.41 0.9952 Ours 41.01 0.9538 76.93 50.51 0.9949 
+
+largest real-captured HDR video benchmarks as our test set, namely DeepHDRVideo [2] and Real-HDRV [30]. DeepHDRVideo contains 76 dynamic scenes and 49 static scenes. For the Real-HDRV dataset, we utilize the 50 test videos released by [30]. Since the official testing code and evaluation-oriented data organization of Real-HDRV are not released, we follow a unified protocol by using a sliding-window strategy to traverse and evaluate all frames within each selected video. For each frame, we utilize its two neighbors to assist the HDR reconstruction. 
+
+Implementation details. We implement our method in Py-Torch and conduct all experiments on an NVIDIA RTX 3090 GPU. We employ the Adam optimizer [16] with β1 =0.9 and β2 = 0.999 . The initial learning rate is set to 
+
+1 × 10 −4 and is reduced by half every 10 epochs. We set the 
+
+μ parameter of the μ-law tone mapping function to 5000. We train our model with 50 epochs using a batch size of 16. 
+
+Evaluation metrics. We adopt PSNR T , SSIM T , PSNR L,SSIM L, and HDR-VDP-2 as our evaluation metrics. Among them, PSNR T and SSIM T are computed on the μ-law tonemapped HDR domain, while PSNR L and SSIM L
+
+are computed in the linear HDR domain. For a fair com-parison, all HDR-VDP-2 results in this paper are obtained using a fixed evaluation configuration, where the display di-
+
+Table 3. Comparison of optical flow accuracy on Real-HDRV [30].                       
+
+> HDRFlow NECHDR Ours w/o FA Ours
+> Optical Flow EPE ↓3.53 3.30 1.81 2.08
+> LDR Warping PSNR ↑29.93 30.31 30.39 30.84
+> LDR Warping SSIM ↑0.8763 0.8901 0.8897 0.8922 HDRFlow NECHDR Ours(w/o FA) Ours Label
+> Warped LDR  Flow  Warped LDR  Flow
+
+Figure 5. Qualitative Comparisons of optical flow and warped LDR on DeepHDRVideo (Rows 1-2) [2] and Real-HDRV (Rows 3-4) [30] Datasets. 
+
+agonal is set to 28 inches and the viewing distance to 55 cm. 
+
+4.2. Comparisons with State-of-the-art 
+
+Quantitative evaluations. We compare our approach with state-of-the-art (SOTA) methods. Since many image HDR reconstruction methods also evaluate on the DeepH-DRVideo dataset, we directly quote their results from their papers [14, 21, 28, 37]. For the video HDR reconstruction methods, since there are no released models for [13], we quote its results from [35]. Since HDR-V-Diff [8] does not release its code, we are unable to evaluate its HDR-VDP-2 [23] performance under our experimental settings. We directly quote its PSNR and SSIM results from [8]. As shown in Tab. 1, our model achieves the best PSNR T and best HDR-VDP-2 scores on the DeepH-DRVideo dataset, surpassing the second-best method by 0.43 dB in PSNR T . On the Real-HDRV dataset, as shown in Tab. 2, our method obtains the highest PSNR T , SSIM T ,HDR-VDP-2, and PSNR L scores among all approaches. 
+
+Qualitative evaluations. We compare the visual results of our approach with state-of-the-art methods [2, 5, 6, 35] in Fig. 3 and Fig. 4. As shown in Fig. 3, our method produces significantly better visual quality. Our motion mask ef-fectively highlights motion-induced regions and suppresses ghosting artifacts, whereas all other methods exhibit vary-ing degrees of ghosting in these challenging areas. As shown in Fig. 4, our approach delivers the most robust per-formance in challenging night time scenes. Our reconstruc-7Table 4. Inference time comparison for two different resolutions evaluated on an NVIDIA RTX 3090 GPU.               
+
+> Methods Time (s) 1920×1080 1536×813
+> Kalantari19 [13] 0.260 0.220 HDRFlow [35] 0.076 0.050 NECHDR [6] 0.160 0.103 Chen21 [2] 0.570 0.540 LAN-HDR [5] 0.905 0.525 Ours 0.290 0.190
+
+tion contains the least noise and preserves the most faithful texture details, while compared methods suffer from noise amplification inherited from the original LDR frames and exhibit noticeable texture degradation. Tab. 4 presents the inference time of different methods. Our method is much faster than [2] and [5]. 
+
+Evaluation of flow. Since there is no GT flow for HDR task, we generate pseudo flow labels by estimating flow with HDR ground truth frames as input. We adopt Mem-Flow [7] for pseudo label generation, as using an indepen-dent third-party optical flow network avoids evaluation bias and maximizes assessment reliability. For evaluation on the Real-HDRV Dataset [30], we first use EPE (end-point error) between estimated flow and label. Considering that warping quality is essential for the fusion process, we further evalu-ate the estimated flow quality between the warped and tar-get LDR frames at the same exposure. Our flow estimation method achieves lower EPE and the best warping quality in Tab. 3. Note that, after introducing flow adapter (FA), the EPE is increased but warping quality is improved. The rea-son is that our FA can generate offsets for occlusion regions, which is beneficial for warping. However, the pseudo flow label for these regions is zero, see Fig. 5. Note that , since there is only one LDR exposure for each frame in the Deep-HDRVideo dataset [2], we present the HDR ground truth as the label (Fig. 5), which is only for qualitative evaluation. 
+
+4.3. Ablation Study 
+
+We conduct ablation studies on the DeepHDRVideo dataset and the Real-HDRV dataset. The quantitative results are summarized in Tab. 5. We first present the first stage re-sult without flow adapter. The result is the worst, since the flow adapter is essential, as it make the pretrained flow mod-els adapt to HDR scenarios. Then we introduce the second stage to the first variant. The result is improved, but is still much worse than our full solution. The main reason is that a high quality flow map is a solid foundation for the re-finement stage. As shown in Fig. 6, the visual results fur-ther verify the importance of the Flow Adapter in reducing ghosting. Then, we evaluate the effect of our motion mask. The re-sult is degraded by 0.19 dB on the DeepHDRVideo dataset                                   
+
+> Table 5. Ablation study of F 2HDR on DeepHDRVideo dataset and Real-HDRV dataset. FA denotes Flow Adapter. Mask* denotes the mask learned via a CNN.
+> Methods DeepHDRVideo Real-HDRV
+> PSNR TSSIM TPSNR TSSIM T
+> Stage I w/o FA 43.06 0.9514 40.29 0.9453 Stage I w/o FA + Stage II 43.21 0.9530 40.45 0.9461 Stage I 43.39 0.9549 40.61 0.9481 Stage I w/o Mask + Stage II 43.68 0.9565 40.87 0.9502 Stage I w/ Mask* + Stage II 43.76 0.9569 40.93 0.9524 Ours (Stage I + Stage II) 43.87 0.9573 41.01 0.9538 w/o Flow Adapter w/ Flow Adapter
+> Scen e1Scen e2Scen e3
+> Figure 6. Ablation of flow adapter by removing it from our full solution.
+
+if we remove the motion mask from our full solution. The main reason is that the motion mask helps the refinement network aggregate the most informative features, leading to more accurate HDR reconstruction. Replacing our physics motion modeling with a standard learned CNN also leads to inferior results. In addition, compared with single stage solution, our two stage solution greatly improves the recon-struction performance. Please refer to our supplementary file for more details. 
+
+## 5. Conclusion 
+
+In this paper, we presented F2HDR , a two-stage HDR video reconstruction framework that addresses the fundamental challenges of cross-exposure misalignment and motion-induced artifacts in dynamic scenes. Our design com-bines two key components: a Flow Adapter that transforms generic pretrained optical flow into task-adaptive cross-exposure motion fields, and a Physical Motion Modeling 
+
+module that extracts continuous, physically meaningful mo-tion cues to guide the refinement process. By integrat-ing these components within a coarse-to-fine reconstruction pipeline, our method effectively aggregates complementary information from both LDR and HDR domains. Experi-ments demonstrate the superiority of our method. 8References 
+
+[1] Sibi Catley-Chandar, Thomas Tanay, Lucas Vandroux, Aleš Leonardis, Gregory Slabaugh, and Eduardo Pérez-Pellitero. FlexHDR: Modeling alignment and exposure uncertainties for flexible HDR imaging. IEEE Transactions on Image Pro-cessing , 31:5923–5935, 2022. 2 [2] Guanying Chen, Chaofeng Chen, Shi Guo, Zhetong Liang, Kwan-Yee K Wong, and Lei Zhang. Hdr video reconstruc-tion: A coarse-to-fine network and a real-world benchmark dataset. In Proceedings of the IEEE/CVF International Con-ference on Computer Vision , pages 2502–2511, 2021. 2, 3, 6, 7, 8 [3] Zixuan Chen, Yujin Wang, Xin Cai, Zhiyuan You, Zheming Lu, Fan Zhang, Shi Guo, and Tianfan Xue. Ultrafusion: Ul-tra high dynamic imaging using exposure fusion. In Proceed-ings of the Computer Vision and Pattern Recognition Confer-ence , pages 16111–16121, 2025. 2, 3, 5 [4] Inchang Choi, Seung-Hwan Baek, and Min H Kim. Recon-structing interlaced high-dynamic-range video using joint learning. IEEE Transactions on Image Processing , 26(11): 5353–5366, 2017. 3 [5] Haesoo Chung and Nam Ik Cho. Lan-hdr: Luminance-based alignment network for high dynamic range video reconstruc-tion. In Proceedings of the IEEE/CVF International Confer-ence on Computer Vision , pages 12760–12769, 2023. 3, 6, 7, 8 [6] Jiahao Cui, Wei Jiang, Zhan Peng, Zhiyu Pan, and Zhiguo Cao. Exposure completing for temporally consistent neural high dynamic range video rendering. In Proceedings of the 32nd ACM International Conference on Multimedia , pages 10027–10035, 2024. 1, 2, 3, 6, 7, 8 [7] Qiaole Dong and Yanwei Fu. Memflow: Optical flow es-timation and prediction with memory. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 19068–19078, 2024. 8 [8] Yuanshen Guan, Ruikang Xu, Mingde Yao, Ruisheng Gao, Lizhi Wang, and Zhiwei Xiong. Diffusion-promoted hdr video reconstruction. In European Conference on Computer Vision , pages 20–38. Springer, 2024. 3, 7 [9] Jin Han, Yixin Yang, Peiqi Duan, Chu Zhou, Lei Ma, Chao Xu, Tiejun Huang, Imari Sato, and Boxin Shi. Hybrid high dynamic range imaging fusing neuromorphic and conven-tional images. IEEE Transactions on pattern analysis and machine intelligence , 45(7):8553–8565, 2023. 1 [10] Felix Heide, Markus Steinberger, Yun-Ta Tsai, Mushfiqur Rouf, Dawid Paj ˛ ak, Dikpal Reddy, Orazio Gallo, Jing Liu, Wolfgang Heidrich, Karen Egiazarian, et al. Flexisp: A flex-ible camera image processing framework. ACM Transactions on Graphics (TOG) , 33(6):1–13, 2014. 3 [11] Anthony Huggett, Chris Silsby, Sergi Cami, and Jeff Beck. A dual-conversion-gain video sensor with dewarping and over-lay on a single chip. In 2009 IEEE International Solid-State Circuits Conference-Digest of Technical Papers , pages 52– 53. IEEE, 2009. 1 [12] Nima Khademi Kalantari and Ravi Ramamoorthi. Deep high dynamic range imaging of dynamic scenes. ACM Transac-tions on Graphics , 36(4):1–12, 2017. 2 [13] Nima Khademi Kalantari and Ravi Ramamoorthi. Deep hdr video from sequences with alternating exposures. In Com-puter graphics forum , pages 193–205. Wiley Online Library, 2019. 1, 2, 3, 6, 7, 8 [14] Nima Khademi Kalantari, Eli Shechtman, Connelly Barnes, Soheil Darabi, Dan B Goldman, and Pradeep Sen. Patch-based high dynamic range video. ACM Transactions on Graphics (TOG) , 32(6):202–1, 2013. 3, 7 [15] Sing Bing Kang, Matthew Uyttendaele, Simon Winder, and Richard Szeliski. High dynamic range video. ACM Transac-tions on Graphics (TOG) , 22(3):319–325, 2003. 3 [16] D Kinga, Jimmy Ba Adam, et al. A method for stochastic optimization. In International conference on learning rep-resentations (ICLR) , page 6. San Diego, California;, 2015. 7[17] Lingtong Kong, Bo Li, Yike Xiong, Hao Zhang, Hong Gu, and Jinwei Chen. SAFNet: Selective alignment fusion net-work for efficient HDR imaging. In Proceedings of the Eu-ropean Conference on Computer Vision , 2024. 2, 3 [18] Joel Kronander, Stefan Gustavson, Gerhard Bonnet, Anders Ynnerman, and Jonas Unger. A unified framework for multi-sensor hdr video reconstruction. Signal Processing: Image Communication , 29(2):203–215, 2014. 3 [19] Xinyue Li, Zhangkai Ni, and Wenhan Yang. Afunet: Cross-iterative alignment-fusion synergy for hdr reconstruction via deep unfolding paradigm. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 10666– 10675, 2025. 3 [20] Zhen Liu, Wenjie Lin, Xinpeng Li, Qing Rao, Ting Jiang, Mingyan Han, Haoqiang Fan, Jian Sun, and Shuaicheng Liu. Adnet: Attention-guided deformable convolutional net-work for high dynamic range imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 463–470, 2021. 2 [21] Zhen Liu, Yinglong Wang, Bing Zeng, and Shuaicheng Liu. Ghost-free high dynamic range imaging with context-aware transformer. In Proceedings of the European Conference on Computer Vision , pages 344–360, 2022. 7 [22] Stephen Mangiat and Jerry Gibson. High dynamic range video with ghost removal. In Applications of Digital Image Processing XXXIII , pages 307–314. SPIE, 2010. 3 [23] Rafał Mantiuk, Kil Joong Kim, Allan G Rempel, and Wolf-gang Heidrich. Hdr-vdp-2: A calibrated visual metric for visibility and quality predictions in all luminance conditions. 
+
+ACM Transactions on Graphics (TOG) , 30(4):1–14, 2011. 7 [24] Miguel Ángel Martínez-Domingo, Eva M Valero, Javier Hernández-Andrés, Shoji Tominaga, Takahiko Horiuchi, and Keita Hirai. Image processing pipeline for segmentation and material classification based on multispectral high dynamic range polarimetric images. Optics express , 25(24):30073– 30090, 2017. 1 [25] Morgan McGuire, Wojciech Matusik, Hanspeter Pfister, Billy Chen, John F Hughes, and Shree K Nayar. Optical splitting trees for high-precision monocular imaging. IEEE Computer Graphics and Applications , 27(2):32–42, 2007. 1, 3[26] Shree K Nayar and Tomoo Mitsunaga. High dynamic range imaging: Spatially varying pixel exposures. In Proceedings 
+
+9IEEE Conference on Computer Vision and Pattern Recogni-tion. CVPR 2000 (Cat. No. PR00662) , pages 472–479. IEEE, 2000. 1 [27] Emmanuel Onzon, Fahim Mannan, and Felix Heide. Neu-ral auto-exposure for high-dynamic range object detection. In Proceedings of the IEEE/CVF conference on computer vi-sion and pattern recognition , pages 7710–7720, 2021. 1 [28] K Ram Prabhakar, Gowtham Senthil, Susmit Agrawal, R Venkatesh Babu, and Rama Krishna Sai S Gorthi. Labeled from unlabeled: Exploiting unlabeled data for few-shot deep hdr deghosting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 4875– 4885, 2021. 7 [29] Henri Rebecq, René Ranftl, Vladlen Koltun, and Davide Scaramuzza. High speed and high dynamic range video with an event camera. IEEE transactions on pattern analysis and machine intelligence , 43(6):1964–1980, 2019. 1 [30] Yong Shu, Liquan Shen, Xiangyu Hu, Mengyao Li, and Zihao Zhou. Towards real-world hdr video reconstruc-tion: A large-scale benchmark dataset and a two-stage align-ment network. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2879– 2888, 2024. 1, 2, 6, 7, 8 [31] Steven Tel, Zongwei Wu, Yulun Zhang, Barthélémy Heyr-man, Cédric Demonceaux, Radu Timofte, and Dominique Ginhac. Alignment-free HDR deghosting with semantics consistent transformer. In Proceedings of the IEEE/CVF In-ternational Conference on Computer Vision , pages 12836– 12845, 2023. 2 [32] Michael D Tocci, Chris Kiser, Nora Tocci, and Pradeep Sen. A versatile hdr video production system. ACM Transactions on Graphics (TOG) , 30(4):1–10, 2011. 3 [33] Yihan Wang, Lahav Lipson, and Jia Deng. Sea-raft: Simple, efficient, accurate raft for optical flow. In European Confer-ence on Computer Vision , pages 36–54. Springer, 2024. 4 [34] Shangzhe Wu, Jiarui Xu, Yu-Wing Tai, and Chi-Keung Tang. Deep high dynamic range imaging with large foreground motions. In Proceedings of the European Conference on Computer Vision , pages 117–132, 2018. 6 [35] Gangwei Xu, Yujin Wang, Jinwei Gu, Tianfan Xue, and Xin Yang. Hdrflow: Real-time hdr video reconstruction with large motions. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 24851– 24860, 2024. 1, 2, 3, 6, 7, 8 [36] Tianfan Xue, Baian Chen, Jiajun Wu, Donglai Wei, and William T Freeman. Video enhancement with task-oriented flow. International Journal of Computer Vision , 127:1106– 1125, 2019. 6 [37] Qingsen Yan, Dong Gong, Qinfeng Shi, Anton van den Hen-gel, Chunhua Shen, Ian Reid, and Yanning Zhang. Attention-guided network for ghost-free high dynamic range imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1751–1760, 2019. 2, 6, 7 [38] Qingsen Yan, Lei Zhang, Yu Liu, Yu Zhu, Jinqiu Sun, Qin-feng Shi, and Yanning Zhang. Deep HDR imaging via a non-local network. IEEE Transactions on Image Processing , 29: 4308–4322, 2020. 2 [39] Qingsen Yan, Kangzhen Yang, Tao Hu, Genggeng Chen, Kexin Dai, Peng Wu, Wenqi Ren, and Yanning Zhang. From dynamic to static: Stepwisely generate hdr image for ghost removal. IEEE Transactions on Circuits and Systems for Video Technology , 2024. 2, 3, 5 [40] Qian Ye, Jun Xiao, Kin-man Lam, and Takayuki Okatani. Progressive and selective fusion network for high dynamic range imaging. In Proceedings of the 29th ACM Interna-tional Conference on Multimedia , pages 5290–5297, 2021. 2[41] Huanjing Yue, Yubo Peng, Biting Yu, Xuanwu Yin, Zhenyu Zhou, and Jingyu Yang. Hdr video reconstruction with a large dynamic dataset in raw and srgb domains. arXiv preprint arXiv:2304.04773 , 2023. 2 [42] Huanjing Yue, Changan He, Longhan Wang, Biting Yu, Xu-anwu Yin, Zhenyu Zhou, and Jingyu Yang. Staggered hdr video reconstruction with a real-world benchmark dataset for night scenes. Displays , 88:103029, 2025. 1 
+
+10
