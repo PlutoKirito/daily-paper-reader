@@ -1,0 +1,668 @@
+Title: Seeking Physics in Diffusion Noise
+
+URL Source: https://arxiv.org/pdf/2603.14294v1
+
+Published Time: Tue, 17 Mar 2026 05:54:34 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Seeking Physics in Diffusion Noise 
+
+Chujun Tang 1 Lei Zhong 2 Fangqiang Ding 3⋆
+
+https://thegreatestcj.github.io/Physics-in-Noise/ 
+
+> 1
+
+Brown University 2University of Edinburgh 3MIT 
+
+Fig. 1: Progressive trajectory selection with a physics verifier. 
+
+Given a text prompt, we sample N denoising trajectories from dif-ferent seeds and score each partially denoised sample at intermediate timesteps (e.g., t=600 , 400) using a lightweight physics verifier applied to frozen DiT features. At each checkpoint we keep the top fraction (e.g., N/ 2) and terminate the rest early, continuing denoising only for the survivors until a single winner is fully denoised ( t=0). 
+
+Abstract. Do video diffusion models encode signals predictive of physical plausibility? We probe intermediate denoising rep-resentations of a pretrained Diffusion Transformer (DiT) and find that physically plausible and implausible videos are par-tially separable in mid-layer feature space across noise levels. This separability cannot be fully attributed to visual quality or generator identity, suggesting recoverable physics-related cues  
+
+> ⋆
+
+Corresponding author. Email: fding@mit.edu  
+
+> arXiv:2603.14294v1 [cs.CV] 15 Mar 2026 2C. Tang et al. in frozen DiT features. Leveraging this observation, we intro-duce progressive trajectory selection, an inference-time strat-egy that scores parallel denoising trajectories at a few interme-diate checkpoints using a lightweight physics verifier trained on frozen features, and prunes low-scoring candidates early. Ex-tensive experiments on PhyGenBench demonstrate that our method improves physical consistency while reducing inference cost, achieving comparable results to Best-of-K sampling with substantially fewer denoising steps.
+
+## 1 Introduction 
+
+Video diffusion models [42,19,29,7] have recently achieved remarkable progress in generating visually realistic videos from text. Despite their strong visual fidelity and temporal coherence, recent systematic eval-uations still reveal frequent violations of basic physical commonsense, including inconsistent gravity, collisions and object dynamics [18,26,3]. These findings highlight a persistent gap between perceptual realism and physical plausibility in current video generative models. Existing solutions improve the physical consistency of generated videos either by adding external physical guidance beyond a frozen generator or by performing inference-time selection. External guidance typically comes from (i) physics-conditioned generation , which injects explicit physical priors as conditioning signals [23,41,45,14,24], or (ii) 
+
+physics-aware post-training , which updates model weights via curated physics supervision/distillation [20,37,46,47] or preference/reward-based alignment [44,30,40,22]. While effective, these approaches require substantial training and often specialize to specific physical domains. Post-hoc selection offers an alternative at inference time: generate N
+
+candidate videos, score them with a vision-language model [2,27], and retain the best. Although Best-of-N avoids retraining, it discards most sampled trajectories and incurs computational cost that scales linearly with N . Both paradigms implicitly assume that the generator does not already contain reliable cues about physical plausibility. In this work, we revisit this assumption and ask: Does a frozen video diffusion model already encode signals predictive of physical plausibility in its intermediate representations? 
+
+To investigate this question, we probe intermediate representations of a frozen video diffusion backbone (i.e., CogVideoX-2B [42]) along the denoising trajectory under varying noise levels, using human-labeled generated videos from diverse text-to-video generators [3]. We find that physically plausible and implausible videos become partially separable in mid-layer feature space, and, to our surprise, this separability per-Seeking Physics in Diffusion Noise 3
+
+sists even at high noise levels. This observation suggests a simple but important implication: if plausibility can be anticipated before denois-ing completes, we need not decode all the way to a final pixel-space video to decide which trajectories are worth continuing. To assess this quantitatively, we train a lightweight verifier (¡1M parameters) on the frozen features. Despite its simplicity, it reliably distinguishes plausi-ble from implausible videos (AUC ≈ 0.68), showing that intermediate representations already expose actionable cues for physical plausibil-ity. Crucially, this cue cannot be reduced to superficial visual qual-ity or generator bias: even when controlling for these confounders, the separation remains. This suggests that video diffusion models sponta-neously structure their internal feature space in ways that reflect phys-ical plausibility–an emergent signal we can exploit for more efficient, physics-aware generation. Building on this implication, we propose progressive trajectory se-lection , a simple inference-time selection strategy that accelerates sam-pling for video generation while improving physical consistency. Instead of generating complete videos before scoring, we estimate plausibility 
+
+during denoising and terminate weak candidates early (cf.. Fig. 1). Con-cretely, we maintain N denoising trajectories in parallel and apply a lightweight physics verifier—trained on frozen DiT features at matched noise levels—at a small set of checkpoint timesteps. At each checkpoint, the verifier ranks the active trajectories using their intermediate frame-level representations, and we retain only the top candidates, pruning the rest for early termination (cf.. Fig. 1). Since the verifier operates on intermediate features already produced by the backbone forward pass, it adds negligible overhead and, unlike gradient-based classifier guidance [12,43], requires no backpropagation through the generator. Empirically, our progressive trajectory selection matches the over-all physical consistency of standard Best-of-K on PhyGenBench [23], while achieving stronger multi-frame physics and reducing inference cost via early termination of implausible trajectories. The method re-quires neither backbone retraining nor gradient-based guidance, making it lightweight and directly applicable to frozen video diffusion models. We summarize our contributions as follows: 
+
+• We perform a systematic probing study on frozen video diffusion model representations, demonstrating that physical plausibility is 
+
+linearly decodable from intermediate denoising features, remains de-tectable within each source, and is most salient in mid-layer repre-sentations across moderate noise levels (Sec. 3). 
+
+• We introduce a compact, noise-aligned physical verifier and integrate it with progressive trajectory selection to score and early-stop low-4 C. Tang et al. 
+
+plausibility trajectories during denoising, improving the efficiency– quality trade-off without modifying or fine-tuning the backbone (Sec. 4). 
+
+• We conduct extensive experiments on PhyGenBench [23], where our method reduces inference time by 37% per prompt while maintaining performance comparable to Best-of-K, analyze limitations and future directions, and will release code to support reproducibility and future research (Secs. 5, 6). 
+
+## 2 Related Work 
+
+2.1 Physics-Aware Video Generation 
+
+Prior work improves the physics awareness of video generators in two main ways: (i) conditioning generation on explicit physical priors, and (ii) updating the generator via post-training or fine-tuning. We review both lines of work below. 
+
+Physics-conditioned generation. One line of work introduces ex-plicit physical priors as conditioning signals, including motion trajec-tories [23,41,13,48], forces/goals [14,15], structured dynamics or kine-matic constraints [45,36,1,33], or material properties [24]. Such priors steer generation toward more physically grounded motion and interac-tions. For example, PhysGen [23] uses rigid-body simulation to gener-ate trajectories that guide video synthesis, and NewtonGen [45] incor-porates neural Newtonian dynamics as an explicit dynamics prior for physics-consistent, controllable motion. However, the achievable phe-nomena are ultimately bounded by the expressivity of the chosen pri-ors; covering new regimes often requires new simulators/controllers or domain-specific supervision. 
+
+Physics-aware post-training. Another line of work strengthens the physics awareness of video generators by updating model parameters through additional training. One family performs supervised post-training on curated physics data or distillation signals to teach physical regularities [20,37,46,47]. For example, Pisa [20] fine-tunes video models on curated dropping-object videos to improve gravitational dynamics, while WISA [37] builds a physics-rule dataset for physics-aware gen-eration. A second family performs preference/reward-based alignment using human or foundation-model feedback [44,30,8]. InstructVideo [44] applies RLHF based on human judgments of physical plausibility, and Prabhudesai et al. [30] propagate reward gradients from a learned scorer through the diffusion sampling process; related work further scales alignment with VLM/MLLM feedback or learned reward mod-els [40,22,8]. Overall, while effective, post-training approaches typically Seeking Physics in Diffusion Noise 5
+
+require substantial additional compute and produce model-specific weights, limiting direct applicability to frozen generators and transfer across architectures. 
+
+2.2 Inference-Time Scaling 
+
+Inference-time scaling improves generative quality without updating model weights by exploring multiple sampling trajectories at test time and selecting the most promising ones. In the video domain, DLBS [28] applies beam search with lookahead rollouts to obtain intermediate reward estimates, while EvoSearch [16] performs evolutionary search across diffusion- and flow-based generators. A central challenge is in-termediate scoring : effective search requires a verifier whose early-time scores reliably predict final sample quality. In practice, however, reward models often correlate poorly with final quality during early denoising. Baraldi et al. [5] term this issue verifier temporal coherence and show that successive halving can underperform simple Best-of-N when early scores are unreliable. This limitation is particularly acute for physi-cal plausibility. Existing physics evaluators, such as PhyGenBench [26] and VideoScore [17], are most reliable on fully decoded videos and often require costly lookahead rollouts, limiting their usefulness as interme-diate rewards for early trajectory pruning. In contrast, we ask whether physically relevant cues are already present in frozen diffusion repre-sentations, enabling plausibility estimation directly from intermediate noisy features and thereby supporting reliable early trajectory pruning. 
+
+## 3 Probing Physical Knowledge in Diffusion Noise 
+
+Post-hoc inference-time selection methods (e.g., Best-of-N ) can im-prove physical plausibility by sampling multiple videos and choosing the best, but the benefit comes with a prohibitive cost: the compute scales linearly with N full denoising runs. Without a reliable interme-diate signal, selection can only be performed after decoding complete videos, making physics-aware search expensive and limiting N in prac-tice [5]. This motivates a key question: does a frozen video diffusion model already encode physical knowledge in its intermediate denois-ing representations? If such a signal is present early enough, we could score and prune trajectories before completion, opportunistically turn-ing post-hoc selection into a more compute-efficient procedure. In this section, we investigate when and where physical knowledge emerges along the denoising process, laying the foundation for our accelerated trajectory selection in Sec. 4. 6 C. Tang et al. Prompt: A bowling ball rolls             
+
+> down a polished wooden lane,
+> hi2ng pins at the end.
+> Input
+> •Physical Commonsense = 0
+> •Seman=c Accuracy = 1
+> Label:
+> Noisy Video
+> Latents
+> Video
+> Tokens
+> Text
+> Tokens
+> Video
+> Tokens
+> Text
+> Tokens
+> Video
+> Tokens
+> Text
+> Tokens
+> ……
+> ……
+> Pretrained Diffusion Transformer
+> Linear
+> Probing
+> Physics
+> Verifier
+> Patchify
+> VAE
+> Encoder
+> Text Encoder
+> !=L
+> Data sample
+> (f(!)
+> t, y pc , y sem )
+> Add noise at
+> 5mestamp
+> t
+> ❄
+> Layer 1Layer 2 Layer
+
+Fig. 2: Feature extraction pipeline. Given a generated video and its prompt, we encode the video with a VAE, add diffusion noise at timestep t, and run a frozen diffusion transformer. We extract hidden states at layer ℓ, remove text-conditioning tokens, and spatially mean-pool video tokens to obtain per-frame features f (ℓ)
+
+t ∈ RF ×D . Each data sample is paired with PC and SA labels ypc , y sem ∈ { 0, 1} and is used for linear probing (Sec. 3) and physics-verifier training (Sec. 4.1). 
+
+3.1 Setup 
+
+To probe whether intermediate denoising features encode physical commonsense, we extract features from a frozen video diffusion trans-former (DiT), instantiated with CogVideoX-2B [42], on VideoPhy [3,4], a multi-source dataset of ∼4,500 videos generated by diverse text-to-video models, enabling a more general probe beyond any single gen-erator. Each video is annotated by human raters with binary physical commonsense (PC) and semantic accuracy (SA) labels (cf.Fig. 2); unless otherwise specified, we focus on PC. 
+
+Feature extraction. Concretely, for each video, we first encode it into the VAE latent space [32], add diffusion noise at timesteps t ∈{200 , 400 , 600 } (larger t denotes noisier latents), and run a forward pass of the frozen DiT. For each timestamp, we extract hidden states after transformer block ℓ ∈ { 5, 10 , 15 , 20 , 25 }, remove text-conditioning tokens, and spatially mean-pool the remaining video tokens to obtain a per-frame feature sequence f (ℓ)
+
+t ∈ RF ×D , where F is the number of latent frames and D the hidden dimension. For linear probing, we flat-ten f (ℓ)
+
+t across time into a single feature vector. Figure 2 illustrates the pipeline used for both linear probing and subsequent physical verifier training. 
+
+Linear probing protocol. We quantify how much PC signal is present in the extracted representations via a simple linear probe. Specifically, we train a logistic regression linear classifier to predict the probability of the positive PC class from the feature vector of each video, and evaluate it using 5-fold cross-validation (5-fold CV). We report the mean AUC-Seeking Physics in Diffusion Noise 7 
+
+> (a) Feature space by generator (b) Cross-source probing (AUC)
+
+Fig. 3: Source structure in DiT features. (a) UMAP of CogVideoX-2B DiT features extracted after transformer block ℓ=10 at t=200, col-ored by the original video generator, reveals strong source clustering. (b) Cross-source probing AUC matrix (train × test source): within-source evaluation (diagonal, 5-fold CV; mean 0.637) is substantially higher than cross-source transfer (off-diagonal mean 0.538). ROC across folds. As a baseline, we run the same probing procedure on the raw noised VAE latents, without using any transformer features. This comparison isolates the contribution of the DiT: if DiT features outperform the latent-input baseline, it indicates that physics-related signal becomes more linearly accessible through denoising representa-tions, beyond what is already present in the encoder latent space. 
+
+3.2 Disentangling Source and Physics Signals 
+
+Before attributing the linear probe performance in Sec. 3.1 to PC, we first inspect the geometry of the denoising feature space to iden-tify potential confounders. A prominent factor is the video source , i.e., the original generator that produced the video. Since VideoPhy ag-gregates outputs from seven generators with distinct visual styles and artifacts, source-specific characteristics may induce strong structure in the learned representations. Figure 3a visualizes the CogVideoX-2B DiT features colored by generator identity. Videos cluster strongly by source, suggesting that generator-specific characteristics form a domi-nant structure in the representation space. This raises a natural question: does the PC signal detected by our probes merely reflect source identity? To control for this factor, we train logistic regression probes within each source using 5-fold CV, i.e., 8 C. Tang et al. 
+
+Table 1: Within-source linear probing AUC (5-fold CV) using CogVideoX-2B [42] DiT features. We report results on the seven non-CogVideoX sources in VideoPhy [3].                        
+
+> LaVie [39] VideoCrafter2 [11] ZeroScope [10] Gen-2 [34] OpenSora [49] SVD [6] Pika [20] Overall # Videos 528 468 612 477 610 492 376 3,563 AUC 0.712 0.631 0.613 0.612 0.597 0.579 0.534 0.652
+
+Table 2: Linear probing AUC (5-fold CV) on DiT features extracted by the frozen CogVideoX-2B backbone. Gray subscripts show improve-ment over the VAE latent baseline at each timestep. Best per row in 
+
+bold .                                       
+
+> Timestep VAE latent ℓ=5 ℓ=10 ℓ=15 ℓ=20 ℓ=25
+> t=200 0.539 0.569 (+.030) 0.606 (+.067) 0.604 (+.065) 0.574 (+.035) 0.579 (+.040)
+> t=400 0.534 0.545 (+.011) 0.610 (+.076) 0.608 (+.074) 0.624 (+.090) 0.594 (+.060)
+> t=600 0.537 0.565 (+.028) 0.638 (+.101) 0.595 (+.058) 0.583 (+.046) 0.585 (+.048)
+
+training and testing only on videos from the same generator. As shown in Table 1, PC-related separability remains detectable within every source (AUC 0.534–0.712), even after removing inter-source variation. This indicates that DiT features encode PC-relevant information be-yond source identity, as a secondary signal beneath the dominant source structure. At the same time, source identity remains a strong confounder for 
+
+transfer . Figure 3b shows that probes trained on one generator gener-alize poorly to another (off-diagonal mean AUC 0.538), substantially below within-source performance (diagonal mean 0.637). We observe a similar degradation when transferring across backbones (CogVideoX-2B → CogVideoX-5B), where AUC drops from ∼0.62 to ∼0.55. These results motivate a matched-distribution strategy: our physical verifier is trained only on videos produced by the same generator/backbone used at inference time, so that it focuses on PC cues rather than generator-specific style statistics. 
+
+3.3 Layer and Timestep Analysis 
+
+Following the matched-distribution principle above, we restrict all subsequent analysis to videos generated by a single generator (i.e., CogVideoX-2B) and extract DiT features using its frozen backbone. Table 2 reports probing AUC across layers and noise levels. Several findings emerge. 
+
+DiT features encode physics beyond VAE latents. Across all configurations, DiT features outperform the VAE latent baseline, with Seeking Physics in Diffusion Noise 9
+
+improvements of up to +0.101 at ℓ=10, t=600. This gap indicates that the DiT blocks amplify physics-relevant structure beyond what is re-coverable from the raw VAE representation alone. 
+
+Middle layers are most informative. Among the probed layers, 
+
+ℓ=10 achieves the highest AUC overall (0.638 at t=600), while earlier (ℓ=5) and later ( ℓ=25) layers carry weaker signal. This is consistent with findings in vision transformers, where middle layers often cap-ture richer semantic structure before later layers become more special-ized [31,9]. 
+
+Physics signal is robust across noise levels. Contrary to the ex-pectation that cleaner inputs ( t=200) would yield stronger separability, probing AUC remains comparable or even slightly higher at t=600 for 
+
+ℓ=10. This suggests that physics-related structure remains recoverable at moderate noise levels, rather than being solely inherited from cleaner inputs. 
+
+3.4 Control Analyses DiT features vs. VAE latents. A potential alternative explanation is that the PC signal originates primarily from the VAE encoder, rather than from the DiT. Beyond the CogVideoX-2B case study in Sec. 3.3, we applied the same control across all settings. We probe the raw noised VAE latents and find that DiT features consistently outperform them. The gap is particularly pronounced for LaVie-sourced videos (0.730 vs. 0.537), suggesting that physics-related structure becomes more linearly accessible through DiT representations than in the latent space alone. Please find more analysis in our supplementary materials. 
+
+Disentangling from video quality. Another concern is that phys-ically plausible videos may also score better under generic automatic evaluators, causing the probe to rely on broad perceptual/alignment cues rather than physics. As a coarse control, we use VQAScore [21], a text-visual alignment metric assessing if the generated content matches the prompt. A logistic regression classifier trained solely on VQAScore achieves AUC 0.555, only slightly above chance. We remove the linearly VQAScore-correlated component of the features (via residualization) and repeat probing. The resulting AUC remains nearly unchanged, sug-gesting that the PC signal is not explained by this generic evaluator alone. Taken together, these controls strengthen our interpretation that inter-mediate DiT features carry a genuine physics-related signal: it is en-hanced by the DiT beyond the VAE latent input and is not explained by perceptual quality alone. This motivates the next question: can such 10 C. Tang et al. 
+
+intermediate signals be exploited during sampling to favor physically consistent outcomes? In the next section, we show that a lightweight physical verifier trained on these features enables effective trajectory selection without modifying the backbone. 
+
+## 4 Method 
+
+The analyses in Section 3 indicate that frozen DiT features contain a recoverable signal correlated with physical plausibility. This signal is most prominent at intermediate layers, remains detectable under moderate noise, and is not explained by generic perceptual/alignment cues alone. At the same time, its transfer degrades across generators and backbones, motivating a matched-distribution strategy. We now describe how to exploit this signal at inference time. 
+
+Overview. Our method consists of two components. First, we train a lightweight physics verifier on frozen DiT features to estimate the physical plausibility of a trajectory based on intermediate represen-tations extracted at selected denoising steps (cf.Section 4.1). Second, during inference, we maintain multiple sampling trajectories in par-allel and progressively eliminate low-scoring candidates at predefined checkpoints, so that computation is concentrated on the most promising trajectories (cf.Section 4.2). Importantly, the verifier itself adds negligi-ble per-trajectory overhead—it operates on features already computed in the standard forward pass and requires no backpropagation through the backbone. 
+
+Notation. We follow some symbol definition in Section 3.1. We denote the noisy latent at diffusion step t as zt and the text embedding as 
+
+c. We write h(ℓ) 
+
+> t
+
+∈ RS×D for the token-level hidden states after block 
+
+ℓ, and f (ℓ) 
+
+> t
+
+∈ RF ×D for the resulting spatially pooled features used by our verifier. t ∈ T and ℓ ∈ L denote candidate diffusion timesteps and transformer blocks, respectively, used for physics verifier training and progressive selection. 
+
+4.1 Physics Verifier 
+
+For each ( t, ℓ ) ∈ T × L , we first extract the corresponding frame-level feature sequence f (ℓ) 
+
+> t
+
+following the feature extraction pipeline described in Section 3.1. 
+
+Causal temporal modeling. Physical violations unfold over time and may affect subsequent frames. We therefore model temporal de-pendencies with a small causal self-attention module [38] over the per-frame sequence, using a triangular mask so that frame i attends only Seeking Physics in Diffusion Noise 11 
+
+to frames j ≤ i. This prevents the verifier from exploiting future video frames when applied at intermediate denoising checkpoints. Concretely, we first project f (ℓ) 
+
+> t
+
+∈ RF ×D to dimension d and add learnable posi-tional embeddings: 
+
+˜f (ℓ) 
+
+> t
+
+= Proj  f (ℓ)
+
+> t
+
+ + p1: F ∈ RF ×d, (1) where Proj( ·) is a linear layer. We then apply a single layer of causal multi-head self-attention with a residual connection: 
+
+y(ℓ) 
+
+> t
+
+= ˜f (ℓ) 
+
+> t
+
++ CausalAttn  LN( ˜f (ℓ) 
+
+> t
+
+), (2) where LN denotes LayerNorm and CausalAttn implements the trian-gular causal masking described above. As a result, the last-frame rep-resentation ( y(ℓ) 
+
+> t
+
+)F −1 provides a causally aggregated summary of the entire sequence. 
+
+Classification. We pass the last-frame representation (y(ℓ) 
+
+> t
+
+)F −1
+
+through a two-layer MLP preceded by LayerNorm to produce a physical plausibility score: 
+
+s(ℓ) 
+
+> t
+
+= Sigmoid 
+
+
+
+MLP  LN(( y(ℓ) 
+
+> t
+
+)F −1)
+
+∈ [0 , 1] . (3) Another head is trained with the same architecture to predict semantic accuracy. 
+
+Training. For each layer ℓ ∈ L , we train an individual verifier on VideoPhy [3], whose videos are annotated with binary labels for phys-ical commonsense and semantic accuracy. For each video, we apply forward diffusion at timesteps t ∈ T and extract the corresponding frame-level feature sequence f (ℓ) 
+
+> t
+
+. Let ypc , y sem ∈ { 0, 1} denote the tar-get labels, and let s(ℓ) 
+
+> t, pc
+
+and s(ℓ) 
+
+> t, sem
+
+be the outputs of the two heads. We optimize the verifier using the following training loss: 
+
+L(ℓ) = 1
+
+> |T |
+
+P 
+
+> t∈T
+
+Eλpc WBCE( ypc , s (ℓ)
+
+> t, pc
+
+) + λsem WBCE( ysem , s (ℓ)
+
+> t, sem
+
+)
+
+(4) where WBCE( y, s ) = − wy (y log s + (1 − y) log(1 − s)) and wy ac-counts for class imbalance. λpc and λsem balance the PC and semantic accuracy losses. Because the DiT backbone is frozen, feature extrac-tion requires only a single forward pass per video per timestep. Further training details are provided in Section 5.1. 
+
+4.2 Progressive Trajectory Selection 
+
+Given the candidate layers L, we select the best verifier layer ℓbest on the validation set and use the corresponding verifier for inference-time 12 C. Tang et al. 
+
+Algorithm 1 Progressive Trajectory Selection 
+
+Require: Text embedding c; number of trajectories N ; checkpoints C; keep ratio ρ; selected layer ℓbest ; physical verifier fϕ; maximum diffusion timestep T
+
+Ensure: Generated video ˆ v
+
+1: Sample initial noises z(i) 
+
+> T
+
+∼ N (0, I) for i = 1 , . . . , N 
+
+2: Initialize active trajectory set A ← { 1, . . . , N }
+
+3: for t = T, T − 1, . . . , 1 do 
+
+4: for i ∈ A do 
+
+5: z(i)
+
+> t−1
+
+, h(i) 
+
+> t
+
+← DiTStep( z(i) 
+
+> t
+
+, t, c)6: f (i) 
+
+> t
+
+← PoolFeat( h(i) 
+
+> t
+
+; ℓbest )7: end for 
+
+8: if t ∈ C then 
+
+9: for i ∈ A do 
+
+10: s(i) 
+
+> t
+
+← fϕ(f (i) 
+
+> t
+
+)11: end for 
+
+12: Keep only the top ⌈ρ|A|⌉ trajectories ranked by s(i)
+
+> t
+
+13: end if 
+
+14: end for 
+
+15: Let i∗ be the remaining trajectory in A
+
+16: return ˆv ← VaeDecode( z(i∗)0 )
+
+trajectory selection. Rather than generating complete videos before evaluating them, we maintain N parallel denoising trajectories from independent initial noise samples {z(i) 
+
+> T
+
+}Ni=1 and progressively eliminate physically implausible candidates. 
+
+Algorithm. Let C ⊆ T denote the checkpoint timesteps used for pro-gressive selection, ordered from high to low noise. At each checkpoint, the physical verifier evaluates all active trajectories using their inter-mediate frame-level features extracted at layer ℓbest , and only the top fraction ρ are retained for further denoising. With a fixed keep ratio ρ,the number of active trajectories decreases geometrically across check-points, thereby focusing compute on the most promising candidates. Algorithm 1 and Figure 1 summarize the procedure. 
+
+Design choices. Two design choices deserve clarification. First, Sec. 3 shows PC separability is more reliable at moderate noise, so we place checkpoints only after entering this regime (avoiding very early, noise-dominated steps). Second, we select using only the physical common-sense score; adding the semantic score did not improve quality in our preliminary experiments, likely because semantic alignment is already promoted by classifier-free guidance. Seeking Physics in Diffusion Noise 13 
+
+Addressing the verifier bottleneck. A key limitation of post-hoc selection methods is that pixel-space verifiers exhibit poor temporal co-herence when applied to noisy intermediate samples [5], making early selection unreliable. Our physical verifier largely avoids this issue. Be-cause it is trained directly on noisy DiT features at the same timesteps where selection occurs, it can provide reliable plausibility estimates even at relatively high noise levels (e.g., t=600). This enables aggres-sive early pruning, where computational savings are greatest. 
+
+Computational cost. Let Tsteps denote the total number of DDIM steps. With keep ratio ρ and K checkpoints spaced approximately evenly across the schedule, the expected number of DiT forward passes is 
+
+Cours ≈ Tsteps · N · 1 − ρK+1 
+
+(K+1)(1 −ρ) . (5) For example, with N =4, K=2, and checkpoints at t ∈ { 600 , 400 }, the active pool shrinks as 4 → 2 → 1. Under our 50-step DDIM schedule, this corresponds to roughly 20 steps with 4 trajectories, 10 steps with 2, and 20 steps with 1, totaling about 120 DiT forward passes. By comparison, Best-of-4 requires 200 forward passes, corresponding to an 
+
+≈ 1.7× speedup in generation. The physical verifier itself adds negligible overhead relative to a DiT forward pass. 
+
+## 5 Experiments 
+
+5.1 Setup Training data. Following the matched-distribution principle es-tablished in Sec. 3.2, we train the physics verifier exclusively on CogVideoX-2B-generated videos to match the inference-time distribu-tion. We use 343 videos from VideoPhy [3] generated by CogVideoX-2B, with binary physical plausibility annotations. For each video, we ap-ply forward diffusion at timesteps t ∈ { 200 , 400 , 600 }, yielding ∼1K training samples after an 85%/15% train/validation split (random, seed=42). Despite the modest dataset size, the physics head has a compact architecture ( ∼0.8M parameters) and trains reliably with early stopping based on validation AUC. The final model achieves a validation AUC of 0.68, consistent with the probe-level signal strength observed in Sec. 3. 
+
+Physics Verifier. We use the causal-head architecture described in Sec. 4.1, operating on frozen DiT layer-15 features. Training uses AdamW [25] with learning rate 10 −3, weight decay 0.01, batch size 14 C. Tang et al. 
+
+Table 3: PhyGenBench results (CogVideoX-2B, 160 prompts, 27 physical laws). S1: VQAScore (single-frame), S2: multi-frame physics (GPT-4o), S3: naturalness (GPT-4o). †Official results from [26] under a different evaluation configuration. Best per-column in bold among comparable runs.                                              
+
+> Method Overall S1 S2 S3 Mech. Opti. Ther. Mate. Time (s) CogVideoX-2B †0.370 –––0.38 0.43 0.34 0.39 204 Random Sel. 0.490 1.944 0.875 1.563 0.508 0.533 0.444 0.450 477 Best-of-4 0.515 1.963 0.869 1.731 0.500 0.587 0.456 0.483 778 Ours 0.515 1.981 0.913 1.694 0.492 0.580 0.467 0.492 490
+
+32, and OneCycleLR scheduling with 10% warmup. We apply early stopping with patience of 20 epochs on validation AUC. To handle class imbalance ( ∼35% physically plausible), we use weighted binary cross-entropy with pos weight = nneg /n pos . Training completes in under 10 minutes on a single GPU. 
+
+Video generation. We use CogVideoX-2B [42] as the base video dif-fusion model. Videos are generated with 50 DDIM steps at 480 × 720 resolution and contain 49 frames. We use classifier-free guidance with scale 6.0. For trajectory selection, we initialize N = 4 parallel denoising trajectories and apply progressive pruning at checkpoints t ∈ { 600 , 400 }
+
+with keep ratio ρ = 0 .5, reducing the active pool as 4 → 2 → 1. 
+
+Evaluation. We evaluate on PhyGenBench [26], which contains 160 prompts spanning 27 physical laws across four categories: mechan-ics, optics, thermal, and material properties. We follow the official PhyGenEval protocol: (1) VQAScore [21] using CLIP-FlanT5-XXL for single-frame physical phenomena detection (Stage 1); (2) multi-frame physics verification using GPT-4o [27] for temporal ordering of phys-ical events (Stage 2); and (3) video-level naturalness rating on a 0–3 scale using GPT-4o (Stage 3). Per-video scores are aggregated follow-ing the official protocol. In addition, we conduct pairwise comparisons using GPT-4o as judge, presenting two videos side-by-side (order ran-domized) and asking which better demonstrates the described physical phenomenon. 
+
+Baselines. We compare against: (1) Baseline : standard CogVideoX-2B generation with a single random seed; (2) Random Selection :trajectory pruning with random scores instead of physics head scores, isolating the effect of multi-trajectory sampling from physics-informed guidance; (3) Best-of-4 : generate four complete videos and select the best by physics head score at t=200; and (4) reported PhyGenBench results for CogVideoX-2B [26]. We additionally evaluate our approach on other video diffusion backbones in the supplementary. Seeking Physics in Diffusion Noise 15 
+
+Table 4: Pairwise preference judged by GPT-4o (160 prompts, pre-sentation order randomized).          
+
+> Comparison Ours Tie Other Ours vs. Baseline 50.0% 24.4% 25.6% Ours vs. Random Sel. 31.2% 47.5% 20.6% Ours vs. Best-of-4 8.1% 86.9% 5.0%
+
+5.2 Results PhyGenBench evaluation. Table 3 reports results on PhyGenBench. Our method matches Best-of-4 in overall score (0.515) while achieving the highest Stage 2 score (0.913)—the metric most directly measur-ing multi-frame physical consistency. Compared to Random Selection, which uses the same pruning mechanism but with uninformed scores, our method improves from 0.490 to 0.515, confirming that physics-guided selection is responsible for the gain. Improvements are consis-tent across three of four categories, with the largest gains in material properties (+0.042) and thermal phenomena (+0.023). 
+
+Pairwise comparison. Table 4 reports GPT-4o pairwise judgments. Our method is preferred over single-seed baseline in 50.0% of cases (vs. 25.6% baseline preferred). Part of this gain stems from the multi-trajectory setup itself: even Random Selection outperforms the baseline (55.6% vs. 18.8%). However, comparing our method directly against Random Selection confirms that physics-informed scoring provides ad-ditional benefit (31.2% ours preferred vs. 20.6% random preferred, with 47.5% ties). Against Best-of-4, the two methods are largely indistin-guishable (86.9% ties), consistent with their matching PhyGenBench scores. 
+
+Efficiency. The key advantage of progressive selection over Best-of-4 is reduced compute. As shown in the Time column of Table 3, Best-of-4 runs all four trajectories to completion (4 × 50 = 200 total denoising steps). In contrast, our method terminates two trajectories at t=600 and one more at t=400, resulting in a 37% reduction in wall-clock time (490s vs. 778s) while pachieving output quality comparable to Best-of-4(Table 3, Table 4). The additional cost of the physics head forward pass at each checkpoint is small (less than 3% of total generation time), introducing only minimal overhead compared to Random Selection 1 
+
+> 1All experiments run on a single NVIDIA A5000. Wall-clock time includes prompt encoding, denoising, and video decoding.
+
+16 C. Tang et al. 
+
+Baseline Ours 
+
+> Mechanics
+> “A cup of oil is slowly poured out in the space station, releasing the liquid into the surrounding area”
+> Optics
+> “A magnifying glass is gradually moving closer to a leaf, revealing the intricate details and textures of the veins and surface patterns as it approaches.”
+> Thermal
+> “A timelapse captures the transformation of arsenic trioxide as it is exposed to gradually increasing temperature at room temperature”
+
+Fig. 4: Qualitative comparison on PhyGenBench prompts (4 uni-formly sampled frames per video). Mechanics : baseline pours oil down-ward under terrestial gravity; ours forms a floating liquid mass con-sistent with microgravity. Optics : the texture magnified through the baseline’s lens appears incoherent with the surrounding leaf venation; ours produces a magnified view whose structure is consistent with the underlying leaf surface. Thermal and Physical Properties : baseline shows a liquid stream (incorrect); ours shows rising vapor consistent with sub-limation. 
+
+## 6 Discussion and Conclusion 
+
+We have shown that frozen DiT intermediate features carry a mea-surable signal of physical plausibility that is not reducible to generic perceptual/alignment cues or generator identity. A lightweight physical verifier trained on these features enables progressive trajectory selec-tion that matches Best-of-4 quality while reducing wall-clock generation time by 37%. Taken together, the probing analysis in Section 3 and the downstream results in Section 5 suggest that video diffusion transform-ers acquire implicit physical knowledge as a byproduct of learning to denoise, even without explicit physics supervision. Several limitations remain. First, the probing signal is moderate, which limits the achievable selection accuracy when candidate trajec-tories differ only subtly in physical plausibility. Second, the matched-distribution requirement (Section 3.2) currently necessitates training a verifier per base model, reducing plug-and-play generalization across generators and backbones. Third, our verifier is trained on a limited set of labeled videos and may not generalize to physical phenomena that are underrepresented in the current dataset. Finally, our evaluation fol-Seeking Physics in Diffusion Noise 17 
+
+lows PhyGenEval and relies on GPT-4o [27], inheriting the noise and potential bias of VLM-based judging. These limitations suggest directions for future work. Scaling training data with synthetic or simulator-generated scenarios could strengthen the signal and broaden physical coverage. Extending the analysis to larger DiTs and additional backbones would clarify how such rep-resentations scale with model capacity. Finally, combining selection with lightweight test-time steering [24,45,14] may further close the gap to physics-aware fine-tuning while preserving the modularity and effi-ciency of our approach. In summary, we show that signals correlated with physical plausibil-ity are recoverable from intermediate representations of video diffusion models, and that even a modest signal can be practically useful for early trajectory pruning. We hope this work encourages further study of what generative models encode about physical plausibility and how such signals can be leveraged at inference time. 
+
+## References 
+
+1. Akkerman, R., Feng, H., Black, M.J., Tzionas, D., Abrevaya, V.F.: In-terdyn: Controllable interactive dynamics with video diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2025) 2. Bai, S., et al.: Qwen2.5-VL: Scaling vision-language models for percep-tion, reasoning, and agent (2025) 3. Bansal, H., Lin, Z., Xie, T., Zong, Z., Yarom, M., Bitton, Y., Jiang, C., Sun, Y., Chang, K.W., Grover, A.: VideoPhy: Evaluating physical commonsense for video generation (2024) 4. Bansal, H., Peng, C., Bitton, Y., Goldenberg, R., Grover, A., Chang, K.W.: VideoPhy-2: A challenging action-centric physical commonsense evaluation in video generation (2025) 5. Baraldi, L., Cornia, M., Cucchiara, R.: Verifier matters: Enhancing inference-time scaling for video diffusion models. In: Proceedings of the British Machine Vision Conference (BMVC) (2025) 6. Blattmann, A., Timofte, R., et al.: Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 (2023) 7. Brooks, T., Peebles, B., Holmes, C., DePue, W., Guo, Y., Jing, L., Schnurr, D., Taylor, J., Luhman, T., Luhman, E., Ng, C., Wang, R., Ramesh, A.: Video generation models as world simulators. urlhttps://openai.com/research/video-generation-models-as-world-simulators (2024) 8. Cai, Y., Li, K., Jia, M., Wang, J., Sun, J., Liang, F., Chen, W., Juefei-Xu, F., Wang, C., Thabet, A., et al.: PhyGDPO: Physics-aware group-18 C. Tang et al. wise direct preference optimization for physically consistent text-to-video generation (2025) 9. Caron, M., Touvron, H., Misra, I., J´ egou, H., Mairal, J., Bojanowski, P., Joulin, A.: Emerging properties in self-supervised vision transformers. In: ICCV (2021) 10. Cerspense: zeroscope v2: A watermark-free modelscope-based video model. https://huggingface.co/cerspense/zeroscope_v2_576w 
+
+(2023) 11. Chen, H., Zhang, Y., Cun, X., Xia, M., Wang, X., Weng, C., Shan, Y.: Videocrafter2: Overcoming data limitations for high-quality video diffu-sion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (2024) 12. Dhariwal, P., Nichol, A.: Diffusion models beat GANs on image synthe-sis. In: Advances in Neural Information Processing Systems (NeurIPS) (2021) 13. Geng, D., Herrmann, C., Hur, J., Cole, F., Zhang, S., Pfaff, T., Lopez-Guevara, T., Aytar, Y., Rubinstein, M., Sun, C., Wang, O., Owens, A., Sun, D.: Motion prompting: Controlling video generation with motion trajectories. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2025) 14. Gillman, N., Herrmann, C., Freeman, M., Aggarwal, D., Luo, E., Sun, D., Sun, C.: Force prompting: Video generation models can learn and generalize physics-based control signals. arXiv preprint arXiv:2505.19386 (2025), https://arxiv.org/abs/2505.19386 
+
+15. Gillman, N., et al.: Goal force: Teaching video models to accomplish physics-conditioned goals. arXiv preprint arXiv:2601.05848 (2026), http s://arxiv.org/abs/2601.05848 
+
+16. He, H., Liang, J., Wang, X., Wan, P., Zhang, D., Gai, K., Pan, L.: Scal-ing image and video generation via test-time evolutionary search. arXiv preprint arXiv:2505.17618 (2025), https://arxiv.org/abs/2505.17618 
+
+17. He, X., Jiang, D., Zhang, G., Ku, M., Soni, A., Siu, S., Chen, H., Chan-dra, A., Jiang, Z., Arulraj, A., et al.: VideoScore: Building automatic metrics to simulate fine-grained human feedback for video generation (2024) 18. Kang, B., Yue, Y., Lu, R., Lin, Z., Zhao, Y., Wang, K., Huang, G., Feng, J.: How far is video generation from world model? A physical law perspective. In: International Conference on Machine Learning (ICML) (2025) 19. Kong, W., Tian, Q., Zhang, Z., Min, R., Dai, Z., Zhou, J., Xiong, J., Xiao, X., et al.: HunyuanVideo: A systematic framework for large video generative models (2024) 20. Li, C., et al.: Pisa experiments: Exploring physics post-training for video diffusion models by watching stuff drop (2025) 21. Lin, Z., Pathak, D., Li, B., Li, J., Xia, X., Neubig, G., Zhang, P., Ra-manan, D.: Evaluating text-to-visual generation with image-to-text gen-eration. In: European Conference on Computer Vision (2024) Seeking Physics in Diffusion Noise 19 22. Liu, J., Liu, G., Liang, J., Yuan, Z., Liu, X., Zheng, M., Wu, X., Wang, Q., Qin, W., Xia, M., Wang, X., Liu, X., Yang, F., Wan, P., Zhang, D., Gai, K., Yang, Y., Ouyang, W.: Improving video generation with human feedback. In: Advances in Neural Information Processing Systems (2025), arXiv:2501.13918 23. Liu, S., Ren, Z., Gupta, S., Wang, S.: PhysGen: Rigid-body physics-grounded image-to-video generation (2024) 24. Liu, T., Zeng, H., Li, Y., Yi, H., Chang, Y.H., Song, S., Fu, J., Yang, J., Liu, H.Y., Zhu, J., Guibas, L.J.: PhysDreamer: Physics-based interaction with 3D objects via video generation (2024) 25. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. In: International Conference on Learning Representations (ICLR) (2019) 26. Meng, F., Liao, J., Tan, X., Shao, W., Lu, Q., Zhang, K., Yu, C., Li, D., Qiao, Y., Luo, P.: Towards world simulator: Crafting physical commonsense-based benchmark for video generation. In: International Conference on Machine Learning (ICML) (2025) 27. OpenAI: GPT-4o system card. https://openai.com/index/gpt-4o-s ystem-card/ (2024) 28. Oshima, Y., Suzuki, M., Matsuo, Y., Furuta, H.: Inference-time text-to-video alignment with diffusion latent beam search. arXiv preprint arXiv:2501.19252 (2025) 29. Polyak, A., Zohar, A., Brown, A., Tjandra, A., Sinha, A., Lee, A., Vyas, A., Shi, B., Ma, C.Y., Chuang, C.Y., et al.: Movie gen: A cast of media foundation models (2024) 30. Prabhudesai, M., Mendonca, R., Luo, Z., Xie, S., Pathak, D., Ehsani, K., Fragkiadaki, K.: Video diffusion alignment via reward gradients (2024) 31. Raghu, M., Unterthiner, T., Kornblith, S., Zhang, C., Dosovitskiy, A.: Do vision transformers see like convolutional neural networks? In: NeurIPS (2021) 32. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (2022) 33. Romero, D., Bermudez, A., Li, H., Pizzati, F., Laptev, I.: Learning to generate object interactions with physics-guided video diffusion. arXiv preprint arXiv:2510.02284 (2025), https://arxiv.org/abs/2510.02284 
+
+34. RunwayML: Runway gen-2: Text to Video Generation. https://runway ml.com/research/gen-2 (2023), accessed: 2026-03-04 35. Wan Team: Wan: Open and advanced large-scale video generative models (2025) 36. Wang, C., Chen, C., Huang, Y., Dou, Z., Liu, Y., Gu, J., Liu, L.: Physctrl: Generative physics for controllable and physics-grounded video genera-tion. arXiv preprint arXiv:2509.20358 (2025), https://arxiv.org/abs/ 2509.20358 
+
+37. Wang, J., Ma, A., Cao, K., Zheng, J., Feng, J., Zhang, Z., Pang, W., Liang, X.: Wisa: World simulator assistant for physics-aware text-to-video generation. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 20 C. Tang et al. 38. Wang, T., Zhou, C., Sun, Q., Zhang, H.: Causal attention for unbiased visual recognition. In: Proceedings of the IEEE/CVF international con-ference on computer vision (2021) 39. Wang, Y., Chen, X., Ma, X., Zhou, S., Huang, Z., Wang, Y., Yang, C., He, Y., Yu, J., Yang, P., et al.: Lavie: High-quality video generation with cascaded latent diffusion models. International Journal of Computer Vision (2025) 40. Wu, X., Huang, S., Wang, G., Xiong, J., Wei, F.: Boosting text-to-video generative model with mllms feedback. In: Advances in Neural Informa-tion Processing Systems (2024) 41. Yang, X., et al.: VLIPP: Towards physically plausible video generation with vision and language informed physical prior. In: International Con-ference on Computer Vision (ICCV) (2025) 42. Yang, Z., Teng, J., Zheng, W., Ding, M., Huang, S., Xu, J., Yang, Y., Hong, W., Zhang, X., Feng, G., Yin, D., Zhang, Y., Wang, W., Cheng, Y., Bin, X., Gu, X., Dong, Y., Tang, J.: CogVideoX: Text-to-video dif-fusion models with an expert transformer. In: International Conference on Learning Representations (ICLR) (2025) 43. Yu, J., Wang, Y., Zhao, C., Ghanem, B., Zhang, J.: Freedom: Training-free energy-guided conditional diffusion model. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) (2023) 44. Yuan, H., Zhang, S., Wang, X., Wei, Y., Feng, T., Pan, Y., Zhang, Y., Liu, Z., Albanie, S., Ni, D.: InstructVideo: Instructing video diffusion models with human feedback (2024) 45. Yuan, Y., Wang, X., Wickremasinghe, T., Nadir, Z., Ma, B., Chan, S.H.: Newtongen: Physics-consistent and controllable text-to-video generation via neural newtonian dynamics. arXiv preprint arXiv:2509.21309 (2025) 46. Zhang, K., Xiao, C., Xu, J., Mei, Y., Patel, V.M.: Think before you diffuse: Llms-guided physics-aware video generation. arXiv preprint arXiv:2505.21653 (2025) 47. Zhang, X., Liao, J., Zhang, S., Meng, F., Wan, X., Yan, J., Cheng, Y.: Videorepa: Learning physics for video generation through relational alignment with foundation models. In: Advances in Neural Information Processing Systems (2025) 48. Zhang, Z., Liao, J., Li, M., Dai, Z., Qiu, B., Zhu, S., Qin, L., Wang, W.: Tora: Trajectory-oriented diffusion transformer for video generation. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2025) 49. Zheng, Z., Peng, X., Yang, T., Shen, C., Li, S., Liu, H., Zhou, Y., Li, T., You, Y.: Open-Sora: Democratizing efficient video production for all (2024) Seeking Physics in Diffusion Noise 21 
+
+# Appendix 
+
+This appendix provides additional implementation details (cf. Sec-tion A), experimental results (cf. Section B), and qualitative examples (cf. Section C) and failure cases (cf. Section D) that complement the main text and help readers better understand our method and contributions. 
+
+## A Additional Implementation Details 
+
+This section provides additional details on the physics verifier archi-tecture, feature extraction pipeline, and video generation setup, com-plementing Sections 3–5 of the main paper. Beyond the primary ex-periments on CogVideoX-2B [42] reported in the main paper, we fur-ther evaluate our framework on two additional backbones, CogVideoX-5B [42] and Wan 2.1-14B [35], to assess cross-backbone generalization. The physics verifier architecture is shared across all three settings, with only the input projection layer adapted to the hidden dimension of each backbone. 
+
+A.1 Physics Verifier Architecture 
+
+The physics verifier takes as input the spatially pooled per-frame DiT features extracted from layer ℓ at denoising timestep t, denoted by 
+
+f (ℓ) 
+
+> t
+
+∈ RF ×D, where F = 13 is the number of latent frames and D is the hidden dimension of the backbone. Table 5 presents the full layer-by-layer architecture, while Table 6 summarizes the backbone-specific configurations. Table 5: Architecture of the proposed physics verifier. The input pro-jection layer is adapted to the hidden dimension D of the corresponding backbone, while all remaining components are shared across backbones.                                          
+
+> Component Operation Output Shape
+> Input Spatially pooled per-frame DiT features [B, F, D ]Input Projection Linear( D→d)[B, F, d ]Positional Embedding Add learnable positional embeddings p1: F∈RF×d[B, F, d ]Layer Normalization Pre-normalization [B, F, d ]Causal Self-Attention Multi-head self-attention ( h= 4) with a causal mask [B, F, d ]Residual Connection ˜f+ CausalAttn(LN( ˜f)) [B, F, d ]Sequence Pooling Select the final-frame representation [B, d ]Layer Normalization Apply LayerNorm [B, d ]Classifier Head Linear( d→128) →GELU →Linear(128 →1) [B, 1] Output Sigmoid physical plausibility score [B, 1]
+
+22 C. Tang et al. 
+
+Table 6: Backbone-specific configurations of the three DiT backbones evaluated in this work. The physics verifier architecture ( d = 256, h =4) is shared across all settings; only the input projection layer and the feature extraction hook differ across backbones.                                     
+
+> CogVideoX-2B [42] CogVideoX-5B [42] Wan 2.1-14B [35] Hidden dimension D1920 3072 5120 Number of transformer layers 30 42 40 Text tokens in sequence Yes (226 tokens) Yes (226 tokens) No (cross-attention) Feature extraction hook transformer blocks transformer blocks blocks
+> Positional encoding Learned Rotary (RoPE) —Sampling scheduler DDIM DDIM UniPCMultistep Verifier parameters ∼0.55M ∼0.85M ∼1.37M Verifier input shape [13 ,1920] [13 ,3072] [13 ,5120]
+
+Design choices. The causal self-attention mask ensures that the repre-sentation at frame i attends only to frames j ≤ i, thereby enforcing tem-poral causality. This design is motivated by the observation that physi-cal violations often emerge as progressively accumulated inconsistencies over time (e.g., an object gradually deviating from a physically plausible trajectory across successive frames). Using the final-frame representa-tion as the sequence summary allows the verifier to aggregate informa-tion from all preceding frames while preserving causal ordering. We use 
+
+d = 256 and h = 4 attention heads in all experiments. The parame-ter count is dominated by the input projection layer, Linear( D → d), and therefore scales with the backbone hidden dimension D: from ap-proximately 0 .55M parameters for CogVideoX-2B [42] ( D = 1920) to approximately 1 .37M for Wan 2.1-14B [35] ( D = 5120). Even in the largest setting, the verifier introduces less than 0 .01% additional pa-rameters relative to the backbone. 
+
+Backbone-specific differences in feature extraction. The three backbones differ primarily in their text-conditioning mechanisms. CogVideoX-2B [42] and CogVideoX-5B [42] prepend 226 T5 text tokens to the video-token sequence, and we remove these text tokens during feature extraction. By contrast, Wan 2.1-14B [35] uses cross-attention for text conditioning, so its hidden states contain only video tokens. In addition, CogVideoX-5B requires explicit rotary positional embeddings ( image rotary emb ) at each transformer forward pass; otherwise, generation collapses to all-black outputs. Finally, because the UniPCMultistep scheduler used by Wan 2.1-14B is stateful, we maintain a separate deep-copied scheduler for each parallel trajectory during multi-trajectory generation. Seeking Physics in Diffusion Noise 23 
+
+Table 7: Training hyperparameters of the physics verifier, shared across all backbones.                   
+
+> Hyperparameter Value
+> Optimizer AdamW Learning rate 1×10 −3
+> Weight decay 0.01 Batch size 32 Learning-rate schedule OneCycleLR (10% warmup followed by cosine annealing) Early stopping Patience of 20 epochs based on validation AUC Loss function Weighted binary cross-entropy (pos weight = nneg /n pos )Training timesteps {200 ,400 ,600 }(pooled) Projection dimension d256 Number of attention heads 4
+
+A.2 Training Details Training data. Following the matched-distribution principle, we train the physics verifier exclusively on CogVideoX-2B-generated videos from VideoPhy [3] and VideoPhy-2 [4]. Combining all available training and test splits yields approximately 2,000 videos with binary physical-commonsense labels. We then apply a random 85%/15% split (seed = 42) to construct the training and validation sets. For each video, we extract DiT features at three timesteps, t ∈ { 200 , 400 , 600 }, effectively increasing the number of training samples to approximately 6,000. The extracted features are stored as fp16 tensors of shape [13 , D ]. For the CogVideoX-5B and Wan 2.1-14B experiments, we use the correspond-ing frozen backbone to extract features from the same VideoPhy videos originally generated by CogVideoX-2B 2, and train a backbone-matched verifier on these features. As discussed in Section 3.2 of the main paper, the probing signal degrades across generators, making matched-source feature extraction important for effective verifier training. 
+
+Training hyperparameters. Table 7 summarizes the training config-uration, which is kept identical across all three backbones. To address class imbalance (approximately 35% positive samples), we use weighted binary cross-entropy with pos weight = nneg /n pos . Training completes in under 10 minutes on a single GPU for each backbone. 
+
+Layer selection. We train separate physics verifiers for candidate lay-ers ℓ ∈ { 5, 10 , 15 , 20 , 25 } and select the best-performing layer based on validation-set performance. For CogVideoX-2B, layer ℓ = 10 achieves  
+
+> 2
+
+An alternative is to generate new videos with each backbone and obtain labels via VLM-based auto-annotation. We leave this direction to future work. 24 C. Tang et al. 
+
+the highest validation AUC (approximately 0.79) with the Causal-Simple verifier, substantially outperforming the linear probing base-line (approximately 0.64) reported in Table 2 of the main paper. This gain likely arises from the verifier’s causal temporal modeling, which captures sequential dependencies beyond what a flat linear probe can represent. For consistency, we use the same layer choice ( ℓ = 10) for the CogVideoX-5B and Wan 2.1-14B experiments. 
+
+A.3 Feature Extraction Pipeline DiT feature dimensions. CogVideoX (both 2B and 5B) processes video latents as a flattened sequence of spatio-temporal tokens. For 49-frame videos at 480 ×720 resolution, the VAE produces latent tensors of shape [13 , C, 60 , 90], corresponding to 13 temporal frames with spatial resolution 60 × 90. The DiT then patchifies and flattens these latents into 13 × 30 × 45 = 17 ,550 video tokens, with 226 text-conditioning tokens prepended to the sequence. At each layer, we extract the full hidden state h(ℓ) ∈ R(226+17 ,550) ×D, discard the first 226 text tokens, reshape the remaining video tokens into [13 , 30 × 45 , D ], and mean-pool over the spatial dimension to obtain f (ℓ) ∈ R13 ×D . For Wan 2.1-14B, text conditioning is applied exclusively through cross-attention, so the hidden states contain only video tokens. The extraction pipeline is therefore simpler: we reshape the video-token sequence from [ B, T · H ·
+
+W, D ] to [ B, T, H ·W, D ] and then mean-pool over the spatial dimension. No text-token removal is required. 
+
+Hook mechanism. Features are extracted via a PyTorch forward hook registered on the target transformer block. For CogVideoX, the hook is attached to transformer.transformer blocks[ ℓ], whereas for Wan it is attached to transformer.blocks[ ℓ] due to differences in module naming. The hook records the output of the transformer block after the residual connection, rather than intermediate attention or MLP activa-tions. Because these features are already computed during the standard forward pass, the additional computational overhead is negligible. 
+
+Text conditioning. CogVideoX adopts a hybrid text-conditioning scheme. Specifically, text information is injected via cross-attention in every transformer block, while text tokens are also concatenated with video tokens in the input sequence. During feature extraction, we pro-vide the text prompt and therefore obtain text-conditioned features, but discard the explicit text tokens from the extracted hidden states, retaining only the video-token representations. As a result, textual in-formation is reflected implicitly through the conditioned video features rather than through explicit text-token features. By contrast, Wan 2.1-Seeking Physics in Diffusion Noise 25 
+
+14B performs text conditioning exclusively through cross-attention, and text tokens are never concatenated with the video-token sequence. This removes the need for text-token stripping and leads to a simpler feature extraction pipeline. 
+
+A.4 Video Generation Configuration Base model. We use CogVideoX-2B [42] as the primary backbone in all main experiments. The model generates 49-frame videos at 480 ×720 resolution using 50 DDIM denoising steps with a classifier-free guidance scale of 6.0. For CogVideoX-5B, we use the same generation settings but reduce the number of DDIM steps to 30 for efficiency. Wan 2.1-14B uses 30 UniPCMultistep sampling steps with the same guidance scale. 
+
+Trajectory selection. For progressive trajectory selection, we initial-ize N = 4 parallel trajectories using independent random seeds (defined by the base seed, prompt index, and trajectory index), and perform se-lection at checkpoints t ∈ { 600 , 400 } with a keep ratio of ρ = 0 .5. As a result, the number of active trajectories decreases from 4 → 2 → 1across the two selection stages. This configuration is used consistently across all three backbones. Checkpoints are not placed at t=800 be-cause discrimination at high noise levels is unreliable (Section 3.3), nor at t=200 because late selection in the schedule yields minimal compu-tational savings. 
+
+Scoring at checkpoints. At each checkpoint, we perform one ad-ditional forward pass for each active trajectory using only the condi-tional (positive) prompt embedding, without classifier-free guidance. The physics verifier then scores the resulting intermediate features. This scoring pass adds less than 0.01 s per trajectory at each check-point, which is negligible relative to the cost of denoising. 
+
+VAE decoding. Only the final surviving trajectory is decoded by the VAE. We enable VAE tiling but disable slicing, as we observed that enabling both simultaneously can produce solid-color artifacts in the 3D causal VAEs used by both CogVideoX and Wan. 
+
+CogVideoX-5B specific notes. CogVideoX-5B requires explicit ro-tary positional embeddings ( image rotary emb ) computed using a 2D grid that matches the spatial latent dimensions. These embeddings must be provided at every transformer forward pass; omitting them leads to all-black outputs. By contrast, CogVideoX-2B uses learned po-sitional embeddings and does not require this additional input. On L40S GPUs (48 GB), CogVideoX-5B uses two-pass classifier-free guidance (batch size 1 per pass) to remain within VRAM limits. On H100/H200 26 C. Tang et al. 
+
+Table 8: Summary of the video generation configuration for the three backbones evaluated in this work.                                            
+
+> Parameter CogVideoX-2B CogVideoX-5B Wan 2.1-14B
+> Resolution 480 ×720 480 ×720 480 ×720 Number of frames 49 (13 latent frames) 49 (13 latent frames) 49 (13 latent frames) Sampling steps 50 (DDIM) 30 (DDIM) 30 (UniPCMultistep) Guidance scale 6.0 6.0 6.0 Classifier-free guidance Two-pass (24 GB) Two-pass (L40S) / Single (H100+) Single-pass Number of trajectories ( N)444Selection checkpoints ( C){600 ,400 }{600 ,400 }{600 ,400 }
+> Keep ratio ( ρ)0.5 0.5 0.5 Verifier layer 10 10 10 Primary hardware A5000 (24 GB) L40S (48 GB) H200 (80 GB)
+
+Table 9: Wall-clock time breakdown per video across backbones and modes. 
+
+Backbone (GPU, steps) Component Baseline Rand. Sel. Best-of-4 Ours 
+
+CogVideoX-2B (A5000 24 GB, 50 steps) Sampling 183s 454s 732s 448s Scoring — — 3s 3s Decode + offload 60s 60s 60s 60s 
+
+Total 204s 477s 778s 490s 
+
+CogVideoX-5B (L40S 48 GB, 30 steps) Sampling 137s — — 357s Decode + offload 12s — — 12s 
+
+Total 149s — — 374s 
+
+Wan 2.1-14B (H200 80 GB, 30 steps) Sampling 117s † — — 391s Decode 1s — — 1s 
+
+Total 118s † — — 393s 
+
+> †
+
+Estimated on H200. Measured baseline on 2 ×L40S is ∼305s due to cross-GPU overhead. 
+
+GPUs (80 GB), we use single-pass classifier-free guidance (batch size 2) for faster generation. 
+
+Wan 2.1-14B specific notes. Wan 2.1-14B (approximately 28 GB in bf16) fits on a single 80 GB GPU (H200). We observe that distributing Wan across multiple devices can introduce tiling and blurring artifacts. 
+
+Reproducibility. For prompt i, the first trajectory is initialized with seed 42 + i, and subsequent trajectories use seeds 42 + i + 1, 42 + i + 2, and so on. This setup ensures that trajectory 0 in our method shares the same initial noise as the single-seed baseline, enabling a controlled comparison of the effect of trajectory selection. 
+
+Hardware and timing. Table 9 provides wall-clock time breakdowns per video across all three backbones, measured from SLURM job logs. For CogVideoX-5B, the per-step cost is ∼4.6s per trajectory on L40S with single-pass CFG. Under the 4 →2→1 schedule across 30 steps, Seeking Physics in Diffusion Noise 27 
+
+sampling breaks down as: 12 steps × 4 trajectories ( ∼220s), 6 steps 
+
+× 2 ( ∼55s), 12 steps × 1 ( ∼55s), plus 6 scoring forwards ( ∼27s). For Wan 2.1-14B on H200, the per-step cost is ∼3.9s per trajectory de-spite 5 .6× more parameters than CogVideoX-2B, because batch-1 in-ference is memory-bandwidth bound and H200 provides ∼5.5 × higher bandwidth (4,800 GB/s HBM3e vs. 864 GB/s on L40S). The selection checkpoints at steps 20 and 25 reduce per-step cost from ∼15.5s (4 trajectories) to ∼8s (2) to ∼5.5s (1). 
+
+## B Additional Experiments 
+
+B.1 Cross-Backbone Generalization 
+
+To evaluate whether our framework generalizes beyond the primary CogVideoX-2B backbone, we apply the same progressive trajectory se-lection pipeline to two additional video diffusion models: CogVideoX-5B ( D = 3072, 42 layers) and Wan 2.1-14B ( D = 5120, 40 layers). For each backbone, we train a matched physics verifier following the protocol described in Section A.2 and evaluate it on the full PhyGen-Bench [26] benchmark. Implementation details for each backbone are provided in Section A.1. 
+
+CogVideoX-5B. Table 10 summarizes the results on CogVideoX-5B. The guided method yields a modest overall improvement of +0.003 over the 5B baseline, with the largest gain observed in material properties (+0.100), partially offset by decreases in optics ( −0.037) and thermal effects ( −0.066). However, the GPT-4o pairwise evaluation suggests a stronger qualitative benefit: our method is preferred in 42.5% of 153 valid comparisons, compared with 28.1% for the baseline, with 29.4% ties. Excluding ties, the guided method wins 60.2% of decided compar-isons, indicating perceptual improvements that are not fully reflected by the aggregate PhyGenEval score. 
+
+Wan 2.1-14B. The guided method achieves a larger improvement on Wan 2.1-14B, with a +0.043 gain in the overall score (+7.6%) and consistent improvements across all four categories (Table 10). The most pronounced gain appears in multi-frame physics consistency (S2: +0.19), which is the metric most directly targeted by trajectory selec-tion. Compared with CogVideoX-5B, the stronger result on Wan likely reflects two factors: (i) Wan is a stronger base model (baseline 0.569 vs. 0.363), so its candidate trajectories span a wider quality range, giving the verifier more room to discriminate; and (ii) Wan’s higher-dimensional feature space ( D = 5120) may encode richer physics-relevant structure. Under the PhyGenBench protocol, the guided Wan 28 C. Tang et al. 
+
+Table 10: Cross-backbone results on PhyGenBench. All methods are evaluated under the closed-source-only PhyGenEval protocol. Rows marked with ∆ report the improvement of the guided method over the corresponding backbone baseline. CogVideoX-2B results (from Ta-ble 3 of the main paper) are included for reference.                                                                            
+
+> Backbone Method Final S1 S2 S3 Mech. Opti. Ther. Mate. Pairwise Win Rate
+> CogVideoX-2B Baseline 0.370 ∗———0.38 0.43 0.34 0.39 —Guided (Ours) 0.515 1.98 0.91 1.69 0.49 0.58 0.47 0.49 66.1%
+> CogVideoX-5B Baseline 0.363 1.54 0.58 1.21 0.283 0.493 0.322 0.308 —Guided (Ours) 0.365 1.52 0.53 1.30 0.292 0.456 0.256 0.408 62.5%
+> ∆+0.003 -0.02 -0.05 +0.09 +0.009 -0.037 -0.066 +0.100 —Wan 2.1-14B Baseline 0.569 2.05 1.28 1.79 0.525 0.740 0.489 0.458 —Guided (Ours) 0.612 2.09 1.46 1.86 0.600 0.767 0.533 0.492 —
+> ∆+0.043 +0.04 +0.19 +0.07 +0.075 +0.027 +0.044 +0.033 —
+> ∗Single-seed baseline. For CogVideoX-2B, the pairwise win rate is reported as “Ours vs. Baseline” from Table 4 of the main paper.
+
+result (0.612) compares favorably with the CogVideoX-2B result re-ported in the PhyGenBench paper [26] (0.37), as well as with several reported closed-source models such as Kling (0.49) and Gen-3 (0.51). 
+
+Summary. The framework generalizes across architectures with differ-ent hidden dimensions, text conditioning schemes, and schedulers. Veri-fier effectiveness scales with (i) the matched-distribution gap (strongest for 2B where training and inference match) and (ii) base model ca-pability, as stronger baseline provides more discriminable trajectories. Training backbone-matched verifiers on auto-labeled data from each generator is a natural direction for closing the remaining gap. 
+
+B.2 Score Distribution Analysis 
+
+Figure 5 compares the verifier’s scoring behavior on CogVideoX-5B and Wan 2.1-14B. On 5B, kept and dropped trajectories show visi-ble separation ( ∆mean=0 .071) and per-prompt score spread averages 0.125, indicating the head provides a meaningful selection signal. On Wan, the two distributions nearly completely overlap ( ∆mean=0 .019) and score spread averages only 0.034—3 .7× smaller—confirming that the Wan verifier operates near chance and the PhyGenBench improve-ment (+0.043) is attributable to multi-trajectory diversity rather than physics-informed guidance. Seeking Physics in Diffusion Noise 29   
+
+> (a) CogVideoX-5B: kept vs. dropped (b) Wan 2.1-14B: kept vs. dropped
+> (c) CogVideoX-5B: score spread (d) Wan 2.1-14B: score spread
+
+Fig. 5: Verifier score analysis. Top: kept vs. dropped trajectory scores at checkpoints. Bottom: per-prompt score spread (max − min) at the first checkpoint. 5B shows meaningful separation; Wan shows near-complete overlap. 
+
+Per-category analysis. Figure 6 breaks down verifier scores by the 27 physical law categories in PhyGenBench. On CogVideoX-5B, the verifier exhibits meaningful category-level specialization. It achieves the highest confidence on phenomena characterized by salient tempo-ral state changes—Color mixing (0.693), Deposition (0.675), Boiling (0.668), Tyndall Effect (0.635), and Reflection (0.649)—indicating that the verifier has learned to detect progressive physical dynamics such as phase transitions, light scattering, and color blending from interme-diate DiT features. Categories with lower scores, such as Direct Ra-diation (0.320) and Flame Reaction (0.430), typically involve precise spatial reasoning or domain-specific material knowledge (e.g., shadow geometry, characteristic flame colors), which are underrepresented in the VideoPhy training distribution and suggest a clear avenue for im-provement through targeted data augmentation. Notably, this category-dependent structure itself is an informative signal: it demonstrates that the verifier captures physically meaningful distinctions rather than re-lying on superficial quality cues. On Wan 2.1-14B, category-level vari-ation is substantially reduced—all 29 means fall within [0 .42 , 0.52]— 30 C. Tang et al. 
+
+consistent with the distribution mismatch discussed above, and mo-tivating backbone-matched training data as the primary path toward stronger cross-backbone transfer. 
+
+Fig. 6: Per-category score distributions for CogVideoX-5B (top) and Wan 2.1-14B (bottom). On 5B, temporal phenomena (Color, Deposi-tion, Boiling) score highest while spatial/material-specific phenomena (Direct Radiation, Flame Reaction) score lowest. On Wan, categories cluster in [0 .42 , 0.52]. Seeking Physics in Diffusion Noise 31 
+
+## C More Qualitative Results 
+
+Baseline Ours 
+
+> Mechanics
+
+“A cup of water is slowly poured out in the space station, releasing the liquid into the surrounding area” 
+
+Baseline pours water downward under terrestrial gravity. Ours forms a floating liquid mass consistent with microgravity, where liquid disperses in multiple direc-tions. 
+
+> Mechanics
+
+“A piece of wood block is gently placed on the surface of a bowl filled with water” 
+
+Wood is less dense than water and should float. Baseline shows ambiguous con-tact with the water surface. Ours depicts the wood block resting on the water, consistent with buoyancy. 
+
+> Optics
+
+“A ray of light is shining diagonally on a plastic cup in the dark, with the shadow of the plastic cup appearing at the bottom” 
+
+Baseline shows diffuse illumination without a clear shadow. Ours produces a well-defined diagonal light beam with the cup’s shadow visible at the bottomn. 
+
+> Optics
+
+“A football is rolling towards a vertical window, with the reflectionin the window moving closer synchronously” 
+
+Baseline shows a blurry football mid-air with no coherent reflection in the window (e.g., Frame 2). Ours renders the football on a reflective surface near glass. 
+
+> Thermal
+
+“A timelapse captures the transformation of a glass of water as thetemperature significantly drops to very low levels” 
+
+Baseline remains clear liquid throughout. Ours shows progressive opacity change, consistent with solidification. 
+
+> Thermal
+
+“A timelapse captures the transformation of arsenic trioxide as it isexposed to gradually increasing temperature at room temperature” 
+
+Baseline depicts a dark liquid in a flask with minor steam. Ours shows a white solid with expanding vapor, consistent with sublimation. 
+
+> Material
+
+“A piece of lithium is ignited, emitting a vivid and unique flame asit burns steadily” 
+
+Lithium burns with a crimson flame. Baseline shows a yellow-cored one. 
+
+Fig. 7: Qualitative comparison on PhyGenBench prompts (Wan-14B, 4 uniformly sampled frames per video). Each row shows baseline (left) vs. guided (right), the generation prompt, and a brief physical analysis. 32 C. Tang et al. 
+
+## D Failure Cases 
+
+Figure 8 illustrates representative failure cases. These concentrate in material properties and chemical reaction prompts, which require domain-specific knowledge—such as characteristic flame colors, acid appearances, and fracture mechanics—that goes beyond the common-sense physical reasoning captured by our training data. Moreover, these phenomena inherently involve dramatic transformations in ma-terial form (carbonization, shattering, phase changes), which current video diffusion models struggle to synthesize faithfully. When the base model cannot produce any physically correct trajectory, trajectory selection reaches a fundamental ceiling regardless of verifier quality. 
+
+Baseline Ours 
+
+> Material
+> “A timelapse captures the reaction as concentrated sulfuric acid is poured onto a sheet of paper”
+> Sulfuric acid is colorless and causes black carbonization. Baseline shows a yellow liquid with no reaction; ours shows a red liquid with paper degradation. Neither depicts the correct acid color or carbonization.
+> Material
+> “A flimsy, brittle glass cup is propelled with force towards a solid, metallic surface, where it collides upon impact”
+> The cup should shatter into fragments. Both produce nearly identical results—the cup cracks but never exhibits realistic brittle fracture.
+
+Fig. 8: Failure cases (Wan-14B). Both rows show cases where all can-didate trajectories are physically incorrect, leaving the verifier unable to select a better outcome.
