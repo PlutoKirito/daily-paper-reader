@@ -1,0 +1,616 @@
+Title: Generative Semantic HARQ: Latent-Space Text Retransmission and Combining
+
+URL Source: https://arxiv.org/pdf/2603.15068v1
+
+Published Time: Tue, 17 Mar 2026 06:32:13 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Generative Semantic HARQ: Latent-Space Text Retransmission and Combining 
+
+Bin Han ∗, Yulin Hu †, and Hans D. Schotten ∗‡ ∗RPTU University Kaiserslautern-Landau †Wuhan University 
+
+> ‡
+
+German Research Center for Artificial Intelligence (DFKI GmbH) 
+
+Abstract —Semantic communication conveys meaning rather than raw bits, but reliability at the semantic level remains an open challenge. We propose a semantic-level hybrid automatic repeat request (HARQ) framework for text communication, in which a Transformer-variational autoencoder (VAE) codec operates as a lightweight overlay on the conventional protocol stack. The stochastic encoder inherently generates diverse latent representations across retransmissions—providing incremental knowledge (IK) from a single model without dedicated protocol design. On the receiver side, a soft quality estimator triggers retransmissions and a quality-aware combiner merges the received latent vectors within a consistent latent space. We systematically benchmark six semantic quality metrics and four soft combining strategies under hybrid semantic distortion that mixes systematic bias with additive noise. The results suggest combining Weighted-Average or MRC-Inspired combining with self-consistency-based HARQ triggering for the best perfor-mance. 
+
+Index Terms —Semantic communications, HARQ, variational autoencoder, quality estimation, soft combining 
+
+I. I NTRODUCTION 
+
+Driven by the rising demand for post-Shannon commu-nication systems, semantic communication (SemCom) has emerged as a promising paradigm that transmits mean-ing rather than raw bits, achieving higher communication efficiency especially under bandwidth-constrained condi-tions [1]. Deep learning-based SemCom systems, such as DeepSC [2] for text and Deep joint source-channel coding (JSCC) [3] for images, have demonstrated significant gains over conventional separate source-channel coding by jointly optimizing the encoding and decoding processes end-to-end across the semantic and physical layers. While the majority of SemCom research has focused on visual data (images, videos, point clouds) for their high com-pression potential, text-oriented SemCom remains compara-tively under-explored. This is despite the growing importance of textual semantics as i) the interface layer between con-ventional communication systems and emerging token-based multimedia communications, where compact textual descrip-tions convey visual or audio content, ii) a key modality for cross-modal translation tasks such as text-to-image and text-to-speech generation, and iii) a native representation for the semantic plane in AI-RAN architectures. To enhance the reliability of SemCom, several works have extended hybrid automatic repeat request (HARQ) mecha-nisms to the semantic level. Jiang et al. [4] proposed the first end-to-end semantic HARQ for sentence transmission (SCHARQ), employing chase combining and incremental redundancy in the latent space. Zhou et al. [5] introduced incremental knowledge (IK)-based HARQ (IK-HARQ) with adaptive bit-rate control. Beyond text, semantic HARQ has been investigated for image transmission [6], [7], feature transmission [8], [9], video conferencing [10], and coop-erative perception [11]. However, three challenges remain. First, unlike conventional HARQ where cyclic redundancy check (CRC) on the medium access control (MAC) layer triggers retransmissions and soft combining operates on the physical (PHY) layer, semantic-level HARQ must integrate error detection and correction within the semantic layer itself, requiring new quality assessment methods beyond bit-level checks. Second, all existing semantic HARQ ap-proaches employ deterministic encoders, so retransmissions carry identical or structurally constrained representations. Third, while individual works propose ad-hoc solutions for quality estimation and combining, no systematic comparison of these methods exists. In this work, we propose a generative semantic HARQ framework for text communication that addresses these gaps. Our main contributions are: i) We design a Trans-former-variational autoencoder (VAE) based semantic en-coder-decoder that serves as a lightweight overlay on top of conventional communication systems. The stochastic nature of the VAE naturally provides diverse latent representations across retransmissions, enabling IK without explicit protocol design. ii) We systematically compare six semantic quality metrics—ranging from encoder uncertainty and latent-space distance to round-trip consistency checks—as retransmission triggers, benchmarking their effectiveness under the same experimental conditions. iii) We systematically compare four semantic combining strategies—from softmax-weighted av-eraging to iterative refinement approaches—against the base-line of chase combining, evaluating their ability to exploit multiple received latent representations. The remainder of this paper is organized as follows. Sec-tion II presents the proposed framework, including the sys-tem architecture, quality estimation methods, and combining strategies. Section III provides the performance evaluation. Section IV concludes the paper. 
+
+> arXiv:2603.15068v1 [eess.SP] 16 Mar 2026
+
+II. P ROPOSED APPROACH 
+
+A. System Architecture 
+
+The proposed system architecture is illustrated in Fig. 1. A semantic codec pair operates as a lightweight overlay on top of the conventional communication stack. The semantic encoder maps a source sentence s into a compact latent vector 
+
+z ∈ RD , where D is the latent dimension, which is trans-mitted through the conventional PHY chain (channel coding, modulation, etc.) and received as ˜z. On the receiver side, a semantic decoder reconstructs the sentence as ˆs = fdec (˜ z).At the lower layers, conventional channel coding combined with CRC-based HARQ can generally provide sufficient integrity of the data packets. The propagation of bit errors upward into the semantic layer is therefore very rare and practically negligible. Nevertheless, the received latent ˜z may still differ from the transmitted z due to distortions that originate within or above the semantic layer itself, motivating a dedicated semantic-level HARQ mechanism. We identify two categories of such distortion that may coexist. The first is unbiased, additive distortion , which is approximately zero-mean and i.i.d. across transmissions. Sources include quantization and rounding errors from fixed-point or reduced-precision inference on edge devices, residual channel noise that survives PHY-layer error correction but still perturbs the latent, and intentionally injected noise for purposes such as differential privacy. The second category is biased distortion , which introduces a systematic shift in the latent space and is not i.i.d. across transmissions. Sources include encoder-decoder misalignment due to asynchronous model updates (e.g., one side is updated while the other retains an older version), deployment asymmetry where the encoder and decoder run on heterogeneous hardware with different model variants (e.g., full-precision vs. distilled), and domain shift between the training distribution and the deployment context. Biased distortion is particularly challenging because it persists across retransmissions and cannot be mitigated by simple averaging—i.e., chase combining of identical latent representations. Effective semantic HARQ therefore requires 
+
+IK : each retransmission must carry a distinct representation of the same semantic content, so that the combiner can exploit diversity rather than merely averaging out noise. This fundamentally requires a semantic encoder whose output varies across retransmissions of the same source, which motivates the generative codec design presented next. The semantic HARQ operates as follows. After each transmission round k, a quality estimator computes a score 
+
+qk ∈ [0 , 1] for the received latent ˜zk. If qk falls below a predefined threshold qth , a NACK triggers retransmission. After K rounds (or upon ACK), the receiver combines all received latents {˜z1, . . . , ˜zK } into ˆz and decodes the final output ˆs = fdec (ˆ z). The design of the codec, quality estima-tor, and combiner are detailed in the following subsections. 
+
+B. Generative Semantic Codec 
+
+As established above, effective semantic HARQ relies on IK, i.e., each retransmission must carry a structurally distinct representation of the same semantic content. Astraightforward realization would employ multiple, separately trained encoders—analogous to incremental redundancy (IR) on lower-layer HARQ—but this multiplies model storage and maintenance cost on the transmitter side. We instead adopt a Transformer-VAE architecture whose single stochas-tic encoder inherently produces diverse latent representations via random sampling. Because every sample is drawn from the same learned latent space RD , the semantic-to-latent mapping remains consistent across retransmissions and all received vectors {˜z1, . . . , ˜zK } reside in the same space. Combining therefore reduces to a fixed-dimensional vector operation whose output can be directly fed to the same 
+
+decoder, regardless of the number of retransmissions K.This avoids the dimensionality growth that would arise from concatenating heterogeneous representations, which would require K-specific decoders on the receiver and impose a hard cap on the maximum number of retransmissions, since each encoder variant must be provisioned in advance. The consistent latent space also simplifies quality estimation, as all received vectors are directly comparable. The encoder processes a source sentence s through tok-enization, embedding with positional encoding, and L layers of multi-head self-attention with feed-forward networks. The resulting contextualized representations are mean-pooled and projected into the VAE latent space: 
+
+(μ, log σ2) = fenc (s), z = μ+σ ⊙ϵ, ϵ ∼ N (0, I), (1) where ⊙ denotes the element-wise product. The reparame-terization enables gradient-based training while maintaining stochasticity. Each retransmission draws a fresh noise sample 
+
+ϵ, producing a distinct latent zk that encodes the same semantic content from a different region of the latent space. The decoder projects the received latent ˜z into a cross-attention memory and an input injection embedding, then generates the output sentence autoregressively via L Trans-former decoder layers with causal masking. The procedures are detailed in Algorithms 1 and 2. In both algorithms, TOK (·) and D ETOK (·) denote tokenization and detokeniza-tion with respect to vocabulary V; E MB (·) is the shared token embedding layer; PE (·) adds sinusoidal positional encoding; TFENC (·) and T FDEC (·) denote the L-layer Transformer encoder and decoder blocks; P OOL (·) performs mean pooling over non-padded positions; and ⟨S⟩, ⟨E⟩, ⟨P⟩ are the start-of-sequence, end-of-sequence, and padding tokens. The binary padding mask Mpad indicates non-padded positions. The model is trained end-to-end by minimizing a com-bined reconstruction and Kullback-Leibler (KL) divergence loss over an additive white Gaussian noise (AWGN) channel: 
+
+L = Lrecon + β · L KL , (2) Fig. 1: The proposed framework of semantic-level HARQ as a lightweight overlay on conventional communication systems. where Lrecon is the cross-entropy between the decoder out-put and the target tokens, and the KL term with free-bits regularization is 
+
+LKL = − 12
+
+> D
+
+X
+
+> d=1
+
+max  1 + log σ2 
+
+> d
+
+− μ2 
+
+> d
+
+− σ2
+
+> d
+
+, λ free 
+
+. (3) The weighting factor β follows a linear annealing schedule to prevent posterior collapse. During each training step, the signal-to-noise ratio (SNR) is randomly sampled from a pre-defined set S to ensure robustness across channel conditions. The training and validation procedures are summarized in Algorithm 3, where R EPARAM (·) denotes the reparameteri-zation trick in (1), AWGN (·) adds channel noise at the given SNR, and C LIP GRAD (·) clips gradients by norm. 
+
+Algorithm 1: Semantic Encoding (Transmitter)                                                             
+
+> Input: Source sentence s, vocabulary V
+> Output: Latent vector z∈RD
+> 1t←TOK (s,V)// [⟨S⟩, w 1, . . . , w n,⟨E⟩,⟨P⟩, . . . ]
+> 2X←EMB (t)· √dmodel +PE (|t|)
+> 3H←TFENC (X,Mpad )// Lself-attention layers
+> 4h←POOL (H,Mpad )
+> 5μ←Wμh+bμ,log σ2←Wσh+bσ
+> 6ϵ∼ N (0,I)
+> 7z←μ+ exp(0 .5·log σ2)⊙ϵ
+> 8return z
+
+Algorithm 2: Semantic Decoding (Receiver)                                                               
+
+> Input: Received latent ˜z, vocabulary V
+> Output: Reconstructed sentence ˆs
+> 1m←Wproj ˜z// cross-attention memory
+> 2zemb ←Wemb ˜z// input injection
+> 3out ←[⟨S⟩]
+> 4for t= 1 ,2, . . . , t max do 5Y←EMB (out )· √dmodel +zemb +PE (t)
+> 6D←TFDEC (Y,m,Mcausal )
+> 7wnext ←arg max Wout D[t]
+> 8out ←out ∥[wnext ]
+> 9if wnext =⟨E⟩then break 10 end 11 ˆs←DETOK (out ,V)
+> 12 return ˆs
+
+Algorithm 3: Training and Validation                                                                                                                       
+
+> Input: Dtrain ,Dval , SNR set S, max epochs Ne, patience P
+> 1θ←INIT PARAMS () ;ϕ←ADAM W(θ);η←REDUCE LR (ϕ)
+> 2m∗← −∞ ;c←0// best metric; stall counter
+> 3for e= 1 , . . . , N edo 4β←ANNEAL (e)// KL weight warm-up
+> 5foreach (s,tin ,tout )∈ D train do 6γ←SAMPLE (S)// random SNR
+> 7(μ,log σ2)←fenc (s)
+> 8z←REPARAM (μ,σ)
+> 9˜z←AWGN (z, γ )
+> 10 ˆt←fdec (˜ z,tin )
+> 11 L ← CE (ˆ t,tout ) + β· L KL // Eqs. (2) --(3)
+> 12 ∇ ← CLIP GRAD (∇θL);θ←ϕ. STEP (∇)
+> 13 end 14 m←EVAL (Dval )// BLEU-4, similarity
+> 15 η←UPDATE LR (η, m )// reduce on plateau
+> 16 if m > m ∗then 17 m∗←m;c←0;save θ
+> 18 else 19 c←c+ 1
+> 20 end 21 if c≥Pthen 22 break // early stopping
+> 23 end 24 end
+
+C. Semantic Quality Estimation 
+
+In conventional HARQ, retransmission is triggered by a binary CRC check that unambiguously detects bit errors. At the semantic level, no such clear-cut criterion exists: semantic meaning is inherently tolerant of minor variations, and an overly strict detector would forfeit the very flexibility that makes SemCom attractive. The challenge is therefore to design a soft quality metric that distinguishes genuine semantic degradation from benign variation. All estimation is performed at the receiver. We consider six metrics that produce a scalar score q ∈ [0 , 1] (higher is better), summa-rized in Table I. The methods differ in their computational requirements at the receiver. Metrics A and D require re-encoding the decoded sentence to obtain the encoder statistics 
+
+μ and σ, but involve no additional decoding step. Metric C requires only the decoder, running N independent decoding passes to measure output consistency. Metrics B, E, and F perform a full round-trip: decode the received latent, re-encode the result to obtain μ′, and then decode μ′ again to assess consistency at the text level (Metrics E, F) or latent level (Metric B). In Metric B, δ(μ, μ′) = max  0, 1 − ∥ μ −
+
+μ′∥2/√D is a normalized distance penalty; ϵ = 10 −8 in Metric D prevents division by zero. TABLE I: Semantic quality metrics.                                             
+
+> Metric RX overhead
+> AVAE Uncertainty: q= max  0,1−1
+> D
+> P
+> dσd
+> Re-enc. BSelf-Consistency: q= cos( μ,μ′)·δ(μ,μ′)Re-enc.+dec. CDecoder Entropy: q=1
+> N
+> P
+> n⊮[ˆ s(n)= ˆ s(1) ]N×dec. DLatent Distance: q= max  0,1−∥˜z−μ∥∥μ∥+ϵ
+> Re-enc. EText BLEU: q=BLEU-1 (ˆ s1,ˆs2)Re-enc.+dec. FText Similarity: q=J(ˆ s1,ˆs2)Re-enc.+dec.
+
+D. Semantic Combining 
+
+Because the VAE encoder—as discussed in Section II-B— maps every retransmission into the same latent space RD ,the combiner’s task reduces to merging K vectors that share a common coordinate system into a single estimate 
+
+ˆz ∈ RD , which is then passed to the unchanged decoder. This fixed-dimensional formulation allows us to draw on classical combining principles from PHY-layer diversity reception and adapt them to the semantic domain. We consider four quality-aware strategies, summarized in Table II. Method A applies softmax-normalized weights de-rived from the quality scores, providing a smooth weighting that retains every received transmission. Method B can be viewed as an extreme variant that zeros out all weights except for the highest-quality transmission. Method C, inspired by classical maximal ratio combining (MRC), strikes a compro-mise between the two: it still incorporates every transmission, but its quadratic weighting rule favors high-quality recep-tions far more aggressively than the exponential softmax of Method A, since on qk ∈ [0 , 1] the quadratic mapping com-presses low scores much more strongly. Method D takes an iterative approach, starting from the highest-quality reception and progressively blending in the remaining vectors. TABLE II: Semantic combining methods.                                       
+
+> Method Complexity
+> AWeighted-Avg.: ˆz=P
+> kwk˜zk,wk=eqk
+> P
+> jeqjO(KD )
+> BBest-Only: ˆz= ˜ zk∗,k∗= arg max kqkO(K)
+> CMRC-Inspired: ˆz=
+> P
+> kq2
+> k˜zk
+> P
+> kq2
+> k
+> O(KD )ˆz(0) = ˜ zk∗,DIterative: ˆz(t+1) =αˆz(t)+ (1 −α)˜ zk,O(KD )
+> α=q(t)
+> q(t)+qk
+
+III. P ERFORMANCE EVALUATION 
+
+A. Evaluation Setup 
+
+We evaluate on the MS-COCO 2014 Train/Val annotations dataset [12], comprising 400 172 English sentences (5–50 words each) with a vocabulary of |V| = 10 000 tokens, split into 320 137 training, 40 017 validation, and 40 018 test sen-tences (80/10/10%). The model and training hyperparameters are summarized in Table III. Semantic distortion is modeled as i.i.d. Gaussian noise n ∼ N (0, σ 2
+
+> n
+
+I) added to the latent vector, with semantic SNR ≜ 10 log 10 (Pz /σ 2
+
+> n
+
+) dB, where 
+
+Pz = E[∥z∥2/D ] is the average per-dimension latent power. During training, the SNR is uniformly sampled between 0 dB 
+
+to 20 dB ; at test time, the SNR range is extended to −5 dB 
+
+to 30 dB .TABLE III: Model and training configuration.                               
+
+> Model Training
+> Enc./Dec. layers 6 / 6 Optimizer AdamW
+> dmodel /dff 768 / 3072 Learning rate 10 −4
+> Attention heads 12 Batch size 16 Latent dim. D256 KL annealing β0.01 →1.0 Max seq. length 64 Free bits λfree 0.25 nats/dim Dropout 0.1 Word dropout 0.5 Pooling Mean Label smoothing 0.1 Early stopping patience 15
+
+Two model checkpoints are retained from the training process, at epochs 49 and 50, hereafter referred to as Codec-A and Codec-B , respectively. Pairing both sides with Codec-A yields an aligned TX–RX configuration, whereas using Codec-A at the transmitter and Codec-B at the receiver creates a controlled misaligned pair that emulates biased distortion from asynchronous model updates. To isolate the semantic-layer mechanisms, all experiments assume error-free lower-layer transmission (i.e., the PHY and MAC layers introduce no codeword errors). Performance is measured by BLEU and cosine sentence similarity, each averaged over 100 test sentences with 50 independent trials per sentence. 
+
+B. Incremental Knowledge Gain 
+
+We first verify that the VAE-based stochastic encoder provides meaningful IK across retransmissions. For this pur-pose, we sweep the number of forced transmission attempts 
+
+K ∈ {1, 2, 3, 4, 5} without quality-based triggering, and compare the four combining methods from Table II together with chase combining (where the same latent vector is used in every retransmission) as baseline. Two scenarios are evaluated: (i) aligned Codec-A/A with AWGN-modeled semantic noise at SNR = 0 dB, and (ii) misaligned Codec-A/B without additive noise (SNR → ∞), isolating the effect of biased distortion alone. The results are shown in Figs. 2(a) and 2(b), respectively. Under unbiased additive distortion alone, all methods—including chase combining— benefit from increasing K due to the averaging effect, except Best-Only, whose quality scores are too uniformly low at this SNR to support meaningful selection gain. However, against biased distortion caused by model misalignment, chase combining does not provide any benefit. In both cases, the Weighted-Average and MRC-Inspired methods perform comparably and emerge as the top two methods (with Weighted-Avg. slightly ahead under AWGN and MRC-Inspired slightly ahead under misalignment), outperforming the Iterative method that provides an intermediate IK gain. 
+
+C. Combining Strategy Comparison 
+
+Next, we benchmark the combining strategies under the joint effect of biased and unbiased distortion. The misaligned Codec-A/B pair is used with AWGN-modeled semantic noise, and the semantic SNR is swept between −9 dB to 
+
+9 dB . The number of transmissions is fixed to K = 5 for all methods, bypassing quality-based triggering so that the combiners are compared under identical input conditions. The same five methods as in Section III-B are evaluated, and the results are shown in Fig. 3. Consistent with the IK gain results, the Weighted-Average and MRC-Inspired methods perform comparably as the top two, followed by the Iterative method. The Best-Only method performs poorly at low SNR, outperformed by the chase combining baseline—but the gap narrows quickly as the SNR increases. 
+
+D. Quality Estimation Comparison 
+
+Finally, we evaluate the six quality estimation metrics from Table I in a closed-loop semantic HARQ setting. The combiner is fixed to Weighted-Average (Method A), which is the best-performing strategy from Section III-C. The misaligned Codec-A/B configuration with AWGN semantic noise is used, with a maximum of Kmax = 5 attempts per sentence. In addition to BLEU and sentence similarity, the average number of transmissions per sentence is recorded to assess retransmission efficiency. The evaluation proceeds in two stages. First, the quality threshold is fixed at qth = 0 .85 and the semantic SNR is swept between −9 dB to 9 dB to compare the estimators’ ability to detect semantic degradation across channel condi-tions (Fig. 4(a)). Under this configuration, VAE uncertainty, self-consistency, and latent distance consistently trigger the maximum retransmissions over all SNRs; decoder entropy never triggers any retransmission; while BLEU and text similarity fall in between and respond to the SNR variation. However, comparing estimators at a single threshold is inherently limited: the six metrics have different physical interpretations, so a fixed qth does not impose an equally stringent criterion on each. To obtain a fairer assessment, a second stage sweeps the quality threshold over qth ∈{0.1, 0.2, . . . , 0.9} at a representative mid-range operating point of SNR = 0 dB (Fig. 4(b)). This threshold sensitivity analysis reveals the differences among the metrics regarding their dynamic range and elasticity . While latent distance and text similarity exhibit rigid behavior at two extremes of the sensitivity, the remaining four metrics show a more gradual and smooth response to the threshold variation. Especially, the self-consistency metric demonstrates the widest dynamic range with a smooth elasticity, making it the most adaptable to different operating points and requirements. IV. C ONCLUSION 
+
+We proposed a HARQ framework for generative semantic text communication, where a Transformer-VAE codec oper-ates as a lightweight overlay on the conventional protocol stack. The stochastic encoder inherently provides diverse latent representations across retransmissions—enabling IK from a single model without dedicated protocol design— while the consistent latent space permits fixed-dimensional combining with an unchanged decoder regardless of the num-ber of retransmissions. We systematically benchmarked four quality-aware combining strategies and six semantic quality estimation methods under mixed semantic distortion. The evaluation demonstrated that our proposed framework offers significant IK gain, especially when combining Weighted-Average or MRC-Inspired methods with self-consistency as the quality metric. Future work includes evaluating under more severe codec misalignment scenarios, extending the framework to multi-modal semantic communication, and joint HARQ optimization across semantic and PHY layers. REFERENCES [1] L. X. Nguyen, A. D. Raha et al. , “A contemporary survey on semantic communications: Theory of mind, generative ai, and deep joint source-channel coding,” IEEE Commun. Surv. Tutor. , vol. 28, pp. 2377–2417, 2026. [2] H. Xie, Z. Qin et al. , “Deep learning enabled semantic communication systems,” IEEE Trans. Signal Process. , vol. 69, pp. 2663–2678, 2021. [3] E. Bourtsoulatze, D. B. Kurka, and D. G¨ und¨ uz, “Deep joint source-channel coding for wireless image transmission,” IEEE Trans. Cogn. Commun. Netw. , vol. 5, no. 3, pp. 567–579, 2019. [4] P. Jiang, C.-K. Wen et al. , “Deep source-channel coding for sentence semantic transmission with harq,” IEEE Trans. Commun. , vol. 70, no. 8, pp. 5225–5240, 2022. [5] Q. Zhou, R. Li et al. , “Adaptive bit rate control in semantic com-munication with incremental knowledge-based harq,” IEEE Open J. Commun. Soc. , vol. 3, pp. 1076–1089, 2022. [6] Y. Zheng, F. Wang et al. , “Semantic base enabled image transmission with fine-grained harq,” IEEE Trans. Wireless Commun. , vol. 24, no. 4, pp. 3606–3622, 2025. [7] G. Zhang, Q. Hu et al. , “SCAN: Semantic communication with adap-tive channel feedback,” IEEE Trans. Cogn. Commun. Netw. , vol. 10, no. 5, pp. 1759–1773, 2024. [8] J. Hu, F. Wang et al. , “Semharq: Semantic-aware hybrid automatic repeat request for multi-task semantic communications,” IEEE Trans. Wireless Commun. , vol. 25, pp. 3170–3185, 2026. [9] M. Wang, J. Li et al. , “Spiking semantic communication for feature transmission with HARQ,” IEEE Trans. Veh. Technol. , vol. 74, no. 6, pp. 10 035–10 040, 2025. [10] P. Jiang, C.-K. Wen et al. , “Wireless semantic communications for video conferencing,” IEEE J. Sel. Areas Commun. , vol. 41, no. 1, pp. 230–244, 2023. [11] Y. Sheng, L. Liang et al. , “Semantic communication for cooperative perception using HARQ,” IEEE Trans. Cogn. Commun. Netw. , vol. 12, pp. 1139–1154, 2026. [12] T.-Y. Lin, M. Maire et al. , “Microsoft COCO: Common objects in context,” in Computer Vision – ECCV 2014 . Springer, 2014, pp. 740–755. 1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.25 
+
+0.30 
+
+0.35 
+
+> BLEU-1 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+> BLEU-2 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+0.28 
+
+> Semantic Similarity
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. (a) Aligned Codec-A/A with AWGN noise at 0 dB. 1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.32 
+
+0.34 
+
+0.36 
+
+0.38 
+
+0.40 
+
+0.42 
+
+> BLEU-1 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+> BLEU-2 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+1 2 3 4 5
+
+Number of Transmissions Combined 
+
+0.23 
+
+0.24 
+
+0.25 
+
+0.26 
+
+0.27 
+
+0.28 
+
+0.29 
+
+> Semantic Similarity
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+(b) Misaligned Codec-A/B without additive noise. 
+
+Fig. 2: Incremental knowledge gain vs. number of transmission attempts K for aligned and misaligned configurations. 9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+> BLEU-1 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+> BLEU-2 Score
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+> Semantic Similarity
+
+Chase (Baseline) 
+
+Weighted Avg. 
+
+Best Only 
+
+Maximal Ratio 
+
+Iterative Refine. 
+
+Fig. 3: Comparison of different semantic soft combining methods. 9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+> BLEU-1 Score
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+> Semantic Similarity
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+9 6 3 0 3 6 9
+
+Semantic SNR (dB) 
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Avg. Semantic TX
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+(a) Sensitivity to the semantic SNR at threshold of 0.85. 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+Quality Threshold 
+
+0.250 
+
+0.275 
+
+0.300 
+
+0.325 
+
+0.350 
+
+0.375 
+
+0.400 
+
+> BLEU-1 Score
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+Quality Threshold 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+> Semantic Similarity
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+Quality Threshold 
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Avg. Semantic TX
+
+VAE Uncertainty 
+
+Self-Consistency 
+
+Decoder Entropy 
+
+Latent Distance 
+
+Text BLEU 
+
+Text Similarity 
+
+(b) Sensitivity to the quality threshold at semantic SNR of 0 dB .
+
+Fig. 4: Comparison of different semantic quality metrics.
