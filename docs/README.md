@@ -6,85 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-24
-- 运行时间：2026-03-24 20:29:19 UTC
+- 最新运行日期：2026-03-25
+- 运行时间：2026-03-25 20:15:51 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日精选 21 篇前沿论文，重点聚焦扩散模型的高效压缩与生成式多帧影像修复。
-高分作 DA-VAE 通过细节对齐实现即插即用的潜空间压缩，GenMFSR 则显著提升了多帧超分辨率的生成质量。
-建议优先研读扩散模型底层架构优化及视频生成加速方案，把握视觉生成领域的高性能演进趋势。
-- 详情：[/202603/24/README](/202603/24/README)
+今日聚焦 21 篇前沿成果，深度攻克 360° 沉浸式影像压缩与大模型推理效率两大核心瓶颈。
+重点推荐 9.0 高分的视口感知神经压缩技术，以及通过硬件感知实现 LLM 无损加速的 ZipServ 方案。
+建议关注硬件协同优化与免训练运动控制技术，这是提升复杂模型落地性能与交互灵活性的关键路径。
+- 详情：[/202603/25/README](/202603/25/README)
 
 ### 精读区论文标签
-1. [DA-VAE: Plug-in Latent Compression for Diffusion via Detail Alignment](/202603/24/2603.22125v1-da-vae-plug-in-latent-compression-for-diffusion-via-detail-alignment)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：通过细节对齐实现扩散模型的潜空间压缩
-2. [GenMFSR: Generative Multi-Frame Image Restoration and Super-Resolution](/202603/24/2603.19187v1-genmfsr-generative-multi-frame-image-restoration-and-super-resolution)  
+1. [Viewport-based Neural 360° Image Compression](/202603/25/2603.22776v1-viewport-based-neural-360-image-compression)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：基于视口的360度图像神经压缩流水线
+2. [ZipServ: Fast and Memory-Efficient LLM Inference with Hardware-Aware Lossless Compression](/202603/25/2603.17435v1-zipserv-fast-and-memory-efficient-llm-inference-with-hardware-aware-lossless-compression)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：硬件感知的无损压缩与熵编码器设计
+3. [Training-Free Sparse Attention for Fast Video Generation via Offline Layer-Wise Sparsity Profiling and Online Bidirectional Co-Clustering](/202603/25/2603.18636v1-training-free-sparse-attention-for-fast-video-generation-via-offline-layer-wise-sparsity-profiling-and-online-bidirectional-co-clustering)  
    标签：评分：8.0/10、query:vcodec
-   evidence：利用图像先验进行生成式多帧对齐与超分辨率
-3. [Mix-and-Match Pruning: Globally Guided Layer-Wise Sparsification of DNNs](/202603/24/2603.20280v1-mix-and-match-pruning-globally-guided-layer-wise-sparsification-of-dnns)  
+   evidence：用于快速视频生成的稀疏注意力与逐层稀疏分析
+4. [EdgeCrafter: Compact ViTs for Edge Dense Prediction via Task-Specialized Distillation](/202603/25/2603.18739v1-edgecrafter-compact-vits-for-edge-dense-prediction-via-task-specialized-distillation)  
    标签：评分：8.0/10、query:train-trick
-   evidence：针对边缘设备部署的分层稀疏化与剪枝框架
-4. [Adaptive Video Distillation: Mitigating Oversaturation and Temporal Collapse in Few-Step Generation](/202603/24/2603.21864v1-adaptive-video-distillation-mitigating-oversaturation-and-temporal-collapse-in-few-step-generation)  
+   evidence：针对边缘设备轻量化ViT的任务专门化蒸馏
+5. [Taming Sampling Perturbations with Variance Expansion Loss for Latent Diffusion Models](/202603/25/2603.21085v1-taming-sampling-perturbations-with-variance-expansion-loss-for-latent-diffusion-models)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：潜在扩散模型中采样扰动的鲁棒性
+6. [DepthTCM: High Efficient Depth Compression via Physics-aware Transformer-CNN Mixed Architecture](/202603/25/2603.21233v1-depthtcm-high-efficient-depth-compression-via-physics-aware-transformer-cnn-mixed-architecture)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：使用学习型编解码器的端到端深度图压缩框架
+7. [ForestPrune: High-ratio Visual Token Compression for Video Multimodal Large Language Models via Spatial-Temporal Forest Modeling](/202603/25/2603.22911v1-forestprune-high-ratio-visual-token-compression-for-video-multimodal-large-language-models-via-spatial-temporal-forest-modeling)  
    标签：评分：8.0/10、query:train-trick
-   evidence：专为视频扩散模型设计的蒸馏框架，以减轻时间崩溃
-5. [GenOpticalFlow: A Generative Approach to Unsupervised Optical Flow Learning](/202603/24/2603.22270v1-genopticalflow-a-generative-approach-to-unsupervised-optical-flow-learning)  
+   evidence：视频模型的视觉令牌压缩与剪枝
+8. [DA-Flow: Degradation-Aware Optical Flow Estimation with Diffusion Models](/202603/25/2603.23499v1-da-flow-degradation-aware-optical-flow-estimation-with-diffusion-models)  
    标签：评分：8.0/10、query:vcodec
-   evidence：无监督光流学习的生成式方法
-6. [DUO-VSR: Dual-Stream Distillation for One-Step Video Super-Resolution](/202603/24/2603.22271v1-duo-vsr-dual-stream-distillation-for-one-step-video-super-resolution)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：利用扩散模型进行单步视频超分辨率的双流蒸馏
-7. [Repurposing Geometric Foundation Models for Multi-view Diffusion](/202603/24/2603.22275v1-repurposing-geometric-foundation-models-for-multi-view-diffusion)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：用于多视图合成的几何潜扩散
-8. [End-to-End Training for Unified Tokenization and Latent Denoising](/202603/24/2603.22283v1-end-to-end-training-for-unified-tokenization-and-latent-denoising)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：统一令牌化与潜空间扩散训练
+   evidence：利用扩散模型对包含压缩伪影的损坏视频进行光流估计
 
 ### 速读区论文标签
-1. [WorldCache: Content-Aware Caching for Accelerated Video World Models](/202603/24/2603.22286v1-worldcache-content-aware-caching-for-accelerated-video-world-models)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：用于加速视频扩散模型的运动自适应特征缓存
-2. [PrototypeNAS: Rapid Design of Deep Neural Networks for Microcontroller Units](/202603/24/2603.15106v1-prototypenas-rapid-design-of-deep-neural-networks-for-microcontroller-units)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：针对目标微控制器的DNN压缩与专业化的零样本神经架构搜索
-3. [Faster Inference of Flow-Based Generative Models via Improved Data-Noise Coupling](/202603/24/2603.15279v1-faster-inference-of-flow-based-generative-models-via-improved-data-noise-coupling)  
+1. [Rateless DeepJSCC for Broadcast Channels: a Rate-Distortion-Complexity Tradeoff](/202603/25/2603.21616v1-rateless-deepjscc-for-broadcast-channels-a-rate-distortion-complexity-tradeoff)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：学习型信源信道编码中的率失真复杂度权衡
+2. [TETO: Tracking Events with Teacher Observation for Motion Estimation and Frame Interpolation](/202603/25/2603.23487v1-teto-tracking-events-with-teacher-observation-for-motion-estimation-and-frame-interpolation)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：利用知识蒸馏从无标注视频中进行运动估计
+3. [Search2Motion: Training-Free Object-Level Motion Control via Attention-Consensus Search](/202603/25/2603.16711v1-search2motion-training-free-object-level-motion-control-via-attention-consensus-search)  
    标签：评分：7.0/10、query:vcodec
-   evidence：流式生成模型在视频生成中的快速推理
-4. [Knowledge Distillation for Collaborative Learning in Distributed Communications and Sensing](/202603/24/2603.16116v1-knowledge-distillation-for-collaborative-learning-in-distributed-communications-and-sensing)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：用于分布式节点轻量化AI模型的知识蒸馏
-5. [VIGOR: VIdeo Geometry-Oriented Reward for Temporal Generative Alignment](/202603/24/2603.16271v2-vigor-video-geometry-oriented-reward-for-temporal-generative-alignment)  
+   evidence：图像到视频生成中的对象级运动控制和运动先验
+4. [V-Co: A Closer Look at Visual Representation Alignment via Co-Denoising](/202603/25/2603.16792v1-v-co-a-closer-look-at-visual-representation-alignment-via-co-denoising)  
    标签：评分：7.0/10、query:vcodec
-   evidence：具有几何监督和时序对齐的视频扩散模型
-6. [VQKV: High-Fidelity and High-Ratio Cache Compression via Vector-Quantization](/202603/24/2603.16435v1-vqkv-high-fidelity-and-high-ratio-cache-compression-via-vector-quantization)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：用于高倍率缓存压缩的矢量量化
-7. [Fast-HaMeR: Boosting Hand Mesh Reconstruction using Knowledge Distillation](/202603/24/2603.16444v1-fast-hamer-boosting-hand-mesh-reconstruction-using-knowledge-distillation)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：用于轻量化神经网络的知识蒸馏
-8. [$x^2$-Fusion: Cross-Modality and Cross-Dimension Flow Estimation in Event Edge Space](/202603/24/2603.16671v1-x2-fusion-cross-modality-and-cross-dimension-flow-estimation-in-event-edge-space)  
+   evidence：像素空间扩散与潜在扩散在视觉表示中的对比
+5. [Stereo World Model: Camera-Guided Stereo Video Generation](/202603/25/2603.17375v1-stereo-world-model-camera-guided-stereo-video-generation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：在共享潜空间中联合估计2D和3D运动
-9. [Adaptive Anchor Policies for Efficient 4D Gaussian Streaming](/202603/24/2603.17227v1-adaptive-anchor-policies-for-efficient-4d-gaussian-streaming)  
+   evidence：端到端立体视频生成，联合学习外观与几何结构
+6. [RAMP: Reinforcement Adaptive Mixed Precision Quantization for Efficient On Device LLM Inference](/202603/25/2603.17891v1-ramp-reinforcement-adaptive-mixed-precision-quantization-for-efficient-on-device-llm-inference)  
    标签：评分：7.0/10、query:train-trick
-   evidence：具有预算感知锚点采样的效率4D高斯流媒体
-10. [LLMind: Bio-inspired Training-free Adaptive Visual Representations for Vision-Language Models](/202603/24/2603.14882v1-llmind-bio-inspired-training-free-adaptive-visual-representations-for-vision-language-models)  
+   evidence：混合精度量化与比特预算优化，用于高效推理
+7. [Unified Spatio-Temporal Token Scoring for Efficient Video VLMs](/202603/25/2603.18004v1-unified-spatio-temporal-token-scoring-for-efficient-video-vlms)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：令牌剪枝用于增强视频任务中的计算效率
+8. [Improving Joint Audio-Video Generation with Cross-Modal Context Learning](/202603/25/2603.18600v1-improving-joint-audio-video-generation-with-cross-modal-context-learning)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：利用预训练视频扩散模型进行音视频联合生成
+9. [Measuring 3D Spatial Geometric Consistency in Dynamic Generated Videos](/202603/25/2603.19048v1-measuring-3d-spatial-geometric-consistency-in-dynamic-generated-videos)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：动态生成视频的一致性与感知质量
+10. [Mostly Text, Smart Visuals: Asymmetric Text-Visual Pruning for Large Vision-Language Models](/202603/25/2603.16001v1-mostly-text-smart-visuals-asymmetric-text-visual-pruning-for-large-vision-language-models)  
    标签：评分：6.0/10、query:train-trick
-   evidence：仿生视网膜编码实现高效视觉表示
-11. [Balancing Saliency and Coverage: Semantic Prominence-Aware Budgeting for Visual Token Compression in VLMs](/202603/24/2603.14892v1-balancing-saliency-and-coverage-semantic-prominence-aware-budgeting-for-visual-token-compression-in-vlms)  
+   evidence：视觉语言模型的非对称剪枝以实现轻量化部署
+11. [ViT-AdaLA: Adapting Vision Transformers with Linear Attention](/202603/25/2603.16063v1-vit-adala-adapting-vision-transformers-with-linear-attention)  
    标签：评分：6.0/10、query:train-trick
-   evidence：多模态模型中的视觉Token压缩与剪枝
-12. [Edit2Interp: Adapting Image Foundation Models from Spatial Editing to Video Frame Interpolation with Few-Shot Learning](/202603/24/2603.15003v1-edit2interp-adapting-image-foundation-models-from-spatial-editing-to-video-frame-interpolation-with-few-shot-learning)  
+   evidence：将Vision Transformer适配为线性注意力以提升扩展性与效率
+12. [Search2Motion: Training-Free Object-Level Motion Control via Attention-Consensus Search](/202603/25/2603.16711v2-search2motion-training-free-object-level-motion-control-via-attention-consensus-search)  
    标签：评分：6.0/10、query:vcodec
-   evidence：无需运动估计模块，将图像基础模型适配用于视频插帧
-13. [Generative Semantic HARQ: Latent-Space Text Retransmission and Combining](/202603/24/2603.15068v1-generative-semantic-harq-latent-space-text-retransmission-and-combining)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：使用Transformer-VAE编解码器的生成式语义HARQ框架
+   evidence：图像到视频生成中的对象级运动控制
+13. [Empirical Recipes for Efficient and Compact Vision-Language Models](/202603/25/2603.16987v1-empirical-recipes-for-efficient-and-compact-vision-language-models)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：针对紧凑模型的优化方案，旨在降低延迟并提高效率
 
 
 <div class="dpr-home-promo-card">

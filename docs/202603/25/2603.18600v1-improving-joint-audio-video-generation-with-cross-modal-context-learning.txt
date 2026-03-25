@@ -1,0 +1,319 @@
+Title: Improving Joint Audio-Video Generation with Cross-Modal Context Learning
+
+URL Source: https://arxiv.org/pdf/2603.18600v1
+
+Published Time: Fri, 20 Mar 2026 00:48:00 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Improving Joint Audio-Video Generation with Cross-Modal Context Learning 
+
+Bingqi Ma, Linlong Lang, Ming Zhang, Dailan He, Xingtong Ge, Yi Zhang, Guanglu Song, and Yu Liu 
+
+Vivix Group Limited 
+
+mabingqi@vivix.ai 
+
+Abstract. The dual-stream transformer architecture-based joint audio-video generation method has become the dominant paradigm in current research. By incorporating pre-trained video diffusion models and audio diffusion models, along with a cross-modal interaction attention mod-ule, high-quality, temporally synchronized audio-video content can be generated with minimal training data. In this paper, we first revisit the dual-stream transformer paradigm and further analyze its limitations, including model manifold variations caused by the gating mechanism controlling cross-modal interactions, biases in multi-modal background regions introduced by cross-modal attention, and the inconsistencies in multi-modal classifier-free guidance (CFG) during training and inference, as well as conflicts between multiple conditions. To alleviate these issues, we propose Cross-Modal Context Learning (CCL), equipped with several carefully designed modules. Temporally Aligned RoPE and Par-titioning (TARP) effectively enhances the temporal alignment between audio latent and video latent representations. The Learnable Context To-kens (LCT) and Dynamic Context Routing (DCR) in the Cross-Modal Context Attention (CCA) module provide stable unconditional anchors for cross-modal information, while dynamically routing based on dif-ferent training tasks, further enhancing the model’s convergence speed and generation quality. During inference, Unconditional Context Guid-ance (UCG) leverages the unconditional support provided by LCT to facilitate different forms of CFG, improving train-inference consistency and further alleviating conflicts. Through comprehensive evaluations, CCL achieves state-of-the-art performance compared with recent aca-demic methods while requiring substantially fewer resources. 
+
+Keywords: Diffusion Models · Joint Audio-Video Generation · Cross-Modal Context Learning 
+
+## 1 Introduction 
+
+Diffusion models [17,48] have achieved remarkable success in generative modeling for images [2, 6, 34, 40, 43, 45, 59], videos [4, 14, 52, 58, 63, 64], audio [21, 27, 30, 
+
+> arXiv:2603.18600v1 [cs.CV] 19 Mar 2026
+
+2 B. Ma et al. Shot  Transitions and  Dialogue  Beauty Tutorials          
+
+> Guitar Music Human Speech Multi Language Environment Sound: Raining Off -screen Speech
+
+Fig. 1: We demonstrate several capabilities of CCL, including multilingual human speech generation, environmental sound synthesis, music generation, background speech generation, storyboard-style scene transitions, and dialogue generation, as well as applicability to real-world scenarios such as beauty tutorial production. 
+
+31], and text [36, 46]. Beyond single-modality synthesis [15, 16, 47, 60, 65], joint generation across multiple modalities has quickly emerged as a key research direction, aiming to produce coherent outputs that remain mutually consistent across modalities. Recent studies [20, 22, 33, 38, 41, 56, 62] have placed particular emphasis on joint audio-video generation, demonstrating increasingly realistic synthesis and controllability. With access to large-scale training corpora and growing model capacity, re-cent systems such as Veo3 [11], Wan2.5 [54], Sora2 [37], Kling 3.0 [25], and Seedance 2.0 [1] exhibit strong prompt adherence, high visual fidelity, and tem-porally consistent motion. Moreover, several open-source efforts, such as LTX-2 [13] and MOVA [50], also achieve strong performance, offering high genera-tion quality and competitive audio-video coherence. Meanwhile, academic stud-ies [20, 22, 33, 62] on smaller-scale datasets have proposed new architectural de-signs and optimization strategies, providing deeper insights into the task and enabling a more systematic understanding of its challenges and opportunities. Among these works, the dual-stream transformer architecture has been widely adopted. Building on pre-trained video and audio diffusion models, cross-modal attention modules enable information exchange between the audio and video streams, thereby enabling synchronized audio and video content generation. A representative design introduces an additional bidirectional cross-modal atten-tion module into each diffusion transformer block to extract representation from another modality. Some approaches [22, 41, 56] attempt to facilitate cross-modal interaction between audio and video using a joint self-attention module, follow-ing the MMDiT [6] paradigm. However, these methods typically require training from scratch on billion-level audio-video pairs [41, 56] or rely on auxiliary tasks designed specifically to ensure convergence [22]. In this paper, we focus on the de-Cross-Modal Context Learning 3
+
+sign of the bidirectional cross-attention paradigm, analyze key issues in existing designs, and propose corresponding solutions. Existing methods typically use a gating mechanism to control the cross-modal interaction process. Although this design does not introduce additional compu-tational overhead, we find that switching the gate under different optimization objectives introduces a piecewise objective structure in parameter space, which destabilizes gradient directions across successive optimization steps and harms the convergence process, leading to limited generation performance. Meanwhile, by analyzing the cross-modal attention map, we find that the model exhibits a strong bias towards regions in both the audio and video modalities that are unrelated to the other modality during cross-modal interaction. This results in a negative impact on the convergence efficiency of the model’s training and further leads to semantic confusion. For the multi-modal CFG [18], existing methods often ignore the design of cross-modal unconditional information, or rely excessively on handcrafted priors, making it difficult to ensure alignment between training and inference. There is also a conflict between text control and cross-modal control, which further affects the quality of the generated output. To address the aforementioned issues, we propose a novel paradigm for joint audio-video generation, named Cross-Modal Context Learning . The pipeline of CCL is as shown in Fig. 4. CCL inherits the traditional dual-stream trans-former architecture, enhanced with the Temporally Aligned RoPE and Partition-ing module, the Cross-Modal Context Attention module with Learnable Context Tokens and Dynamic Context Routing, as well as the Unconditional Context Guidance. In TARP, we first apply temporal aligned Rotary Positional Embed-ding (RoPE) [49] on the audio latent to address the temporal misalignment caused by differences in the audio and video sampling rates, as well as the VAE compression rates. We further leverage a partitioning mechanism that restricts cross-modal attention between audio and video latents to a small temporal win-dow, thereby simplifying the optimization of audiovisual consistency. In each CCA module, we introduce LCT to provide contextual information from the other modality. We expect these tokens to serve as a stable, averaged represen-tation of the counterpart modality, enabling the cross-attention module to dis-tinguish foreground from background information efficiently. The DCR dynami-cally adjusts the composition of the keys and values involved in the computation of the CCA module. During inference, UCG leverages the cross-modal context representation provided by LCT as unconditional information. Such strategies encourage train-inference consistent, further enhancing the cross-modal coher-ence of the generated content without introducing adverse effects. We also evaluate our proposed CCL against several recent academic meth-ods on the test set across multiple dimensions. Experiments demonstrate that CCL achieves competitive performance while requiring less training data and computation. Extensive ablation studies further validate the effectiveness of each proposed module. We provide some showcases in Fig. 1 to further introduce the ability of CCL on multiple dimensions. 4 B. Ma et al. 
+
+## 2 Related work 
+
+2.1 Video Generation Models 
+
+Video generation has undergone a paradigm shift driven by the rapid advance-ment of diffusion models. Early video diffusion models rely heavily on U-Net architectures [44]. They expand pre-trained image generation models like Stable Video Diffusion [19] and AnimateDiff [12] by incorporating temporal attention mechanisms or 3D convolutions. These methods effectively mitigate the short-age of high-quality video data. However, they face limitations when processing complex spatiotemporal dynamics and generating long videos. Following the breakthrough of Sora [32], diffusion transformer (DiT) [39] gradually replace U-Net to become the dominant paradigm. The DiT architecture operates in the latent space and employs a 3D Variational Auto-Encoder (VAE) [24] for effi-cient spatiotemporal compression. This design significantly improves the scaling capability of models on massive datasets and enhances the visual fidelity of gen-erated videos. Subsequently, numerous excellent open-source and closed-source models emerge, including the Wan [53], CogVideoX [61], Hunyuan-Video [26], and Kling [57]. This architectural evolution and the effective utilization of large-scale training data establish the current state-of-the-art in video generation. 
+
+2.2 Joint Audio-Video Generation 
+
+Building upon the significant success of single-modality generation, cross-modal joint generation rapidly emerge as a frontier research topic in generative AI. Early attempts [7, 8] frequently rely on cascaded generation pipelines or entirely independent synthesis strategies. Such disjointed frameworks inherently struggle to achieve precise temporal alignment and often produced mismatched seman-tic contexts. To overcome these limitations, advanced close-source models like Veo3 [11] and Wan2.5 [54] pioneer highly time-aligned joint audio-video gen-eration. Following this trend, recent open-source methods shift toward unified generation paradigms. For instance, UniVerse-1 [55] combines the Wan2.1 video backbone with the ACE-Step [10] audio model, utilizing cross-modal attention to align features for joint synthesis. Ovi [33] employs a dual-branch structure that fuses pre-trained video and audio models, facilitating interaction through ded-icated cross-attention modules. Expanding on the dual-stream approach, LTX-2 [13] introduces an asymmetric dual-stream transformer architecture, enforcing unified generation and strict temporal synchronization via cross-attention. 
+
+## 3 Revisiting the Dual-Stream Transformer Pipeline 
+
+In this section, we revisit the dual-stream transformer paradigm for joint au-dio–video generation and further investigate several design choices, analyzing the underlying principles and their limitations. Cross-Modal Context Learning 5text/image -to -video generation   
+
+> Joint audio -video generation
+
+Fig. 2: The gating mech-anism alters the opti-mization objective dur-ing training, which af-fects training efficiency. Good morning, everyone.  No voice  Welcome to our beautiful city!  No voice   
+
+> Low attention
+> High attention
+
+Fig. 3: The visualization of cross-modal attention in Ovi [33]. We ob-serve that background regions in the audio attend strongly to random regions in the video, while background regions in the video assign high attention to the final audio token. This suggests that the cross-modal attention is semantically misaligned, introducing positional bias and con-sequently degrading model performance. 
+
+3.1 The Gating Mechanism 
+
+The gating mechanism provides an effective way to regulate cross-modal inter-actions while introducing no additional computational overhead. We formulate a transformer block as follows: 
+
+X = X + SA( X),
+
+X = X + CA( X, T),
+
+X = X + g · CA( X, Y),
+
+X = X + FFN( X),
+
+(1) where X denotes the latent representation of the current modality; T is the text-conditioning embedding; and Y is the latent representation of the other modality. The scalar g ∈ { 0, 1} is a binary gate that controls whether features from the other modality are injected. For single-modality generation, we simply set g = 0 ; for joint audio-video interaction, we set g = 1 .However, we argue that the gating mechanism will significantly harm the convergence of the optimization process. Under different optimization objectives, changes in the gate state can induce a piecewise structure of the objective in pa-rameter space, making the gradient direction across successive optimization steps difficult to stabilize. Fig. 2 provides a clearer illustration of this phenomenon, and this conclusion is also confirmed in Sec. 6.3. 
+
+3.2 Cross-Modal Attention 
+
+Bidirectional cross-attention is a key module for establishing associations be-tween the two modalities. Attention maps can reveal the attention correlations between the two modalities. For example, in audio-driven talking-head scenarios, the audio modality typically exhibits closer attention over the speaker’s mouth region, enabling lip movements to align with the spoken content. However, there is a local correlation between the audio and video modali-ties. Specifically, the mouth region occupies only a small foreground area in the 6 B. Ma et al. 
+
+video, and most of the background video representation does not exhibit a direct correlation with the audio representation. Therefore, this cross-attention module needs to simultaneously distinguish between foreground and background while correctly driving the lip movements. A similar local structure is also present in the audio representation. In Fig. 3, we show some visualization cases gener-ated by Ovi [33]. We observe that background video tokens show high attention values with the last audio token, while background audio tokens exhibit strong attention at random spatial locations in the image. This consistency across mul-tiple test cases suggests that, for background regions, the model has learned a positional bias that is independent of the semantic content. This means that the model typically requires extensive training to converge, and suffer from semantic confusion. 
+
+3.3 Multi-Modal CFG 
+
+The multi-modal CFG decouples the control strength of the text and cross-modal representations, allowing dynamic adjustment based on different requirements, thereby enabling flexible generation control. We can formulate the multi-modal CFG as follows:                             
+
+> ˆvθ(xt, t ) = vθ(xt, t |uc text ,∅) + stext
+> 
+> vθ(xt, t |ctext ,∅)−vθ(xt, t |uc text ,∅)
+> 
+> +sm
+> 
+> vθ(xt, t |uc text , c m)−vθ(xt, t |uc text ,∅)
+> 
+> ,
+
+(2) where xt denotes the latent sample at inference timestep t, vθ (xt, t | ctext , c m) is the flow conditioned on the text ctext and the cross-modal condition cm, uc text is the negative prompt, stext and sm are the CFG scales. LTX-2 designs a variant of the multi-modal CFG, which further enhances performance based on conditional information. However, the underlying approach remains consistent, so we do not provide a detailed explanation. In text-conditioned visual generation tasks, unconditional information plays a crucial role. By setting well-defined negative prompts, the quality and stability of the generated results can be effectively improved across various dimensions. However, existing joint audio-video generation methods typically construct un-conditional information by dropping the modality information, such as setting the cross-modal attention gate to 0. Harmony [20] presents an initial attempt that performs inference by using a static video and silent audio as the uncondi-tional cross-modal representation. However, such unconditional information does not appear in the training distribution and relies excessively on handcrafted pri-ors, resulting in a mismatch between training and inference. This design also requires an additional forward pass to obtain the unconditional representation, incurring extra cost. Meanwhile, MOVA [50] also observes that the multi-modal CFG can lead to conflicts between text control and cross-modal control. When a larger cross-modal CFG scale is set, better audio-video coherence is achieved, but the capacity of the audio stream is significantly compromised. Cross-Modal Context Learning 7Self                
+
+> Attention
+> Text
+> Cross Attention
+> Noisy Video Latent
+> Video VAE
+> Text Condition
+> Text Encoder
+> Q
+> Temporally Aligned RoPE and Partitioning
+> Self
+> Attention
+> Text
+> Cross Attention
+> Noisy Audio Latent
+> Audio VAE
+> KKVV
+> Dynamic Context Routing
+
+×N                       
+
+> QKKVV
+> Dynamic Context Routing
+> FFN FFN Dynamic Context Routing
+> Text/image -to -Video
+> Text -to -Audio
+> Text Audio -to -Video
+> Text Video -to -Audio
+> Text/image -to -Audio Video
+> Video -to -Audio Temporal Alignment
+> Audio -to -Video Temporal Alignment
+> Audio LCTs Video LCTs
+> An emotionally charged close -up frames a young man with damp, dark
+> hair clinging to his forehead and a face streaked with sweat. He never
+> looks into the camera; instead, his gaze stays fixed somewhere off -screen,
+> eyes wide with a tangled mix of fear and remors e……
+> window
+> Video Tokens
+> Audio Tokens
+> Video Tokens
+> Audio Tokens
+> Cross -modal Context Attention
+
+Fig. 4: The pipeline of our proposed Cross-Modal Context Learning . CCL follows the conventional dual-stream transformer architecture, equipped with several novel-designed modules, enabling efficient and effective joint audio-video generation with high consistency. The figure illustrates the implementation details of proposed modules. For Dynamic Context Routing, the various colors denote that the corresponding colored paths on the left are in an activated state. 
+
+## 4 Cross-Modal Context Learning 
+
+The pipeline of CCL is as shown in Fig. 4. The video frames are compressed into the latent space via a 3D VAE. Raw audio is first converted into a Mel-spectrogram and then compressed into a 1D latent representation using an audio VAE. For both the audio and video modalities, we use a unified prompt format, where the spoken content is enclosed in quotation marks. Both the video and audio streams are built on transformer blocks and share the same layer number and overall architecture, except that the audio branch uses fewer channels to improve parameter efficiency. Each transformer block consists of a self-attention module, a text-conditioned cross-attention module, a Temporally Aligned RoPE and Partitioning module, a Cross-Modal Context Attention module, and a feed-forward network layer. In the following sections, we will introduce the design of core modules. We define several variables to make the following presentation clearer. Let 
+
+Xa ∈ Rb×ta×da denote the audio latent in an audio transformer block output by the text-conditioned cross-attention module, where b is the batch size, ta is the number of audio tokens, and da is the dimension of the audio transformer 8 B. Ma et al. 
+
+block. Similarly, Xv ∈ Rb×sv ×dv denotes the video latent, where sv = tv · h · w is the number of video tokens, with (tv , h, w ) being the latent resolution produced by the 3D VAE, and dv is the dimension of the video transformer block. Due to the mismatch between da and dv , the QKV projections in the CCA module should align the feature dimensions across modalities, yielding qa ∈ Rb×ta×da ,
+
+ka, va ∈ Rb×ta×dv , qv ∈ Rb×sv ×dv , and kv , vv ∈ Rb×sv ×da .
+
+4.1 Temporally Aligned RoPE and Partitioning 
+
+Prior works [20, 62] have shown that temporally aligning audio and video latent can substantially accelerate training convergence and improve audio–video con-sistency. Our TARP module adopts a similar design. In Fig. 4, we also visualize the specific operations. Due to the mismatch between ta and tv , directly adopting standard RoPE on both audio and video latent results in a misalignment between positional embeddings and temporal position. For qa and ka, we rescale the indices of RoPE by a factor of  tv 
+
+> ta
+
+, yielding ¯qa and ¯ka. For qv and kv , we apply the standard RoPE, yielding ¯qv and ¯kv .In addition to the temporally aligned RoPE, we further leverage a parti-tioning mechanism to simplify the optimization of audio-video consistency. Each modality does not need to attend to the other modality over the entire tempo-ral span, but only a small local neighborhood around the current timestep. Let 
+
+c =
+
+j ta
+
+> tv
+
+k
+
+be the number of strictly aligned audio latent tokens per video latent frame. For the i-th video frame, the window center index is mi =  c 
+
+> 2
+
++ c · i, and we set the window size s = 3 · c. We reshape ¯qv into ˜qv ∈ R(b·tv )×(h·w)×dv , and partition ¯ka and va to capture richer contextual information and improve tem-poral continuity, yielding ˜ka, ˜va ∈ R(b·tv )×s×dv . Then ˜qv , ˜ka and ˜va will be fed into the audio-to-video CCA module. A similar strategy is adopted on ¯qa, ¯kv ,and ¯vv . Considering the audio information exhibits weaker temporal sensitivity to the video information, we set the window size s = 1 and directly adopt the nearest-neighbor interpolation. ˜qa ∈ R(b·ta)×1×da and ˜kv , ˜vv ∈ R(b·ta)×(h·w)×da
+
+will be fed into the video-to-audio CCA module. 
+
+4.2 Cross-Modal Context Attention 
+
+The CCA module is built upon the conventional bidirectional cross-modal cross-attention module by further introducing Learnable Context Tokens and Dynamic Context Routing. 
+
+Learnable Context Tokens We introduce Learnable Context Tokens (LCT) into each CCA module to provide contextual information from the other modal-ity. We expect these tokens to serve as a stable, averaged representation of the counterpart modality. Such stability provides an anchor for tokens in the cur-rent modality that are less relevant to cross-modal interactions, enabling the Cross-Modal Context Learning 9
+
+cross-attention module to distinguish foreground from background information efficiently. This paradigm effectively accelerates convergence and improves the quality of joint generation. We use La ∈ Rna×dv , where na is the token number, to represent the LCT in each audio-to-video CCA module. Symmetrically, we use Lv ∈ Rnv ×da , where nv
+
+is the token number, to represent the LCT in each video-to-audio CCA module. Subsequently, we apply KV projections on LCT and repeat them in the batch dimension to align with keys and values from each modality, obtaining kla, vla ∈
+
+R(b·tv )×na×dv and klv , vlv ∈ R(b·ta)×nv ×da . Specifically, we do not adopt RoPE on LCT due to its temporal-insensitive nature. We describe the computation procedure using joint audio-video generation as an example. Subsequently, we performed the concatenation operation and obtained: 
+
+⟨ˆka = concat (˜ka, kla), ˆva = concat (˜ va, vla)⟩ ∈ R(b·tv )×(s+na)×dv
+
+⟨ˆkv = concat (˜kv , klv ), ˆvv = concat (˜ vv , vlv )⟩ ∈ R(b·ta)×(h·w+nv )×da . (3) Finally, we conduct the cross-attention computation: 
+
+Oa = attention 
+
+
+
+¯qa, ˆkv , ˆvv
+
+
+
+, Ov = attention 
+
+
+
+¯qv , ˆka, ˆva
+
+
+
+, (4) then reshape back to the original shape like Xa and Xv . Since na and nv are far smaller than the latent token number, this design incurs only negligible ad-ditional computational overhead. 
+
+Dynamic Context Routing We propose the Dynamic Context Routing to address the substantial slowdown in convergence and inferior performance of the gating mechanism. Dynamic Context Routing can dynamically adjust the composition of the keys and values involved in the computation of the CCA module. This design encourages the model to learn more consistent contextual representations in multi-task training settings, thereby significantly accelerating convergence while further improving the model’s representational capacity. The training objectives of CCL include text/image-to-video, text-to-audio, audio-to-video, video-to-audio, and joint audio-video generation. When train-ing the text/image-to-video and text-to-audio tasks, the CCA module interacts directly with the corresponding LCT, ignoring the cross-modal latent represen-tations. The behaviors of the two streams are independent and do not affect each other. When training the audio-to-video generation task, the timestep of the audio stream is set to 0. In the audio stream, the CCA module interacts only with the corresponding video LCT, ignoring the video latent representations. In the video stream, the CCA module interacts with both the audio LCT and the audio latent representations. When training the video-to-audio generation task, the timestep of the video stream is set to 0. In the video stream, the CCA module interacts only with the corresponding audio LCT, ignoring the audio la-tent representations. In the audio stream, the CCA module interacts with both the video LCT and the video latent representations. For the joint audio-video 10 B. Ma et al. 
+
+training task, we synchronize the timesteps of the two streams, and each CCA module interacts with both the corresponding LCT and the information from the other modality. To better illustrate the execution of DCR, we provide a visu-alization in Fig. 4. Different colors denote modality-selection patterns in DCR. For the text/image-to-video task, only the LCT within each block participate in cross-modal attention, and thus only the yellow pathway is active. For the text-audio-to-video task, the green and orange pathways are active. For joint audio-video generation, all pathways are active. 
+
+4.3 Unconditional Context Guidance 
+
+In CCL, the LCT are designed to provide stable anchor points for background information, meaning that LCT become natural unconditional representations after training. Compared to manually designed silent audio or static videos, LCT exhibit stronger consistency between training and inference. At the same time, using LCT as unconditional representations eliminates the need for additional inference, further enhancing efficiency. For different inference costs, we provide two forms of UCG. If we aim to obtain the generation result through two infer-ence steps, we use the following form: 
+
+ˆvθ (xt, t ) = vθ (xt, t | uc text , Lm) + sm
+
+
+
+vθ (xt, t | ctext , c m) − vθ (xt, t | uc text , Lm)
+
+
+
+, (5) where sm is the CFG scale for current modality and Lm represents the LCT for current unconditional modality. If we hope to decouple the control strengths of text and cross-modal representations, we can define it in conjunction with multi-modal CFG as follows:                             
+
+> ˆvθ(xt, t ) = vθ(xt, t |uc text ,Lm) + stext
+> 
+> vθ(xt, t |ctext ,Lm)−vθ(xt, t |uc text ,Lm)
+> 
+> +sm
+> 
+> vθ(xt, t |uc text , c m)−vθ(xt, t |uc text ,Lm)
+> 
+> .
+
+(6) In this case, we need three steps to complete a single inference. UCG also effec-tively alleviates the conflict between text condition and cross-modal conditions, especially the video condition in the audio stream. Traditional modality drop methods provide cross-modal CFG with a strong indication of whether a modal-ity is present, which is reasonable for the video stream receiving audio conditions. However, the audio stream does not require such a strong direction; rather, it benefits from the enhancement of audio-related information within the video stream. In this case, LCT plays the role of a robust condition guider, preventing issues caused by overly strong cross-modal conditions, such as increased error rates in the audio modality. 
+
+4.4 Multi-Task Training 
+
+During training, we assign each task a distinct sampling probability and opti-mize only the loss from the generative objectives. We optimize CCL using flow matching [29] as the training objective. We formulate the multi-task training as Cross-Modal Context Learning 11 
+
+Fig. 5: The visualization of the training loss when adopting the gate mechanism com-pared with leveraging the CCL. We only sampled the loss for the joint audio-video generation task and applied the EMA operation. Notably, due to the instability of the loss during the early stages of training, we begin visualizing from iteration 100. Good morning, everyone. No voice  Welcome to our beautiful city!  No voice             
+
+> Low attention
+> High attention
+> Audio Token Window Audio LCT Audio Token Window Audio LCT
+> Video LCT
+
+Fig. 6: The visualization of attention maps in CCL. We observe that background tokens in both the audio and video modalities attend more strongly to the LCT. 
+
+follows: 
+
+L =
+
+
+
+Laud + Lvid , text/image-to-video, text-to-audio, or joint audio-video 
+
+0 · L aud + Lvid , audio-to-video 
+
+Laud + 0 · L vid , video-to-audio 
+
+(7) where Laud and Lvid denote the training losses for the audio and video streams, respectively. Notably, during audio-to-video and video-to-audio training, we de-tach the gradients of the reference stream to prevent it from being over-optimized when its timestep is set to 0, which could otherwise induce abnormal behavior. 
+
+## 5 Visualizing the Training Process and Attention Map 
+
+To better understand CCL, we provide visual analyses of both the training dy-namics and the learned attention behavior. Specifically, we visualize the loss curves throughout the training process, as well as the attention maps of the trained model. As shown in Fig. 5, we find that CCL exhibits a substantially 12 B. Ma et al. 
+
+faster and more stable decrease in training loss compared to the baseline ap-proach that adopts the gating mechanism. This trend suggests that CCL fa-cilitates more efficient optimization, enabling the model to reach a lower-loss regime earlier during training. The quantitative results of both experiments are summarized in Tab. 2, which further corroborate our observations. For the attention map visualization in Fig. 6, we observe that background tokens in both audio and video modalities tend to attend more strongly to the LCT. This implies that CCL encourages the model to capture modality-specific background patterns and to form a clearer separation between foreground and background content. Such a separation can reduce the ambiguity in cross-modal alignment and alleviate the optimization difficulty, leading to lower training loss and faster convergence. 
+
+## 6 Experiments 
+
+6.1 Experimental Settings Datasets and Training We have curated a dataset consisting of million-level audio-video pairs for joint training. This dataset includes the widely-used Open-HumanVid [28] as well as additional in-house collections. It encompasses a diverse range of sources, such as interviews, short dramas, and films. For the pretrain-ing of the audio diffusion model, we also incorporate academic audio datasets, including Wavcaps [35] and VGGSound [3]. The video diffusion stream is initial-ized with the parameters from Wan2.1-14B. The audio diffusion stream follows the same architecture but smaller channel number for efficiency. To facilitate multimodal interaction, we integrate a CCA module at each block of the net-work. The model training is performed in two stages: first, the audio diffusion pretraining, followed by joint audio-video training. During the pretraining phase of the audio diffusion model, we use a learning rate of 1 × 10 −4 and train for 160,000 steps with a batch size of 3200. In the joint audio-video training phase, we increase the learning rate for the cross-modal attention parameters to 1 × 10 −4, while keeping the learning rate for all other parameters at 1 × 10 −5. During the ablation phase, we trained for 6000 steps with a batch size of 128. In the final setting, we used a batch size of 320 and trained for 12,000 steps. The audio LCT number na is set as 8, and the video LCT number nv is set as 128. In the multi-task training phase, the probabilities for text/image-to-audio/video, audio-to-video, video-to-audio, and joint audio-video generation are set to 0.1, 0.15, 0.15, and 0.6, respectively. The entire training process is conducted at a resolution of 352 × 640 p. 
+
+Evaluation Metrics To ensure a fair comparison, we constructed a 200-sample test set with no overlap with the training data. Each test sample consists of an image and a corresponding prompt that describes both the video content and the audio content. The test set is divided into the easy subset and the hard subset. In the easy subset, the test images are primarily portraits and upper-body shots, Cross-Modal Context Learning 13 
+
+Table 1: We compare CCL with existing methods on the test set, including Ovi [33], LTX-2 [13], and MOVA [50]. The evaluation metrics cover audio quality, lip sync, and AV-Alignment. The results show that CCL substantially outperforms prior approaches, further validating the effectiveness of our proposed method. Method Data Audio Quality Lip Sync-easy Lip Sync-hard AV-Alignment-easy AV-Alignment-hard CU ↑ PQ ↑ WER ↓ Sync-C ↑ Sync-D ↓ Sync-C ↑ Sync-D ↓ DeSync ↓ IB ↑ DeSync ↓ IB ↑                                                
+
+> Ovi [33] 30.7M 5.88 6.14 17.51% 8.47 7.32 5.96 8.57 1.11 0.20 1.18 0.21 LTX-2 [13] –5.12 5.35 11.04% 7.67 7.90 5.47 8.93 1.18 0.19 1.20 0.21 MOVA [50] 50M 6.34 7.24 8.09% 7.79 7.70 5.38 8.87 1.15 0.20 1.22 0.19
+> CCL 4M 5.71 6.42 4.62 %8.45 7.48 6.12 8.25 1.11 0.23 1.19 0.22
+
+and the prompts specify that the person remains static. In the hard subset, the test images feature full-body views, and the prompts include body movements. The two subsets share the same audio content. During evaluation, we also refined the prompt to accommodate different models’ preferences for input structure. We primarily consider three dimensions: audio quality, lip-sync, and AV-Alignment. For audio quality, we adopt the Meta AudioBox Aesthetics [51] to obtain production quality (PQ) and content usefulness (CU). We also use the Whisper-large-v3 [42] model to compute the word error rate (WER) of the gen-erated audio. For the lip-sync metric, we use SyncNet [5] to compute Sync-C and Sync-D for each generated audio-video pair. For the AV-align metric, we use the ImageBind score (IB-Score) [9] computed on joint audio-video embeddings, as well as the DeSync score predicted by Synchformer [23]. We report performance on easy and hard test sets separately for both Lip Sync and AV-Alignment. For Audio Quality, we report the mean score across the two subsets. 
+
+6.2 Comparison with Previous Works 
+
+We compare our proposed CCL with several representative prior works. In partic-ular, we focus on recent open-source models for joint audio generation, including Ovi [33] as well as the more recent LTX-2 [13] and MOVA [50]. These methods all adopt a similar dual-stream transformer architecture. We perform inference on the test set using the official scripting setup without any modifications. As shown in Tab. 1, compared with recent works such as LTX-2 and MOVA, Ovi still maintains competitive performance. This observation is consistent with the conclusions reported in the MOVA paper. Notably, the multi-modal CFG in MOVA leads to a pronounced degradation in audio quality. Therefore, follow-ing the official codebase configuration, we do not use multi-modal CFG during inference. In terms of audio quality, MOVA achieves the best performance on the CU and PQ metrics. Ovi and CCL attain comparable results on these two metrics. However, on WER, CCL exhibits a substantial advantage, outperform-ing MOVA by 3.47%. On the lip-sync metric, CCL also demonstrates superior performance compared with Ovi. Except for the Sync-C metric on the easy test set, CCL achieves state-of-the-art performance across all other metrics. On the AV-Alignment metric, CCL also achieves leading performance. This further demonstrates the effectiveness of our proposed approach. 14 B. Ma et al. 
+
+Table 2: We conduct extensive ablation studies to validate the effectiveness of each proposed module. We also compare our design choices with existing alternatives featur-ing similar components. The results indicate that every introduced module contributes to consistent performance improvements. TARP LCT/DCR UCG SyncCFG [20] Audio Quality Lip Sync AV-Alignment WER ↓ Sync-C ↑ Sync-D ↓ DeSync ↓ IB ↑                              
+
+> 4.52 %4.53 10.81 1.20 0.20
+> ✓4.67% 5.05 10.17 1.20 0.20
+> ✓✓4.81% 5.62 9.12 1.18 0.21
+> ✓✓✓4.63% 6.14 8.09 1.16 0.22
+> ✓✓✓✓5.59% 5.85 8.46 1.18 0.20
+
+6.3 Ablation Study 
+
+We conduct a detailed ablation study of the proposed modules. For audio qual-ity, we primarily report WER. For lip-sync and AV alignment, we take the mean over the easy and hard subsets for simplicity. The baseline setting uses traditional dual-stream architecture similar to Ovi [33] and adopts the gating mechanism for multi-task training. At inference time, we follow the same strat-egy as Ovi, where the cross-modal representation is used in both conditional and unconditional inference, and the guidance is applied only on the text con-dition. As shown in Tab. 2, introducing TARP improves convergence efficiency; for instance, Sync-C increases from 4.53 to 5.05, while Sync-D decreases from 10.81 to 10.17. After replacing the gating mechanism with LCT and DCR, the model achieves further and substantial gains, suggesting that the background-anchored representations provided by cross-modal context can ease optimization and improve training efficiency. With UCG further introduced, we observe clear improvements in lip-sync and AV alignment; for example, Sync-C increases by 0.52, Sync-D decreases by 1.03, DeSync decreases by 0.02, and IB increases by 0.01. MOVA [50] reports that multi-modal CFG can increase WER by a large margin; in contrast, UCG retains the benefits of multi-modal CFG while avoiding this issue. We also integrate the static-unconditional design from SyncCFG [20] into UCG for verification, but observe a slight drop across all metrics. This sug-gests that UCG is not only more compute-efficient, but also yields better overall performance than SyncCFG. 
+
+## 7 Conclusions 
+
+In this paper, we revisit the dual-stream transformer paradigm and examine key limitations, including manifold variations introduced by gating-based cross-modal control, biases in background regions from cross-modal attention, and inconsistencies between training and inference in classifier-free guidance with conflicting conditions. To address these issues, we propose Cross-Modal Context Learning, which integrates several tailored modules. Temporally Aligned RoPE and Partitioning module improves audio–video temporal alignment. Learnable Context Tokens and Dynamic Context Routing within Cross-Modal Context Cross-Modal Context Learning 15 
+
+Attention provide stable anchors and task-adaptive routing, improving conver-gence and generation quality. During inference, Unconditional Context Guidance leverages unconditional support from LCTs to better match training behavior and mitigate conflicts between text and cross-modal conditions. Extensive ex-periments show that CCL achieves state-of-the-art performance against recent methods while using substantially fewer computational resources. 16 B. Ma et al. 
+
+## References 
+
+1. ByteDance Seed: Seedance 2.0, https://seed.bytedance.com/en/seedance2_0 
+
+2. Cao, S., Chen, H., Chen, P., Cheng, Y., Cui, Y., Deng, X., Dong, Y., Gong, K., Gu, T., Gu, X., et al.: Hunyuanimage 3.0 technical report. arXiv preprint arXiv:2509.23951 (2025) 3. Chen, H., Xie, W., Vedaldi, A., Zisserman, A.: Vggsound: A large-scale audio-visual dataset. In: ICASSP 2020-2020 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP). pp. 721–725. IEEE (2020) 4. Chen, J., Zhao, Y., Yu, J., Chu, R., Chen, J., Yang, S., Wang, X., Pan, Y., Zhou, D., Ling, H., et al.: Sana-video: Efficient video generation with block linear diffusion transformer. arXiv preprint arXiv:2509.24695 (2025) 5. Chung, J.S., Zisserman, A.: Out of time: automated lip sync in the wild. In: Asian conference on computer vision. pp. 251–263. Springer (2016) 6. Esser, P., Kulal, S., Blattmann, A., Entezari, R., Müller, J., Saini, H., Levi, Y., Lorenz, D., Sauer, A., Boesel, F., et al.: Scaling rectified flow transformers for high-resolution image synthesis. In: Forty-first international conference on machine learning (2024) 7. Gan, Q., Yang, R., Zhu, J., Xue, S., Hoi, S.: Omniavatar: Efficient audio-driven avatar video generation with adaptive body animation. arXiv preprint arXiv:2506.18866 (2025) 8. Gao, X., Hu, L., Hu, S., Huang, M., Ji, C., Meng, D., Qi, J., Qiao, P., Shen, Z., Song, Y., et al.: Wan-s2v: Audio-driven cinematic video generation. arXiv preprint arXiv:2508.18621 (2025) 9. Girdhar, R., El-Nouby, A., Liu, Z., Singh, M., Alwala, K.V., Joulin, A., Misra, I.: Imagebind: One embedding space to bind them all. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 15180– 15190 (2023) 10. Gong, J., Zhao, S., Wang, S., Xu, S., Guo, J.: Ace-step: A step towards music generation foundation model. arXiv preprint arXiv:2506.00045 (2025) 11. Google DeepMind: Veo 3, https://deepmind.google/models/veo/ 
+
+12. Guo, Y., Yang, C., Rao, A., Liang, Z., Wang, Y., Qiao, Y., Agrawala, M., Lin, D., Dai, B.: Animatediff: Animate your personalized text-to-image diffusion models without specific tuning. arXiv preprint arXiv:2307.04725 (2023) 13. HaCohen, Y., Brazowski, B., Chiprut, N., Bitterman, Y., Kvochko, A., Berkowitz, A., Shalem, D., Lifschitz, D., Moshe, D., Porat, E., et al.: Ltx-2: Efficient joint audio-visual foundation model. arXiv preprint arXiv:2601.03233 (2026) 14. HaCohen, Y., Chiprut, N., Brazowski, B., Shalem, D., Moshe, D., Richardson, E., Levin, E., Shiran, G., Zabari, N., Gordon, O., et al.: Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 (2024) 15. He, D., Feng, G., Ge, X., Niu, Y., Zhang, Y., Ma, B., Song, G., Liu, Y., Li, H.: Neighbor grpo: Contrastive ode policy optimization aligns flow models. arXiv preprint arXiv:2511.16955 (2025) 16. He, D., Wang, X., Wang, S., Song, G., Ma, B., Shao, H., Liu, Y., Li, H.: High-fidelity diffusion face swapping with id-constrained facial conditioning. arXiv preprint arXiv:2503.22179 (2025) 17. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 18. Ho, J., Salimans, T.: Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 (2022) Cross-Modal Context Learning 17 19. Ho, J., Salimans, T., Gritsenko, A., Chan, W., Norouzi, M., Fleet, D.J.: Video diffusion models. Advances in neural information processing systems 35 , 8633– 8646 (2022) 20. Hu, T., Yu, Z., Zhang, G., Su, Z., Zhou, Z., Zhang, Y., Zhou, Y., Lu, Q., Yi, R.: Harmony: Harmonizing audio and video generation through cross-task synergy. arXiv preprint arXiv:2511.21579 (2025) 21. Huang, R., Huang, J., Yang, D., Ren, Y., Liu, L., Li, M., Ye, Z., Liu, J., Yin, X., Zhao, Z.: Make-an-audio: Text-to-audio generation with prompt-enhanced diffu-sion models. In: International Conference on Machine Learning. pp. 13916–13932. PMLR (2023) 22. Huang, X., Zhou, H., Yang, Q., Wen, S., Han, K.: Jova: Unified multimodal learning for joint video-audio generation. arXiv preprint arXiv:2512.13677 (2025) 23. Iashin, V., Xie, W., Rahtu, E., Zisserman, A.: Synchformer: Efficient synchroniza-tion from sparse cues. In: ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP). pp. 5325–5329. IEEE (2024) 24. Kingma, D.P., Welling, M.: Auto-encoding variational bayes. arXiv preprint arXiv:1312.6114 (2013) 25. Kling Team: Kling 3.0, https://app.klingai.com/ 
+
+26. Kong, W., Tian, Q., Zhang, Z., Min, R., Dai, Z., Zhou, J., Xiong, J., Li, X., Wu, B., Zhang, J., et al.: Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 (2024) 27. Kong, Z., Ping, W., Huang, J., Zhao, K., Catanzaro, B.: Diffwave: A versatile diffusion model for audio synthesis. arXiv preprint arXiv:2009.09761 (2020) 28. Li, H., Xu, M., Zhan, Y., Mu, S., Li, J., Cheng, K., Chen, Y., Chen, T., Ye, M., Wang, J., et al.: Openhumanvid: A large-scale high-quality dataset for enhanc-ing human-centric video generation. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 7752–7762 (2025) 29. Lipman, Y., Chen, R.T., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 (2022) 30. Liu, H., Chen, Z., Yuan, Y., Mei, X., Liu, X., Mandic, D., Wang, W., Plumb-ley, M.D.: Audioldm: Text-to-audio generation with latent diffusion models. arXiv preprint arXiv:2301.12503 (2023) 31. Liu, H., Yuan, Y., Liu, X., Mei, X., Kong, Q., Tian, Q., Wang, Y., Wang, W., Wang, Y., Plumbley, M.D.: Audioldm 2: Learning holistic audio generation with self-supervised pretraining. IEEE/ACM Transactions on Audio, Speech, and Language Processing 32 , 2871–2883 (2024) 32. Liu, Y., Zhang, K., Li, Y., Yan, Z., Gao, C., Chen, R., Yuan, Z., Huang, Y., Sun, H., Gao, J., et al.: Sora: A review on background, technology, limitations, and opportunities of large vision models. arXiv preprint arXiv:2402.17177 (2024) 33. Low, C., Wang, W., Katyal, C.: Ovi: Twin backbone cross-modal fusion for audio-video generation. arXiv preprint arXiv:2510.01284 (2025) 34. Ma, B., Zong, Z., Song, G., Li, H., Liu, Y.: Exploring the role of large language models in prompt encoding for diffusion models. arXiv preprint arXiv:2406.11831 (2024) 35. Mei, X., Meng, C., Liu, H., Kong, Q., Ko, T., Zhao, C., Plumbley, M.D., Zou, Y., Wang, W.: Wavcaps: A chatgpt-assisted weakly-labelled audio captioning dataset for audio-language multimodal research. IEEE/ACM Transactions on Au-dio, Speech, and Language Processing 32 , 3339–3354 (2024) 36. Nie, S., Zhu, F., You, Z., Zhang, X., Ou, J., Hu, J., Zhou, J., Lin, Y., Wen, J.R., Li, C.: Large language diffusion models. arXiv preprint arXiv:2502.09992 (2025) 18 B. Ma et al. 37. OpenAI: Sora 2, https://openai.com/zh-Hans-CN/index/sora-2/ 
+
+38. Pang, Y., Liu, J., Tan, L., Zhang, Y., Gao, F., Deng, X., Kang, Z., Wei, X., Liu, Y.: Mavid: A multimodal framework for audio-visual dialogue understanding and generation. arXiv preprint arXiv:2512.03034 (2025) 39. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 4195–4205 (2023) 40. Podell, D., English, Z., Lacey, K., Blattmann, A., Dockhorn, T., Müller, J., Penna, J., Rombach, R.: Sdxl: Improving latent diffusion models for high-resolution image synthesis. arXiv preprint arXiv:2307.01952 (2023) 41. Qiang, C., Wang, J., Wang, X., Yin, K., Guo, Y., Zeng, X., Li, N., Li, Z., Liang, Y., Zhang, Z., et al.: Mm-sonate: Multimodal controllable audio-video generation with zero-shot voice cloning. arXiv preprint arXiv:2601.01568 (2026) 42. Radford, A., Kim, J.W., Xu, T., Brockman, G., McLeavey, C., Sutskever, I.: Robust speech recognition via large-scale weak supervision. In: International conference on machine learning. pp. 28492–28518. PMLR (2023) 43. Ramesh, A., Pavlov, M., Goh, G., Gray, S., Voss, C., Radford, A., Chen, M., Sutskever, I.: Zero-shot text-to-image generation. In: International conference on machine learning. pp. 8821–8831. Pmlr (2021) 44. Ronneberger, O., Fischer, P., Brox, T.: U-net: Convolutional networks for biomedi-cal image segmentation. In: International Conference on Medical image computing and computer-assisted intervention. pp. 234–241. Springer (2015) 45. Saharia, C., Chan, W., Saxena, S., Li, L., Whang, J., Denton, E.L., Ghasemipour, K., Gontijo Lopes, R., Karagol Ayan, B., Salimans, T., et al.: Photorealistic text-to-image diffusion models with deep language understanding. Advances in neural information processing systems 35 , 36479–36494 (2022) 46. Sahoo, S., Arriola, M., Schiff, Y., Gokaslan, A., Marroquin, E., Chiu, J., Rush, A., Kuleshov, V.: Simple and effective masked diffusion language models. Advances in Neural Information Processing Systems 37 , 130136–130184 (2024) 47. Shen, D., Song, G., Zhang, Y., Ma, B., Li, L., Jiang, D., Zong, Z., Liu, Y.: Adt: Tun-ing diffusion models with adversarial supervision. arXiv preprint arXiv:2504.11423 (2025) 48. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 (2020) 49. Su, J., Ahmed, M., Lu, Y., Pan, S., Bo, W., Liu, Y.: Roformer: Enhanced trans-former with rotary position embedding. Neurocomputing 568 , 127063 (2024) 50. Team, O., Yu, D., Chen, M., Chen, Q., Luo, Q., Wu, Q., Cheng, Q., Li, R., Liang, T., Zhang, W., et al.: Mova: Towards scalable and synchronized video-audio gen-eration. arXiv preprint arXiv:2602.08794 (2026) 51. Tjandra, A., Wu, Y.C., Guo, B., Hoffman, J., Ellis, B., Vyas, A., Shi, B., Chen, S., Le, M., Zacharov, N., Wood, C., Lee, A., Hsu, W.N.: Meta audiobox aesthetics: Unified automatic quality assessment for speech, music, and sound (2025), https: //arxiv.org/abs/2502.05139 
+
+52. Wan, T., Wang, A., Ai, B., Wen, B., Mao, C., Xie, C.W., Chen, D., Yu, F., Zhao, H., Yang, J., et al.: Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 (2025) 53. Wan, T., Wang, A., Ai, B., Wen, B., Mao, C., Xie, C.W., Chen, D., Yu, F., Zhao, H., Yang, J., et al.: Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 (2025) 54. Wan Team: Wan 2.5, https://wan2-5.com/ Cross-Modal Context Learning 19 55. Wang, D., Zuo, W., Li, A., Chen, L.H., Liao, X., Zhou, D., Yin, Z., Dai, X., Jiang, D., Yu, G.: Universe-1: Unified audio-video generation via stitching of experts. arXiv preprint arXiv:2509.06155 (2025) 56. Wang, J., Qiang, C., Guo, Y., Wang, Y., Zeng, X., Zhang, C., Wan, P.: Klear: Unified multi-task audio-video joint generation. arXiv preprint arXiv:2601.04151 (2026) 57. Wang, J., Zeng, X., Qiang, C., Chen, R., Wang, S., Wang, L., Zhou, W., Cai, P., Zhao, J., Li, N., et al.: Kling-foley: Multimodal diffusion transformer for high-quality video-to-audio generation. arXiv preprint arXiv:2506.19774 (2025) 58. Wu, B., Zou, C., Li, C., Huang, D., Yang, F., Tan, H., Peng, J., Wu, J., Xiong, J., Jiang, J., et al.: Hunyuanvideo 1.5 technical report. arXiv preprint arXiv:2511.18870 (2025) 59. Wu, C., Li, J., Zhou, J., Lin, J., Gao, K., Yan, K., Yin, S.m., Bai, S., Xu, X., Chen, Y., et al.: Qwen-image technical report. arXiv preprint arXiv:2508.02324 (2025) 60. Xue, R., Zhang, J., Niu, Y., Shen, D., Ma, B., Liu, Y., Yang, J.: Pretrained re-versible generation as unsupervised visual representation learning. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 19216–19226 (2025) 61. Yang, Z., Teng, J., Zheng, W., Ding, M., Huang, S., Xu, J., Yang, Y., Hong, W., Zhang, X., Feng, G., et al.: Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 (2024) 62. Zhang, G., Zhou, Z., Hu, T., Peng, Z., Zhang, Y., Chen, Y., Zhou, Y., Lu, Q., Wang, L.: Uniavgen: Unified audio and video generation with asymmetric cross-modal interactions. arXiv preprint arXiv:2511.03334 (2025) 63. Zhang, Y., Yang, H., Zhang, Y., Hu, Y., Zhu, F., Lin, C., Mei, X., Jiang, Y., Peng, B., Yuan, Z.: Waver: Wave your way to lifelike video generation. arXiv preprint arXiv:2508.15761 (2025) 64. Zheng, Z., Peng, X., Yang, T., Shen, C., Li, S., Liu, H., Zhou, Y., Li, T., You, Y.: Open-sora: Democratizing efficient video production for all. arXiv preprint arXiv:2412.20404 (2024) 65. Zong, Z., Jiang, D., Ma, B., Song, G., Shao, H., Shen, D., Liu, Y., Li, H.: Easyref: Omni-generalized group image reference for diffusion models via multimodal llm. In: Forty-second International Conference on Machine Learning (2024)
