@@ -1,0 +1,431 @@
+Title: TransText: Transparency Aware Image-to-Video Typography Animation
+
+URL Source: https://arxiv.org/pdf/2603.17944v1
+
+Published Time: Thu, 19 Mar 2026 01:40:15 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# TransText: Alpha-as-RGB Representation for Transparent Text Animation 
+
+Fei Zhang 1,2,3∗, Zijian Zhou 3, Bohao Tang 1,2, Sen He 3, Hang Li 3, Zhe Wang 3, Soubhik Sanyal 3, Pengfei Liu 3, Viktar Atliha 3, Tao Xiang 3, Frost Xu 3, Semih Gunel 31Shanghai Jiao Tong University, 2Shanghai Innovation Institute (SII), 3Meta AI 
+
+> ∗
+
+Work done at Meta 
+
+We introduce the first method, to the best of our knowledge, for adapting image-to-video models to layer-aware text (glyph) animation, a capability critical for practical dynamic visual design. Existing approaches predominantly handle the transparency-encoding ( α channel) as an extra latent dimension appended to the RGB space, necessitating the reconstruction of the underlying RGB-centric variational autoencoder (VAE). However, given the scarcity of high-quality transparent glyph data, retraining the VAE is computationally expensive and may erode the robust semantic priors learned from massive RGB corpora, potentially leading to latent pattern mixing. To mitigate these limitations, we propose 
+
+TransText , a framework based on a novel Alpha-as-RGB paradigm to jointly model appearance and transparency without modifying the pre-trained generative manifold. TransText embeds the α channel as an RGB-compatible visual signal through latent spatial concatenation, explicitly ensuring strict cross-modal (RGB-and-Alpha) consistency while preventing feature entanglement. Our experiments demonstrate that TransText significantly outperforms baselines, generating coherent, high-fidelity transparent animations with diverse, fine-grained effects.  
+
+> Date:
+
+March 19, 2026  
+
+> Website:
+
+https://sii-ferenas.github.io/TransText 
+
+# 1 Introduction 
+
+Recent advancements in diffusion models have revolutionized video generation, enabling high-quality synthesis across various modalities Blattmann et al. (2023); Xu et al. (2024); Liu et al. (2024b); Yang et al. (2024b); Wan et al. (2025). While mainstream research predominantly targets standard RGB videos, attention is increasingly shifting towards RGB-Alpha (RGBA) generation—a format that empowers creators with transparent assets for effortless compositing. Among potential assets, glyphs are indispensable in daily visual communication and professional workflows. To this end, targeting this specific yet widely applicable domain, this paper presents the first method dedicated to RGBA video generation, effectively filling the gap in generating transparent, motion-rich animated textual content. High-fidelity synthesis requires precise α-channel modeling to ensure RGB-Alpha alignment. Most prior approaches Zhang and Agrawala (2024); Huang et al. (2024); Kang et al. (2025); Chen et al. (2025); Yang et al. (2025); Dong et al. (2025); Yin et al. (2025) treat α as an intrinsic component of the latent space. This requires reconstructing and retraining the underlying variational autoencoder (VAE) to support α-aware encoding which entails a critical limitation. Given the scarcity of high-quality RGBA glyph data, retraining billion-scale RGB-tuned VAEs Rombach et al. (2022); Wan et al. (2025) under these conditions incurs substantial computational cost and risks degrading the semantic priors learned from large-scale RGB corpora. These limitations drives us to pose the question: Can Alpha be learnt directly as RGB? Recent advance-ments Wang et al. (2023b); Bai et al. (2024) demonstrate that diverse visual signals, e.g., semantic segmentation maps and depth fields, can be effectively modeled by encoding them into RGB-compatible formats, facilitating a unified training paradigm. And fundamentally, the α-channel shares the same spatial-temporal nature as the RGB visual signals. Motivated by this, we propose to transform the single-channel Alpha into an RGB-like representation via channel replication, thereby establishing a unified format for both RGB and Alpha streams. This Alpha-as-RGB strategy allows us to treat transparency as a standard video sequence, 1                 
+
+> arXiv:2603.17944v1 [cs.CV] 18 Mar 2026 multi -colored appear then disappear under the lightning strikes changing color.” “Big City
+> “Letters are collected in city then scattered into strips.”
+> “Vegetable appears from the sand , then crumbles .”
+> “Text burns dark fire .” “Blue lights form luminous text appear, then disappear . Electric style.” Figure 1 Visual frame-wise results of our image-to-video (I2V) RGBA glyph animation model.
+
+TransText generates diverse and complex glyph animations with accurate, clean transparency while strictly preserving the style of the reference image. See the Supplementary Materials for additional video results. 
+
+facilitating RGB-Alpha latent co-learning for the pre-trained RGB foundation model without re-training the VAE. To instantiate this Alpha-as-RGB strategy, we propose TransText , an end-to-end framework tailored for image-supported glyph RGBA animation. We introduce a latent spatial alignment mechanism that processes Alpha and RGB streams with high spatio-temporal consistency. Specifically, we concatenate Alpha and RGB latents along the spatial dimension rather than the temporal dimension. This treats both components as a cohesive video sequence while isolating their feature patterns. Spatial concatenation prevents cross-modal entanglement. In contrast, temporal stacking causes the model to conflate RGB texture dynamics with transparency evolution. Moreover, glyph transparency requires higher structural precision than RGB textures. Standard diffusion targets (e.g., velocity) often fail to preserve high-frequency geometric details as they deviate from the natural data manifold Li and He (2025). To relieve this, we propose a fine-grained regularization term for the Alpha latent. This objective supervises the one-step denoised latent against the original input. It anchors generation to the data manifold, enforcing structural sharpness and stabilizing transparency boundaries. Overall, we make the following contributions: 
+
+• We explore the potential of the Alpha-as-RGB representation for joint RGB and transparency learning in glyph animation. This eliminates costly VAE retraining and enables direct adaptation of off-the-shelf diffusion models to transparent video generation. 
+
+• We propose TransText , the first image-to-video framework to implement the Alpha-as-RGB representation for RGBA glyph animation. It enforces RGB-α consistency through spatial alignment and refines transparency via latent-level regularization. 
+
+• Experiments across diverse typographic effects show that TransText outperforms existing methods. It achieves -453.53 FVD and +29.40 Soft α-mIoU improvement on average, demonstrating robust and high-fidelity transparent glyph animation. 
+
+# 2 Related Work 
+
+Video Generation & Text Animation. Recent advances in diffusion models Ho et al. (2020); Dhariwal and Nichol (2021) have led to remarkable progress in video generation. Early work Singer et al. (2022); Ho et al. (2022a); Guo et al. (2023); Xu et al. (2024); Xing et al. (2024a) has primarily focused on tailoring powerful text-to-image-based diffusion models Ho et al. (2022b); Rombach et al. (2022); Ramesh et al. (2022) by incorporating 2motion-aware modules and leveraging video datasets to achieve temporally coherent results. Furthermore, the emergence of highly-scalable diffusion transformers Peebles and Xie (2023) has enabled the development of large-scale video foundation models Yang et al. (2024b); Wan et al. (2025), which serve as the standard pipeline for customizing various downstream tasks. Beyond the text-to-video (T2V) paradigm, some studies have also explored image-to-video (I2V) frameworks Blattmann et al. (2023); Chen et al. (2023d,a); Xing et al. (2024b); Wan et al. (2025), by introducing effective latent fusion mechanisms between CLIP-encoded Radford et al. (2021) image information and noised latent representations, thereby enabling more flexible and controllable video generation. Considering the substantial practical and economic value of glyphs (e.g., advertisements, posters, and documents), increasing attention has been devoted to visual text generation. In general, most of them Chen et al. (2023b); Tuo et al. (2023); Zhu et al. (2024); Chen et al. (2024a); Tuo et al. (2024); Liu et al. (2024c); Shi et al. (2025) focus on image-centered scene text rendering following similar technological pathways to those used in the natural object domain. Specifically, they turned to fine-tuning off-the-shelf diffusion models Rombach et al. (2022) in a parameter-efficient manner Hu et al. (2022). The unique fine-grained variations of text (e.g., color, font, and layout) have led to diverse emphases in glyph generation research. For instance, Chen et al. (2023b); Zhu et al. (2024) proposed to use character-level segmentation masks Zhang et al. (2025a) during the noise prediction stage to achieve high-fidelity and accurate shape generation. In contrast, progress in glyph animation/video generation has not been as substantial and remains underexplored. Early attempts Wong (1996); Lee et al. (2002); Kato et al. (2015) mainly centered on developing GUI-like tools for integrating static typography with simple movement. Subsequently, Men et al. (2019); Yang et al. (2021) proposed style-transfer models that animate static letters using styles extracted from examples, yet these approaches are limited by fixed glyph positions. Building upon the diffusion-based paradigm, Park et al. (2024) introduced the first work, following Guo et al. (2023), that incorporates an image diffusion model with motion modules for text animation. Despite its effectiveness, the generated videos often suffer from limited temporal length and consistency due to the image-based model as the starting point. Moreover, this text-conditioned paradigm is limited in conveying complex user intent. To address these issues, this work aims to build the first text animation framework based on a powerful I2V foundation model, thereby achieving promising and high-fidelity text video results.  
+
+> Generation with Transparency.
+
+Beyond RGB-centric generation, a line of works have been dedicated to a more challenging setting that generates layered or transparent content (i.e., with explicit Alpha-channel support) for regions of interest, enabling more flexible, product-grade compositing and editing. Intuitively, a key challenge lies in modeling the Alpha-channel representation, which serves as the foundation for high-fidelity RGBA generation. To this end, Zhang and Agrawala (2024) pioneered a two-stage framework: first, extending the VAE to encode α-aware latents; second, conducting diffusion in the joint RGBA latent space. This paradigm has since become the de facto standard for RGBA image synthesis, with most follow-ups improving multi-layer realism via advanced latent fusion mechanisms Zhang et al. (2023b); Huang et al. (2024, 2025b,a); Kang et al. (2025); Dong et al. (2025); Chen et al. (2025). In contrast, Wang et al. (2025); Ji et al. (2025) turned to direct concatenation between RGB and Alpha features for joint noise prediction, efficiently bypassing explicit α-representation learning. Building upon this, this work develops the first framework for RGBA image-to-video glyph rendering in an α-free learning paradigm. 
+
+> Video Matting.
+
+Estimating the α-matte for object-level transparency has been broadly explored in computer vision Zhang et al. (2021b); Lin et al. (2021); Li et al. (2024), with methods largely bifurcating by trimap dependency. Trimap-based approaches Zhang et al. (2021b) exploit spatial-temporal feature aggregation to enforce temporal consistency. Trimap-free methods, in contrast, aim to relieve the annotation burden, thereby streamlining the matting pipeline. Early works Lin et al. (2021); Sengupta et al. (2020) rely solely on a first-frame background, while later efforts integrate segmentation priors for robustness in unconstrained scenes Lin et al. (2022). Most recently, end-to-end frameworks have been proposed using diverse architectures Li et al. (2023c, 2024). Beyond task-specific designs, Zhang et al. (2025a) presents an in-context, multi-task text recognition model readily extensible to matting. Motivated by these advances—and synergies with video generation models, this paper adopts a generation-then-prediction paradigm to construct a straightforward RGBA video generation baseline based on Zhang et al. (2025a), thereby empirically demonstrating its inherent limitations. 33 Preliminaries  
+
+> Visual Transparency Representation.
+
+The visual transparency normally is expressed via an extra channel beyond RGB space. Formally, given a f -frame video sequence V = {Ii ∈ R3×h×w}fi=1 , where each image frame 
+
+> Ii
+
+, with a height of h and width of w, is treated as a linear composition of a foreground image Fi ∈ R3×h×w
+
+and a background image Bi ∈ R3×h×w blended with αi ∈ R1×h×w: 
+
+> Ii
+
+= αi ⊙ Fi + (1 − αi) ⊙ Bi, αi ∈ [0 , 1] , (1) where ⊙ indicates element-wise multiplication, and αi denotes the Alpha matte map. Unlike natural images with multiple semantic layers, glyph generation typically features a single foreground layer (text). Accordingly, this paper focuses on the single foreground layer with transparency setting. Thus, we set B to a uniform black (0-valued) background, so that Ii = αi ⊙ Fi for simplicity.  
+
+> Diffusion-based Video Generation Pipeline.
+
+Prevailing video generation pipelines Yang et al. (2024b); Wan et al. (2025) predominantly adopt a continuous-time denoising process formalized via flow matching Lipman et al. (2022); Esser et al. (2024). In this work, we build upon the I2V framework of Wan Wan et al. (2025). Formally, an input video V is first encoded into a compressed latent representation using a pretrained variational autoencoder (VAE): E(V) = X1 ∈ Rf / 4×h/ 8×w/ 8. Subsequently, we employ flow matching to learn a continuous-time generative diffusion process, which models the mapping between the target latent X = Xt and a random Gaussian noise X0 ∼ N (0 , I ) via a fixed, linearly sampled timestep process: Xt = tX1 + (1 − t)X0, t ∈ [0 , 1] . In this way, a θ-parameterized velocity prediction model V : Rf / 4×h/ 8×w/ 8 → Rf / 4×h/ 8×w/ 8, instantiated from 
+
+diffusion transformer (DiT) is trained using the following mean squared error (MSE) objective: 
+
+Lmse = EX0,X1,Tref ,Iref ||V (Xt, Tref , Iref ; θ) − dXt/dt || 22, (2) where the target velocity is given by dXt/dt = X1 − X0. Here Tref and Iref denote text and image embeddings extracted by off-the-shelf encoders (umT5 Raffel et al. (2020) and CLIP Radford et al. (2021), respectively). These embeddings are fused with the original latent representation via cross-attention, providing conditional reference for controllable video generation. During inference, a new video can be readily generated by iteratively denoising a randomly sampled noise using V, conditioned on the reference text and image. 
+
+# 4 Method 
+
+Our method adapts an I2V generalist to generate per-frame transparent layers in a simple yet effective manner. As shown in Figure 2, TransText can generate transparent text animation with given reference text and image. Different from other VAE-training-based methods that have seperate RGB and Alpha representation Zhang and Agrawala (2024); Dong et al. (2025), we propose a unified, joint RGBA representation by explicitly representing the Alpha channel within the RGB space ( Alpha-as-RGB ), thereby eliminating the need for additional latent encoder or special token learning. 
+
+4.1 Explicit Visual Alignment  
+
+> Transparency as Video.
+
+Proper representation of Alpha is crucial for adapting conventional RGB-centric video foundation models to transparent content. Zhang and Agrawala (2024); Dong et al. (2025) address this by retraining a dedicated VAE that processes RGB and Alpha separately, which introduces significant training overhead and complicates joint learning. To avoid this burden, we turn to a VAE-training-free strategy that treats the Alpha matte as a standard RGB-compatible input. Specifically, we replicate the single-channel Alpha mask αi across all three color channels, yielding a three-channel grayscale image. This allows us to construct an Alpha-video as Vα = {˜αi ∈ R3×h×w}fi=1 , where ˜αi = round (αi ∗ 255) denotes the quantized, RGB-formatted matte frame. In this way, both RGB foreground V and Vα can be seamlessly processed by off-the-shelf video generation pipelines without architectural modification. Here we denote frames of alpha-video Vα as αi = ˜ αi ∈ R3×h×w by default.   
+
+> Spatial vs. Temporal Alignment.
+
+To enable joint training between V and Vα, concatenation in the latent space provides a straightforward way to link RGB I and its transparency layer α. Concatenation can be 4DiT Blocks   
+
+> Reference Image
+> Color Align
+> RGB Trimap
+> Reference Text
+> Celebration “GOOD FRIDAY ”
+> from letters of different
+> colors appears behind small
+> squares. Then disappears.
+
+🔥  
+
+> Image
+> Encoder
+
+❄ Text  
+
+> Encoder
+
+❄     
+
+> RGB / Alpha Latent RGB / Alpha Velocity
+> Time T
+> RGB Video Alpha Video
+> Spatial ly -Concatenated Latent
+> VAE
+> Encoder
+
+❄
+
+> Frozen
+
+❄  
+
+> RGBA Video
+> VAE
+> Decoder
+
+❄
+
+𝒩 (0,I) 
+
+×
+
+𝑿 𝟏 
+
+− 𝑳 𝒎𝒔𝒆 
+
+Velocity Prediction 
+
+𝑳 𝒓𝒆𝒄 
+
+Alpha Rectification 1-step Denoised 
+
+🔥 Learnable 
+
+🔥 🔥 Figure 2 Overview of the TransText pipeline . We obtain input latents by encoding the RGB video and the RGB-projected Alpha video ( Alpha-as-RGB ) via the VAE. These latents are spatially concatenated for alignment. Additionally, the reference image and its derived trimap serve as structural conditions to guide the joint generation of both RGB textures and α mattes. During training, in addition to the standard velocity prediction loss Lmse , we introduce an α-oriented reconstruction term Lrec . Reconstruction loss performs one-step denoising using the predicted velocity to reconstruct the clean latent state, and explicitly aligns the reconstructed α with the ground-truth matte, thereby significantly improving fine-grained transparency generation. 
+
+implemented in two ways based on the concatenation axis: spatial (height- or width-wise) or temporal 
+
+(time-wise) alignment. Formally, spatial alignment concatenates each RGB image Ii and corresponding transparency layer αi map along the spatial dimension (e.g., width), yielding a spatially extended video latent ˜Xspa = [ E(V), E(Vα)] ∈ Rf / 4×h/ 8×w/ 4 (a height-wise variant follows analogously). In contrast, temporal alignment doubles the video latent length by stacking E(V) and E(Vα) temporally ( f -dimension). Here we adopt spatial alignment for two key advantages:: 1○ Better Reference-oriented Adaptation : With spatial alignment, the reference image can be formed by simple duplication along the same spatial axis. In this way, we adopt conditional color alignment to further enhance guidance for α generation in the duplicated region, which maps the copied reference image into a binary-scale representation Gref ∈ R3×h×w as 
+
+Gj 
+
+> ref
+
+=
+
+(
+
+[0 , 0, 0] Iref j < β 
+
+[255 , 255 , 255] Iref j ≥ β , j ∈ [0 , h ∗ w] (3) 
+
+where β is a threshold that binarizes the content. Intuitively, Gref functions as a trimap, yielding a composite reference image compatible with spatial alignment: ˜Iref = [ Iref , Gref ] ∈ R3×h×2w. However, for Vtem , the reference image can only be represented by either the original RGB foreground Iref or the α matte Gref , due to the inherent limitation that static images cannot be temporally concatenated. Consequently, the model 5lacks explicit guidance to disentangle the RGB and α channels during generation, often resulting in confused learning dynamics where α erroneously inherits texture or semantic patterns from the RGB input, e.g., color information leaking into the α matte, which is empirically analyzed in Section 5.3. 2○ Better RGB-Alpha Alignment : As discussed in Lu et al. (2024); Cai et al. (2025); Wan et al. (2025), extended sequence lengths significantly impede convergence rates and stability. Temporal concatenation doubles the sequence length, exacerbating these optimization challenges. Crucially, learning such extended temporal dependencies is inherently data-hungry. Given the scarcity of high-quality transparent glyph data, the model struggles to robustly generalize over these doubled sequences, resulting in RGB-Alpha motion inconsistency (as shown in Table 2). In contrast, our spatial concatenation preserves the original temporal duration consistent with Wan et al. (2025), avoiding the pitfalls of long-sequence modeling and ensuring efficient convergence even under data-constrained conditions. 
+
+4.2 Fine-grained Transparency Rectification 
+
+Alpha prediction poses inherent challenges when implemented within a generative pipeline Amit et al. (2021); Chen et al. (2023c); Mousakhan et al. (2024). Generative frameworks are naturally less suited for precise latent-level recognition—particularly in glyph-sensitive applications Chen et al. (2023b); Tuo et al. (2024)—and further suffer from an intrinsic limitation in synthesizing the full dynamic range required for α mattes. As noted by Guttenberg (2023), standard diffusion models struggle to alter the global mean (i.e., long-wavelength features) from zero-mean noise, making it difficult to generate the pure transparency or opacity values essential for sharp glyph boundaries. To address this limitation, we introduce an additional reconstruction regularization to refine the generated α latent. Our motivation stems from the insight that standard diffusion targets (like noise or velocity) often struggle in high-dimensional spaces due to their deviation from the natural data distribution, and Li and He (2025) demonstrated that directly predicting clean data allows models to operate effectively on the low-dimensional data manifold. Inspired by this, we leverage the reconstruction loss to guide the velocity learning process, forcing the model to respect the intrinsic geometric structure of the α
+
+channel rather than solely fitting the diffusion trajectory. Specifically, given the predicted alpha-component velocity Vα at time t, we obtain an estimate of the target ( t = 1 ) latent via a single-step Euler integration:        
+
+> ˜X1
+> α=Xtα+ (1 −t)Vα(Xt),(4)
+
+where Xt denotes the full latent at time t. We then enforce latent-level alignment between this reconstruction and the ground-truth Alpha latent X1 
+
+> α
+
+using an MSE loss:      
+
+> Lrec =X1
+> α−˜X1
+> α
+> 22
+> .(5)
+
+The final training objective for the velocity prediction network V combines the standard flow-matching (or MSE) loss with the following reconstruction term:       
+
+> L=Lmse +λLrec ,(6)
+
+where λ is a fixed hyperparameter balancing the two components. 
+
+# 5 Experiment 
+
+5.1 Experimental Settings 
+
+> Benchmark & Evaluation Metric
+
+. Due to the scarcity of publicly available text RGBA animation benchmarks, we have curated a high-quality and high-fidelity text animation dataset by collecting samples from ShutterStock 
+
+> 1
+
+, a large corpus of online image and video resources. After thorough annotation and filtering, we constructed a dataset comprising a total of 16,108 valid RGBA text animation samples, spanning 8 distinct visual effects. Specifically, we split the dataset into 15,312 samples for training and 796 samples for validation. Following the protocols in Chen et al. (2025); Wang et al. (2025); Yin et al. (2025), we employ several evaluation metrics to assess the performance of TransText . For quantitative evaluation, we adopt the Frechet Video Distance 
+
+> 1https://www.shutterstock.com/
+
+6Wan + ConText TransPixeler Ours            
+
+> “Neon flickering green
+> capital name
+> in the haze”
+> “Sale label
+> appears from the sand,
+> then crumbles”
+> “Text burns
+> dark fire on a black
+> background” Figure 3 Comparison with various I2V generalist models on our text animation dataset.
+
+Each example shows the high-fidelity, motion-consistent RGB video (top row) and the corresponding transparent video (bottom row) generated by TransText .Zoom in for better details. 
+
+(FVD) Unterthiner et al. (2018) to measure the quality of RGB generation, and the soft α mean Intersection over Union (Soft α-mIoU) to evaluate α channel prediction. Furthermore, we introduce the RGBA alignment score , which assesses the motion alignment consistency between the RGB and Alpha channels, computed using optical flow. In addition to these objective metrics, we conduct a user study to evaluate the perceptual motion quality of the generated RGBA videos. Refer to the Appendix for more details. 
+
+Implementation Details . We implement our TransText model based on the Wan-I2V architecture Wan et al. (2025), which contains 14B parameters. We strictly adhere to the original configurations of the Wan model regarding frame resolution and temporal sampling step for all RGB and Alpha videos. Given that most visual effects exhibit fade-in and fade-out characteristics, we select the middle frame as the reference image to ensure the visual completeness of the glyph, and set β = 5 for trimap generation. During training, we perform full fine-tuning for V while keeping the VAE, image encoder, and text encoder frozen. We employ a cosine learning rate scheduler with an initial learning rate of 1.0 × 10 −5, and use the AdamW optimizer Loshchilov and Hutter (2019) with a weight decay of 1.0 × 10 −2. The training is conducted for 5 epochs with a batch size of 256 . The balancing loss weight is set to λ = 0 .3. For diffusion-related settings, we set the total number of sampling timesteps to 1000 . During inference, the number of sampling steps is set to 50 , with a classifier-free guidance scale of 5. The training (inference) is performed on NVIDIA A100 (H100) GPUs. 
+
+5.2 Comparison with Existing Alternatives 
+
+Comparison with Prediction-based Baseline. One straightforward approach to RGBA video generation is a 
+
+generation-then-prediction pipeline: first generating an RGB video and then estimating its transparency channel using a video matting model Wang et al. (2025). To implement this baseline, we fine-tune Wan Wan et al. (2025), a standard I2V generalist model and apply a glyph-aware matting model Zhang et al. (2025a) for frame-wise α prediction on the generated video. As shown in Table 1, while this two-stage pipeline can produce a plausible transparent effect, it suffers from suboptimal motion-aware alignment between RGB and Alpha channels due to its decoupled design—unlike joint generation approaches. This limitation leads to degraded performance in motion-coherent Alpha estimation. Figure 3 visually confirms the shortcomings of 7Table 1 Comparison with existing RGBA-based methods on our validation set. TransText outperforms all baselines in generation quality with promising efficiency. *Fine-tuned on our training data. †Scores derived from a user study. Bold 
+
+indicates the best performance, and underlined indicates the second best.                               
+
+> Method Generation Metric Alignment & Quality Score Time Efficiency FVD ↓Soft α-mIoU ↑RGBA Alignment (%) ↑Motion Quality †↑Training ↓Inference ↓
+> Wan *+ ConText Zhang et al. (2025a) 480.92 57.24 13.51 29.55 53.44 7.92
+> Transpixeler *Wang et al. (2025) 673.11 43.76 83.01 64.52 72.31 11.25
+> TransText 123.48 79.90 87.31 75.94 69.72 10.11
+
+prediction-based pipeline. In contrast, our method achieves superior performance in motion-consistent RGBA synthesis, particularly in accurately capturing dynamic Alpha transitions.  
+
+> Comparison with RGBA Baseline.
+
+We also compare our method with TransPixeler Wang et al. (2025), a state-of-the-art VAE-training-free pipeline. Originally targeting general object-centric domains under T2V setting, TransPixeler achieves joint RGB-and-Alpha learning via temporal concatenation. To adapt it to our I2V glyph generation task, we follow the open-sourced “T2V Wan-version” of TransPixeler and re-implement it within an I2V framework using the same training protocol and hyper-parameters as our method. As shown in Table 1, however, this adapted variant exhibits severe mixing artifacts between RGB and Alpha channels, leading to extremely poor transparency prediction. The core issue stems from its mechanism for distinguishing the Alpha stream: rather than assigning separate positional embeddings, TransPixeler shares the identical positional embeddings between RGB and Alpha, and relies solely on a single zero-initialized learnable embedding token appended to the Alpha input to differentiate the two modalities. While this design aims to preserve motion alignment by enforcing shared spatio-temporal structure, it renders the separation between RGB and Alpha highly dependent on the stability of that auxiliary learnable token once it is learnt as trivial solution. In practice, we found this token fails to consistently disentangle appearance from transparency in Wan, causing the model to treat RGB and Alpha as nearly indistinguishable signals during training. Consequently, α collapses into a mixture of color and opacity information, manifesting as structured blending artifacts. Furthermore, the temporal concatenation strategy exacerbates this problem by introducing reference frame selection on either RGB or Alpha pattern (as discussed in Section 4), which further encourages color leakage into the α predictions. Figure 3 clearly illustrates this α-inferior pattern, where predicted transparencies are contaminated by RGB textures. In contrast, our method achieves robust and disentangled transparent video generation while maintaining strong motion alignment, demonstrating the superiority of our spatially aware, alignment-preserving architecture over naive token-based modality separation. 
+
+> Efficiency Analysis
+
+. Table 1 reports the training time per epoch and inference time per video. Reasonably, the generation-then-prediction pipeline is the fastest, owing to its decoupled design that leverages an RGB-only I2V model and a lightweight matting head. Regarding joint modeling approaches, our TransText exhibits comparable efficiency to TransPixeler, with both incurring higher computational overhead than the baseline. However, despite the similar cost, TransText significantly outperforms TransPixeler in terms of generation quality and alignment, making it the superior choice for high-fidelity RGBA video synthesis. 
+
+5.3 Ablation Studies 
+
+> Spatial vs Temporal Concatenation
+
+. As shown in Table 2, both spatial concatenation variants, i.e., width-wise (w-wise) and height-wise ( h-wise), consistently outperform temporal concatenation ( t-wise) across all metrics. Notably, the t-wise variant suffers from a significant drop in FVD and RGBA alignment, indicating degraded motion coherence and severe channel mixing. This degradation arises from two intertwined limitations of temporal concatenation. First, as discussed in Section 4, during training and inference, the reference image must be selected as either the RGB image or the trimap. This forces the model to hallucinate the missing modality, leading to ambiguous cross-channel signals and structured mixing artifacts. Second, over longer video sequences, temporal error propagation amplifies this instability Waseem and Shahzad (2025), causing the α channel to increasingly absorb RGB appearance cues. Thus, similar mixing patterns are also observed 8Table 2 Ablation studies on each designed module. Bold indicates the best performance, and underlined indicates the second best.                                              
+
+> Method FVD ↓α-mIoU ↑RGBA Alignment ↑
+> Baseline ( w-wise Concatenation) 367.64 65.95 85.35
+> Concatenation Manner
+> h-wise Concatenation 369.52 65.16 84.13
+> t-wise Concatenation 451.35 61.28 73.81
+> Conditional Color Alignment (ColorAlign)
+> Baseline + trimap-based reference 199.67 74.84 86.15
+> Alpha Rectification (PixelSup)
+> Baseline + Lrec (λ= 0 .1)215.71 72.25 85.02 Baseline + Lrec (λ= 0 .3)143.62 77.25 85.88 Baseline + Lrec (λ= 0 .5)155.91 77.07 85.32 Baseline + Lrec (λ= 0 .8)177.97 76.15 85.57 “Lightning strikes” “Dark Fire”
+> Baseline
+> +ColorAlign
+> +PixelSup Figure 4 Visual comparison of ColorAlign and PixelSup.
+
+Both enhance α learning. 
+
+in TransPixeler Wang et al. (2025). In contrast, spatial concatenation embeds RGB and α features within the same spatial grid at each timestep, preserving per-frame structural correspondence and enabling explicit, stable co-learning of both modalities. The comparable performance between w-wise and h-wise further highlights the effectiveness of spatial alignment for robust RGBA generation. 
+
+Fine-grained Alpha Learning . Table 2 studies the effectiveness of the designed two α-based fine-grained learning modules, i.e. , trimap adaptation and latent-level regularization Lrec . Notably, both components contribute positively to RGBA video generation, as evidenced by consistent improvements across all metrics compared to the baseline. Notably, the latent-level rectification via Lrec yields the most substantial gain, particularly in motion fidelity and α accuracy. Qualitative results in Figure 4 further underscores that videos produced with 
+
+Lrec exhibit cleaner transparency boundaries and reduced RGB-Alpha mixing artifacts. Additionally, we further analyze the sensitivity of the latent-level supervision Lrec to its weighting coefficient λ.As λ increases from 0.1 to 0.3, both FVD ( 215 .71 → 143 .62 ) and α-mIoU ( 72 .25 → 77 .25 ) improve significantly, confirming that stronger latent-wise supervision enhances Alpha reconstruction. However, pushing λ further leads to diminishing returns, suggesting that excessive emphasis on Alpha rectification can inadvertently compromise the joint appearance-transparency balance. 
+
+# 6 Conclusion 
+
+This paper presents the first study on adapting the standard image-to-video (I2V) diffusion paradigm to layer-aware transparent glyph animation. In contrast to prevailing VAE-training-based frameworks that decouple RGB and α into separate appearance and transparency modeling, we introduce a unified, joint RGB-and-Alpha representation. By explicitly representing the α channel within the RGB space, our method eliminates the need for resource-intensive latent encoder reconstruction, thereby preserving the robust generative priors of the pre-trained backbone. Based on this Alpha-as-RGB paradigm, we employ a direct spatial concatenation strategy. Unlike temporal alignment approaches that distort sequence length, our spatial design explicitly aligns RGB and α learning throughout the diffusion process, enabling coherent motion and precise opacity control. Furthermore, we introduce α-oriented modifications through a latent-wise regularization term that explicitly constrains the generation of opacity. This term serves to eliminate edge artifacts and enforce strict boundary alignment, facilitating fine-grained transparency modeling crucial for high-fidelity RGBA video generation. Extensive experiments demonstrate the effectiveness and superiority of our framework in producing temporally smooth, visually plausible, and structurally accurate transparent glyph animations. We hope this pioneering work will inspire further research into transparent video generation, particularly in the underexplored domain of typographic and glyph-based animation. 9References 
+
+Tomer Amit, Tal Shaharbany, Eliya Nachmani, and Lior Wolf. Segdiff: Image segmentation with diffusion probabilistic models. arXiv preprint arXiv:2112.00390 , 2021. Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, Wenbin Ge, Zhifang Guo, Qidong Huang, Jie Huang, Fei Huang, Binyuan Hui, Shutong Jiang, Zhaohai Li, Mingsheng Li, Mei Li, Kaixin Li, Zicheng Lin, Junyang Lin, Xuejing Liu, Jiawei Liu, Chenglong Liu, Yang Liu, Dayiheng Liu, Shixuan Liu, Dunjie Lu, Ruilin Luo, Chenxu Lv, Rui Men, Lingchen Meng, Xuancheng Ren, Xingzhang Ren, Sibo Song, Yuchong Sun, Jun Tang, Jianhong Tu, Jianqiang Wan, Peng Wang, Pengfei Wang, Qiuyue Wang, Yuxuan Wang, Tianbao Xie, Yiheng Xu, Haiyang Xu, Jin Xu, Zhibo Yang, Mingkun Yang, Jianxin Yang, An Yang, Bowen Yu, Fei Zhang, Hang Zhang, Xi Zhang, Bo Zheng, Humen Zhong, Jingren Zhou, Fan Zhou, Jing Zhou, Yuanzhi Zhu, and Ke Zhu. Qwen3-vl technical report, 2025. https://arxiv.org/abs/2511.21631 .Yutong Bai, Xinyang Geng, Karttikeya Mangalam, Amir Bar, Alan L Yuille, Trevor Darrell, Jitendra Malik, and Alexei A Efros. Sequential modeling enables scalable learning for large vision models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 22861–22872, 2024. Simon Baker, Daniel Scharstein, James P Lewis, Stefan Roth, Michael J Black, and Richard Szeliski. A database and evaluation methodology for optical flow. International journal of computer vision , 92(1):1–31, 2011. Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. Daniel J Butler, Jonas Wulff, Garrett B Stanley, and Michael J Black. A naturalistic open source movie for optical flow evaluation. In European conference on computer vision , pages 611–625. Springer, 2012. Shengqu Cai, Ceyuan Yang, Lvmin Zhang, Yuwei Guo, Junfei Xiao, Ziyan Yang, Yinghao Xu, Zhenheng Yang, Alan Yuille, Leonidas Guibas, et al. Mixture of contexts for long video generation. arXiv preprint arXiv:2508.21058 , 2025. Haoxin Chen, Menghan Xia, Yingqing He, Yong Zhang, Xiaodong Cun, Shaoshu Yang, Jinbo Xing, Yaofang Liu, Qifeng Chen, Xintao Wang, et al. Videocrafter1: Open diffusion models for high-quality video generation. arXiv preprint arXiv:2310.19512 , 2023a. Jingye Chen, Yupan Huang, Tengchao Lv, Lei Cui, Qifeng Chen, and Furu Wei. Textdiffuser: Diffusion models as text painters. Advances in Neural Information Processing Systems , 36:9353–9387, 2023b. Jingye Chen, Yupan Huang, Tengchao Lv, Lei Cui, Qifeng Chen, and Furu Wei. Textdiffuser-2: Unleashing the power of language models for text rendering. In European Conference on Computer Vision , pages 386–402. Springer, 2024a. Mengxi Chen, Fei Zhang, Zihua Zhao, Jiangchao Yao, Ya Zhang, and Yanfeng Wang. Probabilistic conformal distillation for enhancing missing modality robustness. Advances in Neural Information Processing Systems , 37:36218–36242, 2024b. Shoufa Chen, Peize Sun, Yibing Song, and Ping Luo. Diffusiondet: Diffusion model for object detection. In Proceedings of the IEEE/CVF international conference on computer vision , pages 19830–19843, 2023c. Xinyuan Chen, Yaohui Wang, Lingjun Zhang, Shaobin Zhuang, Xin Ma, Jiashuo Yu, Yali Wang, Dahua Lin, Yu Qiao, and Ziwei Liu. Seine: Short-to-long video diffusion model for generative transition and prediction. In The Twelfth International Conference on Learning Representations , 2023d. Xuewei Chen, Zhimin Chen, and Yiren Song. Transanimate: Taming layer diffusion to generate rgba video. arXiv preprint arXiv:2503.17934 , 2025. Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. Advances in neural information processing systems , 34:8780–8794, 2021. Haotian Dong, Wenjing Wang, Chen Li, and Di Lin. Wan-alpha: High-quality text-to-video generation with alpha channel. arXiv preprint arXiv:2509.24979 , 2025. Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Müller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling rectified flow transformers for high-resolution image synthesis. In 
+
+Forty-first international conference on machine learning , 2024. Gunnar Farnebäck. Two-frame motion estimation based on polynomial expansion. In Scandinavian conference on Image analysis , pages 363–370. Springer, 2003. 
+
+10 Yuwei Guo, Ceyuan Yang, Anyi Rao, Zhengyang Liang, Yaohui Wang, Yu Qiao, Maneesh Agrawala, Dahua Lin, and Bo Dai. Animatediff: Animate your personalized text-to-image diffusion models without specific tuning. arXiv preprint arXiv:2307.04725 , 2023. Nicholas Guttenberg. Diffusion with offset noise. https://www.crosslabs.org/blog/diffusion-with-offset-noise , 2023. CrossLabs Blog, Accessed: 2026-01-21. Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. Jonathan Ho, William Chan, Chitwan Saharia, Jay Whang, Ruiqi Gao, Alexey Gritsenko, Diederik P Kingma, Ben Poole, Mohammad Norouzi, David J Fleet, et al. Imagen video: High definition video generation with diffusion models. arXiv preprint arXiv:2210.02303 , 2022a. Jonathan Ho, Tim Salimans, Alexey Gritsenko, William Chan, Mohammad Norouzi, and David J Fleet. Video diffusion models. Advances in neural information processing systems , 35:8633–8646, 2022b. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. ICLR , 1(2):3, 2022. Dingbang Huang, Wenbo Li, Yifei Zhao, Xinyu Pan, Chun Wang, Yanhong Zeng, and Bo Dai. Psdiffusion: Harmonized multi-layer image generation via layout and appearance alignment. arXiv preprint arXiv:2505.11468 , 2025a. Junjia Huang, Pengxiang Yan, Jinhang Cai, Jiyang Liu, Zhao Wang, Yitong Wang, Xinglong Wu, and Guanbin Li. Dreamlayer: Simultaneous multi-layer generation via diffusion mode. arXiv preprint arXiv:2503.12838 , 2025b. Runhui Huang, Kaixin Cai, Jianhua Han, Xiaodan Liang, Renjing Pei, Guansong Lu, Songcen Xu, Wei Zhang, and Hang Xu. Layerdiff: Exploring text-guided multi-layered composable image synthesis via layer-collaborative diffusion model. In European Conference on Computer Vision , pages 144–160. Springer, 2024. Sihui Ji, Hao Luo, Xi Chen, Yuanpeng Tu, Yiyang Wang, and Hengshuang Zhao. Layerflow: A unified model for layer-aware video generation. In Proceedings of the Special Interest Group on Computer Graphics and Interactive Techniques Conference Conference Papers , pages 1–10, 2025. Kyoungkook Kang, Gyujin Sim, Geonung Kim, Donguk Kim, Seungho Nam, and Sunghyun Cho. Layeringdiff: Layered image synthesis via generation, then disassembly with generative knowledge. arXiv preprint arXiv:2501.01197 , 2025. Jun Kato, Tomoyasu Nakano, and Masataka Goto. Textalive: Integrated design environment for kinetic typography. In 
+
+Proceedings of the 33rd Annual ACM Conference on Human Factors in Computing Systems , pages 3403–3412, 2015. Johnny C Lee, Jodi Forlizzi, and Scott E Hudson. The kinetic typography engine: an extensible system for animating expressive text. In Proceedings of the 15th annual ACM symposium on User interface software and technology , pages 81–90, 2002. Boyang Li, Yingqian Wang, Longguang Wang, Fei Zhang, Ting Liu, Zaiping Lin, Wei An, and Yulan Guo. Monte carlo linear clustering with single-point supervision is enough for infrared small target detection. In Proceedings of the IEEE/CVF international conference on computer vision , pages 1009–1019, 2023a. Boyang Li, Fei Zhang, Longguang Wang, Yingqian Wang, Ting Liu, Zaiping Lin, Wei An, and Yulan Guo. Ddaug: Differentiable data augmentation for weakly supervised semantic segmentation. IEEE Transactions on Multimedia ,26:4764–4775, 2023b. Jiachen Li, Marianna Ohanyan, Vidit Goel, Shant Navasardyan, Yunchao Wei, and Humphrey Shi. Videomatt: A simple baseline for accessible real-time video matting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2177–2186, 2023c. Jiachen Li, Vidit Goel, Marianna Ohanyan, Shant Navasardyan, Yunchao Wei, and Humphrey Shi. Vmformer: End-to-end video matting with transformer. In Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision , pages 6678–6687, 2024. Tianhong Li and Kaiming He. Back to basics: Let denoising generative models denoise. arXiv preprint arXiv:2511.13720 ,2025. Shanchuan Lin, Andrey Ryabtsev, Soumyadip Sengupta, Brian L Curless, Steven M Seitz, and Ira Kemelmacher-Shlizerman. Real-time high-resolution background matting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8762–8771, 2021. 
+
+11 Shanchuan Lin, Linjie Yang, Imran Saleemi, and Soumyadip Sengupta. Robust high-resolution video matting with temporal guidance. In Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision , pages 238–247, 2022. Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 , 2022. Jinxiang Liu, Yikun Liu, Fei Zhang, Chen Ju, Ya Zhang, and Yanfeng Wang. Audio-visual segmentation via unlabeled frame exploitation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 26328–26339, 2024a. Yikun Liu, Jiangchao Yao, Ya Zhang, Yanfeng Wang, and Weidi Xie. Zero-shot composed text-image retrieval. arXiv preprint arXiv:2306.07272 , 2023. Yikun Liu, Yajie Zhang, Jiayin Cai, Xiaolong Jiang, Yao Hu, Jiangchao Yao, Yanfeng Wang, and Weidi Xie. Lamra: Large multimodal model as your advanced retrieval assistant. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 4015–4025, 2025. Yixin Liu, Kai Zhang, Yuan Li, Zhiling Yan, Chujie Gao, Ruoxi Chen, Zhengqing Yuan, Yue Huang, Hanchi Sun, Jianfeng Gao, et al. Sora: A review on background, technology, limitations, and opportunities of large vision models. 
+
+arXiv preprint arXiv:2402.17177 , 2024b. Zeyu Liu, Weicong Liang, Zhanhao Liang, Chong Luo, Ji Li, Gao Huang, and Yuhui Yuan. Glyph-byt5: A customized text encoder for accurate visual text rendering. In European Conference on Computer Vision , pages 361–377. Springer, 2024c. Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2019. https://openreview.net/forum?id=Bkg6RiCqY7 .Yu Lu, Yuanzhi Liang, Linchao Zhu, and Yi Yang. Freelong: Training-free long video generation with spectralblend temporal attention. Advances in Neural Information Processing Systems , 37:131434–131455, 2024. Chaofan Ma, Yuhuan Yang, Chen Ju, Fei Zhang, Jinxiang Liu, Yu Wang, Ya Zhang, and Yanfeng Wang. Diffusionseg: Adapting diffusion towards unsupervised object discovery. arXiv preprint arXiv:2303.09813 , 2023a. Chaofan Ma, Yang Yuhuan, Chen Ju, Fei Zhang, Ya Zhang, and Yanfeng Wang. Attrseg: open-vocabulary semantic segmentation via attribute decomposition-aggregation. Advances in neural information processing systems , 36: 10258–10270, 2023b. Jiren Mai, Fei Zhang, Junjie Ye, Marcus Kalander, Xian Zhang, WanKou Yang, Tongliang Liu, and Bo Han. Exploit cam by itself: Complementary learning system for weakly supervised semantic segmentation. arXiv preprint arXiv:2303.02449 , 2023. Yifang Men, Zhouhui Lian, Yingmin Tang, and Jianguo Xiao. Dyntypo: Example-based dynamic text effects transfer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5870–5879, 2019. Arian Mousakhan, Thomas Brox, and Jawad Tayyub. Anomaly detection with conditioned denoising diffusion models. In DAGM German Conference on Pattern Recognition , pages 181–195. Springer, 2024. Seonmi Park, Inhwan Bae, Seunghyun Shin, and Hae-Gon Jeon. Kinetic typography diffusion model. In European Conference on Computer Vision , pages 166–185. Springer, 2024. William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4195–4205, 2023. Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural language supervision. In International conference on machine learning , pages 8748–8763. PMLR, 2021. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research , 21(140):1–67, 2020. Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, and Mark Chen. Hierarchical text-conditional image generation with clip latents. arXiv preprint arXiv:2204.06125 , 1(2):3, 2022. 
+
+12 Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. Soumyadip Sengupta, Vivek Jayaram, Brian Curless, Steven M Seitz, and Ira Kemelmacher-Shlizerman. Background matting: The world is your green screen. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2291–2300, 2020. Wenda Shi, Yiren Song, Dengming Zhang, Jiaming Liu, and Xingxing Zou. Fonts: Text rendering with typography and style controls. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 18463–18474, 2025. Uriel Singer, Adam Polyak, Thomas Hayes, Xi Yin, Jie An, Songyang Zhang, Qiyuan Hu, Harry Yang, Oron Ashual, Oran Gafni, et al. Make-a-video: Text-to-video generation without text-video data. arXiv preprint arXiv:2209.14792 ,2022. Yuxiang Tuo, Wangmeng Xiang, Jun-Yan He, Yifeng Geng, and Xuansong Xie. Anytext: Multilingual visual text generation and editing. arXiv preprint arXiv:2311.03054 , 2023. Yuxiang Tuo, Yifeng Geng, and Liefeng Bo. Anytext2: Visual text generation and editing with customizable attributes. 
+
+arXiv preprint arXiv:2411.15245 , 2024. Thomas Unterthiner, Sjoerd Van Steenkiste, Karol Kurach, Raphael Marinier, Marcin Michalski, and Sylvain Gelly. Towards accurate generative models of video: A new metric & challenges. arXiv preprint arXiv:1812.01717 , 2018. Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. Luozhou Wang, Yijun Li, Zhifei Chen, Jui-Hsien Wang, Zhifei Zhang, He Zhang, Zhe Lin, and Ying-Cong Chen. Transpixeler: Advancing text-to-video generation with transparency. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 18229–18239, 2025. Weixing Wang, Limin Li, and Fei Zhang. Crack image recognition on fracture mechanics cross valley edge detection by fractional differential with multi-scale analysis. Signal, Image and Video Processing , 17(1):47–55, 2023a. Xinlong Wang, Wen Wang, Yue Cao, Chunhua Shen, and Tiejun Huang. Images speak in images: A generalist painter for in-context visual learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 6830–6839, 2023b. Faraz Waseem and Muhammad Shahzad. Video is worth a thousand images: Exploring the latest trends in long video generation. ACM Computing Surveys , 58(6):1–35, 2025. Yin Yin Wong. Temporal typography: a proposal to enrich written expression. In Conference Companion on Human Factors in Computing Systems , pages 408–409, 1996. Jinbo Xing, Menghan Xia, Yuxin Liu, Yuechen Zhang, Yong Zhang, Yingqing He, Hanyuan Liu, Haoxin Chen, Xiaodong Cun, Xintao Wang, et al. Make-your-video: Customized video generation using textual and structural guidance. 
+
+IEEE Transactions on Visualization and Computer Graphics , 31(2):1526–1541, 2024a. Jinbo Xing, Menghan Xia, Yong Zhang, Haoxin Chen, Wangbo Yu, Hanyuan Liu, Gongye Liu, Xintao Wang, Ying Shan, and Tien-Tsin Wong. Dynamicrafter: Animating open-domain images with video diffusion priors. In European Conference on Computer Vision , pages 399–417. Springer, 2024b. Jiaqi Xu, Xinyi Zou, Kunzhe Huang, Yunkuo Chen, Bo Liu, MengLi Cheng, Xing Shi, and Jun Huang. Easyanimate: A high-performance long video generation method based on transformer architecture. arXiv preprint arXiv:2405.18991 ,2024. Shuai Yang, Zhangyang Wang, and Jiaying Liu. Shape-matching gan++: Scale controllable dynamic artistic text style transfer. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(7):3807–3820, 2021. Yuhuan Yang, Chaofan Ma, Chen Ju, Fei Zhang, Jiangchao Yao, Ya Zhang, and Yanfeng Wang. Multi-modal prototypes for open-world semantic segmentation. International Journal of Computer Vision , 132(12):6004–6020, 2024a. Yuxue Yang, Lue Fan, Zuzen Lin, Feng Wang, and Zhaoxiang Zhang. Layeranimate: Layer-specific control for animation. arXiv e-prints , pages arXiv–2501, 2025. 
+
+13 Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024b. Shengming Yin, Zekai Zhang, Zecheng Tang, Kaiyuan Gao, Xiao Xu, Kun Yan, Jiahao Li, Yilei Chen, Yuxiang Chen, Heung-Yeung Shum, et al. Qwen-image-layered: Towards inherent editability via layer decomposition. arXiv preprint arXiv:2512.15603 , 2025. Fei Zhang, Chaochen Gu, Chenyue Zhang, and Yuchao Dai. Complementary patch for weakly supervised semantic segmentation. In Proceedings of the IEEE/CVF international conference on computer vision , pages 7242–7251, 2021a. Fei Zhang, Tianfei Zhou, Boyang Li, Hao He, Chaofan Ma, Tianjiao Zhang, Jiangchao Yao, Ya Zhang, and Yanfeng Wang. Uncovering prototypical knowledge for weakly open-vocabulary semantic segmentation. Advances in Neural Information Processing Systems , 36:73652–73665, 2023a. Fei Zhang, Pei Zhang, Baosong Yang, Fei Huang, Yanfeng Wang, and Ya Zhang. Context: Driving in-context learning for text removal and segmentation. arXiv preprint arXiv:2506.03799 , 2025a. Fei Zhang, Tianfei Zhou, Jiangchao Yao, Ya Zhang, Ivor W Tsang, and Yanfeng Wang. Decouple before align: Visual disentanglement enhances prompt tuning. IEEE Transactions on Pattern Analysis and Machine Intelligence , 2025b. Lvmin Zhang and Maneesh Agrawala. Transparent image layer diffusion using latent transparency. arXiv preprint arXiv:2402.17113 , 2024. Tianjiao Zhang, Fei Zhang, Jiangchao Yao, Ya Zhang, and Yanfeng Wang. G4seg: Generation for inexact segmentation refinement with diffusion models. arXiv preprint arXiv:2506.01539 , 2025c. Xinyang Zhang, Wentian Zhao, Xin Lu, and Jeff Chien. Text2layer: Layered image generation using latent diffusion model. arXiv preprint arXiv:2307.09781 , 2023b. Yunke Zhang, Chi Wang, Miaomiao Cui, Peiran Ren, Xuansong Xie, Xian-Sheng Hua, Hujun Bao, Qixing Huang, and Weiwei Xu. Attention-guided temporally coherent video object matting. In Proceedings of the 29th ACM International Conference on Multimedia , pages 5128–5137, 2021b. Tianfei Zhou, Wang Xia, Fei Zhang, Boyu Chang, Wenguan Wang, Ye Yuan, Ender Konukoglu, and Daniel Cremers. Image segmentation in foundation model era: A survey. arXiv preprint arXiv:2408.12957 , 2024. Yuanzhi Zhu, Jiawei Liu, Feiyu Gao, Wenyu Liu, Xinggang Wang, Peng Wang, Fei Huang, Cong Yao, and Zhibo Yang. Visual text generation in the wild. In European Conference on Computer Vision , pages 89–106. Springer, 2024. 
+
+14 “Flickering Green” 
+
+## “Letter Collected” 
+
+## “Small Squares” 
+
+## “Snow Falls” Figure 5 Qualitative results on background compositing. Visual effects include: Letter Collection , Flickering Green , Snow Falls , and Small Squares .
+
+15 “Dark Fire” 
+
+## “From the Sand” 
+
+## “Lightning Strikes” 
+
+## “Blue Lights” Figure 6 Qualitative results on background compositing. Visual effects include: Dark Fire , From the Sand , Lightning Strikes , and Blue Lights .
+
+16 Appendix 
+
+# A Dataset Introduction 
+
+As described in Section 5.1, we utilize a self-constructed RGBA text animation benchmark for all our experiments. This dataset comprises eight distinct visual effects, with their statistical distribution presented in Table 1. Similar to segmentation tasks Zhang et al. (2021a); Li et al. (2023a); Ma et al. (2023a); Zhou et al. (2024); Zhang et al. (2023a); Ma et al. (2023b); Yang et al. (2024a); Liu et al. (2023, 2024a, 2025); Wang et al. (2023a); Li et al. (2023b); Chen et al. (2024b); Zhang et al. (2025b,c); Mai et al. (2023), we also take some off-the-shelf segmentation tools to help refine the Alpha channel. To further illustrate the diversity among these effects, we provide visualizations of each effect applied to the original RGB video in Figure 1, which clearly highlights their differences. Additionally, to ensure precise alignment between the reference text and video, we employ QwenVL Bai et al. (2025) to refine the captions.         
+
+> Table 1 Distribution of 8 visual effects in the dataset. Below shows the sample counts for training (Train) and validation
+> (Val) splits.
+> ID Effect Train Val
+
+1 From the sand 2,515 137 2 Flickering Green 2,471 127 3 Letters Collected 2,318 117 4 Small Squares 2,080 109 5 Lightning Strikes 1,992 99 6 Snow Falls 1,561 86 7 Dark Fire 1,252 69 8 Blue Lights 1,123 52   
+
+> Total 15,312 796
+
+# B RGBA Alignment Score 
+
+In Section 5, we introduce a specifically-designed evaluation metric, RGBA Alignment, to assess the motion alignment between the RGB foreground and the Alpha video. This metric is primarily based on the optical flow similarity between the RGB and Alpha channels. It compares the dense optical flow fields computed from both videos on a frame-by-frame basis, capturing discrepancies in motion direction, magnitude, and spatial alignment. Concretely, for each pair of consecutive frames in both videos, we compute forward optical flows using the Farneback Farnebäck (2003) method for efficiency. The resulting flow fields are then evaluated using four complementary metrics: 1. End-point Error Baker et al. (2011): Measures pixel-wise displacement deviation. 2. Angular Error Butler et al. (2012): Assesses directional misalignment. 3. Magnitude Similarity : Calculated via Pearson correlation of flow magnitudes. 4. Directional Consistency : Measures cosine similarity of normalized flow vectors. These metrics are integrated into a unified score ranging from 0 to 100 , where higher values indicate better motion alignment—i.e., less motion discrepancy between the RGB and Alpha layers. For large-scale evaluation, we employ the Farneback method due to its computational efficiency, while RAFT is reserved for qualitative analysis on selected samples. The detailed calculation procedure is provided in Algorithm 1. 17 Text  RGB Video  Alpha Video                                                                     
+
+> common expression SPORT NEWS
+> appears from the sand, then
+> crumbles.
+> Neon flickering green continent
+> name SOUTH AMERICA in the haze.
+> Letters are collected in Big city
+> NOVOSIBIRSK, then scattered into
+> strips.
+> text BONUS from letters of
+> different colors appears behind
+> small squares. Then disappears.
+> capital name LA PAZ multi -colored
+> appear then disappear under the
+> lightning strikes changing color.
+> New Year text country name
+> AUSTRALIA. Snow falls. Christmas
+> mood, looped video.
+> text PLAY burns dark fire on a
+> white background.
+> Blue lights form luminous text
+> BETTER. Appear, then disappear.
+> Electric style.
+
+Figure 1 Visualization of original samples from our glyph animation dataset, with one example shown for each visual effect. The reference image (the column marked in blue) corresponds to the middle frame of each video clip. Please zoom in for a better view. 
+
+# C Motion Quality 
+
+We also introduce a human-level evaluation metric for generative video quality in TransText , implemented via a user study involving 54 participants. Participants were asked to assess (1) which animation best aligns with the given reference text and image, and (2) whether the motion quality conforms to human aesthetic preferences. 
+
+# D Alpha Attention 
+
+To enhance both α-matte and RGB generation, Wang et al. (2025) has shown that α-orient attention masking plays a crucial role in latent fusion for T2V synthesis. To further study the role of transparency-aware attention in our TransText framework, we propose two complementary masking mechanisms: self-attention masking (SelfAttnM) and cross-attention masking (CrossAttnM). SelfAttnM masks the attention from α
+
+to the RGB latent during self-attention, aiming to isolate appearance learning from transparency-driven influence. In contrast, CrossAttnM explicitly masks the attention from the input text to α in cross-attention, preventing semantic cues from directly interfering with transparency estimation and thereby encouraging 
+
+α to rely more on structural priors from the reference trimap. As shown in Table 2, SelfAttnM degrades overall performance—hurting video quality and weakening RGBA alignment—without improving estimation, 18 ALGORITHM 1: RGBA Alignment Score Computation 
+
+Require: Vrgb : RGB video frames, Vα: Alpha video frames 
+
+1: Compute optical flow for Vrgb : Frgb = Flow (Vrgb )
+
+2: Compute optical flow for Vα: Fα = Flow (Vα)
+
+3: Calculate EPE: epe = 1 
+
+> H·W·T
+
+P ∥Frgb − Fα∥2
+
+4: Calculate Angular Error: θ = ∠(Frgb , F α), averaged over pixels 
+
+5: Calculate Magnitude Similarity: ρ = PearsonCorr (∥Frgb ∥, ∥Fα∥)
+
+6: Calculate Directional Consistency: cos ϕ = Frgb ·Fα 
+
+> ∥Frgb ∥·∥ Fα∥
+
+, averaged over valid regions 
+
+7: Normalize scores: 
+
+• sepe = exp( −epe/ 10 .0) 
+
+• sangle = exp( −θ/ 45 .0) 
+
+• smag = ( ρ + 1) /2
+
+• sdir = (cos ϕ + 1) /2
+
+8: Aggregate: Final Score = 0 .25 · (sepe + sangle + smag + sdir )RGB     
+
+> RGB
+> Alpha
+> Alpha
+> SelfAttnM
+> Image Trimap
+> Latent
+> Reference
+> Foreground Alpha RGB -ABaseline Masking
+> Latent
+> RGB Alpha
+> Latent
+> CrossAttnM
+
+Figure 2 Visualized results of different α-oriented attention masking mechanisms. Clearly, CrossAttnM improves trans-parency estimation and video quality, while SelfAttnM harms RGB– α alignment and generation fidelity. 
+
+Table 2 Analysis on attention rectification. The table reports the performance of adding rectification mechanisms to Self-Attention (SelfAttnM) and Cross-Attention (CrossAt-tnM) layers. Bold indicates best, underlined indicates second best.             
+
+> Method FVD ↓α-mIoU ↑RGBA Alignment ↑
+> Baseline 367.64 65.95 85.35
+> Baseline + SelfAttnM 451.27 65.87 77.72 Baseline + CrossAttnM 274.73 72.61 84.99
+
+suggesting that allowing α to inform RGB representation is beneficial for coherent generation. On the other hand, CrossAttnM consistently improves both transparency accuracy and generation fidelity, highlighting the importance of α-aware attention for RGBA video generation. 19

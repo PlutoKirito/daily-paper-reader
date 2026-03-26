@@ -1,0 +1,1255 @@
+Title: AdaRadar: Rate Adaptive Spectral Compression for Radar-based Perception
+
+URL Source: https://arxiv.org/pdf/2603.17979v1
+
+Published Time: Thu, 19 Mar 2026 01:40:23 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# AdaRadar: Rate Adaptive Spectral Compression for Radar-based Perception 
+
+## Jinho Park 1 Se Young Chun 2 Mingoo Seok 11Columbia University 2Seoul National University 
+
+jp4327@columbia.edu, sychun@snu.ac.kr, ms4415@columbia.edu jp4327.github.io/adaradar/ 
+
+## Abstract 
+
+Radar is a critical perception modality in autonomous driv-ing systems due to its all-weather characteristics and ability to measure range and Doppler velocity. However, the sheer volume of high-dimensional raw radar data saturates the communication link to the computing engine (e.g., an NPU), which is often a low-bandwidth interface with a data rate provisioned for only a few low-resolution range–Doppler frames. A generalized codec for utilizing high-dimensional radar data is notably absent, while existing image-domain approaches are unsuitable, as they typically operate at fixed compression ratios and fail to adapt to varying or adver-sarial conditions. In light of this, we propose radar data compression with adaptive feedback. It dynamically adjusts the compression ratio by performing gradient descent from the proxy gradient of detection confidence with respect to the compression rate. We employ a zeroth-order gradient approximation, which enables gradient computation even with non-differentiable core operations such as pruning and quantization. This also avoids transmitting the gradient ten-sors over the band-limited link, which, if estimated, would be as large as the original radar data. In addition, we have found that radar feature maps are heavily concentrated on a few frequency components. Thus, we apply the discrete cosine transform to the radar data cubes and selectively prune the coefficients. We preserve the dynamic range of each radar patch through scaled quantization. Combining those techniques, our proposed online adaptive compres-sion scheme achieves over 100× feature size reduction at minimal performance drop (˜1%p). We validate our results on the RADIal, CARRADA, and Radatron datasets. 
+
+## 1. Introduction 
+
+Autonomous driving systems incorporate radar as a crucial component of their perception stack. Compared to cam-era and LiDAR counterparts, it delivers dependable per-formance across all weather and lighting conditions, along with accurate physical measurements such as range and Adaptive 
+
+> CODEC
+> Network output
+> Network
+> inference
+> Task -guided feedback control
+> Range -Doppler (RD)
+> Tensor
+> Reconstructed
+> RD tensor
+> Radar perception
+> outputs
+> Detected cars
+> Driveway
+> segmentation
+> Pruned out
+> coefficients
+> in spectral
+> domain
+
+Figure 1. Adaptive codec with task-guided feedback control. 
+
+We propose an adaptive codec that compresses high-dimensional range-Doppler data by pruning spectral domain coefficients. Afeedback loop adaptively regulates the compression ratio, guided by the performance of downstream perception tasks. 
+
+Doppler velocity of surrounding objects [1–4]. Such in-novation has been driven by the emergence of low-cost millimeter-wave (mmWave) radar system-on-chip (SoC) platforms [5]. Previous studies leveraged the rich infor-mation contained in raw radar tensors, enabled by modern multiple-input multiple-output (MIMO) techniques, by di-rectly using them as network inputs rather than relying on point clouds [2, 3]. Modern MIMO radar sensors achieve high-resolution imaging through dense sampling and a large number of transceiver pairs. However, unlike camera images with only three RGB channels, the data volume in MIMO radars scales quadratically with the number of transmit (Tx) and receive (Rx) antennas. For instance, a 16×12 cascaded MIMO radar system [5] configured with 512 range bins and 256 Doppler bins produces roughly 100 MB per frame, corresponding to a multi-Gbps throughput at 10 fps. The immense volume of radar tensors creates a significant bot-tleneck in the sensor-to-compute link, which connects the radar front-end with the downstream processor. This link is often low-bandwidth, such as the Controller Area Network (CAN) bus [6], with a limited throughput of a few Mbps. Despite the multi-dimensional nature of radar features, which creates a severe communication bottleneck, only limited efforts have been made to design a dedicated coder–decoder (codec) for compressed radar feature repre-1
+
+> arXiv:2603.17979v1 [cs.CV] 18 Mar 2026
+
+Forward propagation 
+
+Radar 
+
+sensor 
+
+Neural 
+
+network 
+
+Proxy 
+
+grad. 
+
+Rate 
+
+update Feedback loop 
+
+Adaptive compression control 
+
+Bbox 
+
+proposal 
+
+DCT Adaptive 
+
+pruning Quant. Dequant . IDCT 
+
+Coder Decoder 
+
+Compute side 
+
+Radar sensor side 
+
+Communication link (low BW) Figure 2. AdaRadar: Online rate-adaptive radar compression framework. Our proposed method introduces a feedback loop in which the proxy gradient is computed from the detection outputs to update the compression ratio adaptively. This avoids the need for backpropagation through the communication channel. The radar tensor is compressed using DCT, adaptive spectral pruning, and scaled quantization, then transmitted to the compute side. In an object-detection setting, the neural network produces detection results from decompressed radar data cubes. The loop uses proposed bounding boxes to estimate the proxy gradient, thereby updating the pruning rate. 
+
+sentations. In computer vision, codecs such as JPEG [7] effectively reduce image size for storage and transmission while preserving perceptual quality. In contrast, some re-cent radar compression methods often rely on the constant false alarm rate (CFAR) algorithm to compress raw sig-nals into sparse point clouds [8], which inevitably leads to information loss and degraded downstream performance [2]. RadarOcc [9] proposed an energy-based compres-sion scheme with deformable attention to mitigate informa-tion loss from retaining the top-K index–value pairs across Doppler, azimuth, and elevation dimensions. Furthermore, none of these approaches provides an 
+
+adaptive codec capable of dynamically adjusting the com-pression ratio at test time–an essential feature for maintain-ing performance under varying or adversarial conditions. Existing codecs with fixed compression rates are inherently inefficient, either wasting bandwidth when underutilized or suffering performance degradation when over-compressed. In light of this, we propose AdaRadar , an adaptive com-pression framework that dynamically modulates the com-pression rate based on task feedback as illustrated in Fig. 2. It leverages this feedback loop to compute a task-aware gradient without requiring full backpropagation. This is critical for two reasons: 1) our core operations–pruning and quantization–are non-differentiable, and 2) transmit-ting a standard gradient approximation would be as large as the original radar data, nullifying all compression gains. AdaRadar bypasses this bottleneck by using a zeroth-order gradient estimator to compute a lightweight proxy gradient. Our framework generalizes across different radar percep-tion tasks, including object detection and semantic segmen-tation, by requiring only post-hoc confidence outputs from the downstream model. We find that radar signals exhibit strong sparsity in the spectral domain, a property we exploit to achieve substan-tial compression without loss of task performance. Its rank-based pruning mechanism adaptively compresses features with varying frequency structures, preserving the most in-formative components. Our codec generalizes across any 
+
+frequency-modulated continuous-wave (FMCW) radar by employing scaled quantization with a per-patch scaling fac-tor, thereby preserving a high dynamic range at fine gran-ularity. The rank-based adaptive pruning allows compres-sion among different frequency structures. AdaRadar can be seamlessly integrated into existing radar systems, as the sensor-side requires only lightweight algorithmic ker-nels, e.g., the discrete cosine transform (DCT), sorting, and rounding, which are readily supported by embedded DSPs. In summary, the contribution of our work is threefold: • We present a proxy-gradient-based adaptive control method that utilizes only forward passes. Our method achieves over 100×reduction in radar data volume while causing a negligible drop (˜1%p) in downstream task per-formance. • We show that radar data is highly compressible in the spectral domain since its information is heavily clustered within a few frequencies (e.g., high frequencies for the RADIal dataset [3]). Our generalized codec leverages this structure, significantly reducing the data load on the com-munication link. This method can be annexed to existing DNN frameworks without any network modification. • We evaluate our method on multiple radar perception tasks across RADIal [3], CARRADA [10], and Radatron [11] datasets, featuring object detection and semantic seg-mentation. The results show robust generalization to both urban and freeway environments. 
+
+## 2. Related works 
+
+2.1. Radar-based perception systems 
+
+Radar as sensing modality. Radar has become a vital sens-ing modality in autonomous driving due to its all-weather 2ADC 2D FFT NPU         
+
+> Sensor -to -
+> compute link
+> (low bandwidth)
+> Radar sensor side (front -end chip) Compute side
+> (back -end chip)
+> On -chip comm unication Off -chip communication
+> De -chirped
+> signal
+> Chirp
+> Fast time
+> Slow time
+> Radar
+> tensor
+> Radar
+> front end
+> MIMO antennas
+> Rx
+> Tx
+> ……Figure 3. Radar-based perception system overview. An FMCW radar transmits linearly swept-frequency chirps. The incoming echo is mixed with a copy of the transmitted chirp at the re-ceiver, yielding a de-chirped intermediate-frequency signal that the ADC digitizes to form a raw radar tensor. Successive FFTs along the fast-time and slow-time axes convert this tensor into a range–Doppler cube. The large, raw radar tensor is transferred to the NPU over the power-hungry sensor-to-compute link for net-work inference.
+
+and all-light detection capabilities compared to camera and LiDAR alternatives. Camera is a baseline modality in autonomous vehicles; however, it is prone to illumina-tion change and can be easily occluded by rain and snow particles [12]. While LiDAR provides high-resolution, centimeter-accurate 3D point clouds, it remains vulnerable in poor weather because its operating wavelengths between 750nm–1.5μm are too short to penetrate precipitation [13]. Radar is a cost-effective sensing modality that remains un-affected by the aforementioned lighting and weather con-ditions, as it actively emits radio waves of ˜4mm in wave-length and measures their reflections [14]. 
+
+Radar systems. FMCW radars [5] produce range-Doppler radar data cubes that play an analogous role to pixel grids in images. A typical radar front-end chip, such as [5], consists of a radar RF circuit, an analog-to-digital converter (ADC), and a digital signal processor (DSP) computing the fast Fourier transform (FFT) (Fig. 3). Chirps reflected by sur-rounding objects are captured by the Rx antenna and mixed with a copy of the transmitted chirp, yielding a de-chirped intermediate-frequency (IF) signal [15]. Such a process is carried out multiple times with combinations of Tx and Rx pairs. The IF waveform is digitized by the ADC and subse-quently processed by a two-dimensional FFT. The result is a three-dimensional data cube with dimensions of fast time, slow time, and virtual antenna pairs, respectively encod-ing range, Doppler velocity, and azimuth-elevation informa-tion. The back-end chip is typically a SoC that integrates a central processing unit (CPU) and a neural processing unit (NPU) to run ML models, such as object tracking. 
+
+Energy bottleneck. The energy bottleneck of modern pro-cessors, including recent AI accelerators, is communication ,not computation [16, 17]. For example, off-chip memory access consumes orders of magnitude more energy and la-tency than on -chip memory access, far exceeding the cost of computation itself [18]. This is pertinent to autonomous driving systems with radar sensors [5] that utilize data links, such as the CAN bus [6], which often exhibit a similar or higher energy cost per bit for data access compared to off-chip DRAM due to a longer wire distance. 
+
+Raw radar tensor. The use of radar as an essential detec-tion modality for autonomous driving is highlighted in [19]. Inspired by deep neural networks that leverage raw fea-ture inputs rather than handcrafted features [20], researchers have evaluated raw radar tensors with vision-domain archi-tectures [3]. In line with this, numerous raw radar tensor-based datasets have been released [10, 11, 21–24]. How-ever, a single radar tensor frame in [2] occupies approxi-mately 500 MB, leading to raw data sizes exceeding several terabytes in widely used datasets [2, 10]. Communication of these raw tensors poses a non-negligible link budget. 
+
+2.2. Feature compression 
+
+Radar point cloud. Radar data are often represented ei-ther as point clouds or as raw multi-dimensional tensors, trading off lower memory and bandwidth requirements in the point-cloud format against richer, more detailed feature information in the tensor representation [8, 25, 26]. Be-cause ADC-sampled radar features encode intuitive physi-cal information, applying a CFAR algorithm [27, 28] iso-lates large echoes and converts the data into a sparse point-cloud representation. [29] uses camera data to compensate for the information loss from point cloud representation. 
+
+Radar compression. Prior work has used autoencoders to compress radar data [30–32]. However, the use of autoencoder-based compression would be prohibitive for resource-constrained automotive sensors, as the sensor frontend has limited compute and memory resources. Au-toencoders used for image compression cannot be deployed on radar frontends since they often have more parameters than the detection or segmentation models themselves. Recognizing the need to alleviate data transmission over-head, in-sensor radar data compression based on an ex-ponential Golomb encoder is developed in [33]; however, the compression ratio is limited to 33%. [9] proposed an energy-based compression scheme using index-value pairs for 3D occupancy prediction. While their method leverages spherical encoding and self-attention to compress 4D radar data, it is not compatible with existing neural networks and does not support reconstruction of the original radar tensor. The reconstructed signal could be useful for downstream tasks, such as motion prediction and planning [34]. 30 20 40 60   
+
+> Horizontal DCT frequency
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Vertical DCT frequency
+> (a) DCT coefficients
+> 505
+> DCT coefficient magnitude
+> 0
+> 10k
+> 20k
+> 30k
+> 40k
+> 50k
+> Counts
+> (b) DCT coef. distribution
+> Histogram
+> 2 Sigma
+> CDF
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Cumulative distribution function (CDF)
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+
+Figure 4. Motivation for spectral pruning and quantization. 
+
+(a) The DCT coefficient magnitudes are clustered in the high-frequency bins. (b) Their histogram is sharply peaked, highlight-ing strong sparsity and clear opportunities for compression. 
+
+Open-loop compression. In the image domain, [35, 36] optimizes the quantization table from JPEG to improve the rate-distortion trade-offs, whereas [37] studies learning-based task-aware compression. To improve efficiency, oth-ers have focused on adaptive spatial bit allocation [38] and modeling latent dependencies via 3D CNNs [39]. How-ever, since their focus is on improving the rate-distortion trade-off without considering autoencoder complexity, the large model size [40, 41] renders the approach impracti-cal for deployment on the radar sensor side due to energy constraints. Additionally, these arts employ an open-loop 
+
+approach, focusing on offline compression optimization to enhance task performance under a fixed I/O constraint. In contrast, we close this loop by performing online test-time optimization, adaptively controlling the compression ratio in real time based on task-driven feedback. 
+
+## 3. Proposed methods 
+
+3.1. Spectral compression frontend 
+
+Overview. We compress the raw radar data cube by prun-ing spectral-domain coefficients. We find that the energy of radar features is concentrated in a few spectral bins, specifically the high-frequency components, for the RA-DIal dataset. The coder operates by dividing features into blocks, applying the DCT, and truncating the coefficients, whereas the decoder restores the data through inverse DCT (IDCT) followed by block merging. The coder-decoder pair also employs scaled quantization to further reduce data size, while preserving the high dynamic range of radar features. Figure 4(a) shows the distribution of the DCT coeffi-cients from the raw radar tensor, computed block-wise with 
+
+M = 64 . Here, we calculate the average coefficient magni-tude Ec,b 
+
+|zc,b | over all channels c and blocks b. This re-veals a strong concentration of energy in the high-frequency bins, highlighting the opportunity for aggressive pruning. Section S6.2 includes energy maps of radar features from more radar perception datasets. Figure 4(b) presents the his-togram of these coefficients, wherein its pronounced peak near zero highlights the potential for quantization. 
+
+Problem formulation. We first define the radar feature map and then describe adaptive spectral pruning. The radar generates a complex-valued feature map X ∈ CC×H×W ,which is processed into a real-valued feature map x ∈
+
+R2C×H×W by concatenating the real and imaginary parts along the channel axis. After splitting x into M ×M non-overlapping blocks, we flatten them into ˜x ∈ R2C×B×M 2
+
+and apply DCT along the last dimension. This creates DCT coefficients z = zc,b,m , where 1 ≤ c ≤ 2C is the chan-nel index, 1 ≤ b ≤ B = HW/M 2 is the block index, and 
+
+1 ≤ m ≤ M 2 is the frequency bin. We refer readers to Section S2.1 for details on the Type-II DCT. Returning the coefficients back to the spatial domain involves IDCT for each M ×M block. After that, merging the blocks gives the reconstructed radar feature ˆx ∈ R2C×H×W .
+
+Adaptive spectral pruning. Adaptive pruning suppresses smaller spectral coefficients by setting them to zero based on a dynamic pruning ratio. Given a pruning ratio r ∈
+
+[rmin , r max ] = [1 , M 2], we set index k = ⌊M 2/r ⌋, 1 ≤
+
+k ≤ M 2 where ⌊·⌋ denotes the floor function. We write the absolute-value order-statistics in descending or-der zc,b, (1) ≥ zc,b, (2) ≥ · · · ≥ zc,b, (M 2) so that the coefficient of k-th largest magnitude becomes the block-wise threshold zc,b, (k) = κc,b . The pruned coefficients 
+
+z′ 
+
+> c,b,m
+
+= zc,b,m · 1 |zc,b,m | ≥ κc,b 
+
+ now has k non-zero elements where 1(·) denotes an indicator function. 
+
+Scaled quantization. Our scaled quantization preserves the high dynamic range of radar features. The first step com-putes each block’s peak magnitude, 
+
+Qc,b = max   
+
+> 1≤m≤M2
+
+z′ 
+
+> c,b,m
+
+. (1) We calculate the per-block scale factor ∆c,b = Qc,b /S 
+
+based on the maximum positive code S = 2 s−1 −1 for an s-bit signed uniform quantizer. After that, the quantized coef-ficient qc,b,m = z′
+
+> c,b,m
+
+/∆c,b 
+
+ ∈ [−S, S ] where ⌊·⌉ denotes rounding to the nearest integer. The dequantization pro-cess reconstructs the DCT coefficients using the scale factor 
+
+ˆzc,b,m = qc,b,m ∆c,b . The scale factor only incurs trans-mission overhead of sFP / sFxP M 2 where sFP and sFxP re-spectively indicate floating and fixed point quantization bit widths, e.g., 0.097% for a 64 × 64 patch with 8-bit quanti-zation. Larger blocks decrease scale-factor overhead at the cost of patch-level granularity. 
+
+Comparison with JPEG. We compare our adaptive codec with JPEG, which employs a fixed quantization table and operates at a fixed compression rate. The key distinction lies in our approach to compression: we prune by selectively retaining spectral bins based on their magnitudes. In con-trast, JPEG compression attenuates high-frequency compo-nents within each M =8 block through a fixed quantization table. We also adopt larger patches (e.g., M ∈{ 32 , 64 }), 40.0 0.2 0.4 0.6 0.8 1.0        
+
+> BBox Confidence Score
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Average Precision
+> Correlation ( r= 0.841 )0.0 0.2 0.4 0.6 0.8 1.0
+> BBox Confidence Score
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Average Recall
+> Correlation ( r= 0.857 )
+
+Figure 5. Motivation for surrogate objective choice. (a) AP and (b) AR vs. confidence score yield a high correlation. 
+
+taking advantage of the inherent sparsity of radar features to amortize the scale-factor overhead from quantization, while also enabling more fine-grained gradient computa-tion. Ours treats the antenna-pair channels equally, unlike JPEG, which uses RGB-to-YCbCr conversion and chroma subsampling. These differences stem from the fact that JPEG attempts to preserve information perceivable by the human eye, albeit with compression. Lastly, JPEG’s fi-nal stage utilizes lossless bitstream compression, including Huffman and run-length encoding, which are applicable but not employed in our scheme to reduce compression latency. 
+
+3.2. Adaptive compression with proxy gradient 
+
+Overview. The next technique is adaptive compression feedback with gradient descent. We hypothesize that the compressibility of raw features varies across frames, mak-ing a fixed compression rate suboptimal and leading to ei-ther underutilized bandwidth or performance degradation. To address this, we design a feedback loop that adjusts the compression ratio online using proxy gradients. Since ground-truth labels are unavailable at test time after deploy-ment, we estimate model uncertainty from post-softmax confidence scores. 
+
+Surrogate objective. Figure 5 reveals a strong pos-itive correlation between bounding-box confidence and object-detection performance, thereby justifying the use of confidence as a surrogate objective when optimizing detec-tion accuracy. In the RADIal dataset [3], precision and re-call are evaluated at discrete confidence thresholds from 0.1 to 0.9. This thresholding scheme explains the staircase-like correlation that appears in the results. 
+
+Task objective. We express the objective as 
+
+max 
+
+> {rt}Tt=1
+
+EJt(rt), Jt(rt) = h(xt, r t) − λ · B(rt) (2) where λ controls the accuracy–bandwidth trade-off and 
+
+B(·) denotes the instantaneous bit rate, and h : ( x, r ) 7 → R
+
+encapsulates compression, decompression, forward infer-ence, and bounding-box proposal. This formulation stems 
+
+Algorithm 1: Adaptive compression rate control 
+
+Input: Radar sequence  {xt}Tt=1 
+
+, weight ( Θ), initial pruning ratio ( r1), adaptation rate (η), perturbation ( ϵ)
+
+Output: Detection map ( {ˆyt}Tt=1 ) 
+
+> 1:
+
+for t := 1 to T do  
+
+> 2:
+
+qt, Qt ← Compression( xt, r t) ;
+
+// Transfer {q, Q} once  
+
+> 3:
+
+ˆxt ← Decompression( qt, Qt); 
+
+> 4:
+
+if adaptive then  
+
+> 5:
+
+q− 
+
+> t
+
+← Pruning( qt, ϵ ); 
+
+> 6:
+
+ˆx− 
+
+> t
+
+← Decompression( q− 
+
+> t
+
+, Qt); 
+
+> 7:
+
+{ˆyt, ˆy− 
+
+> t
+
+} ← fΘ({ˆxt, ˆx− 
+
+> t
+
+}) ; // Batch  
+
+> 8:
+
+{(bk, p k)}k = BBoxPropose( {ˆyt, ˆy− 
+
+> t
+
+}); 
+
+> 9:
+
+if k > 0 then  
+
+> 10:
+
+rt+1 ← rt − η ˆ∇rt J; 
+
+> 11:
+
+else  
+
+> 12:
+
+ˆyt ← fΘ(ˆ xt); 
+
+> 13:
+
+{(bk, p k)}k = BBoxPropose(ˆ yt);from our hypothesis that a time-varying sequence of prun-ing ratios {rt}Tt=1 can achieve better performance than a single, uniformly applied fixed pruning ratio. We perform gradient descent (or ascent for minimizing the negative term) by calculating the gradient 
+
+∇r J = ∇r h(x, r ) − λ · B′(r). (3) 
+
+Proxy gradient. The proxy gradient calculation is per-formed entirely on the compute side, eliminating the need for backpropagation and avoiding the transmission of costly backward tensors over the communication link. Given an input ˆx, the network returns a classification map ˆycls ∈
+
+[0 , 1] H   
+
+> 4×W
+> 8
+
+and a regression map ˆyreg ∈ R2× H   
+
+> 4×W
+> 8
+
+. We write the combined output as ˆy = (ˆ ycls , ˆyreg ), where fΘ(·)
+
+denotes the network function. Each grid cell is then de-coded into a bounding-box b ∈ R6 with a corresponding confidence p ∈ [0 , 1] by applying confidence threshold-ing followed by non-maximum suppression. We abstract this operation as {(bk, p k)}Kk=1 = BBoxPropose(ˆ ycls , ˆyreg )
+
+with K proposals and use the maximum confidence pmax =max k pk. We perform gradient descent by optimizing rt se-quentially for each time step, and computing the gradient with the negative perturbation as p− as follows: 
+
+ˆ∇r h(x, r ) ≈ h(x, r ) − h(x, r − ϵ)
+
+ϵ = p − p−
+
+ϵ . (4) In case of a segmentation task, we instead minimize the average entropy H(·) calculated based on the pixel-wise class probability ˆyseg ∈ [0 , 1] Cs×Hs×Ws as H(ˆ yseg ) =
+
+E(i,j )[H(ˆ y(i,j ) 
+
+> seg
+
+)] where H(·) is the Shannon entropy. 5Adaptive compression rate control. Algorithm 1 outlines the adaptive rate control. Starting with an initial pruning ratio r1, the encoder transforms each feature map xt into pruned DCT coefficients qt and their associated quantiza-tion scales Qt via the DCT, pruning, and quantization stages described in Section 3.1. At the receiver, dequantization is followed by an IDCT, which reconstructs ˆxt; the detector then produces the prediction map ˆyt. Whenever the bit-rate budget must be adjusted, the pruning ratio is updated with a proxy-gradient step: a small perturbation ϵ is applied to rt (Line 6), additional coefficients are pruned to obtain 
+
+q− 
+
+> t
+
+, and a second inference pass yields ˆy− 
+
+> t
+
+. The difference in bounding-box confidence between ˆyt and ˆy− 
+
+> t
+
+provides a zeorth-order gradient estimate, which drives a simple gra-dient–descent update to produce rt+1 . Each adaptation step requires only two forward passes and no backpropagation. 
+
+## 4. Experiments 
+
+4.1. Experimental setup 
+
+RADIal dataset. We use the RADIal [3] dataset to demon-strate the efficacy of the proposed method. It consists of 8,252 labelled scenes, each consisting of a camera image, raw radar measurements, and laser scans. The post-FFT radar feature tensor has dimensions of 32 channels, 512 range bins, and 256 Doppler bins, with each element rep-resented as a 32-bit floating-point value. We adhere to the three-fold dataset split (training, validation, and test) pro-vided with the dataset in sequence mode. 
+
+CARRADA dataset. We also validate our results on the CARRADA dataset [10], which also provides camera data. Measured on 76-to-81GHz mmWave radar [42], this dataset is designed to serve as a benchmark for radar-based seman-tic segmentation. It comprises 30 sequences totaling 7,193 annotated frames, providing object-level segmentation la-bels for pedestrians, cars, and cyclists. Each radar frame is processed into a post-FFT tensor with 256 range bins and 64 Doppler bins, encoded as 32-bit tensors. We follow the prescribed training/validation/test split routines and use the 
+
+sequence configuration for online adaptation. 
+
+Radatron dataset. In addition, we evaluate our approach on the Radatron dataset [11], which captures diverse urban driving scenarios with synchronized high-resolution radar and camera data. The dataset comprises approximately 16,000 annotated frames, each labeled with vehicle bound-ing boxes to support object detection tasks. Measured with a cascaded MIMO radar [5], each radar frame is processed into a range-azimuth heatmap with 448 range bins and 192 azimuth bins, represented as 32-bit data. We adopt the offi-cial training/validation/test split and operate in the sequence 
+
+configuration to support online rate adaptation at test time. 
+
+Implementation details. We train the FFTRadNet model [3] from scratch by using PyTorch [43] on a single NVIDIA Quadro RTX 6000 for the evaluation on the RADIal dataset. We apply on-the-fly compression and quantization to the raw radar features by sampling the pruning ratio r ∼
+
+U (rmin , r max ) and quantization bit width sFxP -bit. We train with a batch size of 4 and up to 100 epochs. The Adam opti-mizer [44] was used with a learning rate of 10 −4, decaying by 0.9 every 10 epochs. 
+
+Metric. For the RADIal dataset [3], average preci-sion (AP) and average recall (AR) are calculated by av-eraging precision and recall measurements at thresholds 
+
+{0.1, 0.2, ..., 0.9}. The F 1 score is the harmonic mean of AP and AR. For the Radatron dataset [11], we report av-erage precision at IoU thresholds of 0.5 (AP 50 ) and 0.75 (AP 75 ) as primary evaluation metrics. We also compute the mean Average Precision (mAP) averaged over IoU thresh-olds ranging from 0.5 to 0.95 in increments of 0.05. On the other hand, for the segmentation tasks, mean intersection over union (mIoU) is measured by comparing the predicted drivable freeway map with the target map. In addition to the IoU metric, we use the dice score for evaluation with the CARRADA dataset [10]. 
+
+4.2. Experimental results 
+
+Adaptive compression. Table 1 compares our adap-tive compression method with the prior index-value-based method on the RADIal dataset. Ours achieves a twofold improvement in the compression ratio while maintaining an F1 score drop of less than 1.5%p. An average pruning ratio of 12.57× combined with 8× gain from quantization, yields a bit rate of 0.32 bits per pixel (bpp), corresponding to a 101× compression ratio. On the segmentation task, ours ac-tually improves the performance by 4%. Here, we report the compression ratio with respect to the number of non-zero elements for both methods. Although the index-value pair-based method offers slight improvements in the precision, it significantly degrades both detection and segmentation per-formance. We report ablation studies in Sec. S3.2 of the Supplementary Material. In Table 2, we demonstrate the generality of our com-pression method even on the segmentation task by using the CARRADA dataset. It achieves an even greater compres-sion ratio of 117× while maintaining the target metric close to the non-compressed baseline, with ˜1% drop. On the other hand, the prior art [9] suffers from significant degra-dation in segmentation performance. We also validate the efficacy of our online compression method on the Radatron dataset and present it in Table 3. Although the radatron dataset only provides a range-azimuth heatmap, it is still compressible by 30× with our compression method. Even at this compression rate, ours outperforms the non-compressed baseline by up to 5% in AP 75 . We hypothesize that feature compression works as a 6Table 1. Compression on RADIal. We compare the detection and segmentation performance of adaptive rate control with prior work on the RADIal test set using FFTRadNet as the backbone. Our adaptive rate control achieves 101× compression on average while maintaining the performance close to the baseline. ‘P’ and ‘R’ respectively stand for precision and recall. We highlight in bold the best-performing result among methods other than the baseline. 
+
+Method Bit Prune Bit rate [bpp] ↓ Detection Segmentation ratio ↑ (Comp. ratio ↑) P (%) ↑ R (%) ↑ F1 (%) ↑ mIoU (%) ↑
+
+Uncompressed baseline [3] 32 - 32 (1×) 97.24 95.93 96.58 75.97 Index-value [9] 32 12× 2.67 (12×) 97.55 62.12 75.91 49.86 Adaptive compression (Ours) 4 12.57× 0.32 (101× ) 96.25 94.04 95.13 79.34 
+
+Table 2. Compression on CARRADA. We compare our adaptive compression strategy with prior arts on mIoU and mDice metrics on the CARRADA dataset using the TMVA-Net. Our adaptive method maintains segmentation performance close to the baseline despite a large reduction (117×) in data rate. ‘PR’, ‘BR’, and ‘CR’ respectively stand for the prune ratio, bit rate, and total compression ratio. Bold text indicates the top-performing results, excluding the baseline. 
+
+Method Bit PR ↑ BR [bpp] ↓ CR ↑ mIoU (%) ↑ mDice (%) ↑
+
+Uncompressed baseline [45] 32 - 32 1× 55.25 67.13 Index-value [9] 32 29× 1.10 29× 38.96 46.90 Adaptive compression (Ours) 8 29.26× 0.27 117× 54.03 65.87 0 100 200 300 400 500 600 700        
+
+> 0.2
+> 0.3
+> 0.4
+> Bit rate [bpp]
+> Running rate
+> Average rate
+> 0100 200 300 400 500 600 700
+> Scene idx
+> 0.0
+> 0.5
+> 1.0
+> AR
+> Adaptive
+> Non-compressed baseline
+
+Figure 6. Online adaptation. Bit rate time series (above). Scene-wise average recall change (below). 
+
+filter, helping to suppress noise and clutter. While the prior method improves AP 75 , it lowers performance in others. 
+
+Online adaptation. The online adaptation adjusts the bit rate based on the confidence gradient. Figure 6 illustrates this scheme, where the pruning ratio is increased from the initial starting point. The bit rate fluctuates over time, though it surges at some points. Here, it is expected that the controller decreases the pruning ratio to compensate for the AR drop. It achieves an average bit rate of 0.279 bpp with 8-bit quantization, yielding a 115× compression with AR of 93.91%. We validate the robustness of our approach under a noisy scenario and report the adversarial results in Table S4 of the Supplementary Material. 
+
+Rate-accuracy tradeoff. Figure 7 illustrates the trade-off between the bit rate and the detection performance met-rics: AP and AR. While it depicts the obvious rate-accuracy tradeoff, our compression scheme achieves a 100× reduc-tion in the radar feature map size while incurring a ˜1%p de-10.9X 
+
+> 10.9X
+> 100X
+
+Figure 7. Rate-accuracy tradeoff. (a) Average precision and (b) average recall vs. bit rate measured with a static compression rate on the RADIal test set with 4-bit quantization. 
+
+crease in performance compared to FFTRadNet [3]. Com-pared with Pixor [46], our method achieves higher preci-sion and markedly higher recall. Here, we use the network retrained on radar features compressed and decompressed using the setup explained in Sec. 4.1. Figure 7 shows that accuracy remains virtually unchanged down to 1 bpp. This enables us to set the lower bound on the pruning ra-tio, rmin , at this point for adaptive control, thereby reducing the minimum channel bandwidth requirement. In partic-ular, rmin determines the peak bit-rate requirement of the sensor-to-compute link. 
+
+Qualitative results. The qualitative comparison between a non-compressed and compressed radar tensor is shown in Fig. 8. There is no distinction between the range-Doppler (RD) image against the compressed counterpart as depicted in the drawing. Interestingly, the network output with com-7Table 3. Compression on Radatron. We compare compression strategies on mAP, AP 50 , and AP 75 while reducing the bit rate. Our adaptive method achieves higher detection performance than both the baseline and index-value compression while operating at a much lower bit rate (30 × compression). ‘PR’, ‘BR’, and ‘CR’ respectively stand for the prune ratio, bit rate, and total compression ratio. The best-performing result, except for the baseline method, is highlighted in bold. 
+
+Method Bit PR ↑ BR [bpp] ↓ CR ↑ mAP (%) ↑ AP 50 (%) ↑ AP 75 (%) ↑
+
+Baseline [11] 32 - 32 1× 46.07 83.60 44.16 +Index-value [9] 32 7.5× 4.27 7.5× 45.72 80.44 47.54 +Adaptive (Ours) 8 7.5× 1.07 30× 48.46 83.69 49.07 Camera Ground truth RD Prediction RD 
+
+(w/ comp.) 
+
+Prediction 
+
+(w/ comp.) 
+
+Figure 8. Qualitative comparisons. Networks are trained on raw radar tensors, visualized as range-Doppler (RD) images, along with ground-truth labels for freeway segmentation and vehicle detection. Camera images only provide contextual reference for the scene. RD images map Range to the y-axis and Doppler to the x-axis. We highlight the detected car in red and the segmented map in green in the bird’s-eye-view visualization. Notably, the compressed RD outperforms the uncompressed baseline. 12510 20 30 50       
+
+> Compression ratio
+> 0.5 12510 30
+> Bit rate [bpp]
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> F1 score (%)  23.1%/dec
+> 46.6%/dec Adaptive (Ours)
+> Index-value
+
+Figure 9. Adaptive spectral pruning vs. index-value-based compression. Adaptive spectral pruning-based compression out-performs index-value-based compression [9] with much more re-siliency to error. Both methods utilize Float32 , and are tested on the RADIal test set. 
+
+pressed features yields better performance than the non-compressed counterpart. Here, a pruning ratio of 5 is used with no quantization. We surmise that spectral pruning im-proves downstream performance by filtering out noise and clutter picked up by the radar. 
+
+Adaptive spectral pruning vs. index-value-based com-pression. Figure 9 demonstrates how the adaptive spectral pruning-based compression method outperforms the index-value pair-based method [9]. While the performance drop-off begins immediately with the index-value pair-based method, our method remains stable until 5× compression. On top of that, the roll-off gradient of 23.1%/dec is much gentler for the spectral pruning-based compression than the 46.6%/dec of the counterpart. The index-value-based com-pression selects the Top-K elements in each M ×M block based on energy in the spatial domain. Spectral-domain compression retains much more information than spatial-domain compression. Both methods use the 32-bit floating-point ( Float32 ) representation, and the baseline model is used without any fine-tuning. 
+
+## 5. Conclusion 
+
+We present AdaRadar , a rate-adaptive spectral-domain compression framework for radar-based object detec-tion. Pruning and quantizing spectral coefficients shrink the range–Doppler cube by over 100×, easing the sensor-to-compute bandwidth bottleneck while preserving accuracy at the lowest bit rate target. A lightweight test-time controller finely adjusts the compression ratio on the fly, making a judicious tradeoff between bandwidth and per-formance in real time. Experiments on the RADIal, CAR-RADA, and Radatron datasets demonstrate the robustness of our compression approach. 
+
+Limitations. Although heavily explored in the literature, the compression of camera images is not considered. The adaptive compression might fall short if the temporal rela-tionship among subsequent frames is not guaranteed. 8Acknowledgements: This work was supported in part by COGNISENSE, one of seven centers in JUMP 2.0, a Semi-conductor Research Corporation (SRC) program sponsored by DARPA. The work of SY Chun was supported by IITP grants funded by the Korea government(MSIT) [No.RS-2021-II211343, Artificial Intelligence Graduate School Pro-gram (Seoul National University) / No.RS-2025-02314125, Effective Human-Machine Teaming With Multimodal Hazy Oracle Models]. 
+
+## References 
+
+[1] Mario Bijelic, Tobias Gruber, Fahim Mannan, Florian Kraus, Werner Ritter, Klaus Dietmayer, and Felix Heide. See-ing through fog without seeing fog: Deep multimodal sen-sor fusion in unseen adverse weather. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 11682–11692, 2020. 1 [2] Dong-Hee Paek, Seung-Hyun Kong, and Kevin Tirta Wijaya. K-radar: 4d radar object detection for autonomous driving in various weather conditions. Advances in Neural Information Processing Systems , 35:3819–3829, 2022. 1, 2, 3 [3] Julien Rebut, Arthur Ouaknine, Waqas Malik, and Patrick P´ erez. Raw high-definition radar for multi-task learning. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 17021–17030, 2022. 1, 2, 3, 5, 6, 7, 11 [4] Bin Yang, Runsheng Guo, Ming Liang, Sergio Casas, and Raquel Urtasun. Radarnet: Exploiting radar for robust per-ception of dynamic objects. In European conference on com-puter vision , pages 496–512. Springer, 2020. 1 [5] Texas Instruments. IWR1843 Single-Chip 76 to 81 GHz FMCW mmWave Sensor Datasheet . Texas Instruments, September 2024. URL https://www.ti.com/lit/ ds/symlink/iwr1843.pdf . 1, 3, 6, 12 [6] Texas Instruments. TCAN341x 3.3-V CAN FD Transceivers With Standby Mode and ±58 V Bus Standoff . https:// www.ti.com/lit/ds/symlink/tcan3414.pdf ,November 2023. Datasheet No. SLLSFS8A. 1, 3, 12 [7] William B Pennebaker and Joan L Mitchell. JPEG: Still im-age data compression standard . Springer Science & Busi-ness Media, 1992. 2 [8] Holger Caesar, Varun Bankiti, Alex H Lang, Sourabh Vora, Venice Erin Liong, Qiang Xu, Anush Krishnan, Yu Pan, Gi-ancarlo Baldan, and Oscar Beijbom. nuscenes: A multi-modal dataset for autonomous driving. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 11621–11631, 2020. 2, 3 [9] Fangqiang Ding, Xiangyu Wen, Yunzhou Zhu, Yiming Li, and Chris Xiaoxuan Lu. Radarocc: Robust 3d occupancy prediction with 4d imaging radar. Advances in Neural Infor-mation Processing Systems , 37:101589–101617, 2024. 2, 3, 6, 7, 8 [10] Arthur Ouaknine, Alasdair Newson, Julien Rebut, Florence Tupin, and Patrick P´ erez. Carrada dataset: Camera and automotive radar with range-angle-doppler annotations. In 
+
+2020 25th International Conference on Pattern Recognition (ICPR) , pages 5068–5075. IEEE, 2021. 2, 3, 6, 11 [11] Sohrab Madani, Jayden Guan, Waleed Ahmed, Saurabh Gupta, and Haitham Hassanieh. Radatron: Accurate detec-tion using multi-resolution cascaded mimo radar. In Com-puter Vision – ECCV 2022 , pages 160–178, Cham, 2022. Springer Nature Switzerland. 2, 3, 6, 8, 11 [12] Dan Hendrycks and Thomas Dietterich. Benchmarking neu-ral network robustness to common corruptions and perturba-tions. arXiv preprint arXiv:1903.12261 , 2019. 3 [13] Akhil Kurup and Jeremy Bos. Dsor: A scalable statistical filter for removing falling snow from lidar point clouds in se-vere winter weather. arXiv preprint arXiv:2109.07078 , 2021. 3[14] Fahad Jibrin Abdu, Yixiong Zhang, Maozhong Fu, Yuhan Li, and Zhenmiao Deng. Application of deep learning on millimeter-wave radar signals: A review. Sensors , 21(6): 1951, 2021. 3 [15] Mark A Richards et al. Fundamentals of radar signal pro-cessing , volume 1. Mcgraw-hill New York, 2005. 3 [16] Norman P Jouppi, Cliff Young, Nishant Patil, David Patter-son, Gaurav Agrawal, Raminder Bajwa, Sarah Bates, Suresh Bhatia, Nan Boden, Al Borchers, et al. In-datacenter perfor-mance analysis of a tensor processing unit. In Proceedings of the 44th annual international symposium on computer ar-chitecture , pages 1–12, 2017. 3 [17] Yu-Hsin Chen, Tushar Krishna, Joel S Emer, and Vivienne Sze. Eyeriss: An energy-efficient reconfigurable accelera-tor for deep convolutional neural networks. IEEE journal of solid-state circuits , 52(1):127–138, 2016. 3 [18] Mark Horowitz. 1.1 computing’s energy problem (and what we can do about it). In 2014 IEEE international solid-state circuits conference digest of technical papers (ISSCC) , pages 10–14. IEEE, 2014. 3 [19] Bence Major, Daniel Fontijne, Amin Ansari, Ravi Teja Sukhavasi, Radhika Gowaikar, Michael Hamilton, Sean Lee, Slawomir Grzechnik, and Sundar Subramanian. Ve-hicle detection with automotive radar using deep learning on range-azimuth-doppler tensors. In Proceedings of the IEEE/CVF International Conference on Computer Vision Workshops , pages 0–0, 2019. 3 [20] Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. Imagenet classification with deep convolutional neural net-works. Advances in neural information processing systems ,25, 2012. 3 [21] Ao Zhang, Farzan Erlik Nowruzi, and Robert Laganiere. Raddet: Range-azimuth-doppler based radar object detection for dynamic road users. In 2021 18th Conference on Robots and Vision (CRV) , pages 95–102. IEEE, 2021. 3 [22] Mohammadreza Mostajabi, Ching Ming Wang, Darsh Ran-jan, and Gilbert Hsyu. High-resolution radar dataset for semi-supervised learning of dynamic objects. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops , pages 100–101, 2020. [23] Marcel Sheeny, Emanuele De Pellegrin, Saptarshi Mukher-jee, Alireza Ahrabian, Sen Wang, and Andrew Wallace. Radiate: A radar dataset for automotive perception in bad weather. In 2021 IEEE International Conference on Robotics and Automation (ICRA) , pages 1–7. IEEE, 2021. 
+
+9[24] Yizhou Wang, Gaoang Wang, Hung-Min Hsu, Hui Liu, and Jenq-Neng Hwang. Rethinking of radar’s role: A camera-radar dataset and systematic annotator via coordinate align-ment. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , pages 2815–2824, 2021. 3 [25] Andras Palffy, Ewoud Pool, Srimannarayana Baratam, Ju-lian FP Kooij, and Dariu M Gavrila. Multi-class road user detection with 3+ 1d radar in the view-of-delft dataset. IEEE Robotics and Automation Letters , 7(2):4961–4968, 2022. 3 [26] Michael Meyer and Georg Kuschk. Automotive radar dataset for deep learning based 3d object detection. In 2019 16th european radar conference (EuRAD) , pages 129–132. IEEE, 2019. 3 [27] Stephen Blake. Os-cfar theory for multiple targets and nonuniform clutter. IEEE transactions on aerospace and electronic systems , 24(6):785–790, 1988. 3, 15 [28] Alfonso Farina and Francisco A Studer. A review of cfar detection techniques in radar systems. 1986. 3, 15 [29] Jisong Kim, Minjae Seong, and Jun Won Choi. Crt-fusion: Camera, radar, temporal fusion using motion information for 3d object detection. Advances in Neural Information Pro-cessing Systems , 37:108625–108648, 2024. 3 [30] Zelong Hu, Feng Yang, Xu Qiao, and Fanruo Li. A radar data compression method based on autoencoder neural network and range encoding. In 5th International Conference on In-formation Science, Electrical, and Automation Engineering (ISEAE 2023) , volume 12748, pages 192–201. SPIE, 2023. 3[31] Qihan Xu, Yunfan Xiang, Zhixiong Di, Yibo Fan, Quanyuan Feng, Qiang Wu, and Jiangyi Shi. Synthetic aperture radar image compression based on a variational autoencoder. IEEE Geoscience and Remote Sensing Letters , 19:1–5, 2021. [32] Michael Stephan, Thomas Stadelmayer, Avik Santra, Georg Fischer, Robert Weigel, and Fabian Lurz. Radar image re-construction from raw adc data using parametric variational autoencoder with domain adaptation. In 2020 25th Inter-national Conference on Pattern Recognition (ICPR) , pages 9529–9536. IEEE, 2021. 3 [33] Anil Mani and Zigang Yang. Memory compression and de-compression engine for ti mmwave radar. Texas Instruments, Application Report , 2019. 3 [34] Xinshuo Weng, Boris Ivanovic, Yan Wang, Yue Wang, and Marco Pavone. Para-drive: Parallelized architecture for real-time autonomous driving. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 15449–15458, 2024. 3 [35] Xiufeng Xie, Ning Zhou, Wentao Zhu, and Ji Liu. Bandwidth-aware adaptive codec for dnn inference offload-ing in iot. In European Conference on Computer Vision ,pages 88–104. Springer, 2022. 4 [36] Xiufeng Xie and Kyu-Han Kim. Source compression with bounded dnn perception loss for iot edge computer vision. In 
+
+The 25th Annual International Conference on Mobile Com-puting and Networking , pages 1–16, 2019. 4 [37] Yann Dubois, Benjamin Bloem-Reddy, Karen Ullrich, and Chris J Maddison. Lossy compression for lossless predic-tion. In M. Ranzato, A. Beygelzimer, Y. Dauphin, P.S. Liang, and J. Wortman Vaughan, editors, Advances in Neural Infor-mation Processing Systems , volume 34, pages 14014–14028. Curran Associates, Inc., 2021. 4 [38] Oren Rippel and Lubomir Bourdev. Real-time adaptive im-age compression. In International Conference on Machine Learning , pages 2922–2930. PMLR, 2017. 4 [39] Fabian Mentzer, Eirikur Agustsson, Michael Tschannen, Radu Timofte, and Luc Van Gool. Conditional probability models for deep image compression. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 4394–4402, 2018. 4 [40] Johannes Ball´ e, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston. Variational image compres-sion with a scale hyperprior. In International Conference on Learning Representations , 2018. 4 [41] Johannes Ball´ e, Valero Laparra, and Eero P. Simoncelli. End-to-end optimized image compression. In International Conference on Learning Representations , 2017. 4, 14 [42] Texas Instruments. Single-chip 76-ghz to 81-ghz automotive radar sensor integrating dsp and mcu, 2018. 6 [43] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch: An im-perative style, high-performance deep learning library. Ad-vances in neural information processing systems , 32, 2019. 6[44] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. Proceedings of the International Conference on Learning Representations , 2015. 6, 11 [45] Arthur Ouaknine, Alasdair Newson, Patrick P´ erez, Florence Tupin, and Julien Rebut. Multi-view radar semantic segmen-tation. In Proceedings of the IEEE/CVF International Con-ference on Computer Vision , pages 15671–15680, 2021. 7 [46] Bin Yang, Wenjie Luo, and Raquel Urtasun. Pixor: Real-time 3d object detection from point clouds. In Proceedings of the IEEE conference on Computer Vision and Pattern Recog-nition , pages 7652–7660, 2018. 7 [47] The libjpeg-turbo Project. libjpeg-turbo performance bench-marks, 2020. URL https://libjpeg-turbo.org/ About/Performance . 12 [48] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja. Compressai: a pytorch library and evalua-tion platform for end-to-end compression research. arXiv preprint arXiv:2011.03029 , 2020. 14 [49] Z FFmpeg. A complete, cross-platform solution to record, convert and stream audio and video, 2024. 14 [50] Eric Jang, Shixiang Gu, and Ben Poole. Categorical reparameterization with gumbel-softmax. arXiv preprint arXiv:1611.01144 , 2016. 14 [51] Chris J Maddison, Andriy Mnih, and Yee Whye Teh. The concrete distribution: A continuous relaxation of discrete random variables. arXiv preprint arXiv:1611.00712 , 2016. 14 [52] James Giroux, Martin Bouchard, and Robert Laganiere. T-fftradnet: Object detection with swin vision transformers from raw adc radar signals. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 4030– 4039, 2023. 16 
+
+10 AdaRadar: Rate Adaptive Spectral Compression for Radar-based Perception 
+
+# Supplementary Material 
+
+The Supplementary Material is organized as follows: • Section S1 provides implementation details, including network architectures, training protocols, hardware re-sources, and asset licenses. • Section S2 elaborates on notations for transform and al-ternative task objectives. • Section S3 presents extended quantitative evaluations on the adaptive control, covering ablation studies on hyper-parameters and surrogate objective, and stability analysis. • Section S4 presents additional quantitative evaluations on the spectral compression, covering quantization and block length modulation. • Section S5 presents additional baselines, including com-pression using autoencoders, H.264, Gumbel-sigmoid method, and CFAR algorithm. • Section S6 illustrates the qualitative impact of AdaRadar through range-Doppler maps and visual performance comparisons. 
+
+## S1. Experiment setup details 
+
+S1.1. Baseline specifications and architectures. 
+
+The baselines in Table 1–3, refer to the corresponding vanilla models without any compression. We demonstrate AdaRadar’s compression capability across three datasets with distinct model architectures to showcase the robust-ness of our approach. • The baseline, FFTRadNet [3] (Table 1), detects vehicles and free driving spaces by using a learned MIMO pre-encoder, a feature pyramidal network (FPN) encoder, and separate detection and segmentation heads. • TMVA-Net [10] in Table 2 performs four-class radar se-mantic segmentation with pedestrian, cyclist, car, and background. It first reshapes the range-azimuth-Doppler (RAD) tensor into azimuth-Doppler (AD), range-Doppler (RD), and range-azimuth (RA) views, then applies 3D convolutions within view-specific encoders. • Radatron [11] (Table 3) also runs parallel FPN branches on high- and low-resolution radar streams, which are fused later to output vehicle detection maps. 
+
+S1.2. Experimental details 
+
+For Table 1, we perform adaptation with a task objective same as Eq. 2 with rinitial = 12 , η = 1 .0, ϵ = 0 .05 ,
+
+pthreshold = 0 .8, λ = 1 .0, ∇clip = 1 .0.For Figure 6, we experiment with a task objective same as Eq. S4 with rinitial = 20 , η = 1 .0, ϵ = 0 .05 , pthreshold =0.9, λ = 15 .0, ∇clip = 1 .0.
+
+S1.3. Additional training details and resources 
+
+Training details on TMVA-Net. All experiments are im-plemented in PyTorch and trained on a single Nvidia RTX A6000 GPU. We follow the setting as per the original pa-per with the Adam optimiser[44], using its default hyper-parameters: β1 = 0 .9, β2 = 0 .999 , and ε = 10 −8). Train-ing proceeds for 300 epochs with a mini-batch size of 6. The initial learning rate is set to 10 −4 and decays by a factor of 0.1 every 20 epochs via a StepLR scheduler. 
+
+Training details on Radatron. We abide by the original training recipe and train the model using stochastic gradient descent (SGD) with a base learning rate of 0.01 on a sin-gle Nvidia RTX A6000 GPU. The learning rate decays by a factor of 0.2 at 15k and 20k iterations, following a step schedule. Training runs for 25k iterations in total, with a mini-batch size of 8 images. All other training hyperparam-eters follow the default settings in Detectron2. 
+
+Computation resources. The experiments on the RADIal dataset are run on a Red Hat Enterprise Linux 8 workstation equipped with a single 3.5 GHz Intel Core i9-9920X proces-sor, four NVIDIA RTX 6000 GPUs (24 GB VRAM each), 128 GB of system RAM. The rest of our experiments are conducted on a Red Hat Enterprise Linux 8 server equipped with dual Nvidia RTX A6000 GPUs, each equipped with 48GB VRAM, an AMD Ryzen Threadripper PRO 3995WX CPU @ 4.2GHz, and 256GB of RAM. 
+
+S1.4. Assets 
+
+License for RADIal. The RADIal dataset 1 [3] is released without an explicit license; we cite the source and use it solely for non-commercial academic research, in accor-dance with standard scholarly practices. 
+
+License for CARRADA. The CARRADA dataset [10] is published under the CC BY-NC-SA 4.0 License, and all CARRADA code 2 is released under the GNU General Pub-lic License v3.0 (GPL-3.0). 
+
+License for Radatron. The Radatron dataset 3 [11] is re-leased under the Apache License 2.0. 
+
+S1.5. Discussions 
+
+Broader impacts. By reducing data transmission and memory access, our method could reduce energy usage,          
+
+> 1https://github.com/valeoai/RADIal
+> 2https://github.com/valeoai/carrada_dataset
+> 3https ://github .com /waleedillini /radatronDataset
+
+11 contributing to sustainability in high-throughput ML sys-tems. Radar-based systems improve robustness under ad-verse weather or poor lighting conditions, potentially reduc-ing accidents in autonomous and assisted driving. 
+
+## S2. Additional notes on proposed method 
+
+S2.1. Discrete cosine transform 
+
+Type-II DCT computation is described by zc,b = a⊙G˜xc,b 
+
+where ˜xc,b ∈ RM 2
+
+is a flattened feature map, ⊙ de-notes Hadamaard (element-wise) product, G ∈ RM 2×M 2
+
+describes cosine coefficients, and a ∈ RM 2
+
+is a nor-malization vector. G is computed by GM u +v,M i +j =cos   (2 i+1) uπ 
+
+> 2M
+
+ cos   (2 j+1) vπ 
+
+> 2M
+
+ with indices i, j, u, v ∈{0, . . . , M − 1}. a has entries 
+
+aM u +v = 2
+
+M α(u) α(v) (S1) 
+
+α(u) = 
+
+(
+
+1/√2 u = 0 1 otherwise (S2) 
+
+u, v ∈ { 0, . . . , M − 1}. (S3) 
+
+S2.2. Alternative task objective 
+
+Beyond the objective in Eq. 2, we define a constraint-aware gradient 
+
+∇r J = ( p − pmin ) + ˆ∇r h · (r − rmin + λ). (S4) In this formulation, pmin and rmin denote the lower bounds for confidence and pruning ratio, respectively, while ˆ∇r h
+
+represents the zeroth-order gradient approximation. The hyperparameter λ regulates the Pareto optimal trade-off be-tween task accuracy and transmission bandwidth. We employ confidence thresholding and gradient clip-ping to facilitate more stable adaptation. Specifically, gra-dient clipping constrains the estimated gradient ˆ∇r h(x, r )
+
+within a predefined range [∇min , ∇max ], while confidence thresholding skips the adaptation process for the given timestep if p < p threshold .
+
+## S3. Extended quantitative analysis on adaptive control back end 
+
+S3.1. Compression/decompression latency 
+
+In Figure S1, we observe that compression and decompres-sion alleviate the latency required to transfer radar data. This is because sensor-to-compute links, such as a CAN bus Latency [s]                             
+
+> Effect of compression on latency
+> Latency [s]
+> Effect of compression on latency 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> w/o w/ w/o w/ w/o w/ w/o w/
+> AMD 5975 Apple M3
+> (Laptop)
+> Intel i7 8700 Intel i7 1185
+> (Laptop)
+> t_dct t_thd t_q t_trans t_dq t_idct
+> Latency [s]
+> Effect of compression on latency 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> w/o w/ w/o w/ w/o w/ w/o w/
+> AMD 5975 Apple M3
+> (Laptop)
+> Intel i7 8700 Intel i7 1185
+> (Laptop)
+> t_dct t_thd t_q t_trans t_dq t_idct
+
+Figure S1. Compression, decompression, communication cost analysis. Our compression and decompression processes signif-icantly reduce latency compared to the baseline system, which transmits the original radar tensor. 
+
+in automotive systems, have limited bandwidth for trans-ferring high-fidelity data. Our method can easily re-utilize the embedded DSP block, which is used to compute the fast Fourier transform along range and Doppler dimensions in MIMO radars [5]. The radar side only requires sim-ple operations (e.g., DCT, sorting, and rounding) to support AdaRadar. The total latency arises from three components: (1) com-pression, (2) transmission, and (3) decompression. More concretely, 
+
+toverall = tdct + tthd + tq
+
+| {z }
+
+> coder
+
++ttrans + tdq + tidct 
+
+| {z }
+
+> decoder
+
+. (S5) In this experiment, compression and decompression laten-cies are measured on machines with different CPUs by compressing and decompressing 200 radar tensors of shape 512×256×32 from the RADIal test set. Transfer time is es-timated by assuming a radar [5] followed by a serial link based on MIPI CSI2 with 150 Mbps bandwidth, sending the radar tensor in a burst mode. This is analogous to loading a RAW image versus a JPEG-compressed image. Loading a RAW format takes longer because the loading time is bottlenecked by data 
+
+transmission rather than by decompression. A typical JPEG decoder [47] takes about one millisecond to decompress a 512×512 image, while loading the uncompressed image from a CAN bus [6] with a bandwidth of a few MB/s would take dozens of milliseconds. 
+
+S3.2. Ablation study 
+
+Surrogate objective ablation. We use bounding box con-fidence as a proxy for task performance, assuming that re-gions with high detector confidence should be preserved more faithfully. To justify our choice, we show additional 12 empirical analysis showing how confidence best correlates with the task performance under compression, and (2) add ablation studies where we replace confidence with alterna-tive signals such as range and azimuth location variances among bounding box predictions per object.           
+
+> Table S1. Correlation between OD prediction output and per-formance metrics. The performance metrics, such as AP and AR, are highly correlated with confidence but not with other objectives.
+> Surrogate objective Corr. w/ AP Corr. w/ AR
+> Confidence (Ours) 0.841 0.857
+> Range stdev. -0.129 -0.045 Azimuth stdev. -0.070 -0.016
+
+In Table S1, we demonstrate that the bounding box con-fidence correlates most closely with the average precision (AP) and average recall (AR). On the other hand, the range and azimuth exhibit a weak (negative) correlation. We take the standard deviation of the range and azimuth values of predicted bounding boxes. In Table S2, we ablate the surrogate objective with range and azimuth deviations and a random variable p ∼ U (0 , 1) ,which are fed into our zeroth-order optimizer. We find that the compression ratio fluctuates widely, unlike the con-fidence metric, whose standard deviation across rate se-quences remains less than one. This also results in severe performance degradation. 
+
+Hyperparameter ablation. We vary the regularization weight λ to explore how it governs the trade-off between compression efficiency and downstream performance in de-tection and segmentation. The experiments are conducted on the RADIal dataset using the FFTRadNet model (Ta-ble S3). We apply 4-bit quantization with a fixed block length of M = 64 . The pruning ratio is initialized to 12, and the learning rate is set to η = 1 . As λ increases, the sys-tem adjusts the pruning strength, balancing lower bit rates with the preservation of task-relevant features. Each con-figuration corresponds to a Pareto-optimal point that jointly optimizes compression and task performance. 
+
+Proxy gradient stability. Extreme fluctuation scenarios in-duced by high-speed motion or severe occlusion are unfor-tunately not present in the open-sourced datasets. We also believe that occlusion is an unrealistic scenario for radars: (1) a car would be almost crashing into another for a radar having a wide azimuth field of view (FoV) of 140°, and (2) a radar is unaffected by rain or fog, unlike a camera. We therefore synthetically generate such extreme fluc-tuation scenarios by adding white noise to the radar tensor and present the results in Table S4. We mimic scenarios with mild, moderate, and severe conditions by modulating the noise power, which is scaled linearly with the noise scale factor. In this experiment, we confirm that AdaRadar auto-matically reduces the compression ratio under harsher con-ditions by monitoring the object-detection bounding-box confidence. We also compare the results with the vanilla model, which does not employ any compression. We find that our compression scheme achieves over 25× compres-sion while maintaining the detection performance in those worse conditions. 
+
+## S4. Extended quantitative analysis on spectral compression front end 
+
+S4.1. Effect of quantization on downstream tasks 
+
+Effect of quantization on RADIal. We evaluate how different quantization bit-widths affect both compres-sion–decompression efficiency and network accuracy, and we summarize the resulting design choices. Figure S5 shows the average precision, average recall, and F 1 score roll-off for different bit-rates using the FFTRadNet net-work on the RADIal test dataset without any fine-tuning and block length M = 64 . We observe that 4-bit quan-tization achieves equal or higher performance compared to bit widths of 8 and 16, and thus we adopt 4-bit quantization. 
+
+Effect of quantization on CARRADA. Figure S6 depicts how mIoU and mDice vary as the bit-rate decreases, which is the case for the CARRADA dataset with the TMVA-Net. Performance boosting until 5× pruning is pronounced. We select 8-bit quantization because it delivers performance similar to that of 16-bit quantization. We report that 4-bit symmetric quantization underperforms, and we use the block length M = 16 in the above quantization cases. 
+
+Effect of quantization on Radatron. Figure S7 reveals how detection metrics evolve as the bit-rate is lowered for the Radatron dataset using the baseline Radatron model. We also observe performance boosting until 7.5× pruning, espe-cially for AP 75 . We choose 8-bit quantization despite 4-bit quantization giving similar performance due to the consid-eration for the block length. We explain this in the following section. 
+
+S4.2. Effect of block length on downstream tasks 
+
+Effect of block length on RADIal. We examine the impact of varying block sizes on both compression–decompression performance and downstream network accuracy, and draw design choices. Figure S8 presents how average preci-sion, recall, and F 1 score degrade across block sizes M ∈{8, 16 , 32 , 64 } when evaluated on the RADIal test set us-ing FFTRadNet, with 4-bit quantization and no fine-tuning. Among these, M = 64 yields the best trade-off between performance and overhead from the scaling factor. We hypothesize that larger DCT blocks yield better per-formance because they aggregate more spatial information, 13 Table S2. Surrogate objective ablation with range standard deviation, azimuth standard deviation, and a random variable. We observe that different choices of surrogate objective do not correlate well with the downstream task performance, leading to severe degra-dation in the perception performance. In those cases, such a significant drop in F 1 score bears similar performance to the random variable.                                                                                                   
+
+> Surrogate objective CR ↑CR stdev. ↓Precision ↑Recall ↑F1↑mIoU ↑
+> Confidence (Ours) 6.58 0.91 0.969 0.948 0.958 0.796
+> Range stdev. 60.9 22.1 0.941 0.785 0.856 0.721 Azimuth stdev. 87.0 9.8 0.930 0.762 0.837 0.708 Random 34.1 29.7 0.945 0.834 0.886 0.741 Table S3. Hyperparameter ablation with λ.We analyze the trade-off between bit rate, compression ratio, and downstream performance on detection and segmentation through modulation of λ.‘PR’, ‘BR’, and ‘CR’ stand for prune ratio, bit rate, and compression ratio, respectively. We use 4-bit quantization with a block length of M= 64 . The pruning ratio is initially set to 12, and the learning rate is configured as η= 1 .
+> λPR ↑BR [bpp] ↓CR ↑Precision (%) ↑Recall (%) ↑F1(%) ↑mIoU (%) ↑
+> 112.57 0.32 100.56 96.25 94.03 95.13 79.34 3.3 13.83 0.29 110.68 96.21 93.87 95.03 79.21 10 16.09 0.25 128.74 96.07 93.64 94.84 79.12 33 20.75 0.19 166.03 95.70 93.07 94.36 78.87 100 27.91 0.14 223.29 95.48 91.66 93.53 78.18
+
+leading to smoother and more compressible spectral repre-sentations. In contrast, smaller blocks may introduce higher variance across patches, making the compression less stable and more lossy. Also, smaller blocks may experience more fragments on the edges at a high pruning ratio. 
+
+Effect of block length on CARRADA. We evaluate how block length affects segmentation performance on the CAR-RADA dataset by varying M ∈ { 8, 16 , 32 } and monitoring mIoU and mDice scores. Fig S9 shows that M = 32 offers a favorable trade-off between accuracy and overhead. Ad-ditionally, we report that using M = 64 without fine-tuning leads to noticeably lower performance. 
+
+Effect of block length on Radatron. We assess how vary-ing block sizes influence detection performance on the Ra-datron dataset by testing M ∈ { 8, 16 , 32 , 64 }. Figure S10 indicates that M = 64 results in relatively poor perfor-mance, while M = 32 provides a more favorable trade-off. 
+
+## S5. Extended baseline comparisons 
+
+S5.1. Comparison with image domain compression methods, Gumbel-sigmoid, and CFAR 
+
+Autoencoder. Image-domain methods exhibit a perfor-mance gap due to the extreme sparsity of radar data, which contrasts with the dense spatial information of optical im-agery. Table S5 compares the compression performance of the autoencoder (AE) architecture by Ball´ e et al . [41], im-plemented with the CompressAI library [48]. The results indicate a substantial 54 × reduction in radar data volume. However, the performance degrades by a larger amount than AdaRadar after compression by two orders of magnitude. We trained the AE on the RADIal training set for epochs up to 300 with a learning rate of 10 −4 and evaluated its impact by integrating it into the FFTRadNet pipeline. We treat each radar channel arising from Rx-Tx pairs indepen-dently. meaning the channel dimension is flattened with the batch dimension. The bit rate is measured directly from the bottleneck latent code. Since networks optimized for spe-cific λae hyperparameters are trained independently, they are fundamentally static . Thus, these AEs lack the capacity for dynamic bit-rate modulation during inference. The AE is comparable in size (3M parameters) to the perception net-work itself, undermining the objective of lightweight com-pression. 
+
+H.264. We evaluate FFTRadNet using raw radar data compressed via the H.264 codec from the ffmpeg library [49] (Table S5). To ensure robust scaling, we clip the radar distribution per channel at the 2nd and 98th per-centiles, as standard min-max normalization yields inferior results. The compression is implemented by reformatting the radar channel dimension into a temporal sequence of 8-bit grayscale frames. We observe that H.264-based com-pression falls short in terms of downstream task perfor-mance because raw radar data is highly sparse and exhibits a wide dynamic range. 
+
+Soft gradient with Gumbel-sigmoid. We employ aGumbel-sigmoid [50, 51] with M 2 = 64 2 learnable pa-rameters to estimate soft gradients for pruning DCT coeffi-cients. In Table S5, perception performance remains stable up to a compression factor of 2.3×. We attribute this robust-14 Table S4. Proxy gradient stability at varying additive Gaussian noise levels on the RADIal test set. We test the stability of our feedback loop by adding Gaussian noise to the radar input (RD map). Even under the noisy scenario, our adaptive control-based compression demonstrates similar performance to the non-compressed baseline. 
+
+Compression Condition Noise Scale Comp. Ratio ↑ Prun. Ratio ↑ Precision ↑ Recall ↑ F1 ↑ mIoU ↑
+
+✗ No Mild 1 1.0 1.0 0.973 0.922 0.947 0.774 
+
+✓ Yes Mild 1 36.8 4.6 0.969 0.910 0.939 0.777 
+
+✗ No Moderate 2 1.0 1.0 0.957 0.884 0.919 0.694 
+
+✓ Yes Moderate 2 33.7 4.2 0.967 0.860 0.910 0.692 
+
+✗ No Severe 5 1.0 1.0 0.931 0.771 0.844 0.618 
+
+✓ Yes Severe 5 25.6 3.2 0.939 0.720 0.815 0.602 Table S5. Benchmark with extended baselines. We compare radar compression with autoencoders, H.264, Gumbel-sigmoid-based pruning, and CFAR on RADIal. 
+
+Methods Hyperparameters BR [bpp] ↓ CR ↑ Precision (%) ↑ Recall (%) ↑ F1 (%) ↑ mIoU (%) ↑
+
+Baseline - 32 1× 97.24 95.93 96.58 75.97 Ours sFxP = 4 -bit 0.32 100.5× 96.25 94.04 95.13 79.34 AE λae = 1 .0 · 10 −3 1.66 19.2× 97.20 95.67 96.43 75.45 AE λae = 3 .3 · 10 −4 1.07 29.75× 97.22 94.85 96.02 74.42 AE λae = 1 .0 · 10 −4 0.59 54.1× 97.40 92.82 95.05 70.80 AE λae = 3 .3 · 10 −5 0.27 117.1× 97.49 77.05 86.08 61.04 H.264 crf = 0 7.8 4.08× 98.49 76.41 86.05 66.48 H.264 crf = 10 5.4 5.91× 98.44 76.28 85.95 66.43 H.264 crf = 20 3.6 8.87× 98.33 75.76 85.58 66.26 Gumbel λs = 0 .03 13.86 2.3× 96.37 96.89 96.63 75.17 Gumbel λs = 0 .1 8.98 3.6× 94.33 97.13 95.71 73.59 Gumbel λs = 0 .3 6.68 4.75× 91.24 96.23 93.67 70.40 Gumbel λs = 1 .0 2.83 11.3× 84.91 90.91 87.80 57.57 CFAR thd = 10 0.05 7.68 4.17× 98.14 71.54 82.76 61.10 CFAR thd = 10 0.2 5.56 5.76× 98.02 63.14 76.81 55.72 CFAR thd = 10 0.5 2.29 14.0× 98.78 42.77 59.69 47.13 
+
+ness to the Gumbel-sigmoid acting as a static mask during inference. While dynamic pruning via an auxiliary network is possible, it would require transmitting gradients for the entire set of DCT coefficients, thereby posing a communi-cation bottleneck unsuitable for our compression objectives. We train the Gumbel-sigmoid layer for epochs up to 100 with a learning rate of 10 −2. During training, the detection backbone remains frozen while we optimize a composite loss L = Ltask + λsLprune that combines perception task and pruning objectives. 
+
+CFAR. Although CFAR [27, 28] facilitates peak detection in radar images, its lossy nature prevents the reconstruction of the raw radar tensor. We assume that maintaining these peak values provides a viable basis for compression. We perform compression analogous to the index-value-based method, in which the non-zero elements are determined by the CFAR algorithm rather than by the magnitude alone. In Table S5, we use a Cell-Averaging CFAR detector with window and guard widths of (9 , 3) , evaluating peak-based compression across varying SNR thresholds ( thd ). 
+
+S5.2. Distribution comparison between image and raw radar tensor 
+
+Figure S2 illustrates the stark contrast between the distribu-tions of natural images and radar tensors. While the image data is distributed broadly across the 8-bit dynamic range, the radar data exhibits extreme sparsity. Here, the image is of size 3 × 512 × 768 while the radar is 32 × 512 × 256 .Specifically, the radar signal is highly concentrated, with the 1st and 99th percentiles residing at -1.74 and 1.74, respec-tively. This statistical discrepancy highlights why standard image-domain compression codecs are ill-suited for radar data without domain-specific adaptation. 
+
+S5.3. Compression after learning-based FFT 
+
+We demonstrate the efficacy of AdaRadar on learning-based FFT in Table S6. T-FFTRadNet converts raw ADC in-15 Table S6. Compression after learned FFT. We demonstrate the effectiveness of AdaRadar even with learned FFT. We use T-FFTRadNet for detection and segmentation using the RADIal test set. Our compression method achieves 32× data reduction with negligible perfor-mance loss. (PR: prune rate; BR: bit rate; CR: compression rate.) 
+
+Methods Bit ↓ PR ↑ BR [bpp] ↓ CR ↑ Precision (%) ↑ Recall (%) ↑ F1(%) ↑ mIoU (%) ↑
+
+Baseline [52] 32 1 32 1× 90.61 93.67 92.11 80.56 Ours 4 2 2 16× 90.94 93.19 92.05 80.34 Ours 4 4 1 32× 90.55 91.89 91.22 79.56 0 50 100 150 200 250     
+
+> Magnitude
+> 0
+> 2500
+> 5000
+> 7500
+> 10000
+> 12500
+> Count
+> (a) Image distribution (8-bit)
+> Red channel
+> Green channel
+> Blue channel
+> 100 50 050 100
+> Magnitude
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Count (log)
+> (b) Radar distribution
+
+Figure S2. Difference in distribution between image and radar tensors . This illustrates that while natural (a) images span a broad dynamic range, (b) radar signals exhibit extreme sparsity and a heavy-tailed profile (1st/99th percentiles at ±1.74), necessitating specialized compression beyond standard image-domain codecs. 
+
+puts into spectral form via FourierNet, which performs 
+
+learned FFT. Its Swin Transformer backbone uses this spec-tral representation to perform object detection. We integrate AdaRadar with 4-bit quantization and patch size M = 8 af-ter the FourierNet, which performs learnable 2D-FFT from raw ADC outputs. It compresses the radar tensor by a fac-tor of 32× with negligible loss in accuracy (˜1%), without 
+
+retraining. 
+
+## S6. Qualitative results and visualizations 
+
+S6.1. Raw radar data under compression 
+
+Range-doppler map visualization. Figure S3 com-pares the range-Doppler (RD) maps before compres-sion with those reconstructed after the full compres-sion–decompression cycle, and adds magnified patches for each map at several signal-to-noise ratio (SNR) levels. Figure S3(a) displays the original RD map x, whereas Fig. S3(b) shows its reconstruction ˆx after the compres-sion–decompression process with 8-bit quantization at a pruning ratio of 1. Each image visualizes the log-power spectrum log ∥X c∥ = log ∥x2c + jx2c+1 ∥ where the radar’s complex feature tensor X ∈ CC×H×W is decomposed into its real and imaginary parts and concatenated along the channel dimension to form the real-valued tensor x ∈
+
+R2C×H×W . Figure S3(c) zooms in on a 64×64 patch taken from the reconstructed RD map shown in Fig. S3(b). Fig-ure S3(d)-(f) respectively correspond to the same patch with different pruning ratios of {5, 10 , 20 }.Figure S11 provides additional qualitative results to showcase the effect of compression on the RD map and the corresponding radar perception outputs. Results on ar-bitrary samples consistently indicate that object detection or segmentation outputs perform comparably to the non-compressed baseline. 
+
+Table S7. SNR & RAE against compression. Mean and max-imum relative absolute errors (RAE) at different compression ra-tios. 
+
+Comp. Ratio ↑ SNR [dB] ↑ RAE mean ↓ RAE max ↓
+
+1 144.17 0.000 0.000 5 35.45 0.010 0.329 10 32.26 0.017 0.378 15 30.77 0.022 0.389 20 29.75 0.025 0.390 30 28.36 0.031 0.383 
+
+SNR against compression. Figure S3(g) plots the average SNR against bit-rate for 100 RD maps sampled from the RADIal test set. The SNR falls steeply as the pruning ratio rises from 1× to 5×. The curve flattens beyond 5×, indicat-ing only marginal degradation. 
+
+RAE against compression. We computed the mean and maximum relative absolute errors (RAE) between the orig-inal and the reconstructed power spectrums (Table S7). Here, RAE = |x−ˆx||x| where x and ˆx respectively are the orig-inal and reconstructed spectrums, and both mean and max RAE are averaged across 100 radar tensor samples from the RADIal test set. While the maximum RAE saturates at ap-proximately 0.38 beyond the compression ratio of 10, the mean RAE grows sub-linearly with a greater compression ratio. These results demonstrate the robustness and effec-tiveness of our compression method in preserving spectral fidelity even at high compression rates. 
+
+S6.2. Remarks on frequency components 
+
+Our method adaptively selects coefficients within each patch based on local energy, making it broadly applica-ble across different sensor types and downstream tasks. The frequency components are determined primarily by the 16 Figure S3. Qualitative visualization on range-Doppler map. (a) Original and (b) reconstructed RD map for a single channel with 8-bit quantization and a pruning ratio of 1. (c)-(f) Magnified 64×64 patches at pruning ratios of {1, 5, 10 , 20 }, respectively. (g) SNR vs. bit rate trade-off where numerical values are listed in Table S7. 0 5 10 15    
+
+> Horizontal DCT frequency
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> Vertical DCT frequency
+> (a) CARRADA 0510 15
+> Horizontal DCT frequency
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> Vertical DCT frequency
+> (b) Radatron
+
+Figure S4. DCT coefficient magnitudes. (a) CARRADA and (b) Radatron datasets. Unlike the RADIal dataset, the spectral bins are more focused on low-frequency bins. Our adaptive pruning is agnostic to such spectral structures, since it ranks coefficients by energy. 
+
+radar sensor characteristics and the perceived scene. We provide further remarks on the distribution of frequency co-efficients in the 2D map. 
+
+RADIal. In Figure 4(a), when we experiment with radar tensors from the RADIal dataset, the magnitude of the DCT coefficients is concentrated around the high-frequency com-ponents, with peak energy at (x, y ) = (63 , 63) and decreas-ing radially. Taking a horizontal slice at y = 63 or a vertical slice at x = 63 , we observe a linearly increasing ramp in frequency towards the end. 
+
+CARRADA. We observe that the energy is centered mostly at the low-frequency components, exhibiting high-intensity values at the left and top edges, i.e., x = 0 and y = 0 . This suggests that the radar sensors capture smooth horizontal and vertical patterns in the range Doppler map. 
+
+Radatron. The pattern is also similar for the Radatron dataset, wherein we discover the energy mainly being con-centrated in the low-frequency bins, creating high-intensity bar shapes at the left and top edges. 17 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+88 
+
+90 
+
+92 
+
+94 
+
+96 
+
+98 
+
+100 
+
+> AP (%)
+
+(a) AP vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+100 
+
+> AR (%)
+
+(b) AR vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+80 
+
+85 
+
+90 
+
+95 
+
+100 
+
+> F1 score (%)
+
+(c) F1 vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+Figure S5. Effect of quantization bit width on RADIal. (a) Average precision, (b) average recall, and (c) F 1 score against the bit rate modulation from pruning. We observe that quantization up to 4 bits does not affect the performance compared to that of 8-bit and 16-bit. We use the FFTRadNet on the RADIal dataset without any fine-tuning with the block length M = 64 for all cases. 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+30 
+
+35 
+
+40 
+
+45 
+
+50 
+
+55 
+
+60 
+
+> mIoU (%)
+
+(a) mIoU vs. bit rate 
+
+> 8-bit
+> 16-bit
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+40 
+
+45 
+
+50 
+
+55 
+
+60 
+
+65 
+
+70 
+
+> mDice (%)
+
+(b) mDice vs. bit rate 
+
+> 8-bit
+> 16-bit
+> Baseline
+
+Figure S6. Effect of quantization bit width on CARRADA. (a) mIoU and (b) mDice reported versus the bit rate reduction. We observe that quantization up to 8 bits does not affect the performance compared to that of 16-bit. We use the TMVA-Net on the CARRADA dataset 
+
+without any fine-tuning with the block length M = 16 for all cases. 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+> mAP (%)
+
+(a) mAP vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+> AP50 (%)
+
+(b) AP50 vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+> AP75 (%)
+
+(c) AP75 vs. bit rate 
+
+> 4-bit
+> 8-bit
+> 16-bit
+> Baseline
+
+Figure S7. Effect of quantization bit width on Radatron. (a) mAP, (b) AP 50 , and (c) AP 75 vs. the bit rate. We observe that quantization up to 8 bits does not affect the performance compared to that of 4-bit and 16-bit. We use the baseline Radatron model on the Radatron dataset without any fine-tuning with the block length M = 16 for all cases. 
+
+18 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+88 
+
+90 
+
+92 
+
+94 
+
+96 
+
+98 
+
+100 
+
+> AP (%)
+
+(a) AP vs. bit rate 
+
+> M = 8
+> M = 16
+> M = 32
+> M = 64
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+100 
+
+> AR (%)
+
+(b) AR vs. bit rate 
+
+> M = 8
+> M = 16
+> M = 32
+> M = 64
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+80 
+
+85 
+
+90 
+
+95 
+
+100 
+
+> F1 score (%)
+
+(c) F1 vs. bit rate 
+
+> M = 8
+> M = 16
+> M = 32
+> M = 64
+> Baseline
+
+Figure S8. Effect of block length on RADIal. (a) Average precision, (b) average recall, and (c) F 1 score against the block length modulation. We observe that compression with a larger block length generally performs better. We use the FFTRadNet on the RADIal dataset without any fine-tuning with 4-bit quantization for all cases. 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+30 
+
+35 
+
+40 
+
+45 
+
+50 
+
+55 
+
+60 
+
+> mIoU (%)
+
+(a) mIoU vs. bit rate 
+
+> M = 8
+> M = 16
+> M = 32
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+> mDice (%)
+
+(b) mDice vs. bit rate 
+
+> M = 8
+> M = 16
+> M = 32
+> Baseline
+
+Figure S9. Effect of block length on CARRADA. (a) mIoU and (b) mDice reported versus the change in block length. We observe that a larger block is preferred for a higher pruning ratio and a smaller block size for a lower pruning ratio. We use the TMVA-Net on the CARRADA dataset without any fine-tuning with 8-bit quantization for all cases. 0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+> mAP (%)
+
+(a) mAP vs. bit rate     
+
+> M= 8
+> M= 16
+> M= 32
+> M= 64
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+90 
+
+> AP50 (%)
+
+(b) AP50 vs. bit rate     
+
+> M= 8
+> M= 16
+> M= 32
+> M= 64
+> Baseline
+
+0.1 0.5 1 5 10 30 
+
+Bit rate [bpp] 
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+> AP75 (%)
+
+(c) AP75 vs. bit rate     
+
+> M= 8
+> M= 16
+> M= 32
+> M= 64
+> Baseline
+
+Figure S10. Effect of block length on Radatron. (a) mAP, (b) AP 50 , and (c) AP 75 vs. block size change. We observe that a larger patch performs better for higher pruning ratios. We use the baseline Radatron model on the Radatron dataset without any fine-tuning with 8-bit quantization for all cases. 
+
+19 Camera Ground truth RD Prediction RD 
+
+(w/ comp.) 
+
+Prediction 
+
+(w/ comp.) Figure S11. Additional qualitative comparisons. Camera images only provide contextual reference for the scene. RD images map Range to the y-axis and Doppler to the x-axis. We highlight the detected car in red and the segmented map in green in the bird’s-eye-view visualization. 
+
+20

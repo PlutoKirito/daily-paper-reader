@@ -1,0 +1,728 @@
+Title: Steering Video Diffusion Transformers with Massive Activations
+
+URL Source: https://arxiv.org/pdf/2603.17825v1
+
+Published Time: Thu, 19 Mar 2026 01:32:59 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# Steering Video Diffusion Transformers with Massive Activations 
+
+Xianhang Cheng 1, Yujian Zheng 1, Zhenyu Xie 1, Tingting Liao 1, and Hao Li 1,2
+
+> 1
+
+MBZUAI 2Pinscreen 
+
+{xianhang.cheng,yujian.zheng,zhenyu.xie,tingting.liao}@mbzuai.ac.ae, hao@hao-li.com 
+
+Project Page: https://xianhang.github.io/webpage-STAS/ 
+
+Abstract. Despite rapid progress in video diffusion transformers, how their internal model signals can be leveraged with minimal overhead to enhance video generation quality remains underexplored. In this work, we study the role of Massive Activations (MAs), which are rare, high-magnitude hidden state spikes in video diffusion transformers. We ob-served that MAs emerge consistently across all visual tokens, with a clear magnitude hierarchy: first-frame tokens exhibit the largest MA magni-tudes, latent-frame boundary tokens (the head and tail portions of each temporal chunk in the latent space) show elevated but slightly lower MA magnitudes than the first frame, and interior tokens within each latent frame remain elevated, yet are comparatively moderate in magnitude. This structured pattern, which is most pronounced during early denois-ing steps, suggests that the model implicitly prioritizes token positions aligned with the temporal chunking in the latent space, where first-frame tokens serve as global temporal anchors and latent-frame boundary to-kens mediate smooth transitions between temporally compressed seg-ments. Based on this observation, we propose St ructured Activation 
+
+Steering ( STAS ), a training-free self-guidance-like method that steers MA values at first-frame and boundary tokens toward a scaled global maximum reference magnitude. STAS achieves consistent improvements in terms of video quality and temporal coherence across different text-to-video models, while introducing negligible computational overhead. 
+
+Keywords: Video diffusion transformers · Massive activations · Training-free 
+
+1 Introduction 
+
+Recent advances in video generation have been driven by diffusion- and flow-based generative frameworks. Earlier text-to-video models extended text-to-image diffusion backbones by incorporating temporal modules into U-Net ar-chitectures [1, 2, 7, 8, 16, 18, 41, 56]. This trend has culminated in a shift to dif-fusion transformer (DiT) architectures [17, 24, 28, 31, 35, 44, 45, 51, 55], enabling better scalability in model capacity and training data. Beyond architectural de-sign, significant effort has been devoted to improving video quality and tempo-ral coherence through complementary strategies: (i) training-time objectives or 
+
+> arXiv:2603.17825v1 [cs.CV] 18 Mar 2026
+
+2 X. Cheng et al.                                 
+
+> (a) Wan2.1-1.3B [45] (b) Wan2.2-5B [45] (c) CogVideoX-5B [51] (d) FLUX [29] 012345678910 11 12 13 14 15 16 17 18 19 20
+> Latent Frame Index
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> 38
+> Activation Value  Boundary mean (head+tail 8%)
+> Interior mean (middle 84%)
+> 9200 9300 9400 9500
+> Token Index
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> 38
+> Tail 8% Head 8%
+> (e) Left: Activation profile for Wan2.1-1.3B T2V model on MA dimension (dim 1188). Right: close-up of the activation values around the boundary (head and tail 8%) between latent frames 5 and 6.
+
+Fig. 1: Activation magnitudes across different DiTs (averaged over 100 text prompts). (a–c) 3D bar charts of hidden-state activations over the patch-token and feature-dimension axes for three video DiTs; (d) the same visualization for an image DiT (FLUX). The image DiT (d) exhibits near-uniform token magnitudes along MA di-mensions, whereas video DiTs (a–c) display pronounced structure—highest responses in the first latent frame and recurring spikes at latent-frame boundaries. (e) further confirms that boundary tokens consistently receive higher MA values than interior to-kens, with the first latent frame attaining the largest values overall. 
+
+inductive biases that encourage motion consistency [5, 25, 53], (ii) post-training alignment or preference optimization that reshapes generation behavior [9,33,50], and (iii) inference-time heuristics [3, 6, 21, 27, 40, 46, 47, 52]. However, while effec-tive, existing approaches typically trade performance for cost, either requiring additional training data and optimization, or adding extra computation at in-ference through auxiliary models and guidance. Consequently, how to leverage the model’s own internal signals during sampling—without extra training or significant overhead—remains largely unexplored. In this paper, we take a closer look at the internal activations of video DiTs and find that Massive Activations (MAs)—rare hidden-state spikes in which a small fraction of feature dimensions take unusually large magnitudes, often ex-ceeding 50 × the mean activation value—exhibit a distinctive positional structure in their token-wise distribution (Fig. 1). This structure appears unique to the video setting and has not been recognized in prior work on MAs [14, 43]. It arises naturally from the additional temporal dimension in video generation and manifests as two distinct properties absent in the image setting. First, tokens associated with the first frame consistently attain the largest MA magnitudes. Second, MA dimensions display a periodic pattern: prominent peaks recur at STAS 3
+
+token positions aligned with temporal segment boundaries introduced by 4×
+
+temporal compression (Fig. 1). This pattern is consistent across model fami-lies, spanning both standard DiT backbones (Wan2.1-1.3B and Wan2.2-5B [45]) and MM-DiT architectures (CogVideoX [51]), and persists under different latent compression ratios ( 8×8×4 vs. 16 ×16 ×4). We distill these observations into two key insights: (1) MAs implicitly upweight first-frame tokens, reinforcing their role as a global reference, and (2) MAs spike at latent-frame boundaries, serving as implicit boundary cues that facilitate cross-chunk consistency in the flattened token sequence. Building on the above insights, we propose St ructured Activation Steering (STAS ), a training-free, self-guidance-like method that steers MA values at structurally significant token positions(first-frame and temporal boundary to-kens) toward a scaled global maximum reference magnitude. By strengthening the activations at these structurally significant positions, STAS reinforces the model’s inherent temporal anchoring mechanism without modifying any model parameters. The method works in a single forward pass and introduces negligible computational overhead (less than 0.1%)—requiring only element-wise scaling at selected token positions, and yields consistent improvements in temporal co-herence and video quality across all evaluated models, including Wan2.1-1.3B, Wan2.2-5B [45] and CogVideoX [51]. Our contributions can be summarized as follows: 
+
+– We provide the first systematic analysis of MAs in video DiTs, revealing a structured positional hierarchy in MA magnitudes: first-frame peaks and latent-boundary spikes, which is consistent across different model architec-tures and latent compression ratios. 
+
+– We propose Structured Activation Steering (STAS), a training-free, MA-driven method that exploits the MA structure by selectively steering activa-tions at first-frame and latent-frame boundary tokens, without introducing extra computation beyond standard inference. 
+
+– We demonstrate that STAS yields consistent improvements in temporal co-herence and video quality across different models, evaluated on both bench-marks and human preference studies. Moreover, STAS can be combined with other training-free methods to achieve additional gains. 
+
+2 Related Work 
+
+Video Diffusion Transformers. With transformer backbones at their core, diffusion transformers [37] have become a common foundation for modern visual generation tasks. This paradigm has been extended from images to videos, giving rise to a family of video diffusion transformers [17,28,31,45,51,55]. These models operate on spatiotemporal latent representations produced by their carefully designed variational autoencoders (VAEs), which compress video along both spatial and temporal dimensions before feeding the resulting token sequence into a transformer with full spatiotemporal attention. Despite strong generative capacity, maintaining temporal consistency can still be challenging in practice. 4 X. Cheng et al. 
+
+This suggests that temporal stability is closely linked to how internal signals evolve throughout the denoising process. 
+
+Massive Activations. Massive activations have been reported across trans-former families spanning language [36, 43], vision [10], and diffusion models [12–14,39]. In Large Language Models (LLMs), such activations often emerge at fixed dimensions and are frequently associated with low-information tokens, and have been linked to contextual knowledge modeling in several analyses [23, 48]. Similar patterns are observed in Vision Transformers (ViTs), where MAs are re-ported to arise in redundant or background-like tokens and correlate with global semantic encoding [10,49]. In DiTs, MAs have been discussed mainly due to their practical implications for acceleration techniques such as quantization [34,39,54] and distillation [12], and their presence can also affect extracted feature qual-ity [13]. Recently, researchers [14] found that MAs in image DiTs are critical to local detail synthesis and leveraged this property to guide the model toward higher-quality detail generation by contrasting against a detail-deficient variant with disrupted activations. Despite this growing body of work, how MAs affect generation quality in video DiTs remains unexplored. 
+
+Improving Video Generation with Training-Free Methods. A body of work has explored enhancing video generation in a training-free manner. Prior works [3,47] improve temporal consistency in U-Net-based video generation mod-els by manipulating attention maps. Several methods use external models for guidance, e.g., leveraging strong image generators [15, 22] or combining them with multimodal LLMs [30]. Other approaches, such as FreeInit [46] and Fre-qPrior [52], exploit external noise priors to reduce spatiotemporal incoherence. Beyond external signals, some methods use the model’s own predictions as guid-ance. Auto-guidance uses a weaker model for guidance [26]; such weak models can be obtained by skipping selective spatiotemporal layers [21] or dropping stochas-tic DiT blocks [6]. FlowMo [40] optimizes predictions by reducing temporal vari-ance across consecutive latent frames at selected timesteps, while ANSE [27] estimates attention-based uncertainty from a noise pool to select the best initial noise. However, these methods require additional forward passes or optimization steps at chosen timesteps and blocks, which increases inference cost. In contrast, our method operates within a single forward pass without additional model runs, making it significantly more efficient. 
+
+3 Preliminaries 
+
+Video Diffusion Transformers. Modern state-of-the-art video DiTs are built on the flow matching [32] objective, which learns a transformation from a stan-dard Gaussian distribution z0 ∼ N (0 , I ) to a target distribution z1 in latent space. The latent z1 is obtained by encoding an input video V of 1+ F frames through a spatiotemporal VAE. The first frame is encoded independently, while STAS 5
+
+the remaining F frames are compressed temporally in a chunk-wise manner: every rtemp consecutive frames are encoded into a single latent frame, yield-ing 1+ Frtemp latent frames in total. The latent is then patchified and fed into a denoiser Dθ (zt, t, c ), a stack of transformer blocks parameterized by θ, condi-tioned on timestep t and text prompt c. During inference, generation proceeds by iteratively following the learned velocity field from z0 to z1.
+
+Classifier-Free Guidance. Classifier-Free Guidance (CFG) [19] improves the alignment between generated outputs and conditioning signals c by extrapolat-ing between conditional and unconditional predictions. At each timestep t, the guided prediction is computed as: 
+
+ˆDθ (zt, t, c ) = Dθ (zt, t, ∅) + λ · (Dθ (zt, t, c ) − Dθ (zt, t, ∅)) , (1) where Dθ (zt, t, c ) and Dθ (zt, t, ∅) denote the conditional and unconditional pre-dictions, and λ > 1 controls the guidance strength. Intuitively, CFG amplifies the direction from the unconditional toward the conditional prediction, steering the generation toward greater prompt adherence. In practice, CFG is enabled by default in all modern text-to-video generation models. 
+
+Detail Guidance. Detail Guidance (DG) [14] improves local detail fidelity in image DiTs by extrapolating between the original prediction and a degraded variant obtained by zeroing out all token values along MA dimensions at a chosen DiT layer depth m. The guided prediction is computed as: 
+
+ˆDθ (zt, t, c ) = Dθ (zt, t, c ) + ω · (Dθ (zt, t, c ) − Dθ,m (zt, t, c )) , (2) where Dθ,m denotes the degraded denoiser and ω > 0 controls the detail guid-ance strength. Notably, this formulation is equivalent to amplifying the MA dimensions by a factor of (1 + ω) in the original prediction, as the extrapolation effectively scales the difference contributed by MAs while leaving the remaining dimensions unchanged. 
+
+4 Observations of Massive Activations in Video DiTs 
+
+MAs in image DiTs have been shown to exhibit several consistent properties [14]: MAs persist across all layers and model scales, concentrate on fixed channel dimensions regardless of token position, and remain largely invariant to text conditioning. We find that these properties also hold in video DiTs as shown in Fig. 1a, Fig. 1b, and Fig. 1c. 
+
+Periodic MA Pattern Emerges along the Token Sequence. Beyond these shared properties, we discover a distinctive periodic pattern in MA magnitudes along the token sequence (Fig. 1e). Specifically, tokens from the first latent frame 6 X. Cheng et al. 21                   
+
+> 27
+> 32
+> 38
+> MA Dim 1188
+> Boundary mean
+> Interior mean
+> First frame mean
+> T0.8T 0.6T 0.4T 0.2T
+> Denoising Timestep
+> 0.0
+> 0.1
+> Non-MA dims mean
+> T0.8T 0.6T 0.4T 0.2T
+> Denoising Timestep
+> 1.00
+> 1.02
+> 1.04
+> 1.06
+> 1.08
+> 1.10
+> Ratio
+> MA Dim 1188
+> Boundary / Interior
+> Boundary (excl. 1st) / Interior
+> Activation Value
+> (a) Mean activation values of different tokens across timesteps. 21
+> 27
+> 32
+> 38
+> MA Dim 1188
+> Boundary mean
+> Interior mean
+> First frame mean
+> T0.8T 0.6T 0.4T 0.2T
+> Denoising Timestep
+> 0.0
+> 0.1
+> Non-MA dims mean
+> T0.8T 0.6T 0.4T 0.2T
+> Denoising Timestep
+> 1.00
+> 1.02
+> 1.04
+> 1.06
+> 1.08
+> 1.10
+> Ratio
+> MA Dim 1188
+> Boundary / Interior
+> Boundary (excl. 1st) / Interior
+> Activation Value
+> (b) Ratio of boundary (head 8% + tail 8%) to interior MA magnitudes.
+
+Fig. 2: Temporal analysis of MA dimension 1188 in the middle block (block 15) of Wan2.1-1.3B, averaged over 100 prompts. As shown in (a), first-frame tokens exhibit the highest MA values, followed by boundary and then interior tokens. All three decrease monotonically throughout the sampling process, yet the boundary-to-interior ratio also declines in (b), revealing that the latent-frame boundary signal is most pronounced in early denoising stages. 
+
+exhibit the largest MA values across the entire sequence, while among the re-maining tokens, those at temporal boundary positions of latent frames consis-tently exhibit larger MA values than interior tokens. This periodicity aligns precisely with the chunk-wise temporal compression ratio rtemp of the VAE, re-vealing a direct link between the temporal compression structure of the VAE and the MA patterns within the video DiTs. 
+
+MAs Decay with the Denoising Progress. We further observe that MA magnitudes decay monotonically as sampling progresses (Fig. 2a), in contrast to image DiTs where timestep embeddings actively modulate the MA distribution [14]. Moreover, the ratio between boundary and non-boundary token MA values also decreases over timesteps and gradually approaches 1 (Fig. 2b), indicating a vanishing discrepancy between the two. This suggests that the periodic pattern gradually attenuates during the sampling process. These observations reveal that the latent-frame-boundary signal is most pronounced in early denoising stages. 
+
+MAs at First Frame Tokens Impact Visual Quality. Given that first frame tokens exhibit the largest MA values, we investigate their impact on the visual quality of the first generated video frame by selectively disrupting or amplifying MA dimensions at these positions. For disruption, we zero out MA dimensions of either the first frame tokens or all video tokens. As shown in Fig. 3b and Fig. 3c, disrupting first-frame MAs already degrades visual quality, while disrupting all tokens is even more harmful. For amplification, we scale MA dimensions by 2.5×
+
+on all tokens (Fig. 3d), first frame tokens only (Fig. 3e), and set first frame MA dimensions to 2.5× the maximum MA value (Fig. 3f), respectively. Uniformly amplifying all tokens produces poor results, whereas selectively amplifying first frame tokens improves visual quality. Aesthetic scores in (Fig. 3g) corroborate STAS 7                  
+
+> (a) Original (b) Disrupt MA 1st (c) Disrupt MA all
+> (d) Amplify MA all (e) Amplify MA 1st (f ) Amplify 1st (max) (a) (b) (c) (d) (e) (f)
+> 50
+> 55
+> 60
+> 65
+> 70
+> 75
+> Aesthetic Quality
+> 66.0
+> 62.8
+> 52.4
+> 65.5
+> 70.4 69.7 (g) Aesthetic quality
+
+Fig. 3: Impact of MA manipulation on the quality of the first generated frame in Wan2.1-1.3B. Disrupting MA degrades first-frame quality (b–c), and amplifying MA at all tokens also leads to inferior results (d). In contrast, amplifying MA only at the first frame tokens improves the first frame (e–f). (g) Aesthetic-quality scores. 
+
+these findings, indicating that MAs at first frame tokens play a critical role in vi-sual quality, and that selectively amplifying them at key positions can effectively enhance quality, motivating our method in Sec. 5. 
+
+MAs at Temporal-Boundary Tokens Impact Temporal Consistency. 
+
+Apart from first-frame tokens, latent-frame boundary tokens also exhibit ele-vated MA values (Fig. 1e), raising the question of whether they influence tempo-ral consistency across decoded frames. Since each latent frame (except the first) is decoded into rtemp pixel-space frames, these boundaries correspond to temporal seams where inter-frame consistency is most challenging. We measure DINO [4] and CLIP [38] similarities between consecutive decoded frames, distinguishing 
+
+cross-chunk transitions (spanning two adjacent latent frames) from within-chunk 
+
+transitions (within the same latent frame). As shown in Fig. 4, cross-chunk tran-sitions are more likely to show noticeable similarity drops than within-chunk transitions, suggesting temporal discontinuities at latent-frame boundaries. Am-plifying MA dimensions at boundary positions substantially reduces these cross-chunk dips. The frame samples in Fig. 4 qualitatively confirm that visual dis-continuities at cross-chunk boundaries are effectively mitigated. These results indicate that MAs at latent-frame boundaries play a critical role in temporal coherence, and that selectively amplifying them can improve cross-chunk consis-tency, further motivating our method in Sec. 5. 
+
+5 Method 
+
+Building on the MA structures observed in Sec. 4, we propose St ructured Acti-vation Steering ( STAS ), a training-free method that selectively amplifies MA values at structurally significant token positions. STAS specifies what to steer (MA dimensions M), where to steer (first-frame and latent-boundary tokens 
+
+S), when to steer (early denoising timesteps from T to tK ), and how to steer 8 X. Cheng et al. 0.94         
+
+> 0.96
+> 0.98
+> 1.00
+> DINO Similarity
+> Original
+> Amplify MA Boundary
+> Cross-chunk
+> Within-chunk
+> 010 20 40 50 60 70 80 (28) (32)
+> 0.90
+> 0.93
+> 0.95
+> 0.97
+> CLIP Similarity
+> Frame Pair Index
+> Frame 28
+> Frame 28
+> Frame 29
+> Frame 29
+> Frame 32
+> Frame 32
+> Frame 33
+> Frame 33
+> Original + STAS
+
+Fig. 4: Impact of amplifying MAs at latent-frame boundaries on temporal consistency (Wan2.1-1.3B, boundary = head 8% + tail 8% of each latent frame). Top: DINO and CLIP similarity between consecutive frame pairs. We highlight the middle within-chunk transition (green) and cross-chunk transition (yellow). Cross-chunk transitions exhibit lower similarity, and amplifying MA dimensions at boundary positions (red curve) substantially reduces these dips. Bottom: Frame samples at cross-chunk boundaries (frames 28–29 and 32–33). The original video shows abrupt appearance changes (e.g., umbrella color), while boundary MA amplified video maintains visual consistency. 
+
+via an amplification rule g(·) that adjusts the activation magnitudes at selected positions. This structured steering concentrates the intervention on the most informative locations for video DiTs, in contrast to uniform amplification across all tokens, which can lead to visible failures when naïvely applied to video models (as shown in Fig. 3d). For brevity, we denote the output of DiT layer m at token i and dimension 
+
+d as Dθ,m,i,d , omitting the dependence on (zt, c ). STAS applies a masked, self-guidance-like update: 
+
+ˆDθ,m,i,d = Dθ,m,i,d + 1[t ≥ tK ] 1[i ∈ S ] 1[d ∈ M ]  g(i, d ) − Dθ,m,i,d 
+
+, (3) where 1[·] is the binary indicator function. This formulation steers eligible entries toward a target value g(i, d ) while leaving all other activations unchanged. In practice, this operation is implemented as a lightweight mask-and-replace on the activation tensor: we compute g once per layer and timestep, and only overwrite positions in S × M .We define the target token set as 
+
+S = F0 ∪ B (p), (4) STAS 9
+
+where F0 denotes first latent-frame tokens and B(p) contains the head and tail 
+
+p% tokens ( p ∈ [0 , 50] ) within each latent-frame chunk. This structure mirrors the periodic MA pattern: first-frame tokens are most correlated with first-frame visual quality (Fig. 3), while latent-frame boundary tokens govern cross-chunk temporal coherence after decoding (Fig. 4). By limiting steering to S, STAS avoids the degradation caused by uniformly amplifying all tokens and instead strengthens the positions that matter most. To specify the steering target, we use a global-reference amplification rule: 
+
+g(i, d ) = α · max  
+
+> j
+
+|Dθ,m,j,d | · sign( Dθ,m,i,d ), (5) where max j is taken over all tokens in the current layer output at timestep t.This choice drives selected positions toward a scaled global maximum magnitude in MA dimension d, encouraging salient MA responses while preserving polarity via sign( ·). The scalar α controls steering strength; we find that moderate α
+
+improves both first-frame fidelity and boundary continuity without introducing instability. Finally, STAS is applied only when t ≥ tK (i.e., within the first K denoising steps), consistent with our temporal analysis that the boundary-to-interior MA contrast is strongest early and attenuates later (Fig. 2). Unlike uniform scaling of MA dimensions across all tokens (Eq. (2)), STAS introduces position-dependent steering with a flexible amplification rule g, targeting only structurally significant tokens. In practice, we apply STAS on top of CFG. By amplifying MA dimensions at structurally critical token positions (first-frame and boundary tokens), STAS strengthens spatial-temporal coherence, complementing the global guidance scal-ing of CFG. 
+
+6 Experiments 
+
+We evaluate STAS on three publicly available text-to-video models that span different architectures and scales: Wan2.1-T2V-1.3B [45], CogVideoX-5B [51], and Wan2.2-TI2V-5B [45]. All experiments use the officially released weights and the default sampling configurations. Unless otherwise specified, CFG is used with our STAS together. And Wan2.1-T2V-1.3B is evaluated at 81 ×480 ×832 ,CogVideoX-5B at 49 ×480 ×720 , and Wan2.2-TI2V-5B model at 81 ×704 ×1280 .Implementation details are deferred to the Appendix. 
+
+6.1 Evaluation Metrics 
+
+The evaluation is conducted using VBench [20], which measures a quality score across seven dimensions and a semantic score across nine dimensions, along with an aggregated total score on a 0–100 scale. All VBench results are obtained by averaging across five repeated runs using different random seeds, yielding 4,700+ videos across 16 dimensions, where even small absolute gains are meaningful. 10 X. Cheng et al. 
+
+Table 1: VBench results on three backbones, reporting selected consistency and quality related metrics and the aggregated scores (higher is better).                                               
+
+> Backbone Model Method Subject Consistency Background Consistency Aesthetic Quality Imaging Quality Quality Score Semantic Score Total Score Wan2.1-1.3B Vanilla 94.63 95.81 61.91 68.14 81.81 79.70 81.39 +Ours 95.00 95.93 62.03 68.95 82.03 80.66 81.76
+> CogVideoX-5B Vanilla 93.40 95.29 59.98 64.62 79.78 77.59 79.34 +Ours 93.80 95.47 60.31 65.12 79.95 78.24 79.61
+> Wan2.2-5B Vanilla 95.13 96.63 61.67 69.02 81.75 81.68 81.74 +Ours 95.37 96.70 61.72 69.39 81.82 82.35 81.93
+
+Table 2: Frame-to-frame consistency at cross-chunk and within-chunk frame pairs.                                              
+
+> Backbone Model Method DINO Similarity CLIP Similarity Cross-Chunk Within-Chunk Cross-Chunk Within-Chunk Wan2.1-1.3B Vanilla 98.94 98.98 98.58 98.90 +Ours 99.03 (+0.09) 99.06 (+0.08) 98.66 (+0.08) 98.96 (+0.06) CogVideoX-5B Vanilla 98.05 98.12 98.05 98.38 +Ours 98.16 (+0.11) 98.22 (+0.10) 98.15 (+0.09) 98.47 (+0.08) Wan2.2-5B Vanilla 99.00 99.07 98.94 99.05 +Ours 99.03 (+0.03) 99.09 (+0.02) 98.95 (+0.01) 99.06 (+0.01)
+
+6.2 Quantitative Comparisons STAS consistently improves VBench scores. We report VBench results on temporal coherence, visual quality, and the overall score (Tab. 1). STAS yields consistent gains across backbones: on Wan2.1-1.3B, the total score improves from 81.39 to 81.76 (+0.37), with both quality and semantic scores increasing. Similar improvements are observed on CogVideoX-5B and Wan2.2-5B. Detailed per-dimension results are provided in the Appendix. 
+
+STAS improves temporal consistency, with larger gains at cross-chunk transitions. To analyze temporal coherence, we follow VBench and use the same similarity backbones—DINO [4] and CLIP [38] (for subject and back-ground consistency, respectively) to compute frame-to-frame similarity (Tab. 2). Unlike VBench, which aggregates both adjacent-frame and first-frame similari-ties, we focus on the inter-frame component and split frame pairs into within-chunk versus cross-chunk transitions. Specifically, cross-chunk transitions occur across latent-frame boundaries induced by VAE temporal compression. Since STAS targets tokens at these latent-frame boundaries, we evaluate whether the resulting improvements concentrate on cross-chunk transitions. Consistent with this design, Tab. 2 shows larger improvements in cross-chunk consistency than within-chunk consistency across backbones, while within-chunk consistency also improves, suggesting an indirect stabilization effect. Although the absolute gains are small, they occur in a near-ceiling regime (all baselines STAS 11 
+
+Table 3: Quantitative results on T2V-CompBench.          
+
+> Model Consistent-Attr ↑Dynamic-Attr ↑Inference Time (s) Wan2.1-1.3B 76.27 2.72 234.47 Wan2.1-1.3B + Ours 77.36 3.40 234.53
+
+Table 4: Adding STAS on top of CFG-Zero ∗ and FlowMo.                                  
+
+> Method Subject Consistency Background Consistency Temporal Flickering Motion Smoothness Dynamic Degree Aesthetic Quality Imaging Quality Quality Score CFG-Zero ∗93.43 94.88 97.23 98.43 58.41 62.17 67.03 81.81 + STAS 93.93 95.09 97.42 98.54 57.69 62.35 68.02 82.21
+> FlowMo 93.96 96.40 97.38 98.50 56.57 65.51 67.90 82.83 + STAS 94.12 96.42 97.51 98.55 55.78 65.53 68.68 83.00
+
+> 98 ). Moreover, the reported scores are averaged over all frame pairs across an entire video, while temporal inconsistencies typically concentrate in a small subset of transitions (see the localized dips at cross-chunk boundaries in Fig. 4). As a result, improvements on these localized failure cases are inherently diluted when aggregated into a video-level average. Despite dilution, we observe consis-tent gains across models and metrics in Tab. 2, suggesting that STAS improves temporal stability by reducing such discontinuities. 
+
+STAS improves object–attribute binding. We further evaluate STAS on T2V-CompBench [42] on Consistent-Attr and Dynamic-Attr categories, which assess temporal coherence via the stability and evolution of object–attribute bindings across frames. Due to limited computational resources, we report results only on Wan2.1-1.3B in Tab. 3. STAS clearly improves both metrics, indicating more stable bindings and more accurate attribute transitions over time. 
+
+STAS adds negligible inference-time overhead. We report inference time on an NVIDIA RTX A6000 GPU, averaged over 5 runs after 100 warm-up denoising steps. As shown in Tab. 3, STAS increases runtime from 234.47 s to 234.53 s, indicating negligible inference-time overhead. This is expected since STAS introduces no additional forward computation and only applies an in-place update to to a small set of MA dimensions. 
+
+6.3 Adding STAS to Existing Training-Free Methods 
+
+STAS is orthogonal and complementary to existing training-free methods for improving video generation, and can be added on top of them to further boost performance. We demonstrate this by integrating STAS with two representa-tive methods, FlowMo [40] and CFG-Zero ∗ [11], on Wan2.1-1.3B, and report the quality dimensions in Tab. 4. Adding STAS improves most quality dimen-sions and increases the overall quality score for both CFG-Zero ∗ and FlowMo, with gains in subject/background consistency, temporal stability, and imaging quality (e.g., +0.99 and +0.78, respectively). While most dimensions improve, 12 X. Cheng et al. In a cozy, sunlit kitchen, a vintage chrome toaster sits on a wooden countertop, gleaming under the morning light. Beside it, a plush teddy bear … 
+
+> Pig with wings flying above a diamond mountain.
+
+Fig. 5: Qualitative comparison with and without STAS on Wan2.1-1.3B. A joyful Corgi with a fluffy coat and perky ears frolics in a sunlit park, its tail wagging energetically… 
+
+A playful panda, with its distinctive black and white fur, sits on a wooden swing set in a lush bamboo forest... 
+
+Fig. 6: Qualitative comparison with and without STAS on CogVideoX-5B. 
+
+we observe a mild drop in dynamic degree. This is expected because dynamic degree primarily measures motion magnitude rather than temporal coherence, and incoherent motion such as flickering can artificially inflate this score. Over-all, the net effect is a consistent improvement in generation quality and a slight reduction in dynamic degree can be a natural byproduct of improved coherence. STAS 13 A majestic medieval stone tower stands tall against a backdrop of a vibrant sunset, its ancient walls covered in creeping ivy … 
+
+> A sleek, emerald -green sports car glistens under the midday sun, parked on a winding coastal road with the ocean's waves crashin g in the
+> background. The car's aerodynamic design and polished chrome accents reflect the surrounding scenery…
+
+Fig. 7: Qualitative comparison with and without STAS on Wan2.2-5B. 
+
+6.4 Qualitative Comparisons 
+
+We present comparisons on Wan2.1-1.3B, CogVideoX-5B, and Wan2.2-5B (Figs. 5 to 7). Across backbones, STAS improves both visual fidelity and temporal co-herence. In Figs. 5 and 7, STAS mitigates artifacts in the baseline, such as the sudden appearance of a teddy bear and structural changes in the tower, yielding smoother transitions and a more stable scene layout. In Fig. 6, STAS improves temporal consistency of the panda, producing more coherent object identity and motion over time. We provide additional results in Appendix. 
+
+6.5 Ablation Study 
+
+We ablate four aspects of STAS on Wan2.1-1.3B: what to steer (MA dim M), 
+
+where (target token set S), when (timestep threshold K), and how (rule g). 
+
+Effect of dimension choice M. We first ablate the choice of the steered activation dimension. Tab. 5 shows that steering non-MA (dim 42, randomly se-lected, ∼1× peak-to-mean ratio) or weak-MA 1 (dim 71, ∼6×) dimensions yields negligible or even negative changes, in contrast to the MA dimension (dim 1188, 
+
+59 ×). This confirms that meaningful activation spikes are essential for effective steering. In contrast, all variants operating on the MA dimension achieve notable improvements over the vanilla baseline. 
+
+Effect of steering boundary tokens S. We next ablate the choice of target tokens by restricting S to only first-frame tokens or only latent-boundary tokens. Tab. 5 shows that steering latent-boundary tokens is more effective than first-frame tokens alone, while combining both yields the best overall performance.  
+
+> 1
+
+We term dimensions with moderate peak-to-mean ratios ( 5–8×) as “weak-MA”; no-tably above average but well below MA-level magnitudes. 14 X. Cheng et al. 
+
+Table 5: Ablation study of STAS on Wan2.1-1.3B.                                                                                         
+
+> Variant Dim Target Tokens KRule Sub. Consist. BG. Consist. Aesthetic Quality Imaging Quality Quality Score Vanilla ––––94.36 95.68 63.28 67.21 82.01
+> What (Dimension)
+> Non-MA 42 first+boundary 20 max 94.33 95.70 63.24 67.23 81.97 Weak-MA 71 first+boundary 20 max 94.24 95.61 63.15 67.22 81.99
+> Where (Token Position)
+> First 1188 first 20 max 94.25 95.52 63.24 67.58 82.04 Boundary 1188 boundary 20 max 94.79 95.84 63.45 67.96 82.09
+> When (Timestep)
+> K= 5 1188 first+boundary 5max 94.68 95.81 63.39 67.73 82.13
+> K= 50 1188 first+boundary 50 max 94.62 95.73 63.31 68.13 82.13
+> How (Amplification Rule)
+> Scaling 1188 first+boundary 20 scaling 94.51 95.71 63.47 67.56 82.06
+> Ours(STAS) 1188 first+boundary 20 max 94.74 95.84 63.47 68.05 82.24
+
+Effect of timestep threshold K. We further ablate the timestep threshold 
+
+K for applying STAS. As shown in Tab. 5, all tested settings improve over the vanilla baseline, while K=20 yields the best overall performance. In comparison, a smaller K (e.g., K=5 ) provides weaker gains, and a larger K (e.g., K=50 )becomes less balanced across metrics. This matches our observation in Fig. 2 that MA magnitudes decay over denoising, suggesting that steering is most beneficial during the early high-noise steps when global structure is formed. 
+
+Effect of amplification rule g. Finally, we ablate the amplification rule g
+
+by comparing our default max-based rule with a scaling variant, i.e., g(i, d ) = (1+ ω) Dθ,m,i,d . As shown in Tab. 5, scaling improves over the vanilla baseline but consistently underperforms the max-based rule. Intuitively, the max rule anchors to a peak activation scale, enforcing high-magnitude activations at boundary tokens even when the original activation magnitude is low, whereas scaling only amplifies existing magnitudes and can be limited when boundary activations are modest to begin with. 
+
+7 Conclusion 
+
+In this paper, we propose STAS, a training-free method to improve temporal coherence and visual quality of video DiTs. We analyze MAs in video DiTs and find structured positional patterns: MA magnitudes peak on first-frame tokens and exhibit periodic spikes near latent-frame boundaries. Leveraging this structure, STAS selectively steers activations on MA dimensions at these key token positions during early denoising, yielding consistent gains in quality and temporal stability across backbones with negligible overhead. As a lightweight plug-in, STAS can be seamlessly integrated with other training-free inference techniques, making it broadly applicable in practice. STAS 15 
+
+# Steering Video Diffusion Transformers with Massive Activations -Appendix-
+
+A Massive Activation Analysis 
+
+A.1 Measurement Protocol 
+
+To find the MA dimensions of different video DiT models, we compute the av-erage absolute activations over 100 prompts using a streaming pass (running sums), at a fixed set of transformer blocks (and, when needed, a fixed subset of denoising steps). For each block/step, we first take the maximum absolute activation over all token positions for each feature dimension, and then take the mean of these per-dimension maxima as a reference scale. We then report MAs using a peak-to-mean rule: a dimension is marked as MA dimension only if its peak exceeds the mean reference by more than 50 ×.
+
+A.2 Statistics Across Models 
+
+We summarize representative MA statistics at block 15 and timestep 5 across three models in Tab. A1. For each model, we take the maximum activation mag-nitude over token positions for every feature dimension, and treat dimensions whose peaks exceed μ+3 σ (computed over dimensions) as potential MA outliers. Among these candidates, dimensions with a peak-to-mean ratio larger than 50 ×
+
+are marked as MA dimensions, while the remaining candidates are reported as weak-MA, indicating that they are elevated but less significant than the MA dims. As shown in Tab. A1, different models have different MA/weak-MA di-mensions. 
+
+Table A1: Representative MA statistics at block 15 and timestep t=5 (early denoising phase) across three backbones. For each model, we compute per-dimension peak acti-vations over tokens and label dimensions with peak-to-mean > 50 × as MA; remaining high-peak candidates are reported as weak-MA. MA dimensions vary across models, and weak-MA dimensions and counts differ accordingly.                                                  
+
+> Model Block tType Dim Max Value Peak-to-Mean Peak-to-Median Wan2.1–1.3B [45] 15 5MA 1188 45.4400 58.3 59.6
+> Wan2.1–1.3B [45] 15 5weak-MA 71 4.8645 6.2 7.5 CogVideoX–5B [51] 15 5MA 1982 412.5200 100.1 127.3
+> Wan2.2–5B [45] 15 5MA 1938 63.3419 83.8 97.1
+> Wan2.2–5B [45] 15 5weak-MA 1389 5.0704 6.7 7.8 Wan2.2–5B [45] 15 5weak-MA 2357 4.4530 5.9 6.8
+
+16 X. Cheng et al. 
+
+B STAS Implementation and Reproducibility Details 
+
+B.1 Algorithm 
+
+We present the complete inference procedure of STAS in Algorithm 1. The al-gorithm summarizes the structured amplification mechanism applied at selected timesteps, layers, and token positions. STAS is computationally efficient, as it modifies only a small subset of activation dimensions during inference and does not require any additional forward passes or auxiliary branches. 
+
+Algorithm 1 Structured Activation Steering (STAS) 
+
+Require: Video DiT denoiser Dθ , VAE decoder D
+
+Require: Layer m, MA dimensions M
+
+Require: Scaling factor α, boundary ratio p
+
+Require: Timestep threshold tK , CFG scale λ
+
+1: Initialize zT ∼ N (0 , I )
+
+2: Define target token set S ← F 0 ∪ B (p)
+
+3: for t = T, T −1, . . . , 1 do 
+
+4: D(−) ← Dθ (zt, t, ∅) ▷ Unconditional branch 5: D(+) ← Dθ (zt, t, c ) ▷ Conditional branch 6: if t ≥ tK then 
+
+7: for each branch D ∈ { D(+) , D (−)} do 
+
+8: for each dimension d ∈ M do 
+
+9: ad ← max j |Dm,j,d |
+
+10: for each token i ∈ S do 
+
+11: g ← α · ad · sign( Dm,i,d )
+
+12: Dm,i,d ← g
+
+13: end for 
+
+14: end for 
+
+15: end for 
+
+16: end if 
+
+17: Dcfg ← D(−) + λ D(+) − D(−)
+
+18: zt−1 ← Update  zt, D cfg 
+
+19: end for 
+
+20: return D(z0)
+
+B.2 Experimental Protocol for Main Figures 
+
+In this subsection, we detail the experimental settings and implementation specifics used to generate Figures 1–4 in the main paper .
+
+Figure 1. For the 3D bar charts in Figure 1(a–c) of the main paper, the z-axis values (activation magnitudes of hidden states) are collected from block 15 at an early denoising timestep ( t = 5 , counting from the start of the reverse diffusion process). For Figure 1(d), activations are collected from block 28 at STAS 17 
+
+the same timestep. The corresponding generated video/image resolutions are 
+
+81 × 480 × 832 , 81 × 704 × 1280 , 49 × 480 × 720 , and 1024 × 1024 , respectively. 
+
+Figure 2. Activation values are collected from block 15 across denoising timesteps. The boundary region is defined as the head and tail 8% of tokens. 
+
+Figure 3. All results in Figure 3 are generated using the following prompt: 
+
+"A pixel art astronaut, clad in a white spacesuit with blue accents and a reflec-tive helmet, floats gracefully through the vast expanse of space. Stars twinkle in the dark, pixelated sky, while distant planets and colorful nebulas add depth to the cosmic scene. The astronaut’s suit details, including the oxygen tank and control panel, are meticulously rendered in pixel form. As they drift, their arms and legs move slightly, suggesting the weightlessness of space. The background shifts to reveal a massive, pixelated spaceship and a glowing Earth, emphasizing the grandeur and isolation of their journey." For disruption and amplification experiments, we intervene on MA dimension 1188 at block 9. 
+
+Figure 4. The example results in Figure 4 are generated using the prompt: 
+
+"A sophisticated couple, dressed in elegant evening attire, walks down a dimly lit street, their formal wear glistening under the streetlights. The man, in a sharp black tuxedo, and the woman, in a flowing red gown, share a moment of laugh-ter as they open their umbrellas. Suddenly, a heavy downpour begins, the rain cascading around them. The camera focuses on the raindrops hitting the pave-ment, then shifts to their faces, capturing their surprised yet delighted expres-sions. Their umbrellas, one black and one red, create a striking contrast against the dark, rainy backdrop. The focus racks between their intertwined hands and the shimmering reflections on the wet street, highlighting their bond amidst the storm." 
+
+C Experimental Configuration 
+
+Model Configurations We summarize the backbone configurations and the corresponding STAS settings in Tab. A2. For each model, we report the number of transformer blocks, hidden size, the identified MA dimensions, and the layer index where STAS is applied. These configurations are used consistently across all experiments unless otherwise specified.                  
+
+> Table A2: Model configurations used for implementing STAS across backbones. Model Blocks Hidden size MA dim Applied layer Wan2.1-1.3B 30 1536 1188 9Wan2.2-5B 30 3072 1938 9CogVideoX-5B 42 3072 1982 8
+
+18 X. Cheng et al. 
+
+Table A3: Hyperparameter setup across models. Model λ α p K
+
+(CFG scale) (STAS scale) (boundary %) (timestep cut-off) Wan2.1-1.3B 5.0 2.5 8 20 Wan2.2-5B 5.0 2.0 12 20 CogVideoX-5B 6.0 1.2 8 20 1 4 8 16 24 50   
+
+> Boundary Percentage p(%)
+> 46
+> 47
+> 48
+> 49
+> 50
+> 51
+> Dynamic Degree
+> Dynamic Degree
+> Aesthetic Quality
+> 63.20
+> 63.25
+> 63.30
+> 63.35
+> 63.40
+> 63.45
+> Aesthetic Quality
+
+(a) Effect of boundary percentages. 1.5 2.5 3.5 4.5 5.5  
+
+> Weight
+> 63.0
+> 63.1
+> 63.2
+> 63.3
+> 63.4
+> 63.5
+> Aesthetic Quality
+> Aesthetic Quality
+> Background Consistency
+> 95.65
+> 95.70
+> 95.75
+> 95.80
+> 95.85
+> Background Consistency
+
+(b) Effect of STAS weights. 4 9 14    
+
+> Depth m
+> 93.8
+> 94.0
+> 94.2
+> 94.4
+> 94.6
+> Subject Consistency
+> Sub. Consist.
+> B.G. Consist. 95.0
+> 95.2
+> 95.4
+> 95.6
+> 95.8
+> Background Consistency
+
+(c) Effect of depths. 
+
+Fig. A1: Impact on boundary percentage p, STAS weight α and applied layer depth 
+
+m. Moderate values achieve the best trade-off across metrics. 
+
+STAS Hyperparameters STAS is applied on top of classifier-free guidance (CFG) [19]. We use the default guidance scale λ for each model. The STAS scaling factor α, latent-boundary percentage p, and denoising timestep threshold 
+
+K are summarized in Tab. A3. 
+
+D Additional Results 
+
+D.1 Additional Quantitative Results 
+
+Table A4 presents the complete VBench breakdown over all 16 evaluation di-mensions, together with the aggregated quality, semantic, and final scores across the three backbone models, showing consistent improvements across most di-mensions. 
+
+D.2 Additional Ablations 
+
+We here provide additional ablation studies to further analyze more design choices in STAS: the boundary-percentage p, the scaling factor α and the apply-ing layer depth m.
+
+Effect of boundary percentage p. We present the quantitative results across different boundary percentage p (head p% + tail p%) of latent chunks. As shown in Fig. A1a, increasing p from very small values initially improves aesthetic quality, reaching a peak at moderate percentages (around 8% ), while the dynamic degree gradually decreases as p becomes larger. Note that overly large p would STAS 19                                                                                                                            
+
+> Table A4: Quantitative comparison on VBench. Dimension Wan2.1-1.3B CogVideoX-5B Wan2.2-5B Vanilla +Ours Vanilla +Ours Vanilla +Ours
+> Subject Consistency 94.63 95.00 93.40 93.80 95.13 95.37
+> BG. Consistency 95.81 95.93 95.29 95.47 96.63 96.70
+> Temporal Flickering 97.93 98.09 95.97 96.21 97.81 97.87
+> Motion Smoothness 98.78 98.85 98.18 98.28 98.94 98.94
+> Dynamic Degree 45.15 43.64 48.71 45.85 39.32 38.24 Aesthetic Quality 61.91 62.03 59.98 60.31 61.67 61.72
+> Imaging Quality 68.14 68.95 64.62 65.12 69.02 69.39
+> Object Class 90.38 91.64 86.88 88.07 92.34 92.23 Multiple Objects 77.47 78.61 67.47 68.78 78.60 82.86
+> Human Action 96.40 97.20 98.60 98.80 98.00 97.80 Color 86.93 86.72 82.04 84.12 87.18 87.54
+> Spatial Relationship 73.63 78.38 64.17 64.73 86.68 87.31
+> Scene 54.87 55.41 54.62 54.41 54.18 55.47
+> Appearance Style 22.90 22.93 24.83 24.92 22.84 22.77 Temporal Style 25.97 26.02 25.49 25.59 25.81 25.80 Overall Consistency 27.03 27.02 27.59 27.65 27.50 27.44 Quality Score 81.81 82.03 79.78 79.95 81.75 81.82
+> Semantic Score 79.70 80.66 77.59 78.24 81.68 82.35
+> Final Score 81.39 81.76 79.34 79.61 81.74 81.93
+
+lead to a degradation for both metrics. For instance, when p = 50 , which all the visual tokens are selected for amplification, the performance is poor. These results suggest that a moderate boundary coverage achieves the best trade-off. 
+
+Effect of scaling weight α. We next show the effect of varying scaling weight 
+
+α, which controls the magnitude of amplification. As illustrated in Fig. A1b, both metrics improve when increasing α from small values, peaking at a moderate weight (around α = 2 .5). However, further increasing α leads to a consistent decline in both metrics. 
+
+Effect of applying layer depth m. We further ablate the transformer layer depth m at which STAS is applied. As shown in Fig. A1c, steering at an interme-diate layer ( m=9 ) achieves the best performance on both metrics. In contrast, applying STAS at a shallower layer ( m=4 ) or a deeper layer ( m=14 ) leads to weaker results. This suggests that intermediate layers provide a more suitable representation for our method, while steering too early or too late in the network is less effective. 
+
+D.3 Additional Qualitative Results 
+
+We provide additional qualitative comparisons across different base models in Fig. A3, Fig. A4, Fig. A5, Fig. A6, Fig. A7, Fig. A8, Fig. A9, Fig. A10, and Fig. A11. The example videos are also provided in the website. 20 X. Cheng et al. 
+
+E User Study Wan2.1-1.3B Wan2.2-5B CogVideoX-5B     
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Preference (%)
+> 57% 58% 55%
+> 23% 23%
+> 18%
+> 20% 19%
+> 28%
+> Ours
+> Baseline
+> Tie
+
+Fig. A2: User preference of our method against baselines. 
+
+We conducted a human preference study to evaluate the perceptual quality of our method against the three baseline models. Nine participants were pre-sented with 20 anonymized, randomly sampled video pairs per model, where the assignment of videos to left/right was randomized per participant to eliminate position bias. For each pair, participants were asked to select the video with better visual quality, or mark them as a tie. Our method was preferred over the baseline by a clear majority across all three models as shown in Fig. A2. These results demonstrate a consistent human preference for our method. 
+
+F Limitations 
+
+Our method may lead to a reduction in dynamic degree scores [20]. Dynamic degree is a binary metric that classifies each video as dynamic or static based on whether a sufficient number of frames exhibit optical flow magnitudes exceeding a predefined threshold. Since our method enhances temporal consistency, abrupt inter-frame changes are reduced, which in turn decreases the optical flow magni-tude between consecutive frames. For videos with substantial motion, this effect is negligible and a sufficient number of frames still exceed the threshold. How-ever, for borderline cases, such decrease can make fewer frames to be classified as moving, shifting the overall video classification from dynamic to static, leading to the drop for the score. In addition, as a training-free method, our approach works in a plug-and-play manner without training or modifying the parameters of base model, and is therefore inherently bounded by its generative capacity. When the base model produces severely degraded results, our method can mitigate but not fully recover from these failures. STAS 21 A sleek, midnight blue sedan cruises down a quiet, tree -lined suburban street, the golden hues of the setting sun casting long s hadows. The 
+
+car's polished exterior gleams as it approaches a stop sign, the gentle hum of the engine barely audible… 
+
+Silk dress swaying beside a velvet curtain 
+
+A sleek, modern airplane, painted in a striking blue and white livery, sits on a sunlit runway, engines roaring to life… 
+
+A playful tabby cat with bright green eyes dashes across a sunlit meadow, its fur gleaming in the golden light… 
+
+A majestic elephant stands in a sunlit savannah, its massive form casting a long shadow on the golden grass… 
+
+Fig. A3: More qualitative comparisons with and without STAS on Wan2.1-1.3B. 22 X. Cheng et al. A majestic stone bridge arches gracefully over a serene river, its ancient architecture blending seamlessly with the lush gre ene ry on either side. 
+
+The scene transitions to a close -up of the bridge's intricate carvings, showcasing the craftsmanship of a bygone era… 
+
+A majestic giraffe strolls gracefully through a sunlit savannah, its long neck swaying gently with each step... 
+
+A plump rabbit, adorned in a flowing purple robe with golden embroidery, ambles through an enchanting fantasy landscape… 
+
+In the golden light of an African savanna, a majestic giraffe with its long neck gracefully bends to nibble on the tender lea ves of an acacia tree. 
+
+Nearby, a striking zebra with bold black and white stripes grazes on the lush green grass, its ears twitching attentively. 
+
+A sleek, modern bicycle with a matte black frame and bright red accents stands parked on a quiet, cobblestone street, its des ign reflecting both 
+
+elegance and functionality. Nearby, a vintage car with a polished navy blue exterior and chrome details is parked… 
+
+Fig. A4: More qualitative comparisons with and without STAS on Wan2.1-1.3B. STAS 23 A person with short, curly hair and wearing a cozy, oversized sweater stands in a warmly lit room, their eyes closed in a mom ent of deep 
+
+connection. They embrace another individual, whose face is partially visible, showing a gentle smile… 
+
+A vibrant red truck, gleaming under the midday sun, rumbles down a quiet, tree -lined suburban street… 
+
+A vibrant purple umbrella opens against a backdrop of a bustling city street, its rich hue standing out amidst the gray, rain y d ay… 
+
+A majestic shark glides through the swirling, vibrant waters of the ocean, depicted in the iconic Van Gogh style. The scene i s a live with dynamic, 
+
+swirling brushstrokes of deep blues, teals, and hints of golden yellows, capturing the movement of the water and the shark's sle ek form… 
+
+A refined couple, dressed in elegant evening attire, navigates a bustling street under a heavy downpour. The man, in a tailor ed black tuxedo, and 
+
+the woman, in a flowing crimson gown, both hold delicate paper umbrellas adorned with intricate patterns… 
+
+Fig. A5: More qualitative comparisons with and without STAS on Wan2.1-1.3B. 24 X. Cheng et al. A massive grizzly bear prowls through a dense, misty forest, its fur glistening with morning dew… 
+
+A majestic chestnut horse with a flowing mane stands at the edge of a crystal -clear river… 
+
+A sophisticated couple, dressed in elegant evening attire, walks hand -in -hand through a bustling city street, animated in a char m-
+
+ing , hand -drawn style. The man, in a sleek black tuxedo, and the woman, in a flowing red gown, both carry ornate umbrellas… 
+
+A vibrant green parrot with iridescent feathers perches on a delicate branch in a lush rainforest, its eyes gleaming with cur ios ity… 
+
+A lone rider, clad in a sleek black leather jacket, matching helmet, and dark jeans, navigates a winding mountain road on a 
+
+powerful motorcycle. The sun sets behind the peaks, casting a golden glow on the rugged landscape… 
+
+Fig. A6: More qualitative comparisons with and without STAS on CogVideoX-5B. STAS 25 A spirited cow with a glossy brown coat and white patches gallops across a lush, green meadow… 
+
+A sophisticated couple, dressed in elegant evening attire, navigates through a bustling city street under a heavy downpour… 
+
+A vibrant carousel spins under a twilight sky, its golden lights twinkling like stars. Painted horses with flowing manes and orn ate 
+
+saddles rise and fall gracefully, each one uniquely adorned with intricate details… 
+
+A sleek, vibrant orange sports car glides effortlessly along a winding coastal road… 
+
+A sleek, animated shark glides gracefully through the vibrant, turquoise waters of the ocean. Its streamlined body, adorned w ith 
+
+shades of blue and gray, moves effortlessly, creating gentle ripples in its wake… 
+
+Fig. A7: More qualitative comparisons with and without STAS on CogVideoX-5B. 26 X. Cheng et al. A majestic great white shark glides effortlessly through the crystal -clear, azure waters of the ocean… 
+
+A majestic brown bear, with its thick fur glistening in the dappled sunlight, begins its ascent up a towering pine tree in a den se forest... 
+
+A colossal iceberg drifts majestically in the frigid, azure waters of the Arctic Ocean, its towering, jagged peaks glistening un der the 
+
+soft, ethereal light of the midnight sun… 
+
+A playful panda stands confidently on a surfboard, riding gentle waves in the ocean during a breathtaking sunset. 
+
+A plush teddy bear, with soft brown fur and a red bow tie, sits on a lush green lawn under a bright, sunny sky. Nearby, a vib ran t
+
+blue frisbee lies on the grass, hinting at playful moments. 
+
+Fig. A8: More qualitative comparisons with and without STAS on CogVideoX-5B. STAS 27 A couple, elegantly dressed in formal evening wear, navigates a bustling city street under a heavy downpour. The man, in a ta ilo red black tuxedo, 
+
+and the woman, in a flowing emerald gown, hold large, ornate umbrellas that barely shield them from the relentless rain… 
+
+A lone bicycle, with its sleek frame and black tires, glides effortlessly through a vast, snow -covered field under a pale winter sky. The rider, bundled in 
+
+a red parka, black gloves, and a woolen hat, pedals steadily, leaving a delicate trail in the pristine snow... 
+
+In a charming Parisian café, a panda sits at a quaint wooden table, sipping coffee from a delicate porcelain cup… 
+
+A sleek, vintage bicycle with a leather saddle and wicker basket glides gracefully along a sun -dappled path lined with autumn tr ees. The rider, 
+
+wearing a cozy, mustard -yellow sweater and jeans, gently applies the brakes, causing the wheels to slow… 
+
+A bright yellow city bus, filled with weary commuters, is stuck in bumper -to -bumper traffic on a bustling urban street during ru sh hour. The scene 
+
+captures the frustration of the passengers, some peering out the windows, others engrossed in their phones. The bus is surrou nde d by a sea of cars… 
+
+Fig. A9: More qualitative comparisons with and without STAS on Wan2.2-5B. 28 X. Cheng et al. A majestic giraffe, its long neck gracefully arching, bends down to drink from a serene river, surrounded by lush greenery an d t all grasses. The 
+
+sun casts a golden glow, highlighting the giraffe's patterned coat and the gentle ripples in the water… 
+
+In a magical forest bathed in dappled sunlight, a charming koala bear sits at a grand piano, its furry paws gently pressing t he keys... 
+
+A majestic zebra stands in the golden savannah, its black and white stripes contrasting vividly against the tall, sunlit gras ses . The camera 
+
+captures a close -up of its face, highlighting the intricate patterns around its eyes and muzzle... 
+
+In a rustic barn bathed in the soft morning light, a person in a plaid shirt, denim overalls, and sturdy boots kneels beside a g entle, brown -and -
+
+white cow. The person carefully places a metal pail beneath the cow's udder, their hands moving with practiced ease… 
+
+A lone rider, clad in a sleek black leather jacket, matching helmet, and dark jeans, navigates a winding mountain road on a p owe rful motorcycle. The 
+
+sun sets behind the peaks, casting a golden glow on the rugged landscape… 
+
+Fig. A10: More qualitative comparisons with and without STAS on Wan2.2-5B. STAS 29 A serene individual sits comfortably in a cozy, softly lit room, wearing a plush white robe. They gently massage their legs, sta rting from the calves 
+
+and moving upwards with slow, deliberate motions… 
+
+A sleek, vibrant orange sports car glides effortlessly along a winding coastal road, its glossy finish reflecting the golden hue s of the setting sun. The 
+
+car's aerodynamic design and polished chrome accents catch the light, creating a dazzling display of color and motion... 
+
+A thrill -seeker, clad in a bright red jumpsuit and a secure harness, leaps off a towering cliff, the vast canyon below stretchin g out in breathtaking 
+
+detail. The camera captures the moment of freefall, the wind rushing past their exhilarated face, eyes wide with a mix of fea r a nd excitement… 
+
+A vintage steam locomotive chugs along a winding railway through a picturesque countryside, its billowing smoke blending with th e early 
+
+morning mist. The train, with its polished brass and deep green carriages, glides past fields of golden wheat and vibrant wil dfl owers... 
+
+A serene individual, dressed in a flowing white shirt and dark trousers, sits cross -legged on a grassy hilltop at sunset, playin g a wooden flute… 
+
+Fig. A11: More qualitative comparisons with and without STAS on Wan2.2-5B. 30 X. Cheng et al. 
+
+References 
+
+1. Bar-Tal, O., Chefer, H., Tov, O., Herrmann, C., Paiss, R., Zada, S., Ephrat, A., Hur, J., Liu, G., Raj, A., et al.: Lumiere: A space-time diffusion model for video generation. In: SIGGRAPH Asia 2024 Conference Papers. pp. 1–11 (2024) 2. Blattmann, A., Dockhorn, T., Kulal, S., Mendelevitch, D., Kilian, M., Lorenz, D., Levi, Y., English, Z., Voleti, V., Letts, A., et al.: Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 (2023) 3. Bu, J., Ling, P., Zhang, P., Wu, T., Dong, X., Zang, Y., Cao, Y., Lin, D., Wang, J.: Bytheway: Boost your text-to-video generation model to higher quality in a training-free way. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 12999–13008 (2025) 4. Caron, M., Touvron, H., Misra, I., Jégou, H., Mairal, J., Bojanowski, P., Joulin, A.: Emerging properties in self-supervised vision transformers. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 9650–9660 (2021) 5. Chefer, H., Singer, U., Zohar, A., Kirstain, Y., Polyak, A., Taigman, Y., Wolf, L., Sheynin, S.: VideoJAM: Joint appearance-motion representations for enhanced motion generation in video models. In: Forty-second International Conference on Machine Learning (2025) 6. Chen, C., Zhu, J., Feng, X., Huang, N., Wu, M., Mao, F., Wu, J., Chu, X., Li, X.: S2-guidance: Stochastic self guidance for training-free enhancement of diffusion models. arXiv preprint arXiv:2508.12880 (2025) 7. Chen, H., Xia, M., He, Y., Zhang, Y., Cun, X., Yang, S., Xing, J., Liu, Y., Chen, Q., Wang, X., et al.: Videocrafter1: Open diffusion models for high-quality video generation. arXiv preprint arXiv:2310.19512 (2023) 8. Chen, H., Zhang, Y., Cun, X., Xia, M., Wang, X., Weng, C., Shan, Y.: Videocrafter2: Overcoming data limitations for high-quality video diffusion mod-els. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 7310–7320 (2024) 9. Cheng, J., Lyu, R., Gu, X., Liu, X., Xu, J., Lu, Y., Teng, J., Yang, Z., Dong, Y., Tang, J., et al.: Vpo: Aligning text-to-video generation models with prompt optimization. arXiv preprint arXiv:2503.20491 (2025) 10. Darcet, T., Oquab, M., Mairal, J., Bojanowski, P.: Vision transformers need regis-ters. In: The Twelfth International Conference on Learning Representations (2024) 11. Fan, W., Zheng, A.Y., Yeh, R.A., Liu, Z.: Cfg-zero*: Improved classifier-free guid-ance for flow matching models. arXiv preprint arXiv:2503.18886 (2025) 12. Fang, G., Li, K., Ma, X., Wang, X.: Tinyfusion: Diffusion transformers learned shal-low. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 18144–18154 (2025) 13. Gan, C., Tu, Y., Chen, X., Chen, T., Li, Y., Harandi, M., Lin, W.: Unleashing diffusion transformers for visual correspondence by modulating massive activations. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 14. Gan, C., Zhao, Z., Tu, Y., Chen, X., Qin, Z., Chen, T., Harandi, M., Lin, W.: Massive activations are the key to local detail synthesis in diffusion transformers. arXiv preprint arXiv:2510.11538 (2025) 15. Guo, X., Liu, J., Cui, M., Bo, L., Huang, D.: I4vgen: Image as free stepping stone for text-to-video generation. arXiv preprint arXiv:2406.02230 (2024) STAS 31 16. Guo, Y., Yang, C., Rao, A., Liang, Z., Wang, Y., Qiao, Y., Agrawala, M., Lin, D., Dai, B.: Animatediff: Animate your personalized text-to-image diffusion models without specific tuning. In: The Twelfth International Conference on Learning Representations (2024) 17. HaCohen, Y., Chiprut, N., Brazowski, B., Shalem, D., Moshe, D., Richardson, E., Levin, E., Shiran, G., Zabari, N., Gordon, O., et al.: Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 (2024) 18. Ho, J., Chan, W., Saharia, C., Whang, J., Gao, R., Gritsenko, A., Kingma, D.P., Poole, B., Norouzi, M., Fleet, D.J., et al.: Imagen video: High definition video generation with diffusion models. arXiv preprint arXiv:2210.02303 (2022) 19. Ho, J., Salimans, T.: Classifier-free diffusion guidance. In: NeurIPS 2021 Workshop on Deep Generative Models and Downstream Applications (2021) 20. Huang, Z., He, Y., Yu, J., Zhang, F., Si, C., Jiang, Y., Zhang, Y., Wu, T., Jin, Q., Chanpaisit, N., et al.: Vbench: Comprehensive benchmark suite for video gener-ative models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 21807–21818 (2024) 21. Hyung, J., Kim, K., Hong, S., Kim, M.J., Choo, J.: Spatiotemporal skip guidance for enhanced video diffusion sampling. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 11006–11015 (2025) 22. Jagpal, D., Chen, X., Namboodiri, V.P.: Eidt-v: Exploiting intersections in diffu-sion trajectories for model-agnostic, zero-shot, training-free text-to-video genera-tion. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 18219–18228 (2025) 23. Jin, M., Mei, K., Xu, W., Sun, M., Tang, R., Du, M., Liu, Z., Zhang, Y.: Massive values in self-attention modules are the key to contextual knowledge understanding. In: Forty-second International Conference on Machine Learning (2025) 24. Jin, Y., Sun, Z., Li, N., Xu, K., Xu, K., Jiang, H., Zhuang, N., Huang, Q., Song, Y., MU, Y., Lin, Z.: Pyramidal flow matching for efficient video generative modeling. In: The Thirteenth International Conference on Learning Representations (2025) 25. Jin, Y., Sun, Z., Xu, K., Chen, L., Jiang, H., Huang, Q., Song, C., Liu, Y., Zhang, D., Song, Y., Gai, K., Mu, Y.: Video-lavit: unified video-language pre-training with decoupled visual-motional tokenization. In: Proceedings of the 41st International Conference on Machine Learning (2024) 26. Karras, T., Aittala, M., Kynkäänniemi, T., Lehtinen, J., Aila, T., Laine, S.: Guid-ing a diffusion model with a bad version of itself. Advances in Neural Information Processing Systems 37 , 52996–53021 (2024) 27. Kim, K., Kim, S.: Model already knows the best noise: Bayesian active noise se-lection via attention in video diffusion model. arXiv preprint arXiv:2505.17561 (2025) 28. Kong, W., Tian, Q., Zhang, Z., Min, R., Dai, Z., Zhou, J., Xiong, J., Li, X., Wu, B., Zhang, J., et al.: Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 (2024) 29. Labs, B.F., Batifol, S., Blattmann, A., Boesel, F., Consul, S., Diagne, C., Dock-horn, T., English, J., English, Z., Esser, P., et al.: Flux. 1 kontext: Flow match-ing for in-context image generation and editing in latent space. arXiv preprint arXiv:2506.15742 (2025) 30. Li, J., Yu, S., Lin, H., Cho, J., Yoon, J., Bansal, M.: Training-free guidance in text-to-video generation via multimodal planning and structured noise initialization. arXiv preprint arXiv:2504.08641 (2025) 32 X. Cheng et al. 31. Lin, B., Ge, Y., Cheng, X., Li, Z., Zhu, B., Wang, S., He, X., Ye, Y., Yuan, S., Chen, L., et al.: Open-sora plan: Open-source large video generation model. arXiv preprint arXiv:2412.00131 (2024) 32. Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. In: The Eleventh International Conference on Learning Representations (2023) 33. Liu, J., Liu, G., Liang, J., Yuan, Z., Liu, X., Zheng, M., Wu, X., Wang, Q., Xia, M., Wang, X., Liu, X., Yang, F., Wan, P., ZHANG, D., Gai, K., Yang, Y., Ouyang, W.: Improving video generation with human feedback. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 34. Liu, W., Zhang, S.Q.: Hq-dit: Efficient diffusion transformer with fp4 hybrid quan-tization. arXiv preprint arXiv:2405.19751 (2024) 35. Ma, G., Huang, H., Yan, K., Chen, L., Duan, N., Yin, S., Wan, C., Ming, R., Song, X., Chen, X., et al.: Step-video-t2v technical report: The practice, challenges, and future of video foundation model. arXiv preprint arXiv:2502.10248 (2025) 36. Owen, L., Chowdhury, N.R., Kumar, A., Güra, F.: A refined analysis of massive activations in llms. arXiv preprint arXiv:2503.22329 (2025) 37. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 4195–4205 (2023) 38. Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., et al.: Learning transferable visual models from natural language supervision. In: International conference on machine learning. pp. 8748–8763 (2021) 39. Shao, Y., Lin, D., Zeng, F., Yan, M., Zhang, M., Chen, S., Fan, Y., Yan, Z., Wang, H., Guo, J., et al.: Tr-dq: Time-rotation diffusion quantization. arXiv preprint arXiv:2503.06564 (2025) 40. Shaulov, A., Hazan, I., Wolf, L., Chefer, H.: Flowmo: Variance-based flow guidance for coherent motion in video generation. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 41. Singer, U., Polyak, A., Hayes, T., Yin, X., An, J., Zhang, S., Hu, Q., Yang, H., Ashual, O., Gafni, O., et al.: Make-a-video: Text-to-video generation without text-video data. arXiv preprint arXiv:2209.14792 (2022) 42. Sun, K., Huang, K., Liu, X., Wu, Y., Xu, Z., Li, Z., Liu, X.: T2v-compbench: A comprehensive benchmark for compositional text-to-video generation. In: Proceed-ings of the Computer Vision and Pattern Recognition Conference. pp. 8406–8416 (2025) 43. Sun, M., Chen, X., Kolter, J.Z., Liu, Z.: Massive activations in large language models. In: First Conference on Language Modeling (2024) 44. Team, M.L., Cai, X., Huang, Q., Kang, Z., Li, H., Liang, S., Ma, L., Ren, S., Wei, X., Xie, R., et al.: Longcat-video technical report. arXiv preprint arXiv:2510.22200 (2025) 45. Wan, T., Wang, A., Ai, B., Wen, B., Mao, C., Xie, C.W., Chen, D., Yu, F., Zhao, H., Yang, J., et al.: Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 (2025) 46. Wu, T., Si, C., Jiang, Y., Huang, Z., Liu, Z.: Freeinit: Bridging initialization gap in video diffusion models. In: European Conference on Computer Vision. pp. 378–394 (2024) 47. Xia, T., Chen, X., Xu, S.: Unictrl: Improving the spatiotemporal consistency of text-to-video diffusion models via training-free unified attention control. Transac-tions on Machine Learning Research (2024) STAS 33 48. Xiao, G., Tian, Y., Chen, B., Han, S., Lewis, M.: Efficient streaming language models with attention sinks. In: The Twelfth International Conference on Learning Representations (2024) 49. Yang, J., Luo, K.Z., Li, J., Deng, C., Guibas, L., Krishnan, D., Weinberger, K.Q., Tian, Y., Wang, Y.: Denoising vision transformers. In: European Conference on Computer Vision. pp. 453–469 (2024) 50. Yang, X., Tan, Z., Li, H.: Ipo: Iterative preference optimization for text-to-video generation. arXiv preprint arXiv:2502.02088 (2025) 51. Yang, Z., Teng, J., Zheng, W., Ding, M., Huang, S., Xu, J., Yang, Y., Hong, W., Zhang, X., Feng, G., Yin, D., Yuxuan.Zhang, Wang, W., Cheng, Y., Xu, B., Gu, X., Dong, Y., Tang, J.: Cogvideox: Text-to-video diffusion models with an expert transformer. In: The Thirteenth International Conference on Learning Represen-tations (2025) 52. Yuan, Y., Guo, Y., Wang, C., Zhang, W., Xu, H., Zhang, L.: Freqprior: Improving video diffusion models with frequency filtering gaussian noise. In: The Thirteenth International Conference on Learning Representations (2025) 53. Zhang, L., Cai, S., Li, M., Wetzstein, G., Agrawala, M.: Frame context packing and drift prevention in next-frame-prediction video diffusion models. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 54. Zhao, T., Fang, T., Huang, H., Wan, R., Soedarmadji, W., Liu, E., Li, S., Lin, Z., Dai, G., Yan, S., Yang, H., Ning, X., Wang, Y.: Vidit-q: Efficient and accurate quantization of diffusion transformers for image and video generation. In: The Thirteenth International Conference on Learning Representations (2025) 55. Zheng, Z., Peng, X., Yang, T., Shen, C., Li, S., Liu, H., Zhou, Y., Li, T., You, Y.: Open-sora: Democratizing efficient video production for all. arXiv preprint arXiv:2412.20404 (2024) 56. Zhou, D., Wang, W., Yan, H., Lv, W., Zhu, Y., Feng, J.: Magicvideo: Efficient video generation with latent diffusion models. arXiv preprint arXiv:2211.11018 (2022)
