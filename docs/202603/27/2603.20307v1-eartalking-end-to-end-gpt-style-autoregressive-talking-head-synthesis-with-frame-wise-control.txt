@@ -1,0 +1,491 @@
+Title: EARTalking: End-to-end GPT-style Autoregressive Talking Head Synthesis with Frame-wise Control
+
+URL Source: https://arxiv.org/pdf/2603.20307v1
+
+Published Time: Tue, 24 Mar 2026 00:10:27 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# EARTalking: End-to-end GPT-style Autoregressive Talking Head Synthesis with Frame-wise Control 
+
+## Yuzhe Weng 1, Haotian Wang 1, Yuanhong Yu 3, Jun Du 1∗,Shan He 2, Xiaoyan Wu 2, Haoran Xu 21 University of Science and Technology of China, 2 iFLYTEK, 3 Zhejiang University 
+
+> *Corresponding author: jundu@ustc.edu.cn
+
+Driven 
+
+Audio 
+
+Motion 
+
+Intensity 
+
+Portrait 
+
+# EARTalking 
+
+Generated Video 
+
+Architecture 
+
+(Opotional)  
+
+> low high
+
+Figure 1. The autoregressive generation paradigm and results. EARTalking proposes a novel effective architecture for the Talking Head Generation task, supporting streaming control and streaming generation through a more concise and effective context learning approach. 
+
+## Abstract 
+
+Audio-driven talking head generation aims to create vivid and realistic videos from a static portrait and speech. Existing AR-based methods rely on intermediate facial rep-resentations, which limit their expressiveness and real-ism. Meanwhile, diffusion-based methods generate clip-by-clip, lacking fine-grained control and causing inherent latency due to overall denoising across the window. To ad-dress these limitations, we propose EARTalking , the novel 
+
+end-to-end, GPT-style autoregressive model for interac-tive audio-driven talking head generation. Our method in-troduces a novel frame-by-frame, in-context, audio-driven streaming generation paradigm. For inherently support-ing variable-length video generation with identity consis-tency, we propose the Sink Frame Window Attention (SFA) mechanism. Furthermore, to avoid the complex, separate networks that prior works required for diverse control sig-nals, we propose a streaming Frame Condition In-Context (FCIC) scheme. This scheme efficiently injects diverse con-trol signals in a streaming, in-context manner, enabling in-teractive control at every frame and at arbitrary moments. Experiments demonstrate that EARTalking outperforms ex-isting autoregressive methods and achieves performance comparable to diffusion-based methods. Our work demon-strates the feasibility of in-context streaming autoregressive control, unlocking a scalable direction for flexible, efficient generation. The code will be released for the reproducibil-ity. 
+
+## 1. Introduction 
+
+Talking head generation (THG), the task of synthesizing re-alistic videos from static images and audio, is essential for applications such as virtual avatars, film dubbing, and per-sonalized content creation, and thus has garnered signifi-cant research interest[45]. Although recent diffusion-based methods[6, 31, 42] show remarkable progress, they face critical challenges. Functionally, diffusion-based methods introduce inherent algorithmic latency because the denois-
+
+> arXiv:2603.20307v1 [cs.CV] 19 Mar 2026
+
+ing steps must be applied to latent variables across an entire time window. In other words, the model must process the entire window as a single batch before any frame, including the first, can be output. In terms of control, effective THG must process both speech (for lip-sync) and para-linguistic information for naturalness. However, previous methods apply control globally, which lacks fine-grained temporal control[12, 36] or rely on complex auxiliary networks[35], which severely hinders the scalability of the model. Further-more, previous work often relied on unidirectional attention (from vision to audio), which hindered the model’s ability to fully fuse audio-visual information. Efficient bidirectional fusion is essential for achieving accurate lip synchroniza-tion and natural expression. Grounded in the intrinsically streaming features of the audio modality, we seek to develop a generation pipeline for streaming-input-driven talking heads that offers greater controllability and extensibility. Recent studies have ex-plored non-end-to-end (non-E2E) AR approaches[8, 29], which typically rely on a multi-stage process: first pre-dicting intermediate representations (e.g., facial motion), and then rendering these representations into video. The non-E2E design fundamentally hinders the model’s abil-ity to capture and generate fine-grained details at both the pixel and semantic levels, which severely degrades the fi-delity and lip-sync accuracy of the resulting video, also in-creases model complexity and presents significant scaling challenges. To address these challenges, we introduce EARTalking, a novel end-to-end, frame-by-frame autoregressive model for talking head generation. We propose the Sink Frame Window Attention (SFA), a novel training and inference mechanism. SFA enables variable-length inference capa-bilities while being trained exclusively on fixed-length se-quences. During inference, the reference image and infor-mation from previously generated segments are stored in a kv-cache. To maintain consistency between the gener-ated dynamic portraits and the reference image, the refer-ence image is designated as a sink frame in the attention window. This allows it to act as a stable anchor feature for the adaLN conditioning of all subsequent frames. Fur-thermore, EARTalking introduces the Frame Condition In-Context (FCIC) method, a novel approach that adapts the in-context learning paradigm for the specific demands of talking head video generation. This method facilitates the injection of cross-modal conditions into the talking head video stream on a per-frame basis with a concise in-context format. Consequently, this approach eliminates the need to design specialized modules for each new condition. Instead, new functionalities can be integrated simply by training the model with new control conditions supplied as context to meet different requirements. Furthermore, FCIC enables interactive, customized control at each time step, crucially without affecting adjacent frames. In summary, our main contributions are as follows: • We introduce EARTalking , the novel GPT-style end-to-end autoregressive framework for frame-by-frame audio-driven talking head generation, which offers a superior framework for streaming generation and control. • We propose a Sink Frame Window Attention (SFA) 
+
+mechanism, which integrates adaLN Sink and kv cache ,which effectively mitigates autoregressive error accumu-lation while ensuring fidelity to the reference image. This design enables variable-length inference based on fixed-length training. • Our Frame Condition In-Context (FCIC) scheme en-ables the streaming input of control conditions via in-context inputs, providing the capability for fine-grained, streaming interactive control at arbitrary temporal frames. This eliminates the need for complex, redundant auxiliary networks for new control modalities. 
+
+## 2. Related Work 
+
+2.1. Video Generation 
+
+Advances in generative diffusion models have significantly accelerated video synthesis. The early U-Net models [1] used spatiotemporal attention to maintain temporal consis-tency. Inspired by the success of vision transformer[11], the Diffusion Transformer[26] design becomes a scal-able, high-performance backbone for diffusion models and a mainstream approach in video generation. A domi-nant technical path[15, 34] now combines a DiT back-bone with 3D RoPE and spatiotemporal compression tech-niques like 3D VAEs. Furthermore, autoregressive models, which have been proven strong and scalable in multimodal understanding[3, 40, 41], are also showing considerable po-tential for video generation[10, 38, 43]. 
+
+2.2. Audio-driven Talking Head Video Generation 
+
+Frontier technologies in video generation have seen ex-plosive growth in recent years. As a downstream task, Talking Head Video Generation has also consequently ex-perienced a parallel boom[7, 14, 27, 30, 36]. Early approaches[21, 22], predominantly leveraging GANs, of-ten relied on predicting intermediate representations such as facial landmarks or 3D Morphable Models (3DMMs), which were then rendered into video. Subsequent works, such as ARTalk[8] and MultiTalk[29], adopted autore-gressive methods to first generate 3D motion and then synthesize it into video, thereby improving generation speed. More recently works[6, 31, 42] have built upon pre-trained image diffusion models to achieve high-fidelity talking head synthesis. Further advancements, including EchoMimicV3[24], are now leveraging pre-trained DiT-based video diffusion models to enhance the naturalness and 3D VAE         
+
+> Encoder
+> Audio
+> Encoder
+> Align
+> Reference
+> Optional
+> Extendable
+> adaLN Sink
+> Align
+> Motion
+> Intensity
+> 3D VAE
+> Decoder
+> ()()()
+> ()()()
+> (c) Sink Frame Attention Mask
+> shift
+> scale
+> Prompt
+> Ref: Gen:
+
++
+
+> .
+
+Diffusion Head 
+
+Spatial Attention 
+
+Diffusion Head 
+
+Spatial Attention 
+
+Diffusion Head 
+
+Spatial Attention 
+
+> (b) adaLN Sink
+> adaLN Sink
+> adaLN Sink
+
+𝐻 !
+
+𝐻 "
+
+> ’
+
+𝐻 " 
+
+> w Audio Cache w/o Audio Cache
+> 𝐶 !
+> 𝑋 "#$
+> 𝐶 %
+> 𝑋 !
+> 𝐶 &
+> 𝑋 %
+> 𝐶 '
+> 𝑋 &
+> Effective Mask Strategies
+
+Frame -wise Causal Autoregressive(FCA)     
+
+> Audio Condition
+> Motion Condition
+> Frame Latents
+> Generated Latents
+> (a) The structure of the End -to -end Auto Regressive Talking Head
+
+𝐻 !𝐻 !
+
+> &
+
+Figure 2. The overall framework of EARTalking (a), illustrating the causal autoregressive pipeline for inference and training, which follows the depicted paradigm for frame-by-frame conditional input and generation. (b) The adaLN sink mechanism, which enhances consistency by anchoring generated frames to the reference frame. (c) Two causal attention mask strategies validated as effective during training. 
+
+realism of the generated talking heads. 
+
+2.3. Controllable Talking Head Generation 
+
+In the specialized field of talking head video generation, achieving robust multi-conditional control, particularly in-cluding audio, has long been an area of significant inter-est. Common controls include expression and motion. Prior work[25, 36] often relied on discrete codebooks or a single representation to exert coarse-grained control over the en-tire video’s performance. Furthermore, many studies have widely investigated diverse control conditions[2, 19, 23] and different control schemes[5], opening up new possibil-ities for talking head generation. 
+
+## 3. Method 
+
+The overall framework of EARTalking is illustrated in Fig-ure 2. Section 3.1 will detail the preliminaries and theoreti-cal foundations of this work. Following this, in Section 3.2, we will focus on the proposed model architecture. In Sec-tion 3.3, we will highlight the Sink Frame Window Atten-tion Framework(SFA) scheme and the natural suitability of the adaIN sink for the talking head video generation task. Finally, Section 3.4 will describe the Frame-Conditioned In-Context (FCIC) control, including the distinct training stages and the inference pipeline. 
+
+3.1. Preliminary 
+
+Task Definition The core task of talking head generation is to synthesize a dynamic video ˆX = { ˆXt}Tt=1 given two primary inputs: a static portrait image Iref and an audio sequence C = {Ct}Ta
+
+> t=1
+
+. The synthesized video ˆX must maintain identity consistency with Iref , achieve accurate lip synchronization with C, and exhibit natural expressions and realistic head poses. 
+
+Diffusion Loss for Autoregressive Models Autoregres-sive language models typically utilize a cross-entropy loss, which is inherently suitable for the discrete nature of nat-ural language data. For visual data, autoregressive genera-tion operates within a continuous latent space encoded by a 3D VAE. Quantizing these continuous latents to utilize a discrete cross-entropy loss introduces quantization errors, which degrade the final generation quality. To address this, Diffusion Loss[17] can be used to super-vise the continuous probability distribution p(x|z) directly. The loss is formulated as: 
+
+L(z, x ) = Eϵ,t 
+
+h
+
+∥ϵ − ϵθ (xt|t, z )∥2i
+
+. (1) Here, z represents the conditional hidden latent, x is the ground-truth continuous latent token, t is a randomly sam-pled noise timestep, and ϵ ∼ N (0 , I) is a random noise vector. The term xt (defined as xt = √¯αtx + √1 − ¯αtϵ)is the noised version of x at timestep t. ϵθ (xt|t, z ) is the noise-prediction network, parameterized by θ, which is con-ditioned on z and t to predict the original noise ϵ from xt.This loss function trains the model by minimizing the mean squared error between the actual noise added ( ϵ) and the noise predicted by the network ( ϵθ ). 
+
+3.2. Frame Causal Control and Generation 
+
+EARTalking is an A2V-AR backbone, which aims to re-frame the Talking Head Video Generation task in an LLM-like manner of frame-by-frame understanding and genera-tion In this paradigm, the video generation model can re-ceive distinct multimodal contexts at each frame to dynam-ically control the generation of subsequent video frames. 
+
+Frame-wise Causal Autoregression We adopt the 3D Vari-ational Autoencoder ( 3D VAE) from Wan 2.1[34] to per-form 4× temporal and 8 × 8 spatial compression. In the Frame-wise Causal Autoregression model (FCA), the generation of each frame is conditioned on the current timestep’s audio embedding and the previously generated frames, which serve as inputs. We implement a causal mask during training. This mask is designed to 1) allow the cur-rent timestep’s audio and visual embeddings to mutually at-tend to one another, and 2) permit the model to attend to all previously generated frames and all audio embeddings up to the current timestep. The objective of this frame-by-frame autoregressive gen-erative model is to optimize the joint probability distribution 
+
+p(C1, . . . , C T , X ref , X 1, . . . , X T ), which can be factorized autoregressively as: 
+
+p(C, X ref , X) = 
+
+> T
+
+Y
+
+> t=1
+
+p(Xt|C≤t, X ref , X≤t−1) (2) To simplify notation, we denote the complete sequences as C = {Ct}Tt=1 and X = {Xt}Tt=1 . We further define the history notations C≤t = {Ci}ti=1 to represent the sequence of C up to and including timestep t, and X≤t−1 = {Xi}t−1
+
+> i=1
+
+to represent the sequence of X before timestep t.Here, Ct = {ca, c m, . . . } represents the set of condition features (e.g., audio, motion) at time t that drive the talk-ing head’s movement, Xref is the set of representation fea-tures for the reference image, and Xt denotes the set of rep-resentation features for the generated visual frame at time 
+
+t. Each generated frame Xt is produced conditioned on all features up to the current time, the reference frame features 
+
+Xref , and all previously generated frame features. This in-context-controlled autoregressive paradigm facilitates mu-tual attention between the audio and visual modalities. 
+
+Spatial Masked Autoregression At timestep t, the Frame-wise Causal Autoregression (FCA) model, leveraging tem-poral causal attention, outputs two feature sets: Ht, which encapsulates coherent motion and detail for the current frame based on past video and speech data, and Hct , which represents self-attended speech features further aligned with the visual content. Concurrently, a separate feature, H′
+
+> t
+
+, is derived by normalizing H1 and Ht using an adaLN sink net-work, a process we will detail in Section 3.3. The primary objective of this section, Spatial Masked Autoregression, is to generate the current frame spatially, conditioned on both 
+
+H′ 
+
+> t
+
+and Hct .The backbone adopts the Masked Autoregressive Gener-ative structure[17], a notable approach in the field of image generation. Specifically, we randomly partition the com-plete set of features representing a single frame into K dis-joint groups. The generation process proceeds iteratively in 
+
+K steps. In each step k, the model autoregressively gen-erates a new set of tokens, Zkt , conditioned on the given conditions H′ 
+
+> t
+
+and Hct and the k − 1 token groups generated in previous steps. Finally, these K groups are concatenated to form the complete token sequence representing the entire image. The joint probability distribution of this process is formulated as: 
+
+p(Hct , H ′
+
+> t
+
+, Zt) = 
+
+> K
+
+Y
+
+> k=1
+
+p(Zkt |Hct , H ′
+
+> t
+
+, Z≤k−1 
+
+> t
+
+) (3) During this inference process, Hct further guides the gen-eration of motion details for the current frame, ensuring they align with the speech condition. Concurrently, H′
+
+> t
+
+guides the frame’s image details and resulting motion, guar-anteeing both high-fidelity details and natural movement in the generated frame. where Zkt represents the subset of tokens generated at step or group k. For all generated tokens, we train the model using the supervision scheme described in Section 3.1. At inference time, the model employs a standard de-noising procedure[17] to sample and denoise based on la-tent z, thereby obtaining x.
+
+3.3. Sink Frame Window Attention Framework 
+
+Our backbone network uses the reference image’s features as an anchor. The features of subsequently generated frames are mapped onto this anchor via adaLN, which guaran-tees the model’s faithfulness to the reference image dur-ing synthesis. Instead of relying on variable-length train-ing or clip-overlapping schemes (which compromise con-trol flexibility) to achieve variable-length inference, our proposed Sink Frame Window Attention method achieves natural, variable-length inference while being trained at a fixed length. The detailed inference process is shown in Al-gorithm 1. reference anchor  
+
+> frame-by-frame generation
+> Condition Embedding Attention Visual Embedding Attention Figure 3. Sink Frame Window Attention
+
+We adopted the adaLN sink solution to maintain bet-ter athletic performance and consistency. This method first processes the reference image features with a Frame-wise Causal Autoregression (FCA) transformer to create the sink anchor features H′
+
+> 1
+
+. For each subsequent frame, the FCA transformer generates corresponding features Ht. These 
+
+Ht features are then fed into an AdaLayerNorm network to compute scale and shift values, which are applied to the sink anchor H′ 
+
+> 1
+
+to produce the new frame’s representation. The specific implementation is as follows: 
+
+H′ 
+
+> t
+
+= adaLN (H′
+
+> 1
+
+, H t) = σ(Ht)
+
+ H′ 
+
+> 1
+
+− μσ
+
+
+
++ μ(Ht) (4) This approach enhances consistency with the reference image and mitigates error accumulation. During training, we perturb input video frames with varying noise intensi-ties to improve the model’s self-correction capabilities and robustness.During inference, the Frame-wise Causal Trans-former uses a key-value (kv) cache and an attention tempo-ral window ( w) with a maximum length of N frames (Fig-ure 3). The kv pairs from the first N frames are sequentially appended to the cache. Starting from the (N +1) -th frame, a sliding window mechanism activates: as each new frame is processed, the KV cache corresponding to the second frame in the window is discarded. Crucially, the kv cache from the first frame, which stores the intermediate hidden states of the reference image, is per-manently retained throughout the generation process. This strategy serves two purposes: it ensures that the fine-grained details and identity (ID) of the generated video remain con-sistent with the reference image, and it significantly miti-gates the cumulative errors often introduced by autoregres-sive models. To accommodate this specific generation process, we have designed a simple yet effective position embedding scheme[16]. Although the prevalent Rotary Position Em-bedding (RoPE) has demonstrated a certain degree of ex-trapolation capability, its performance can still degrade dur-ing inference when encountering position embeddings un-seen during training. Our solution involves maintaining a cyclic temporal absolute position embedding table, denoted as P = {pn}2N −1 
+
+> n=1
+
+. During inference, the features of the reference image are invariably assigned the first position embedding, p1. Each subsequent frame sequentially adopts the next embedding pn from the cyclic table. Once the ta-ble P is fully traversed, the sequence cycles back, restarting from p2 (as p1 is perpetually reserved for the reference im-age). The specific sampling rules for position embedding are shown below: 
+
+pt =
+
+(
+
+pt if t ≤ 2N − 1
+
+p(t−1)%(2 N −2)+1 if t > 2N − 1 (5) During training, the reference image’s position embed-ding is likewise fixed to p1. The subsequent N − 1 frames are then assigned N − 1 consecutive position embeddings, sampled starting from a random offset within the cyclic ta-ble P . Given that the maximum sliding window length is 
+
+N and the table size is 2N − 1, the model can automat-ically learn this cyclic ordering during training. This de-sign ensures that no positional ambiguity arises and that the model is exposed to all possible relative positional combi-nations within the attention window. This training strategy effectively enhances the model’s extrapolation capabilities for autoregressive talking head video generation. 
+
+3.4. Frame Condition In-Context Control 
+
+Furthermore, we integrate multi-modal control signals us-ing a frame-by-frame, in-context approach. The model im-plicitly learns the correlations and attentional weights be-tween visual features and auxiliary inputs (such as audio features) directly within its self-attention mechanisms. This architecture facilitates the integration of new control modal-ities in an elegant and straightforward manner. For the task of talking head generation, we employ distinct frame-level control signals: audio, for which representations are ex-tracted using WavLM-Large[4]; motion intensity, which is quantified as the frame-wise mean Euclidean distance of facial edge landmarks. Additionally, we employ a motion intensity encoding scheme that is consistent with the ab-solute positional encoding scheme. This method maps the numerical intensity value into an embedding vector, making its variations easily perceptible to the model. During infer-ence, the generation of the current frame is conditioned on the previously generated frame as well as the current and past control conditions. Our experiments validate the effi-cacy and strong audio-visual alignment capabilities of our frame-level, in-context, autoregressive control strategy. A key insight from this approach is that the paradigm can be simply and effectively extended to incorporate additional control conditions without necessitating customized or ex-ternal modifications to the network architecture. This in-herent extensibility unlocks significant potential for future advancements in controllable talking head generation. 
+
+Algorithm 1: Frame-wise A2V-AR Inference 
+
+Input: Reference portrait Iref ;Driving condition sequence C = {Ct}Tt=1 ;VAE Encoder E;DDPM sampler D;
+
+Output: Sequence of video latents X = {Xt}Tt=1  
+
+> 1
+
+Xref ← E (Iref ); 
+
+> 2
+
+KV cache ← [] ; 
+
+> 3
+
+X ← [] ; 
+
+> 4
+
+for t ← 1 to T do  
+
+> 5
+
+if t = 1 then  
+
+> 6
+
+▷ Frame-wise AR network  
+
+> 7
+
+Hct , H t, KV cache ← fθ (C1, X ref ); 
+
+> 8
+
+H′ 
+
+> 1
+
+← Ht; 
+
+> 9
+
+else  
+
+> 10
+
+Hct , H t, KV cache ←
+
+fθ (Ct, X t−1, KV cache ); 
+
+> 11
+
+H′ 
+
+> t
+
+← H′ 
+
+> 1
+
+⊙ ScaleProj (Ht) + ShiftProj (Ht); 
+
+> 12
+
+Z ← [] ; 
+
+> 13
+
+for k ← 1 to K do  
+
+> 14
+
+▷ Masked AR network  
+
+> 15
+
+Zk ← mθ (Hct , H ′
+
+> t
+
+, Z ≤k−1); 
+
+> 16
+
+Append Zk to Z; 
+
+> 17
+
+Sample ε ∼ N (0 , I); 
+
+> 18
+
+Xt ← D (Z, ε, T steps ); 
+
+> 19
+
+Append Xt to X ; 
+
+> 20
+
+return X ;
+
+## 4. Experiment 
+
+4.1. Setup 
+
+Implementation Details. Our model was trained on the filtered HDTF[44], MEAD[37], and Hallo3[9] datasets. The model weights were initialized from an autoregressive video generation backbone[10]. Training utilized 512 ×512 
+
+resolution videos with a batch size of 4. We employed a two-stage training strategy, using the AdamW optimizer for both stages. In the first stage, the learning rate was set to 1e-4. During this stage, we used the 3D VAE from Wan 2.1[34] to extract visual latents and trained the audio alignment net-work and the backbone model. In the second stage, the learning rate was reduced to 1e-5. We replaced sinusoidal positional encoding[33] with cyclic temporal positional en-coding and introduced motion intensity control. The pri-mary training window was 37 video frames; ablation stud-ies with different window lengths are detailed in the supple-mentary material. Unless otherwise specified, all reported results are based on an inference configuration where the model operates with a 10-frame latent sliding window, the Spatial Masked Autoregression generation is set to 36 steps, and the diffusion head employs 25 steps for denoising. 
+
+Evaluation Metrics. We assess our model’s performance using standard metrics for video and talking head gen-eration: Fr’echet Inception Distance (FID)[13], Fr’echet Video Distance (FVD)[32], Expression-FID (E-FID)[31], Synchronization-C (Sync-C), and Synchronization-D (Sync-D)[28]. For visual consistency, we use FID ↓, and for expression consistency, we use E-FID ↓. Temporal dynamics are evaluated using FVD ↓. Finally, audio-lip synchronization is quantified by Sync-C ↑ and Sync-D ↓.Avg-R ↓ refers to the average ranking of the model across various metrics, measuring its overall performance. 
+
+4.2. Overall Comparison 
+
+Baseline. We compared our method against typical out-standing works across various technical routes. Among these, AniPortrait[39], EchoMimic[6] are classic Diffusion-based works. EchoMimicV3[24] is a Diffusion-based ap-proach, leveraging a DiT backbone combined with 3D VAE for spatiotemporal compression. In contrast, methods like AniTalker[20], Ditto[18], and ARTalk[8] follow a non-end-to-end technical route. This involves predicting an interme-diate motion representation from the input audio, which is then used to render the final video. Notably, ARTalk utilizes a causal autoregressive scheme for this process. As shown in Table 1, previous methods struggle to achieve a balanced set of performance metrics due to their specialized designs. For instance, Ditto’s strict motion con-straint yields a favorable FID but causes poor lip synchro-nization and an extremely low E-FID (failing to preserve expression). Conversely, Anitalker achieves a high Sync-C by focusing on coarse mouth movements, but this ap-proach leads to severe visual distortions, unnatural expres-sions, and a very high (poor) FVD score. In contrast, our model demonstrates comprehensive and superior perfor-mance. Our novel in-context streaming condition approach yields the outstanding Syn-C and Syn-D metrics for out-standing lip synchronization, and the best E-FID results for the exceptional ability to maintain identity and expression consistency. Furthermore, our reference feature anchoring and kv-cache preservation ensure high visual quality and temporal stability. This results in the best (low) FVD score, demonstrating superior video quality and temporal coher-ence over previous methods. 
+
+4.3. Case Study 
+
+Figure 4 presents a qualitative comparison of video results from different audio-driven talking head methods. The bot-Dataset Method Params Avg-R (↓) FID (↓) FVD (↓) Sync-C (↑) Sync-D (↓) E-FID (↓)HDTF AniPortrait 2B 3.50 17.629 443.902 3.368 10.712 2.210 EchoMimic 2B 2.66 18.733 629.370 5.610 8.953 0.803                                                                       
+
+> EchoMimicV3 1.3B 3.83 21.054 380.812 2.824 11.794 1.987 AniTalker 0.1B 2.83 34.644 476.710 5.639 8.588 1.551 Ditto 0.1B 3.00 16.253 384.232 4.036 10.250 2.861 Ours 0.6B 1.66 18.981 363.909 5.707 8.903 1.326 MEAD AniPortrait 2B 4.16 63.460 519.822 1.324 12.650 1.886 EchoMimic 2B 3.00 51.546 775.951 5.276 9.565 1.562 EchoMimicV3 1.3B 3.50 46.797 347.066 2.397 12.455 2.425 AniTalker 0.1B 2.66 95.210 627.765 6.145 8.610 1.538 Ditto 0.1B 2.66 28.503 329.314 4.412 9.767 2.004 Ours 0.6B 1.50 55.682 316.275 5.866 8.459 0.872
+
+Table 1. Quantitative comparison with several state-of-the-art methods methods on HDTF and MEAD datasets. We use bold to indicate the best score and underline to represent the second-best score. “ ↑” indicates better performance with higher values, while “ ↓” indicates better performance with lower values. EARTalking achieved the best overall performance. Aniportrait      
+
+> Anitalker
+> Echomimic
+> Ditto
+> Ours
+> GT /ɔː/ /d ʒ//si ː/ /ri ː//æ/
+
+Figure 4. Qualitative comparison on the HDTF against leading methods with diverse technical routes. The red arrow points to lip distortion, the yellow arrow points to insufficient mouth opening, and the blue arrow points to insufficient lip closure. 
+
+tom of the figure displays the corresponding audio wave-form and phoneme sequence for each frame. The last row shows the ground truth video frames (right) and the refer-ence portrait image (left) used to drive each method. The results indicate that Aniportrait exhibit poor lip-audio synchronization throughout the sequence, struggling particularly with inadequate mouth closure for closed-mouth phonemes. Anitalker shows misalignment at the beginning and end of the video and performs poorly on open-mouth sounds. Echomimic is constrained by its need                
+
+> Method FID (↓)FVD (↓)Sync-C (↑)Ours 18.981 363.909 5.707
+> w/o Audio-Cache 19.136 389.641 5.329 Uni-Att 18.876 410.619 5.336
+
+Table 2. Comparison of different audio conditioning strategies. ours indicates that the kv-cache stores both past visual and au-dio representations. w/o audio-cache refers to not storing past au-dio representations in the kv-cache. uni-att denotes that only uni-directional attention from visual tokens to audio tokens is retained. 
+
+to crop the reference image, which hinders its ability to remain faithful to the original video’s composition. De-spite being the outstanding causal autoregressive method, ARTalk’s non-end-to-end design poorly interprets speech, causing minimal lip motion. Its multi-stage complexity also necessitates background/pose changes, reducing fidelity to the reference image. In contrast, our method demonstrates superior performance by maintaining both precise lip syn-chronization aligned with the audio and natural, expressive facial movements compared to these other approaches. 
+
+4.4. Ablation Study 
+
+Frame Condition In-Context Strategies. As an end-to-end causal model that supports streaming generation from streaming input conditions, we conducted an ablation study to determine the optimal ”frame condition in-context con-trol” strategy, comparing different attention mask and kv-cache designs (results in Table 2). Experiments demonstrate that our model, by maintaining an audio cache, can integrate current-frame control condi-tions with historical audio and visual information to capture better lip movements. When the audio cache is removed, the Syn-C metric shows a significant drop, while FID and FVD still perform excellently. This demonstrates the de-sign’s effectiveness in enhancing the model’s adherence to 0 3x training window length 
+
+> Ours
+> w/o
+> adaLN Sink
+> w/o
+> noise
+
+Figure 5. Ablation study for inference at 3x the training window length. w/o adaLN sink: The adaLN sink on the reference image is removed during both training and inference. w/o Noise: Noise perturbation to the input video is disabled during training. 
+
+Method FID (↓) FVD (↓) Sync-C (↑)Ours 18.981 363.909 5.707 
+
+w/o Noise 20.643 401.354 4.277 w/o adaLN 42.298 489.197 4.067 
+
+Table 3. Ablation study results for noise perturbation and adaLN sink mentioned in 3.3. w/o Noise denotes the removal of noise perturbation during training, and w/o adaLN denotes the removal of the adaLN sink design during training and inference. 
+
+conditional instructions, validating it as a feasible and effi-cient solution for streaming autoregressive generation. Furthermore, we validated the attention mechanism it-self. Our full model design permits audio-to-video attention (i.e., audio can attend to all past frames, including the ref-erence image). We tested a uni-att variant, which retained only unidirectional video-to-audio attention. This uni-att configuration resulted in a degradation of both Sync-C and FVD scores, validating the necessity and effectiveness of bidirectional attention between modalities in this autore-gressive paradigm. 
+
+Autoregressive Robustness Ablation Study. We con-ducted an ablation study to validate our method’s variable-length generation and its ability to mitigate autoregressive error. We compared our full method (using both noise per-turbation and adaLN sink anchoring) against two variants: one without noise and one without adaLN sink anchoring. The results in Table 3 show that removing either compo-nent degrades performance. Qualitative examples in Fig-ure 5 further illustrate this: without noise perturbation (row 2), autoregressive errors accumulate, causing fonts in later frames to become noticeably distorted. Similarly, removing the adaLN sink anchoring (row 3) not only causes this same font distortion but also impairs motion control, leading to severe facial distortion. Low                
+
+> Motion
+> High
+> Motion
+> Dynamic
+> Motion
+> 𝐀 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀 𝐀
+> Motion Intensity: 1Motion Intensity: 1Motion Intensity: 1
+> Motion Intensity: 5Motion Intensity: 5Motion Intensity: 5
+> Motion Intensity: 1Motion Intensity: 5Motion Intensity: 1
+
+Figure 6. The difference heatmap of the correlation between the generated character’s motion and the injected motion intensity. 
+
+Frame-Level Condition Control Study. To evaluate the effectiveness of contextual learning and auto-regressive generation for streaming, frame-level control, we conducted an experiment using varied motion intensity conditions while holding the driving audio and reference image con-stant. As illustrated in Figure 6, when a uniformly low mo-tion intensity is applied to the entire sequence, the gener-ated character exhibits minimal head movement, with mo-tion primarily localized to the labial (lip) and ocular (eye) regions. Conversely, applying a uniformly high motion intensity significantly amplifies the magnitude of move-ment in both facial expressions and head pose. Finally, when we injected a different motion intensity value for each frame during the auto-regressive process, the resulting motion demonstrated a high fidelity to the frame-specific control conditions, without being adversely influenced by adjacent temporal frames. This experiment validates that our method of contextual condition injection is effective for multi-conditional control and successfully achieves fine-grained temporal granularity. This control scheme remains effective and highly scalable, even when incorporating other types of control conditions. 
+
+## 5. Conclusion 
+
+In this paper, we introduce EARTalking, the first end-to-end, GPT-style autoregressive model for talking head gener-ation. EARTalking presents a novel, high-performance, and highly scalable solution that facilitates multi-conditional, frame-by-frame streaming control. This approach uniquely allows users to adjust the generated output at any arbitrary frame, bypassing the fixed-window latency of prior meth-ods. 
+
+Limitations and Future Work Although EARTalking achieves low computational cost and a small memory foot-print, it still struggles to reach real-time targets due to its masked autoregressive inference. The experiments vali-date the effectiveness of the autoregressive architecture for streaming, multi-conditional control (primarily audio and motion). Future work could therefore focus on integrating additional control conditions into the streaming framework to enhance its practical utility. 
+
+## References 
+
+[1] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. 2 [2] Jianchuan Chen, Jingchuan Hu, Gaige Wang, Zhonghua Jiang, Tiansong Zhou, Zhiwen Chen, and Chengfei Lv. Taoa-vatar: Real-time lifelike full-body talking avatars for aug-mented reality via 3d gaussian splatting. In Proceedings of the Computer Vision and Pattern Recognition Conference ,pages 10723–10734, 2025. 3 [3] Jiuhai Chen, Zhiyang Xu, Xichen Pan, Yushi Hu, Can Qin, Tom Goldstein, Lifu Huang, Tianyi Zhou, Saining Xie, Sil-vio Savarese, et al. Blip3-o: A family of fully open unified multimodal models-architecture, training and dataset. arXiv preprint arXiv:2505.09568 , 2025. 2 [4] Sanyuan Chen, Chengyi Wang, Zhengyang Chen, Yu Wu, Shujie Liu, Zhuo Chen, Jinyu Li, Naoyuki Kanda, Takuya Yoshioka, Xiong Xiao, et al. Wavlm: Large-scale self-supervised pre-training for full stack speech processing. 
+
+IEEE Journal of Selected Topics in Signal Processing , 16 (6):1505–1518, 2022. 5 [5] Yi Chen, Sen Liang, Zixiang Zhou, Ziyao Huang, Yifeng Ma, Junshu Tang, Qin Lin, Yuan Zhou, and Qinglin Lu. Hunyuanvideo-avatar: High-fidelity audio-driven human an-imation for multiple characters, 2025. 3 [6] Zhiyuan Chen, Jiajiong Cao, Zhiquan Chen, Yuming Li, and Chenguang Ma. Echomimic: Lifelike audio-driven portrait animations through editable landmark conditions. In Pro-ceedings of the AAAI Conference on Artificial Intelligence ,pages 2403–2410, 2025. 1, 2, 6 [7] Hanbo Cheng, Limin Lin, Chenyu Liu, Pengcheng Xia, Pengfei Hu, Jiefeng Ma, Jun Du, and Jia Pan. Dawn: Dy-namic frame avatar with non-autoregressive diffusion frame-work for talking head video generation. arXiv preprint arXiv:2410.13726 , 2024. 2 [8] Xuangeng Chu, Nabarun Goswami, Ziteng Cui, Hanqin Wang, and Tatsuya Harada. Artalk: Speech-driven 3d head animation via autoregressive model, 2025. 2, 6 [9] Jiahao Cui, Hui Li, Yun Zhan, Hanlin Shang, Kaihui Cheng, Yuqi Ma, Shan Mu, Hang Zhou, Jingdong Wang, and Siyu Zhu. Hallo3: Highly dynamic and realistic portrait image animation with video diffusion transformer. In Proceedings of the Computer Vision and Pattern Recognition Conference ,pages 21086–21095, 2025. 6 [10] Haoge Deng, Ting Pan, Haiwen Diao, Zhengxiong Luo, Yufeng Cui, Huchuan Lu, Shiguang Shan, Yonggang Qi, and Xinlong Wang. Autoregressive video generation with-out vector quantization. In The International Conference on Learning Representations (ICLR) , 2025. 2, 6 [11] Alexey Dosovitskiy. An image is worth 16x16 words: Transformers for image recognition at scale. arXiv preprint arXiv:2010.11929 , 2020. 2 [12] Yuan Gan, Zongxin Yang, Xihang Yue, Lingyun Sun, and Yi Yang. Efficient emotional adaptation for audio-driven talking-head generation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 22634–22645, 2023. 2 [13] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 6 [14] Youngjoon Jang, Ji-Hoon Kim, Junseok Ahn, Doyeop Kwak, Hong-Sun Yang, Yoon-Cheol Ju, Il-Hwan Kim, Byeong-Yeol Kim, and Joon Son Chung. Faces that speak: Jointly synthesising talking face and speech from text. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8818–8828, 2024. 2 [15] Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 , 2024. 2[16] Mukai Li, Shansan Gong, Jiangtao Feng, Yiheng Xu, Jun Zhang, Zhiyong Wu, and Lingpeng Kong. In-context learning with many demonstration examples. CoRR ,abs/2302.04931, 2023. 5 [17] Tianhong Li, Yonglong Tian, He Li, Mingyang Deng, and Kaiming He. Autoregressive image generation without vec-tor quantization. Advances in Neural Information Processing Systems , 37:56424–56445, 2024. 3, 4 [18] Tianqi Li, Ruobing Zheng, Minghui Yang, Jingdong Chen, and Ming Yang. Ditto: Motion-space diffusion for control-lable realtime talking head synthesis. In Proceedings of the 33rd ACM International Conference on Multimedia , pages 9704–9713, 2025. 6 [19] Yuan Li, Ziqian Bai, Feitong Tan, Zhaopeng Cui, Sean Fanello, and Yinda Zhang. Im-portrait: Learning 3d-aware video diffusion for photorealistic talking heads from monoc-ular videosc. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 21107–21116, 2025. 3[20] Tao Liu, Feilong Chen, Shuai Fan, Chenpeng Du, Qi Chen, Xie Chen, and Kai Yu. Anitalker: Animate vivid and di-verse talking faces through identity-decoupled facial motion encoding. arXiv preprint arXiv:2405.03121 , 2024. 6 [21] Yifeng Ma, Suzhen Wang, Zhipeng Hu, Changjie Fan, Tangjie Lv, Yu Ding, Zhidong Deng, and Xin Yu. Styletalk: one-shot talking head generation with controllable speaking styles. In Proceedings of the Thirty-Seventh AAAI Con-ference on Artificial Intelligence and Thirty-Fifth Confer-ence on Innovative Applications of Artificial Intelligence and Thirteenth Symposium on Educational Advances in Artificial Intelligence . AAAI Press, 2023. 2 [22] Yifeng Ma, Shiwei Zhang, Jiayu Wang, Xiang Wang, Yingya Zhang, and Zhidong Deng. Dreamtalk: When expressive talking head generation meets diffusion probabilistic models. 
+
+arXiv preprint arXiv:2312.09767 , 2023. 2 [23] Yifeng Ma, Jinwei Qi, Chaonan Ji, Peng Zhang, Bang Zhang, Zhidong Deng, and Liefeng Bo. Exploring timeline control for facial motion generation. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 1940– 1950, 2025. 3 [24] Rang Meng, Yan Wang, Weipeng Wu, Ruobing Zheng, Yum-ing Li, and Chenguang Ma. Echomimicv3: 1.3b parameters are all you need for unified multi-modal and multi-task hu-man animation, 2025. 2, 6 [25] Federico Nocentini, Claudio Ferrari, and Stefano Berretti. Emovoca: Speech-driven emotional 3d talking heads. In 
+
+Proceedings of the IEEE/CVF Winter Conference on Appli-cations of Computer Vision (WACV) , 2025. 3 [26] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 4195–4205, 2023. 2 [27] Ziqiao Peng, Wentao Hu, Yue Shi, Xiangyu Zhu, Xiaomei Zhang, Hao Zhao, Jun He, Hongyan Liu, and Zhaoxin Fan. Synctalk: The devil is in the synchronization for talking head synthesis. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 666–676, 2024. 2 [28] Ivan Skorokhodov, Sergey Tulyakov, and Mohamed Elho-seiny. Stylegan-v: A continuous video generator with the price, image quality and perks of stylegan2, 2021. 6 [29] Kim Sung-Bin, Lee Chae-Yeon, Gihun Son, Oh Hyun-Bin, Janghoon Ju, Suekyeong Nam, and Tae-Hyun Oh. Multitalk: Enhancing 3d talking head generation across languages with multilingual video dataset. In Interspeech 2024 , pages 1380– 1384, 2024. 2 [30] Shuai Tan, Bin Ji, and Ye Pan. Flowvqtalker: High-quality emotional talking face generation through normalizing flow and quantization. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition , pages 26317–26327, 2024. 2 [31] Linrui Tian, Qi Wang, Bang Zhang, and Liefeng Bo. Emo: Emote portrait alive generating expressive portrait videos with audio2video diffusion model under weak conditions. In 
+
+European Conference on Computer Vision , pages 244–260. Springer, 2024. 1, 2, 6 [32] Thomas Unterthiner, Sjoerd van Steenkiste, Karol Kurach, Rapha¨ el Marinier, Marcin Michalski, and Sylvain Gelly. Fvd: A new metric for video generation. 2019. 6 [33] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-reit, Llion Jones, Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in Neu-ral Information Processing Systems . Curran Associates, Inc., 2017. 6 [34] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianx-iao Yang, Jianyuan Zeng, Jiayu Wang, Jingfeng Zhang, Jin-gren Zhou, Jinkai Wang, Jixuan Chen, Kai Zhu, Kang Zhao, Keyu Yan, Lianghua Huang, Mengyang Feng, Ningyi Zhang, Pandeng Li, Pingyu Wu, Ruihang Chu, Ruili Feng, Shiwei Zhang, Siyang Sun, Tao Fang, Tianxing Wang, Tianyi Gui, Tingyu Weng, Tong Shen, Wei Lin, Wei Wang, Wei Wang, Wenmeng Zhou, Wente Wang, Wenting Shen, Wenyuan Yu, Xianzhong Shi, Xiaoming Huang, Xin Xu, Yan Kou, Yangyu Lv, Yifei Li, Yijing Liu, Yiming Wang, Yingya Zhang, Yi-tong Huang, Yong Li, You Wu, Yu Liu, Yulin Pan, Yun Zheng, Yuntao Hong, Yupeng Shi, Yutong Feng, Zeyinzi Jiang, Zhen Han, Zhi-Fan Wu, and Ziyu Liu. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. 2, 4, 6 [35] Baiqin Wang, Xiangyu Zhu, Fan Shen, Hao Xu, and Zhen Lei. Pc-talk: Precise facial animation control for audio-driven talking face generation. CoRR , abs/2503.14295, 2025. 2[36] Haotian Wang, Yuzhe Weng, Yueyan Li, Zilu Guo, Jun Du, Shutong Niu, Jiefeng Ma, Shan He, Xiaoyan Wu, Qiming Hu, Bing Yin, Cong Liu, and Qingfeng Liu. Emotivetalk: Expressive talking head generation through audio informa-tion decoupling and emotional video diffusion. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2025, Nashville, TN, USA, June 11-15, 2025 , pages 26212–26221. Computer Vision Foundation / IEEE, 2025. 2, 3 [37] Kaisiyuan Wang, Qianyi Wu, Linsen Song, Zhuoqian Yang, Wayne Wu, Chen Qian, Ran He, Yu Qiao, and Chen Change Loy. Mead: A large-scale audio-visual dataset for emotional talking-face generation. In European Conference on Com-puter Vision , pages 700–717. Springer, 2020. 6 [38] Xinlong Wang, Xiaosong Zhang, Zhengxiong Luo, Quan Sun, Yufeng Cui, Jinsheng Wang, Fan Zhang, Yueze Wang, Zhen Li, Qiying Yu, et al. Emu3: Next-token prediction is all you need. arXiv preprint arXiv:2409.18869 , 2024. 2 [39] Huawei Wei, Zejun Yang, and Zhisheng Wang. Aniportrait: Audio-driven synthesis of photorealistic portrait animation. 
+
+arXiv preprint arXiv:2403.17694 , 2024. 6 [40] Jinheng Xie, Weijia Mao, Zechen Bai, David Junhao Zhang, Weihao Wang, Kevin Qinghong Lin, Yuchao Gu, Zhijie Chen, Zhenheng Yang, and Mike Zheng Shou. Show-o: One single transformer to unify multimodal understanding and generation. arXiv preprint arXiv:2408.12528 , 2024. 2 [41] Rongchang Xie, Chen Du, Ping Song, and Chang Liu. Muse-vl: Modeling unified vlm through semantic discrete encod-ing. In Proceedings of the IEEE/CVF International Confer-ence on Computer Vision , pages 24135–24146, 2025. 2 [42] Mingwang Xu, Hui Li, Qingkun Su, Hanlin Shang, Liwei Zhang, Ce Liu, Jingdong Wang, Yao Yao, and Siyu Zhu. Hallo: Hierarchical audio-driven visual synthesis for portrait image animation. arXiv preprint arXiv:2406.08801 , 2024. 1, 2[43] Hu Yu, Biao Gong, Hangjie Yuan, DanDan Zheng, Wei-long Chai, Jingdong Chen, Kecheng Zheng, and Feng Zhao. Videomar: Autoregressive video generatio with continuous tokens. 2025. 2 [44] Zhimeng Zhang, Lincheng Li, Yu Ding, and Changjie Fan. Flow-guided one-shot talking face generation with a high-resolution audio-visual dataset. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 3661–3670, 2021. 6 [45] Rui Zhen, Wenchao Song, Qiang He, Juan Cao, Lei Shi, and Jia Luo. Human-computer interaction system: A survey of talking-head generation. Electronics , 12(1):218, 2023. 1

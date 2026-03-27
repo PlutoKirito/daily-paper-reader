@@ -6,79 +6,76 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-26
-- 运行时间：2026-03-26 19:53:14 UTC
+- 最新运行日期：2026-03-27
+- 运行时间：2026-03-27 20:10:14 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：6
+- 本次总论文数：18
+- 精读区：5
 - 速读区：13
 
 ### 今日简报（AI）
-今日精选 19 篇前沿成果，重点突破了极简音视频生成架构与面向任务的视频传输效率。
-核心结论指出单流架构能显著提升生成模型速度，而光流引导框架则大幅优化了多用户视频传输质量。
-推荐深入了解边缘侧视觉蒸馏与雷达感知压缩，探索 AI 模型在资源受限场景下的高效落地。
-- 详情：[/202603/26/README](/202603/26/README)
+今日精选 18 篇前沿论文，重点聚焦视频扩散先验的跨域应用与 TinyML 的极致压缩技术。
+视频扩散模型正成为通用引导与新视角合成的核心动力，而 HYPERTINYPW 为边缘设备带来了生成式模型压缩的新突破。
+建议关注视频生成技术在下游任务中的“降维打击”能力，以及 MoE 架构在轻量化部署上的最新进展。
+- 详情：[/202603/27/README](/202603/27/README)
 
 ### 精读区论文标签
-1. [Goal-Oriented Framework for Optical Flow-based Multi-User Multi-Task Video Transmission](/202603/26/2603.19995v2-goal-oriented-framework-for-optical-flow-based-multi-user-multi-task-video-transmission)  
+1. [Uni-Classifier: Leveraging Video Diffusion Priors for Universal Guidance Classifier](/202603/27/2603.20382v1-uni-classifier-leveraging-video-diffusion-priors-for-universal-guidance-classifier)  
    标签：评分：8.0/10、query:vcodec
-   evidence：基于光流的语义编码器与运动提取器用于视频传输
-2. [Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model](/202603/26/2603.21986v1-speed-by-simplicity-a-single-stream-architecture-for-fast-audio-video-generative-foundation-model)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：基于单流Transformer的音视频生成基础模型
-3. [Markov-Enforced Discrete Diffusion Model for Digital Semantic Symbol Error Correction](/202603/26/2603.22983v1-markov-enforced-discrete-diffusion-model-for-digital-semantic-symbol-error-correction)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：联合源信道编码中用于语义符号纠错的离散扩散模型
-4. [On the Suboptimality of Rate--Distortion-Optimal Compression: Fundamental Accuracy Limits for Distributed Localization](/202603/26/2603.23006v1-on-the-suboptimality-of-rate--distortion-optimal-compression-fundamental-accuracy-limits-for-distributed-localization)  
+   evidence：利用视频扩散先验进行通用引导
+2. [Once-for-All Channel Mixers (HYPERTINYPW): Generative Compression for TinyML](/202603/27/2603.24916v1-once-for-all-channel-mixers-hypertinypw-generative-compression-for-tinyml)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对TinyML的生成式压缩，使用共享微型MLP进行权重合成
+3. [Adaptive Learned Image Compression with Graph Neural Networks](/202603/27/2603.25316v1-adaptive-learned-image-compression-with-graph-neural-networks)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：率失真优化压缩的基础精度限制分析
-5. [CAKE: Real-time Action Detection via Motion Distillation and Background-aware Contrastive Learning](/202603/26/2603.23988v1-cake-real-time-action-detection-via-motion-distillation-and-background-aware-contrastive-learning)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：从光流到RGB模型的运动知识蒸馏
-6. [Powerful Teachers Matter: Text-Guided Multi-view Knowledge Distillation with Visual Prior Enhancement](/202603/26/2603.24208v1-powerful-teachers-matter-text-guided-multi-view-knowledge-distillation-with-visual-prior-enhancement)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：从大教师模型到小学生的知识蒸馏以实现高效推理
+   evidence：基于图神经网络的内容自适应图像压缩框架
+4. [A Mamba-based Perceptual Loss Function for Learning-based UGC Transcoding](/202603/27/2603.25566v1-a-mamba-based-perceptual-loss-function-for-learning-based-ugc-transcoding)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：视频转码的感知损失函数
+5. [MegaFlow: Zero-Shot Large Displacement Optical Flow](/202603/27/2603.25739v1-megaflow-zero-shot-large-displacement-optical-flow)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：利用视觉先验实现零样本大位移光流估计
 
 ### 速读区论文标签
-1. [AdaRadar: Rate Adaptive Spectral Compression for Radar-based Perception](/202603/26/2603.17979v1-adaradar-rate-adaptive-spectral-compression-for-radar-based-perception)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：速率自适应频谱压缩与数据速率自适应反馈
-2. [EdgeCrafter: Compact ViTs for Edge Dense Prediction via Task-Specialized Distillation](/202603/26/2603.18739v2-edgecrafter-compact-vits-for-edge-dense-prediction-via-task-specialized-distillation)  
+1. [AIMER: Calibration-Free Task-Agnostic MoE Pruning](/202603/27/2603.18492v1-aimer-calibration-free-task-agnostic-moe-pruning)  
    标签：评分：7.0/10、query:train-trick
-   evidence：针对边缘设备上紧凑型ViT的任务专门化蒸馏
-3. [Spectrally-Guided Diffusion Noise Schedules](/202603/26/2603.19222v1-spectrally-guided-diffusion-noise-schedules)  
+   evidence：无需校准的专家剪枝技术，用于减少内存和推理开销
+2. [Dual-Domain Representation Alignment: Bridging 2D and 3D Vision via Geometry-Aware Architecture Search](/202603/27/2603.19563v1-dual-domain-representation-alignment-bridging-2d-and-3d-vision-via-geometry-aware-architecture-search)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：用于高效视觉模型的知识蒸馏与架构搜索
+3. [OrbitNVS: Harnessing Video Diffusion Priors for Novel View Synthesis](/202603/27/2603.19613v1-orbitnvs-harnessing-video-diffusion-priors-for-novel-view-synthesis)  
    标签：评分：7.0/10、query:vcodec
-   evidence：用于图像和视频生成的扩散噪声调度
-4. [SAMA: Factorized Semantic Anchoring and Motion Alignment for Instruction-Guided Video Editing](/202603/26/2603.19228v1-sama-factorized-semantic-anchoring-and-motion-alignment-for-instruction-guided-video-editing)  
+   evidence：利用视频扩散先验进行新视角合成
+4. [Generalized Discrete Diffusion from Snapshots](/202603/27/2603.21342v1-generalized-discrete-diffusion-from-snapshots)  
    标签：评分：7.0/10、query:vcodec
-   evidence：视频编辑中的因子化语义锚定与运动对齐
-5. [ParallelVLM: Lossless Video-LLM Acceleration with Visual Alignment Aware Parallel Speculative Decoding](/202603/26/2603.19610v1-parallelvlm-lossless-video-llm-acceleration-with-visual-alignment-aware-parallel-speculative-decoding)  
+   evidence：离散扩散模型的统一框架
+5. [Efficient Coarse-to-Fine Diffusion Models with Time Step Sequence Redistribution](/202603/27/2603.21348v1-efficient-coarse-to-fine-diffusion-models-with-time-step-sequence-redistribution)  
    标签：评分：7.0/10、query:train-trick
-   evidence：视觉对齐感知的并行投机解码与验证器引导的剪枝
-6. [SIMPLER: Efficient Foundation Model Adaptation via Similarity-Guided Layer Pruning for Earth Observation](/202603/26/2603.19873v1-simpler-efficient-foundation-model-adaptation-via-similarity-guided-layer-pruning-for-earth-observation)  
+   evidence：适用于边缘设备的低复杂度扩散模型
+6. [Relax Forcing: Relaxed KV-Memory for Consistent Long Video Generation](/202603/27/2603.21366v1-relax-forcing-relaxed-kv-memory-for-consistent-long-video-generation)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：用于长视频生成的自回归视频扩散
+7. [Unified Spatiotemporal Token Compression for Video-LLMs at Ultra-Low Retention](/202603/27/2603.21957v1-unified-spatiotemporal-token-compression-for-video-llms-at-ultra-low-retention)  
    标签：评分：7.0/10、query:train-trick
-   evidence：基于相似度引导的层剪枝，用于高效基础模型适配
-7. [Collaborative Adaptive Curriculum for Progressive Knowledge Distillation](/202603/26/2603.20296v1-collaborative-adaptive-curriculum-for-progressive-knowledge-distillation)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：针对资源受限多媒体学习的渐进式知识蒸馏
-8. [Topology-Preserving Deep Joint Source-Channel Coding for Semantic Communication](/202603/26/2603.17126v1-topology-preserving-deep-joint-source-channel-coding-for-semantic-communication)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：带有持久同调正则化器的端到端训练
-9. [AR-CoPO: Align Autoregressive Video Generation with Contrastive Policy Optimization](/202603/26/2603.17461v1-ar-copo-align-autoregressive-video-generation-with-contrastive-policy-optimization)  
+   evidence：视频模型的时空令牌压缩
+8. [Rethinking Vector Field Learning for Generative Segmentation](/202603/27/2603.19218v1-rethinking-vector-field-learning-for-generative-segmentation)  
    标签：评分：6.0/10、query:vcodec
-   evidence：自回归视频生成与蒸馏技术，实现低延迟合成
-10. [Few-Step Diffusion Sampling Through Instance-Aware Discretizations](/202603/26/2603.17671v1-few-step-diffusion-sampling-through-instance-aware-discretizations)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：通过实例感知离散化加速扩散模型采样
-11. [Steering Video Diffusion Transformers with Massive Activations](/202603/26/2603.17825v1-steering-video-diffusion-transformers-with-massive-activations)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：通过内部模型信号引导视频扩散Transformer
-12. [TransText: Transparency Aware Image-to-Video Typography Animation](/202603/26/2603.17944v1-transtext-transparency-aware-image-to-video-typography-animation)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：将图生视频模型适配于图层感知动画及VAE潜层模式
-13. [F2LLM-v2: Inclusive, Performant, and Efficient Embeddings for a Multilingual World](/202603/26/2603.19223v1-f2llm-v2-inclusive-performant-and-efficient-embeddings-for-a-multilingual-world)  
+   evidence：重新思考生成式扩散模型的向量场学习
+9. [DAPA: Distribution Aware Piecewise Activation Functions for On-Device Transformer Inference and Training](/202603/27/2603.19338v1-dapa-distribution-aware-piecewise-activation-functions-for-on-device-transformer-inference-and-training)  
    标签：评分：6.0/10、query:train-trick
-   evidence：高效嵌入模型的模型剪枝与知识蒸馏
+   evidence：针对端侧推理的量化与硬件友好激活函数
+10. [Vision Tiny Recursion Model (ViTRM): Parameter-Efficient Image Classification via Recursive State Refinement](/202603/27/2603.19503v1-vision-tiny-recursion-model-vitrm-parameter-efficient-image-classification-via-recursive-state-refinement)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：适用于资源受限环境的参数高效架构
+11. [PCSTracker: Long-Term Scene Flow Estimation for Point Cloud Sequences](/202603/27/2603.19762v1-pcstracker-long-term-scene-flow-estimation-for-point-cloud-sequences)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：点云序列的迭代几何运动联合优化
+12. [Improving Image-to-Image Translation via a Rectified Flow Reformulation](/202603/27/2603.20186v1-improving-image-to-image-translation-via-a-rectified-flow-reformulation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：用于生成式图像到图像转换的整流流公式重构
+13. [EARTalking: End-to-end GPT-style Autoregressive Talking Head Synthesis with Frame-wise Control](/202603/27/2603.20307v1-eartalking-end-to-end-gpt-style-autoregressive-talking-head-synthesis-with-frame-wise-control)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：具有逐帧控制能力的端到端自回归视频合成
 
 
 <div class="dpr-home-promo-card">
