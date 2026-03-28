@@ -1,0 +1,369 @@
+Title: Timestep-Aware Block Masking for Efficient Diffusion Model Inference
+
+URL Source: https://arxiv.org/pdf/2603.19939v1
+
+Published Time: Mon, 23 Mar 2026 00:54:50 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Timestep-Aware Block Masking for Efficient Diffusion Model Inference 
+
+## Haodong He 1, Yuan Gao 2, Weizhong Zhang 3, Gui-Song Xia 2†
+
+> 1
+
+## School of Computer Science, Wuhan University 
+
+> 2
+
+## School of Artificial Intelligence, Wuhan University 
+
+> 3
+
+## School of Data Science, Fudan University    
+
+> {haodonghe, guisong.xia }@whu.edu.cn, ethan.y.gao@gmail.com, weizhongzhang@fudan.edu.cn
+
+## Abstract 
+
+Diffusion Probabilistic Models (DPMs) have achieved great success in image generation but suffer from high infer-ence latency due to their iterative denoising nature. Mo-tivated by the evolving feature dynamics across the denois-ing trajectory, we propose a novel framework to optimize the computational graph of pre-trained DPMs on a per-timestep basis. By learning timestep-specific masks, our method dynamically determines which blocks to execute or bypass through feature reuse at each inference stage. Unlike global optimization methods that incur prohibitive memory costs via full-chain backpropagation, our method optimizes masks for each timestep independently, ensuring a memory-efficient training process. To guide this process, we intro-duce a timestep-aware loss scaling mechanism that priori-tizes feature fidelity during sensitive denoising phases, com-plemented by a knowledge-guided mask rectification strat-egy to prune redundant spatial-temporal dependencies. Our approach is architecture-agnostic and demonstrates signif-icant efficiency gains across a broad spectrum of models, including DDPM, LDM, DiT, and PixArt. Experimental results show that by treating the denoising process as a sequence of optimized computational paths, our method achieves a superior balance between sampling speed and generative quality. Our code will be released. 
+
+## 1. Introduction 
+
+Diffusion Probabilistic Models (DPMs) [6, 13, 33, 34, 40, 42] have achieved significant success in various fields such as the generation of images [17, 43, 46], speech [15, 16], text [8, 21], video [14, 28], and 3D objects [2, 3], attract-ing increasing attention. Despite their extraordinary perfor-mance, DPMs require the repeated use of denoising models during the inference process to transform Gaussian noise 
+
+> †Corresponding author.
+
+into samples, which usually comes with high computational costs. This trade-off between performance and efficiency poses a critical challenge in resource-constrained environ-ments and has become a bottleneck for the broader adoption of diffusion models [23]. Recently, numerous approaches have been proposed to enhance the inference efficiency of diffusion models. They can be broadly categorized into two types: The first ex-plores more efficient sampling strategies. For instance, some studies expedite model inference by refining the solvers [26, 41, 49, 52, 53], whereas others reduce infer-ence timesteps through distillation [23, 25, 31, 36]. The second type accelerates sampling at each timestep: for ex-ample, Quantization [22, 39] and pruning [7] have also been explored to accelerate model inference. Recent findings [20, 29, 30, 38, 48] indicate minimal variation in the fea-tures output by diffusion models across adjacent timesteps, leading to methods that reuse block outputs for accelerated inference. Drawing inspiration from these cache-based methods, our goal is to develop a mask for diffusion models that can significantly speed up the model’s inference process while preserving its accuracy. Due to the nature of diffusion mod-els, they reuse the denoising network across timesteps, but the impact of each block on image quality varies, allowing selective computation bypass. Specifically, we initialize a mask m for the denoising model, and the value mt,b deter-mines the operation that block b in the model will perform at timestep t: 0 skips the computation step and reuses the cached features; 1 executes the computation step and up-dates the corresponding cache. In contrast to rule-based methods like DeepCache [30] or feature-difference-based methods like the one proposed by Wimbauer [48], the training process is entirely end-to-end, ensuring that the mask is optimal. During training, we will freeze the model’s parameters and perform the de-noising process, making the outputs of the masked model at each timestep as close as possible to the original model, and constraining the model’s efficiency through the ℓ1 loss 1
+
+> arXiv:2603.19939v1 [cs.CV] 20 Mar 2026 Figure 1. Qualitative demonstration of our method on representative diffusion architectures. In these instances, our method achieves sub-stantial speedups—specifically 1.63 ×, 2.75 ×, and 1.48 ×—while preserving high-fidelity generation quality with high visual consistency.
+
+of the mask. A critical insight is that the nature of the noise removed by the model varies across timesteps during infer-ence. To address this, we introduce a timestep-aware loss weight to guide the optimization process. After obtaining the mask, we will further perform rectification on it to en-hance its ability to accelerate the model without sacrific-ing accuracy. Unlike L2C [29], the mask’s training is tai-lored around the model’s sampling procedure, which means it only requires initializing with Gaussian noise as the in-put. In contrast to DiP-GO’s [54] global end-to-end opti-mization, our method optimizes masks per timestep. This eliminates the need to retain intermediate features from all timesteps for backpropagation, resulting in a more memory-efficient training process. Experimental results demonstrate that our method achieves superior acceleration performance. We have ex-perimented with four different structures of diffusion mod-els (DDPM [13], LDM [34], DiT [33], and PixArt [4]) to demonstrate the effectiveness, efficiency, and universality of our method. For DiT-XL/2 with 50 DDIM steps on Im-ageNet 512 × 512, we train the mask on a single GeForce RTX 4090 GPU for less than 3 hours, achieving a 1.48 ×
+
+acceleration in the sampling process. In summary, we have proposed a new method for accel-erating the inference of diffusion models, which is effec-tive for various architectures. Moreover, its performance is significantly better than that of other cache-based methods. The contributions of our paper include: • We introduce a novel approach for training an end-to-end mask for a given diffusion model, which enables the model to skip computations of certain blocks, thereby im-proving sampling efficiency without requiring retraining of the pre-trained model. • Our method is grounded in the denoising process of the model and requires only initialized noise as input. The training is performed per timestep, making it highly ef-ficient and lightweight. Furthermore, we incorporate timestep-aware loss weighting to guide the optimization and propose a mask post-processing technique to further enhance acceleration. • Our method is universal and effective across various architectures, such as DDPM, LDM, DiT, and PixArt on CIFAR-10, LSUN-Bedroom, LSUN-Churches, Ima-geNet, and MS-COCO. 
+
+## 2. Related Work 
+
+Diffusion Models. In the field of deep learning, diffusion models have emerged as a novel class of generative models that have undergone rapid development after GANs [1, 9] and VAEs [12, 18]. They have demonstrated exceptional performance in multiple domains, including image genera-tion [17, 43, 46], video synthesis [14, 28], 3D objects mod-eling [2, 3], and so on. DDPM [13] represents pioneering work in diffusion models, where noise is gradually added 2to the pixel space and then a neural network is trained to reverse this process, generating high-quality images. LDM [34] builds upon DDPM by conducting the diffusion pro-cess in the latent space rather than the pixel space, signifi-cantly reducing computational complexity while maintain-ing the quality of generated images. The recently intro-duced DiT [33] combines diffusion models with the Trans-former [47] architecture, leveraging the powerful modeling capabilities of Transformers to handle the latent represen-tation of images. While diffusion models exhibit superior performance, the repetitive application of the underlying de-noising neural networks renders them computationally ex-pensive. To further the democratization of diffusion mod-els, this work focuses on accelerating the sampling speed of these models, ensuring precision is maintained. 
+
+Model Acceleration. The acceleration of diffusion mod-els can generally be divided into two categories. The first category involves reducing the number of time steps re-quired for model sampling. Representative approaches in this domain include various enhanced solvers. For in-stance, DDIM [41] reduces time steps by exploring a non-Markovian process, which is related to neural ODEs. Sub-sequently, numerous studies have been proposed focus-ing on fast solvers of SDEs or ODEs to enable efficient sampling [26, 49, 52, 53]. Furthermore, some research has aimed to decrease sampling steps through distillation [23, 25, 31, 36]. Consistency models [27, 44] can even generate high-quality images in few steps. The second cat-egory focuses on reducing the computational time per in-dividual denoising step. Many studies have attempted to speed up model inference through pruning [7] or quantiza-tion [22, 39] methods. In addition, some research [20, 29, 30, 38, 48] has achieved model acceleration through block caching. For ex-ample, DeepCache [30] has introduced a rule-based model acceleration method without training, while Wimbauer [48] determines whether to skip a block by assessing the differ-ences. Furthermore, L2C [29] models the diffusion model’s training process and optimizes a router to determine which modules to skip. In contrast, our method, similar to DiP-GO [54], is modeled based on the sampling process. The key difference lies in our per-timestep optimization approach, which requires less GPU memory during training while achieving superior performance. 
+
+## 3. Method 
+
+3.1. Preliminary 
+
+Diffusion models. Diffusion models are a cutting-edge class of generative models that simulate the data generation process. They involve a forward diffusion process, where data gradually evolves into noise, and a reverse diffusion process, where noise is incrementally transformed back into data. The forward diffusion can be summarized as: 
+
+xt = √αtxt−1 + √1 − αtzt, (1) where xt is the data at step t, zt is Gaussian noise, and αt is a predefined sequence of noise levels. The reverse diffusion, which is the generative phase, is given by: 
+
+xt−1 = 1
+
+√αt
+
+
+
+xt − 1 − αt
+
+√1 − ¯αt
+
+ϵθ (xt, t )
+
+
+
+, (2) where ϵθ (xt, t ) is the model’s prediction of the noise at step 
+
+t, and ¯αt is the cumulative product of α up to t.
+
+Block caching. Block caching is a strategy to accelerate the inference speed of diffusion models. Specifically, since previous research has demonstrated that the U-Net [35] net-work of the diffusion model exhibits minimal changes in underlying features across adjacent timesteps during infer-ence, the outputs of certain blocks at the current timestep can be cached and reused by the corresponding blocks at the next timestep. This allows for skipping the computation of some blocks, thereby accelerating the model’s inference. 
+
+3.2. Problem Formulation 
+
+We aim to learn a two-dimensional binary mask m, where its element mt,b determines whether the block b of the model at timestep t should be skipped (i.e., mt,b = 0 ) or not (i.e., mt,b = 1 ). The binary mask m forms a T × B matrix, where T is the total sampling timestep and B is the total number of blocks of the network architecture. The flexi-ble mask formulation enables skipping the network blocks in various granularities, and in our implementation, we con-sider the Multi-Head Attention (MHA) and MLP for the Dif-fusion Transformer (DiT) architecture, as well as ResBlock 
+
+and AttnBlock for the U-Net CNN architecture. During the training process, we freeze the model param-eters and only train the mask m, greatly reducing the de-mand for GPU memory. For each block b, we cache its fea-ture and determine whether the cached features are reusable at timestep t by mt,b .Formally, for each block b at timestep t, we learn a binary mask mt,b to determine whether its feature xt,b should be computed through the current block, i.e ., ft,b (xt,b −1) where 
+
+ft,b is the current block such as MHA, MLP, ResBlock , or 
+
+AttnBlock and xt,b −1 is its input; or simply reuse the cached feature xcache  
+
+> b
+
+from the previous timestep for acceleration. Our cached feature for each block is continuously updated as the timestep increases. The above process is illustrated in Fig. 2, and this gives us the following formulation: 
+
+xt,b = mt,b ft,b (xt,b −1) + (1 − mt,b )xcache  
+
+> b
+
+,xcache  
+
+> b
+
+= xt,b , if mt,b = 1 s.t. mt,b ∈ { 0, 1}. (3) 3Figure 2. Illustration of our method on a UNet-based model (left) and a Transformer-based model (right). During the denoising phase, upon receiving the input xt, the model checks the mask mt values corresponding to each block. If the mask value is 1, it performs computations and updates the cached features for that block; if the mask value is 0, it skips the computation and uses the existing cached features. 
+
+3.3. Optimization 
+
+We observe that the binary optimization problem, which in-volves finding a high-quality mask m within a discrete and exponentially expanding solution space, is generally NP-hard. Thus, we need to transform the discrete elements 
+
+mt,b in the mask into continuous variables st,b . However, when considering the use of Gumbel-Softmax sampling, as the temperature parameter increases, its distribution tends to approximate uniform sampling, which introduces bias. And we cannot directly control its variance. Hence, we choose to perform continuous random sampling of the mask between 0 and 1, setting the probability of each element mt,b to be 1 as st,b and the probability to be 0 as 1 − st,b . Then, We use regularization terms to encourage these values to converge to either 0 or 1. Equation 3 has thus transformed into: 
+
+xt,b = st,b ft,b (xt,b −1) + (1 − st,b )xcache  
+
+> b
+
+,xcache  
+
+> b
+
+= xt,b , if st,b > 0.5 or t = T − 1
+
+s.t. st,b ∈ [0 , 1] .
+
+(4) As illustrated in Fig. 3, we restrict our optimized feature 
+
+xt,end output by the end block under the learned mask mt,b 
+
+to introduce minimal distortion of the original feature xori 
+
+> t,end
+
+from the vanilla DPM, which yields the following ℓ2 feature loss for each timestep t:
+
+Lfeature  
+
+> t
+
+= || xt,end − xori 
+
+> t,end
+
+|| 2. (5) Simultaneously, we would like to learn a sparse m to identify and skip all the less important blocks, indicating the ℓ1 regularization on mt,b as: 
+
+Lsparse  
+
+> t
+
+= X
+
+> b
+
+|| st,b || 1. (6) Additionally, to encourage the elements of mt to con-verge towards binary values of 0 and 1, we introduce a bi-modal regularizer [45]: 
+
+Lbi-modal  
+
+> t
+
+= X
+
+> b
+
+st,b (1 − st,b ). (7) From Eq. 5, 6, and 7, it can be derived that our optimiza-tion objective is as follows: 
+
+Lt = Lfeature  
+
+> t
+
++ λ1Lsparse  
+
+> t
+
++ λ2Lbi-modal  
+
+> t
+
+. (8) 4Figure 3. Illustration of the end-to-end mask optimization frame-work. The original DPM is frozen, serving as a teacher to provide reference features xt. For each timestep, the learnable mask mt
+
+is updated by the total loss Lt. The Detach operation ensures that gradients are restricted to the current timestep, enabling memory-efficient per-step optimization. 
+
+In which λ1 and λ2 are the regularization coefficients for the two regularization terms, respectively. 
+
+3.4. Timestep-Aware Loss Scaling 
+
+Due to the varying noise levels processed by the model at different timesteps during inference, we introduce a timestep-aware loss weight to guide the optimization pro-cess. Specifically, smaller regularization coefficients are ap-plied at critical timesteps with significant feature changes to prioritize generation quality, while larger regularization coefficients are used at timesteps with smooth feature tran-sitions to aggressively enhance acceleration. Specifically, we compute the relative feature variation at each timestep using the pre-trained model: 
+
+δ[t] = || xori  
+
+> t,end
+
+− xori 
+
+> t−1,end
+
+|| 2
+
+|| xori 
+
+> t,end
+
+|| 2
+
+. (9) A piecewise function is then employed to assign the loss weight: 
+
+w(t) = 
+
+
+
+2.0, δ[t]/ max( δ) < 0.11.5, 0.1 ≤ δ[t]/ max( δ) < 0.51.0, otherwise (10) The final loss function for timestep is defined as: 
+
+Lt = Lfeature  
+
+> t
+
++ λ1w(t)Lsparse  
+
+> t
+
++ λ2w(t)Lbi-modal  
+
+> t
+
+. (11) 
+
+3.5. Knowledge-Guided Mask Rectification 
+
+Apart from optimizing mt,b to 0 by using the sparse regular-ization Eq. 6, there exists an additional postprocessing rule to safely rectify mt,b to 0 after optimization, resulting in a further acceleration in the inference. Such a rectification rule is derived leveraging the mask dependencies 1) among different blocks within the same timestep and 2) between the same blocks from the adjacency timesteps , without ad-ditional training .Specifically, by iterating Eq. 4 from the first timestep and block to the last one, a certain feature xt,b can be used in two ways: 1) acting as the input of its next block within the same timestep , and 2) potentially being reused by the same block of the next timestep . If both blocks do not need 
+
+xt,b as input, we can safely set mt,b to 0. Considering block b at timestep t, if its next block b + 1 
+
+at timestep t reuses the cached features, i.e ., mt,b +1 = 0 ,then we no longer need xt,b as input to calculate xt,b +1 .Simultaneously, if the same block b at its next timestep t−1
+
+does not reuse xt,b as cache, i.e ., mt−1,b = 1 , we can safely skip block b at timestep t without additional training: 
+
+mt,b = 0 , if mt,b +1 = 0 and mt−1,b = 1 . (12) Finally, we use Eq. 12 to rectify our masks from timestep 0 ( i.e ., the last timestep) to timestep T (i.e ., the first timestep), and within each timestep, from the last block to the first one. The above process is illustrated in Fig. 4. block  i+1                
+
+> 0
+> block i
+> 1→0……block i-1
+> 0
+> block i+1
+> 1……block i-1
+> 0
+> mtmask
+> mt-1mask
+> rectify
+> block i
+> 1
+> no need
+> block 0
+> 0
+> block 0
+> 1
+> block B
+> 0
+> block B
+> 1
+> no need
+
+Figure 4. Illustration of mask rectification. Within the same timestep, if the subsequent block does not require its computation result as input, and the same block in the next timestep does not need to reuse its features, then the computation of this block can be safely skipped. 
+
+## 4. Experiments 
+
+4.1. Experimental Setup 
+
+Models. To demonstrate the effectiveness and universal-ity of our approach, we conduct experiments on DDPM [13], LDM [34], DiT [33], and PixArt [4]. We select pre-trained models DDPM, LDM-4-G, DiT-XL/2, and PixArt-Sigma-XL for subsequent mask training. 
+
+Datasets. Our evaluations are conducted on multiple stan-dard benchmarks across diverse resolutions. For the CNN-based DDPM, we utilize CIFAR-10 [19] ( 32 × 32 ) and LSUN [50] ( 256 ×256 , Bedroom and Churches). Regarding ImageNet [5], we adopt the 256 × 256 version for LDM-4-G, while evaluating DiT-XL/2 at both 256 × 256 and 
+
+512 × 512 scales. For PixArt-Sigma-XL, MS-COCO [24] is employed at a resolution of 1024 × 1024 .5Figure 5. Acceleration for PixArt-Sigma-XL on MS-COCO 1024 × 1024. Our method not only achieves a 1.43 × speedup, but also maintains excellent image generation quality and text-to-image semantic consistency. 
+
+Baselines. For DDPM and LDM-4-G experiments, we choose DeepCache [30] as the primary baseline for compar-ison, which has achieved excellent results as a training-free diffusion model acceleration method. For DiT-XL/2 exper-iments, we select Learning-to-Cache (L2C) [29] as the pri-mary baseline, which trains a router based on the model’s process of adding noise to skip the computation, requir-ing additional training data as input. For PixArt-Sigma-XL experiments, we choose DitFastAttn [51], a post-training compression method, as the primary baseline. 
+
+Evaluation Metrics. For DDPM experiments, we use FID [11] to evaluate the quality of the generated images. For LDM-4-G and DiT-XL/2 experiments, in addition to FID, we also considered sFID [32], IS [37], Precision, and Recall as metrics. For PixArt-Sigma-XL experiments, IS, FID, and CLIP Score [10] are used to evaluate semantic alignment and visual fidelity. We use inference speed and total MACs as metrics to quantify the computational effi-ciency and acceleration of the methods. 
+
+4.2. Main Results 
+
+To demonstrate that our method is effective across different architectures of diffusion models, we conduct experiments on DDPM [13], LDM [34], DiT [33], and PixArt [4]. The                                                                                                                  
+
+> CIFAR-10 32 ×32
+> Method Extra Data Training Time ↓MACs ↓Speed ↑FID ↓
+> DDPM [13] ––0.61T 1×4.19 DDPM* ––0.61T 1×4.25 Diff-Pruning [7] ✓–0.34T 1.37 ×5.29 CT [44]* ✓––1.62 ×4.68 DeepCache [30] ✗✗0.35T 1.61 ×4.70
+> Ours ✗0.2h 0.34T 1.63 ×4.66
+> LSUN-Bedroom 256 ×256
+> Method Extra Data Training Time ↓MACs ↓Speed ↑FID ↓
+> DDPM [13] ––24.9T 1×6.62 DDPM* ––24.9T 1×6.75 Diff-Pruning [7] ✓–13.9T 1.48 ×18.60 DeepCache [30] ✗✗19.1T 1.29 ×6.69
+> Ours ✗0.6h 18.3T 1.34 ×6.67
+> LSUN-Churches 256 ×256
+> Method Extra Data Training Time ↓MACs ↓Speed ↑FID ↓
+> DDPM [13] ––24.9T 1×10.58 DDPM* ––24.9T 1×10.92 Diff-Pruning [7] ✓–13.9T 1.48 ×13.90 DeepCache [30] ✗✗19.1T 1.29 ×11.31
+> Ours ✗0.6h 18.8T 1.31 ×10.39
+
+Table 1. Unconditional generation quality using DDPM on CIFAR-10, LSUN-Bedroom, and LSUN-Churches. All the meth-ods here adopt 100 DDIM steps, except for CT. CT means con-sistency model (with 55 denoising steps). * means the reproduced results. Bold indicates the best performance. 
+
+experimental results for DDPM on CIFAR-10 [19], LSUN-6ImageNet 256 × 256                                                                                                                                                                         
+
+> Method NFE Extra Data Training Time ↓MACs ↓Speed ↑IS ↑FID ↓sFID ↓Precision ↑Recall ↑
+> LDM-4 [34]* 250 ––25.0T 1×206.45 3.42 5.14 82.83 53.13 Diff-Pruning [7] 250 ✓–13.2T 1.51 ×201.81 9.16 10.59 87.87 30.87 DeepCache [30] 250 ✗✗9.1T 2.65 ×202.79 3.44 5.11 82.65 53.81 Ours 250 ✗2.9h 8.3T 2.75 ×205.76 3.51 5.00 82.74 52.81 DiT-XL/2 [33]* 100 ––11.9T 1×242.8 2.16 4.45 80.35 60.34 L2C [29]* 100 ✓17.0h 8.1T 1.38 ×240.7 2.29 4.52 80.30 60.04
+> FORA [38]* 100 ✗✗–1.74 ×232.7 4.29 8.59 76.46 58.11 DiP-GO [54] 250 ✗–7.4T 1.46 ×–3.14 –––
+> Ours 100 ✗2.5h 6.7T 1.67 ×240.2 2.29 4.45 80.00 60.04
+> ImageNet 512 ×512
+> Method NFE Extra Data Training Time ↓MACs ↓Speed ↑IS ↑FID ↓sFID ↓Precision ↑Recall ↑
+> DiT-XL/2 [33]* 50 ––26.3T 1×203.5 3.33 4.53 83.42 54.50 L2C [29]* 50 ✓18.4h 16.9T 1.54 ×200.7 3.76 5.10 83.16 54.30 FORA [38]* 50 ✗✗–1.67 ×75.7 42.43 21.04 56.06 49.60
+> Ours 50 ✗2.8h 17.9T 1.48 ×202.8 3.64 5.06 83.18 54.50
+
+Table 2. Class-conditional generation quality on ImageNet using LDM-4-G and DiT-XL/2. The baselines here, as well as our methods, employ the DDIM scheduler. * means the reproduced results. Bold indicates the best performance. 
+
+Method NFE Extra Data Training Time ↓ MACs ↓ Speed ↑ IS ↑ FID ↓ CLIP Score ↑
+
+PixArt-Sigma-XL [4]* 50 – – 107.8T 1× 55.65 24.33 31.27 PixArt-Sigma-XL 38 ✗ ✗ 81.9T 1.32 × 50.88 24.89 30.02 DitFastAttn [51] 50 ✗ 0.3h – 1.24 × 52.74 23.94 31.18 
+
+Ours 50 ✗ 4.2h 71.9T 1.43 × 55.52 22.97 31.45 
+
+Table 3. Prompt-conditional generation quality on MS-COCO 1024 × 1024 using PixArt-Sigma-XL. The baselines here, as well as our methods, employ the DPM-Solver scheduler. * means the reproduced results. Bold indicates the best performance. 
+
+Bedroom [50], and LSUN-Churches [50] are shown in Tab. 1. Compared with DeepCache [30], we achieve a higher ac-celeration ratio while maintaining a better FID score on all these datasets. Compared to Diff-Pruning [7], our method does not require additional training data and causes a much lower accuracy loss. Especially on LSUN-Churches, we not only achieved a 1.31 × speedup but also obtained a better FID score compared to the original model. The experimental results for LDM-4-G [34] on Ima-geNet [5] are shown in Tab. 2. Our method is capable of accelerating the model to 2.75 × its original speed with minimal performance loss. Compared to DeepCache, we achieve a higher acceleration ratio while outperforming the IS, sFID, and Precision metrics. The experimental results for DiT-XL/2 [33] on ImageNet are shown in Tab. 2. Compared with L2C [29], our method only requires initialized Gaussian noise as input and signifi-cantly reduces training time. It matches L2C’s accuracy but accelerates the model more obviously (1.67 × vs. 1.38 ×) on ImageNet 256 × 256. On ImageNet 512 × 512, our method is slightly slower than L2C but more accurate. Compared with FORA [38], our method is also more advantageous. Although FORA is training-free and achieves the most sig-nificant acceleration of the model, its negative impact on the model’s accuracy is notable. Tab. 3 presents the experimental results of PixArt-Sigma-XL [33] on MS-COCO. Compared with DitFastAttn [29] and methods using fewer DPM-Solver steps, our ap-proach achieves superior image generation quality while de-livering a higher acceleration ratio. Qualitative comparison results on the model are presented in Fig. 5, and more re-sults can be seen in the supplementary material. In Fig. 6, we illustrate the distribution of element val-ues in the mask trained on the CIFAR-10 dataset for DDPM (with 100 DDIM steps) using our method. As shown in it, the mask values exhibit an uneven distribution. Addition-ally, we conduct a statistical analysis of the value range of elements in the masks, as illustrated in Fig. 7. Most ele-ments converge around 0 and 1. 
+
+4.3. Ablation Study 
+
+Ablation of mask sampling methods. We compared the impact of two sampling methodologies (i.e., random sam-7Figure 6. The visualization results of the mask trained by our method. The color of each rectangle represents the number of times the corresponding block performs computations over 5 timesteps; the darker the color, the more computations. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Value Range
+> 0200 400 600 800 1000 1200 1400 1600
+> Count
+> Mask Value Distribution Histogram
+
+Figure 7. The visualization results of the mask’s values show that most elements have converged to near 0 or 1. 
+
+pling and Gumbel-Softmax sampling) on the experimental outcomes, as detailed in Tab. 4. We can observe that the mask derived from training with Gumbel-Softmax sampling performs less effectively in both accelerating the model and maintaining generation accuracy compared to the mask obtained through random sampling. We believe that for Gumbel-Softmax sampling, the high temperature parame-ter leads to a sampling distribution that more closely ap-proximates a uniform distribution, thereby introducing bias. Moreover, the characteristics of Gumbel-Softmax sampling make it difficult to directly control its variance, limiting the fine-tuning of the optimization process. 
+
+Ablation of model loss. We conduct ablation studies on the loss function, including timestep-aware loss scaling and the introduction of bi-modal loss, to assess their impact on the mask obtained during training. The specific experimen-          
+
+> CIFAR-10 32 ×32 Sampling Method Speed ↑FID ↓
+> Random 1.63 ×4.66 Gumbel 1.29 ×4.67
+
+Table 4. Performance comparison with random sampling and Gumbel-Softmax sampling.                         
+
+> CIFAR-10 32 ×32 Rectification Loss Scaling Bi-modal Loss Speed ↑FID ↓
+> ✓✓✓1.63 ×4.66
+> ✗✓✓1.49 ×4.66
+> ✓✗✓1.62 ×4.74
+> ✓✓✗1.63 ×4.72
+
+Table 5. Ablation study on timestep-aware loss scaling, knowledge-based model rectification, and the introduction of bi-modal loss. 
+
+tal results can be referred to in the third and fourth rows of Tab. 5. We can observe that without the use of timestep-aware loss scaling, the acceleration effect of the mask is di-minished, and there is a slight decrease in the quality of the images generated by the accelerated model. When the bi-modal loss is not introduced, the acceleration effect remains consistent with when it is used, but there is a slight decline in the quality of image generation. More experiments can be found in the supplementary material. 
+
+Ablation of mask rectification. We compare the impact of including or excluding knowledge-based mask rectifi-cation on the mask, and the specific experimental results can be referred to in the first and second rows of Tab. 5. When knowledge-based model rectification is performed, the quality of the generated images remains, and the accel-eration effect increases from 1.49 × to 1.63 ×. This result validates that our knowledge-based mask rectification can enhance inference speed without sacrificing image quality. 
+
+## 5. Conclusion 
+
+Our study introduces an innovative approach that signifi-cantly accelerates the denoising process of diffusion mod-els with an optimized mask. The essence of this method lies in dynamically adjusting the computational requirements of the model at different timesteps, allowing the model to re-duce redundant computations. Moreover, our method does not require additional training data; it only needs Gaussian noise as input for end-to-end training of the mask. Ex-periments show it works efficiently across DDPM, LDM, DiT, and PixArt models on various datasets, with some even achieving higher image quality post-acceleration. Overall, our work offers new insights into diffusion model accelera-tion and contributes to the field. 8References 
+
+[1] Martin Arjovsky, Soumith Chintala, and L´ eon Bottou. Wasserstein generative adversarial networks. In Interna-tional conference on machine learning , pages 214–223. PMLR, 2017. 2 [2] Ziang Cao, Fangzhou Hong, Tong Wu, Liang Pan, and Ziwei Liu. Large-vocabulary 3d diffusion model with transformer. 
+
+arXiv preprint arXiv:2309.07920 , 2023. 1, 2 [3] Hansheng Chen, Jiatao Gu, Anpei Chen, Wei Tian, Zhuowen Tu, Lingjie Liu, and Hao Su. Single-stage diffusion nerf: A unified approach to 3d generation and reconstruction. In 
+
+Proceedings of the IEEE/CVF international conference on computer vision , pages 2416–2425, 2023. 1, 2 [4] Junsong Chen, Chongjian Ge, Enze Xie, Yue Wu, Lewei Yao, Xiaozhe Ren, Zhongdao Wang, Ping Luo, Huchuan Lu, and Zhenguo Li. Pixart-σ: Weak-to-strong training of diffusion transformer for 4k text-to-image generation. In 
+
+European Conference on Computer Vision , pages 74–91. Springer, 2024. 2, 5, 6, 7 [5] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition , pages 248–255. Ieee, 2009. 5, 7 [6] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. Advances in neural informa-tion processing systems , 34:8780–8794, 2021. 1 [7] Gongfan Fang, Xinyin Ma, and Xinchao Wang. Structural pruning for diffusion models. In Advances in Neural Infor-mation Processing Systems , 2023. 1, 3, 6, 7 [8] Shansan Gong, Mukai Li, Jiangtao Feng, Zhiyong Wu, and LingPeng Kong. Diffuseq: Sequence to sequence text generation with diffusion models. arXiv preprint arXiv:2210.08933 , 2022. 1 [9] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. Advances in neural information processing systems , 27, 2014. 2 [10] Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras, and Yejin Choi. Clipscore: A reference-free evaluation met-ric for image captioning. arXiv preprint arXiv:2104.08718 ,2021. 6 [11] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 6 [12] Irina Higgins, Loic Matthey, Arka Pal, Christopher Burgess, Xavier Glorot, Matthew Botvinick, Shakir Mohamed, and Alexander Lerchner. beta-vae: Learning basic visual con-cepts with a constrained variational framework. In Interna-tional conference on learning representations , 2016. 2 [13] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-fusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. 1, 2, 5, 6 [14] Jonathan Ho, Tim Salimans, Alexey Gritsenko, William Chan, Mohammad Norouzi, and David J Fleet. Video dif-fusion models. Advances in Neural Information Processing Systems , 35:8633–8646, 2022. 1, 2 [15] Rongjie Huang, Max WY Lam, Jun Wang, Dan Su, Dong Yu, Yi Ren, and Zhou Zhao. Fastdiff: A fast conditional diffusion model for high-quality speech synthesis. 2022. 1 [16] Rongjie Huang, Zhou Zhao, Huadai Liu, Jinglin Liu, Chenye Cui, and Yi Ren. Prodiff: Progressive fast diffusion model for high-quality text-to-speech. In Proceedings of the 30th ACM International Conference on Multimedia , pages 2595– 2605, 2022. 1 [17] Bahjat Kawar, Michael Elad, Stefano Ermon, and Jiaming Song. Denoising diffusion restoration models. Advances in Neural Information Processing Systems , 35:23593–23606, 2022. 1, 2 [18] Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. 2 [19] Alex Krizhevsky, Geoffrey Hinton, et al. Learning multiple layers of features from tiny images. 2009. 5, 6 [20] Senmao Li, Taihang Hu, Fahad Shahbaz Khan, Linxuan Li, Shiqi Yang, Yaxing Wang, Ming-Ming Cheng, and Jian Yang. Faster diffusion: Rethinking the role of unet encoder in diffusion models. arXiv e-prints , pages arXiv–2312, 2023. 1, 3 [21] Xiang Li, John Thickstun, Ishaan Gulrajani, Percy S Liang, and Tatsunori B Hashimoto. Diffusion-lm improves control-lable text generation. Advances in Neural Information Pro-cessing Systems , 35:4328–4343, 2022. 1 [22] Xiuyu Li, Yijiang Liu, Long Lian, Huanrui Yang, Zhen Dong, Daniel Kang, Shanghang Zhang, and Kurt Keutzer. Q-diffusion: Quantizing diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vi-sion , pages 17535–17545, 2023. 1, 3 [23] Yanyu Li, Huan Wang, Qing Jin, Ju Hu, Pavlo Chemerys, Yun Fu, Yanzhi Wang, Sergey Tulyakov, and Jian Ren. Snap-fusion: Text-to-image diffusion model on mobile devices within two seconds. Advances in Neural Information Pro-cessing Systems , 36, 2024. 1, 3 [24] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Doll´ ar, and C Lawrence Zitnick. Microsoft coco: Common objects in context. In 
+
+Computer Vision–ECCV 2014: 13th European Conference, Zurich, Switzerland, September 6-12, 2014, Proceedings, Part V 13 , pages 740–755. Springer, 2014. 5 [25] Xingchao Liu, Xiwen Zhang, Jianzhu Ma, Jian Peng, et al. Instaflow: One step is enough for high-quality diffusion-based text-to-image generation. In The Twelfth International Conference on Learning Representations , 2023. 1, 3 [26] Cheng Lu, Yuhao Zhou, Fan Bao, Jianfei Chen, Chongxuan Li, and Jun Zhu. Dpm-solver: A fast ode solver for diffusion probabilistic model sampling in around 10 steps. Advances in Neural Information Processing Systems , 35:5775–5787, 2022. 1, 3 [27] Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, and Hang Zhao. Latent consistency models: Synthesizing high-resolution images with few-step inference. arXiv preprint arXiv:2310.04378 , 2023. 3 [28] Zhengxiong Luo, Dayou Chen, Yingya Zhang, Yan Huang, Liang Wang, Yujun Shen, Deli Zhao, Jingren Zhou, and 
+
+9Tieniu Tan. Videofusion: Decomposed diffusion mod-els for high-quality video generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10209–10218, 2023. 1, 2 [29] Xinyin Ma, Gongfan Fang, Michael Bi Mi, and Xinchao Wang. Learning-to-cache: Accelerating diffusion trans-former via layer caching, 2024. 1, 2, 3, 6, 7 [30] Xinyin Ma, Gongfan Fang, and Xinchao Wang. Deepcache: Accelerating diffusion models for free. In The IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2024. 1, 3, 6, 7 [31] Chenlin Meng, Robin Rombach, Ruiqi Gao, Diederik Kingma, Stefano Ermon, Jonathan Ho, and Tim Salimans. On distillation of guided diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pat-tern Recognition , pages 14297–14306, 2023. 1, 3 [32] Charlie Nash, Jacob Menick, Sander Dieleman, and Peter W Battaglia. Generating images with sparse representations. 
+
+arXiv preprint arXiv:2103.03841 , 2021. 6 [33] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF Inter-national Conference on Computer Vision , pages 4195–4205, 2023. 1, 2, 3, 5, 6, 7 [34] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 1, 2, 3, 5, 6, 7 [35] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmen-tation. In Medical Image Computing and Computer-Assisted Intervention–MICCAI 2015: 18th International Conference, Munich, Germany, October 5-9, 2015, Proceedings, Part III 18 , pages 234–241. Springer, 2015. 3 [36] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. arXiv preprint arXiv:2202.00512 , 2022. 1, 3 [37] Tim Salimans, Ian Goodfellow, Wojciech Zaremba, Vicki Cheung, Alec Radford, and Xi Chen. Improved techniques for training gans. Advances in neural information processing systems , 29, 2016. 6 [38] Pratheba Selvaraju, Tianyu Ding, Tianyi Chen, Ilya Zharkov, and Luming Liang. Fora: Fast-forward caching in diffusion transformer acceleration. arXiv preprint arXiv:2407.01425 ,2024. 1, 3, 7 [39] Yuzhang Shang, Zhihang Yuan, Bin Xie, Bingzhe Wu, and Yan Yan. Post-training quantization on diffusion models. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 1972–1981, 2023. 1, 3[40] Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsupervised learning using nonequilibrium thermodynamics. In International confer-ence on machine learning , pages 2256–2265. PMLR, 2015. 1[41] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 , 2020. 1, 3 [42] Yang Song and Stefano Ermon. Generative modeling by esti-mating gradients of the data distribution. Advances in neural information processing systems , 32, 2019. 1 [43] Yang Song, Sahaj Garg, Jiaxin Shi, and Stefano Ermon. Sliced score matching: A scalable approach to density and score estimation. In Uncertainty in Artificial Intelligence ,pages 574–584. PMLR, 2020. 1, 2 [44] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. In International Conference on Machine Learning , pages 32211–32252. PMLR, 2023. 3, 6[45] Suraj Srinivas, Akshayvarun Subramanya, and RVenkatesh Babu. Training sparse neural networks. In 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition workshops , pages 138–145, 2017. 4 [46] Arash Vahdat, Karsten Kreis, and Jan Kautz. Score-based generative modeling in latent space. Advances in Neural In-formation Processing Systems , 34:11287–11302, 2021. 1, 2[47] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. 3 [48] Felix Wimbauer, Bichen Wu, Edgar Schoenfeld, Xiaoliang Dai, Ji Hou, Zijian He, Artsiom Sanakoyeu, Peizhao Zhang, Sam Tsai, Jonas Kohler, et al. Cache me if you can: Accel-erating diffusion models through block caching. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 6211–6220, 2024. 1, 3 [49] Shuchen Xue, Zhaoqiang Liu, Fei Chen, Shifeng Zhang, Tianyang Hu, Enze Xie, and Zhenguo Li. Accelerating diffu-sion sampling with optimized time steps. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8292–8301, 2024. 1, 3 [50] Fisher Yu, Ari Seff, Yinda Zhang, Shuran Song, Thomas Funkhouser, and Jianxiong Xiao. Lsun: Construction of a large-scale image dataset using deep learning with humans in the loop. arXiv preprint arXiv:1506.03365 , 2015. 5, 7 [51] Zhihang Yuan, Hanling Zhang, Lu Pu, Xuefei Ning, Lin-feng Zhang, Tianchen Zhao, Shengen Yan, Guohao Dai, and Yu Wang. Ditfastattn: Attention compression for diffusion transformer models. Advances in Neural Information Pro-cessing Systems , 37:1196–1219, 2024. 6, 7 [52] Qinsheng Zhang and Yongxin Chen. Fast sampling of dif-fusion models with exponential integrator. arXiv preprint arXiv:2204.13902 , 2022. 1, 3 [53] Zhenyu Zhou, Defang Chen, Can Wang, and Chun Chen. Fast ode-based sampling for diffusion models in around 5 steps. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , pages 7777–7786, 2024. 1, 3 [54] Haowei Zhu, Dehua Tang, Ji Liu, Mingjie Lu, Jintu Zheng, Jinzhang Peng, Dong Li, Yu Wang, Fan Jiang, Lu Tian, et al. Dip-go: A diffusion pruner via few-step gradient optimiza-tion. Advances in Neural Information Processing Systems ,37:92581–92604, 2024. 2, 3, 7 
+
+10
