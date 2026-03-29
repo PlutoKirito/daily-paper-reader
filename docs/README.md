@@ -6,67 +6,72 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-28
-- 运行时间：2026-03-28 19:42:13 UTC
+- 最新运行日期：2026-03-29
+- 运行时间：2026-03-29 19:33:23 UTC
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：2
+- 本次总论文数：17
+- 精读区：4
 - 速读区：13
 
 ### 今日简报（AI）
-今日精选 15 篇前沿论文，重点突破时空预测精度与自动驾驶强化学习的效率瓶颈。
-推荐关注 WaveSFNet 的空频双域门控架构，以及利用潜世界模型加速自动驾驶决策的 DreamerAD。
-建议开发者留意扩散模型在单步超分及低剂量 CT 去噪等高效推理场景中的最新应用。
-- 详情：[/202603/28/README](/202603/28/README)
+今日精选 17 篇论文，重点突破纯图像驱动的超高清视频合成与空间自适应扩散生成技术。
+Vi
+- 详情：[/202603/29/README](/202603/29/README)
 
 ### 精读区论文标签
-1. [WaveSFNet: A Wavelet-Based Codec and Spatial--Frequency Dual-Domain Gating Network for Spatiotemporal Prediction](/202603/28/2603.23284v1-wavesfnet-a-wavelet-based-codec-and-spatial--frequency-dual-domain-gating-network-for-spatiotemporal-prediction)  
+1. [ViBe: Ultra-High-Resolution Video Synthesis Born from Pure Images](/202603/29/2603.23326v1-vibe-ultra-high-resolution-video-synthesis-born-from-pure-images)  
    标签：评分：8.0/10、query:vcodec
-   evidence：用于时空预测和长程动态的基于小波的编解码器
-2. [DreamerAD: Efficient Reinforcement Learning via Latent World Model for Autonomous Driving](/202603/28/2603.24587v1-dreamerad-efficient-reinforcement-learning-via-latent-world-model-for-autonomous-driving)  
+   evidence：视频扩散Transformer与端到端训练
+2. [Foveated Diffusion: Efficient Spatially Adaptive Image and Video Generation](/202603/29/2603.23491v1-foveated-diffusion-efficient-spatially-adaptive-image-and-video-generation)  
    标签：评分：8.0/10、query:vcodec
-   evidence：压缩视频生成扩散采样的潜在世界模型
+   evidence：基于扩散模型的高效空间自适应图像与视频生成
+3. [Beyond the Golden Data: Resolving the Motion-Vision Quality Dilemma via Timestep Selective Training](/202603/29/2603.25527v1-beyond-the-golden-data-resolving-the-motion-vision-quality-dilemma-via-timestep-selective-training)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：视频扩散模型中的分层学习动态与运动视觉质量
+4. [PackForcing: Short Video Training Suffices for Long Video Sampling and Long Context Inference](/202603/29/2603.25730v1-packforcing-short-video-training-suffices-for-long-video-sampling-and-long-context-inference)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：自回归视频扩散模型中的时空压缩
 
 ### 速读区论文标签
-1. [Timestep-Aware Block Masking for Efficient Diffusion Model Inference](/202603/28/2603.19939v1-timestep-aware-block-masking-for-efficient-diffusion-model-inference)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：块掩码技术用于扩散模型的高效推理与加速
-2. [MFSR: MeanFlow Distillation for One Step Real-World Image Super Resolution](/202603/28/2603.20690v1-mfsr-meanflow-distillation-for-one-step-real-world-image-super-resolution)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：针对扩散模型的单步蒸馏技术，提升推理速度
-3. [TAFG-MAN: Timestep-Adaptive Frequency-Gated Latent Diffusion for Efficient and High-Quality Low-Dose CT Image Denoising](/202603/28/2603.20868v1-tafg-man-timestep-adaptive-frequency-gated-latent-diffusion-for-efficient-and-high-quality-low-dose-ct-image-denoising)  
+1. [LiFR-Seg: Anytime High-Frame-Rate Segmentation via Event-Guided Propagation](/202603/29/2603.21115v1-lifr-seg-anytime-high-frame-rate-segmentation-via-event-guided-propagation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：具有感知优化自编码器的潜扩散框架
-4. [OrbitStream: Training-Free Adaptive 360-degree Video Streaming via Semantic Potential Fields](/202603/28/2603.20999v1-orbitstream-training-free-adaptive-360-degree-video-streaming-via-semantic-potential-fields)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：基于语义势能场的自适应360度视频流传输
-5. [Generative Artificial Intelligence Assisted Multi-modal Semantic Extraction for NOMA-based Image Transmissions](/202603/28/2603.21092v1-generative-artificial-intelligence-assisted-multi-modal-semantic-extraction-for-noma-based-image-transmissions)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：用于语义图像恢复的生成式人工智能
-6. [Learning to Optimize Joint Source and RIS-assisted Channel Encoding for Multi-User Semantic Communication Systems](/202603/28/2603.21097v1-learning-to-optimize-joint-source-and-ris-assisted-channel-encoding-for-multi-user-semantic-communication-systems)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：联合信源编码与语义压缩率优化
-7. [QMoP: Query Guided Mixture-of-Projector for Efficient Visual Token Compression](/202603/28/2603.21232v1-qmop-query-guided-mixture-of-projector-for-efficient-visual-token-compression)  
+   evidence：利用运动场进行动态场景下的帧间语义特征传播
+2. [Emotion-Aware Quantization for Discrete Speech Representations: An Analysis of Emotion Preservation](/202603/29/2603.21224v1-emotion-aware-quantization-for-discrete-speech-representations-an-analysis-of-emotion-preservation)  
    标签：评分：7.0/10、query:train-trick
-   evidence：通过剪枝和自适应分支进行视觉令牌压缩
-8. [Efficiency Follows Global-Local Decoupling](/202603/28/2603.19567v1-efficiency-follows-global-local-decoupling)  
+   evidence：离散语音表示的量化与压缩
+3. [Uncertainty-Aware Knowledge Distillation for Multimodal Large Language Models](/202603/29/2603.21426v1-uncertainty-aware-knowledge-distillation-for-multimodal-large-language-models)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：不确定性感知知识蒸馏框架
+4. [PROBE: Diagnosing Residual Concept Capacity in Erased Text-to-Video Diffusion Models](/202603/29/2603.21547v1-probe-diagnosing-residual-concept-capacity-in-erased-text-to-video-diffusion-models)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：使用潜空间对齐的文本到视频扩散模型诊断协议
+5. [FAAR: Format-Aware Adaptive Rounding for NVFP4](/202603/29/2603.22370v1-faar-format-aware-adaptive-rounding-for-nvfp4)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：针对低比特量化的可学习舍入策略
+6. [Tiny Inference-Time Scaling with Latent Verifiers](/202603/29/2603.22492v1-tiny-inference-time-scaling-with-latent-verifiers)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：扩散流水线的潜空间验证器
+7. [Tiny Inference-Time Scaling with Latent Verifiers](/202603/29/2603.22492v2-tiny-inference-time-scaling-with-latent-verifiers)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：在扩散 Transformer 潜空间中间隐藏表示上运行的验证器
+8. [ResPrune: Text-Conditioned Subspace Reconstruction for Visual Token Pruning in Large Vision-Language Models](/202603/29/2603.21105v1-resprune-text-conditioned-subspace-reconstruction-for-visual-token-pruning-in-large-vision-language-models)  
    标签：评分：6.0/10、query:train-trick
-   evidence：全局-局部解耦实现亚二次缩放的视觉模型
-9. [ParallelVLM: Lossless Video-LLM Acceleration with Visual Alignment Aware Parallel Speculative Decoding](/202603/28/2603.19610v2-parallelvlm-lossless-video-llm-acceleration-with-visual-alignment-aware-parallel-speculative-decoding)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：用于视频加速的视觉令牌剪枝
-10. [Probing the Latent World: Emergent Discrete Symbols and Physical Structure in Latent Representations](/202603/28/2603.20327v1-probing-the-latent-world-emergent-discrete-symbols-and-physical-structure-in-latent-representations)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：视频世界模型中潜空间表示的被动量化探测
-11. [OmniCodec: Low Frame Rate Universal Audio Codec with Semantic-Acoustic Disentanglement](/202603/28/2603.20638v1-omnicodec-low-frame-rate-universal-audio-codec-with-semantic-acoustic-disentanglement)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：具有语义-声学解耦的神经音频编解码器
-12. [Enhancing Vision-Based Policies with Omni-View and Cross-Modality Knowledge Distillation for Mobile Robots](/202603/28/2603.20679v1-enhancing-vision-based-policies-with-omni-view-and-cross-modality-knowledge-distillation-for-mobile-robots)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：用于轻量化模型和潜空间嵌入对齐的知识蒸馏
-13. [Memory-Efficient Fine-Tuning Diffusion Transformers via Dynamic Patch Sampling and Block Skipping](/202603/28/2603.20755v1-memory-efficient-fine-tuning-diffusion-transformers-via-dynamic-patch-sampling-and-block-skipping)  
+   evidence：用于高效推理的视觉Token剪枝
+9. [The Universal Normal Embedding](/202603/29/2603.21786v1-the-universal-normal-embedding)  
    标签：评分：6.0/10、query:vcodec
-   evidence：扩散Transformer的内存高效微调
+   evidence：生成模型中的潜空间高斯性与DDIM噪声
+10. [Manifold-Aware Exploration for Reinforcement Learning in Video Generation](/202603/29/2603.21872v1-manifold-aware-exploration-for-reinforcement-learning-in-video-generation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：用于视频生成对齐的强化学习
+11. [CLEAR: Context-Aware Learning with End-to-End Mask-Free Inference for Adaptive Video Subtitle Removal](/202603/29/2603.21901v1-clear-context-aware-learning-with-end-to-end-mask-free-inference-for-adaptive-video-subtitle-removal)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：基于扩散模型的视频处理生成式优化
+12. [Camera-Agnostic Pruning of 3D Gaussian Splats via Descriptor-Based Beta Evidence](/202603/29/2603.21933v1-camera-agnostic-pruning-of-3d-gaussian-splats-via-descriptor-based-beta-evidence)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：用于3D表示高效存储与传输的训练后剪枝
+13. [Tuning Real-World Image Restoration at Inference: A Test-Time Scaling Paradigm for Flow Matching Models](/202603/29/2603.22027v1-tuning-real-world-image-restoration-at-inference-a-test-time-scaling-paradigm-for-flow-matching-models)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：基于扩散和流匹配的图像修复，涉及测试时缩放范式
 
 
 <div class="dpr-home-promo-card">
