@@ -1,0 +1,733 @@
+Title: PROBE: Diagnosing Residual Concept Capacity in Erased Text-to-Video Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2603.21547v1
+
+Published Time: Tue, 24 Mar 2026 02:08:16 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+> 1
+
+# PROBE: Diagnosing Residual Concept Capacity in Erased Text-to-Video Diffusion Models 
+
+Yiwei Xie, Zheng Zhang B, Ping Liu B
+
+Abstract —Concept erasure techniques for text-to-video (T2V) diffusion models report substantial suppression of sensitive content, yet current evaluation is limited to checking whether the target concept is absent from generated frames, treating output-level suppression as evidence of representational removal. We introduce PROBE, a diagnostic protocol that quantifies the 
+
+reactivation potential of erased concepts in T2V models. With all model parameters frozen, PROBE optimizes a lightweight pseudo-token embedding through a denoising reconstruction objective combined with a novel latent alignment constraint that anchors recovery to the spatiotemporal structure of the original concept. We make three contributions: (1) a multi-level evaluation framework spanning classifier-based detection, semantic similarity, temporal reactivation analysis, and human validation; (2) systematic experiments across three T2V architec-tures, three concept categories, and three erasure strategies re-vealing that all tested methods leave measurable residual capacity whose robustness correlates with intervention depth; and (3) the identification of temporal re-emergence, a video-specific failure mode where suppressed concepts progressively resurface across frames, invisible to frame-level metrics. These findings suggest that current erasure methods achieve output-level suppression rather than representational removal. We release our protocol to support reproducible safety auditing. Our code is available at https://github.com/YiweiXie/PRObingBasedEvaluation. 
+
+Index Terms —Text-to-video generation, concept erasure, ro-bustness evaluation, diffusion models, temporal reactivation, machine unlearning 
+
+I. I NTRODUCTION 
+
+# CONCEPT erasure techniques for text-to-video (T2V) diffusion models aim to suppress the generation of sen-sitive, prohibited, or copyrighted content without full retrain-ing [1]. Methods adapted from the text-to-image (T2I) domain, including negative prompting [2], inference-time activation steering [3], and parameter-efficient unlearning [4], report substantial reductions in the visible occurrence of targeted concepts. However, erasure success is typically judged by a single criterion: whether the target concept is absent from generated outputs [5], [6]. This conflates two different out-comes, namely surface-level suppression and representational deletion, leaving a critical question unaddressed: 
+
+Do current T2V erasure methods truly remove target concepts from the model’s internal representations, or do they merely suppress their visible occurrence under standard prompting? 
+
+This question is particularly pressing in the video set-ting. Unlike static images, videos distribute semantics across            
+
+> Yiwei Xie and Zheng Zhang are with the School of Artificial Intelligence and Automation, Huazhong University of Science and Technology, Wuhan 430074, China (email: {yiweixie, leaf }@hust.edu.cn) Ping Liu is with Department of Computer Science and Engineering, University of Nevada, Reno, NV, USA (email: pino.pingliu@gmail.com)
+> Bdenotes the co-corresponding author.
+
+temporal sequences: a concept suppressed in early frames may re-emerge later as latent activations propagate through temporal attention layers [7]. Modern T2V architectures such as CogVideoX [8] and Wan [9] couple spatial and temporal dimensions through shared attention mechanisms. As a result, concept traces that survive erasure in the spatial representation can propagate through temporal attention layers, manifesting as delayed or progressive reactivation patterns across the generated sequence. Frame-level evaluation, which dominates current practice, is structurally unable to detect such temporal failure modes. This concern is not hypothetical. In the T2I domain [10], concepts declared “erased” have been recovered through pseudo-token optimization [5], [11] and adversarial prompt construction [12], demonstrating that output-level suppression does not guarantee representational removal. Whether compa-rable vulnerabilities extend to T2V models, where temporal dynamics introduce additional recovery pathways, has not been systematically investigated despite growing interest in video-domain erasure [3], [13]–[15]. To address this gap, we introduce PROBE (PRObing-Based Evaluation), a diagnostic protocol that tests whether erased T2V models still retain the capacity to regenerate a target concept under controlled recovery. We term this residual recoverability the reactivation potential of an erased concept. As illustrated in Fig. 1, PROBE probes residual capacity through the narrowest possible intervention: optimizing only a pseudo-token embedding while keeping all model parameters frozen. This design is motivated by a diagnostic principle: because no model weights are modified, any successful re-covery must originate from information already encoded in the frozen parameters, not from new knowledge introduced during probing. The approach shares the optimization mechanics of textual inversion [16], which has been widely adopted for concept customization [17], [18] but repurposes it from personalization to diagnostic measurement, with an additional latent alignment objective (Sec. IV-C) that anchors recovery to the spatiotemporal structure of the original concept. We apply PROBE across three T2V architectures (CogVideoX-2B, CogVideoX-5B, Wan2.2-5B), three concept categories (objects, NSFW content, and celebrity identities), and erasure strategies spanning input conditioning, activation steering, and weight-space unlearning. Our experiments reveal four principal findings. First, all tested erasure methods leave measurable residual capacity that can be reactivated under controlled probing. Second, erasure robustness correlates with intervention depth: input-level methods are most vulnerable, while weight-space unlearning provides stronger but still incomplete removal. Third, temporal analysis reveals delayed           
+
+> arXiv:2603.21547v1 [cs.CV] 23 Mar 2026 2Frozen Fine -tuning A dimpled, white
+> golf ball lies on…
+> Add
+> Erased
+> Model
+> Temporal
+> Analysis
+> CLIP CLIP
+> Score
+> Classifier
+> <c*>
+> Reference D ata
+> Erased Model
+> A dimpled, white golf ball
+> lies on a lush, green grass,
+> under warm sunlight. Erased Model
+> CLIP CLIP Score
+> Classifier
+> Standard Evaluation
+> PROBE Diagnostic
+> No Concept
+> Model Safe
+> Concept
+> Reactivation
+> Semantic Leakage
+> Frames
+> Temporal re -emerge
+> 51015
+> 5
+> 10
+> 15
+
+Fig. 1: Overview of the PROBE diagnostic framework. re-emergence patterns, where concepts suppressed in early frames progressively resurface across the generated sequence, that are invisible to frame-level metrics. Fourth, learned probes transfer across erasure methods within the same model family, indicating that residual capacity is partially shared across erasure paradigms. Our contributions are summarized as follows:  
+
+> •
+
+We introduce a diagnostic protocol for T2V concept erasure evaluation that integrates explicit threat model assumptions, embedding-level probing with frozen model parameters, and a standardized multi-level evaluation framework.  
+
+> •
+
+We define reactivation potential as a quantitative mea-sure of erasure robustness and propose a dual-objective probing mechanism combining diagnostic reconstruction with latent alignment to estimate it.  
+
+> •
+
+We identify temporal re-emergence as a video-specific failure mode of concept erasure, where suppressed con-cepts progressively resurface across generated frames, and provide temporal reactivation curves as a diagnostic tool to detect it.  
+
+> •
+
+We conduct a systematic empirical study across three architectures, three concept categories, and three erasure strategies, demonstrating that no tested method achieves complete representational removal. We release our pro-tocol and implementation to support reproducible safety auditing. II. R ELATED WORK 
+
+A. Text-to-Video Diffusion Models 
+
+Early T2V systems adapt U-Net backbones with temporal attention layers [19]–[21], while more recent architectures transition toward Diffusion Transformers (DiT) [22]–[24] that jointly attend over text and video tokens. CogVideoX [8] in-troduces multimodal DiTs with v-prediction parameterization, and Wan [9] adopts flow matching with a mixture-of-experts design. Other notable systems include HunyuanVideo [25] and Open-Sora [26]. These advances have broadened T2V appli-cations across controllable generation [27], [28], audio-visual synthesis [29], [30], and subject-driven customization [31], [32], but the same representational capacity also allows T2V models to produce unsafe content [1], [33], [34], motivating concept erasure research in the video domain. 
+
+B. Concept Erasure in Generative Models 
+
+In T2I, erasure methods span input-level conditioning [35], activation-level steering [36]–[38], and parameter-level edit-ing [39]–[42], with recent extensions to Flux-based [43] and autoregressive models [44]; we refer readers to [1] for a com-prehensive survey. T2V erasure methods mirror this taxonomy but remain limited in number. NegPrompt [2] suppresses target concepts at the input level, SAFREE [45] steers cross-attention at the activation level, and T2VUnlearning [15] applies LoRA-based fine-tuning at the parameter level. Other approaches include training-free embedding adjustments [14] and loss-based text encoder modification [46]. However, evaluation practices vary substantially across studies in metrics, concept categories, and generation configurations, with none including adversarial recovery testing. 
+
+C. Robustness Evaluation of Concept Erasure 
+
+In the T2I domain, erased concepts have been recov-ered through pseudo-token optimization [47] and adversarial prompt search [11], [48], [49], while adversarial defense meth-ods attempt to improve robustness through joint training [50] or multi-modal attacks [12]. Analytical studies examine theo-retical conditions for erasure completeness [6] and show that erased concepts may remain dormant rather than permanently removed [46]. EMMA [51] provides multi-dimensional bench-marking for T2I erasure but does not include adversarial re-covery testing. These studies collectively establish that output-level suppression does not imply representational removal. Robustness evaluation for T2V erasure remains unexplored. Existing T2V methods rely on frame-level classifiers and direct prompting [14], [15], [45], which cannot capture video-specific failure modes such as temporal re-emergence. The closest methodological precedents, pseudo-token optimization [47] and Ring-A-Bell [11], differ from PROBE in three respects: they target static images and do not address temporal re-emergence as a failure mode, they use reconstruction-only objectives without latent alignment, and they lack a multi-level evaluation protocol. To our knowledge, no diagnostic protocol has been proposed for assessing concept recoverability in the video domain. 3
+
+III. P RELIMINARIES 
+
+This section introduces notation for text-to-video diffusion models and textual inversion, which form the technical foun-dation of our diagnostic protocol. 
+
+A. Text-to-Video Diffusion Models 
+
+A T2V diffusion model operates on spatiotemporal latents 
+
+x0 ∈ RT ×H×W ×C , where T denotes the number of frames and H, W, C denote spatial height, width, and channel dimen-sions. Given a text condition c, the model learns a denoising network that jointly models spatial content and temporal dynamics. We support two prevalent parameterizations. 
+
+V-prediction. Models such as CogVideoX [8] predict a ve-locity field vθ (xt, c, t ) from a noisy latent xt = αtx0 + σtϵ,where ϵ ∼ N (0, I). The clean latent is recovered via: 
+
+ˆx0 = √αtxt − √1 − αt · vθ (xt, c, t ). (1) 
+
+Flow matching. Models such as Wan2.2 [9] learn acontinuous-time velocity field under a linear interpolation path 
+
+xt = (1 − σt)ϵ + σtx0. The clean latent is inferred via: 
+
+ˆx0 = xt − t · vθ (xt, c, t ). (2) Both formulations share a common structure: a parameterized velocity field vθ conditioned on text input c, from which a clean latent prediction ˆx0 can be derived at each denoising step. This shared structure allows our protocol to operate uniformly across both paradigms. 
+
+B. Textual Inversion 
+
+Textual inversion [16] and subsequent personalization meth-ods [18] capture a visual concept by optimizing a learnable pseudo-token embedding v ∈ Rd within the text encoder’s embedding space, while all model parameters θ remain frozen: 
+
+LTI (v) = Ex0,t, ϵ
+
+h
+
+∥ϵ − ϵθ (xt, v, t )∥22
+
+i
+
+. (3) The optimized embedding v can then be inserted into ar-bitrary text prompts to reproduce the learned concept. Our protocol builds on this mechanism but repurposes it for diagnostic measurement with an additional latent alignment objective designed for the spatiotemporal setting of T2V models (Sec. IV-C). IV. P ROBING RESIDUAL CONCEPT CAPACITY IN ERASED 
+
+T2V M ODELS 
+
+This section presents the PROBE protocol. We begin by specifying the access assumptions that constrain probing to a single learnable pseudo-token embedding (Sec. IV-A). Within this constraint, we define a diagnostic reconstruction loss that tests whether the frozen model can still be steered toward the target concept (Sec. IV-B). Because reconstruction alone may converge to co-occurring attributes rather than the con-cept itself, we further propose a latent alignment loss that anchors recovery to the spatiotemporal structure of the original concept, providing a key distinction from standard textual inversion (Sec. IV-C). We then describe the multi-level evalua-tion framework that quantifies recovery across complementary dimensions (Sec. IV-D), followed by a temporal reactivation analysis that captures video-specific failure modes invisible to frame-level metrics (Sec. IV-E). The complete protocol is formalized in Algorithm 1. 
+
+A. Access Assumptions and Constraints 
+
+PROBE is designed to measure what remains inside an erased model, not to introduce new information into it. This diagnostic principle dictates three constraints. First, all model parameters remain strictly frozen; the only learnable compo-nent is a pseudo-token embedding v ∈ Rd optimized within the text encoder’s embedding space. This ensures that any successful recovery must originate from information already encoded in the frozen parameters, not from capacity introduced during probing. Second, the protocol assumes no knowledge of the erasure method’s loss functions, training procedures, or architectural modifications, requiring only forward access to the erased model’s text encoder and denoising network. This makes the diagnostic applicable to any erasure method without method-specific adaptation. Third, a small set of reference videos depicting the target concept c∗ is required as optimization targets. These are generated from the unerased model using prompts containing c∗, rather than collected from external sources, to standardize the reference distribution and isolate the measurement from data-quality confounds. We analyze the sensitivity to reference set size in Sec. V-H. The evaluation setting is intentionally restrictive: if PROBE can reactivate a concept under these conditions, the erasure is demonstrably incomplete. Conversely, failure to recover does not prove complete removal, but indicates robustness against embedding-level probing. Within these constraints, the probing procedure optimizes the pseudo-token embedding through two complementary objectives: diagnostic reconstruc-tion (Sec. IV-B) and latent alignment (Sec. IV-C). 
+
+B. Diagnostic Reconstruction 
+
+The first objective adapts the textual inversion loss [16] to the erased model, testing whether it can still be steered to-ward the target concept through embedding-level optimization. Given an erased T2V model with frozen parameters θ′ and reference clips with latent encodings z(i)0 , we construct noised latents z(i) 
+
+> t
+
+= αtz(i)0 +σtϵ and optimize a shared pseudo-token embedding v using the denoising objective: 
+
+Lrec (v) = Ei,t, ϵ
+
+
+
+ϵ − ϵθ′ (z(i) 
+
+> t
+
+, v, t ) 22
+
+
+
+. (4) The embedding v is shared across all frames and diffusion timesteps, so its gradients are aggregated over the entire spatiotemporal generation trajectory. As a result, any reduction in the denoising loss must reflect a representation that is coherent across the full video sequence, rather than relying on frame-specific shortcuts. 4
+
+C. Latent Alignment 
+
+The reconstruction objective alone does not guarantee that recovered content corresponds to the target concept. Consider erasing the concept “dog” from a T2V model. When we optimize a pseudo-token using only Lrec , the embedding may converge to a representation that reduces denoising error by reproducing surface-level attributes frequently co-occurring with dogs in the training data, such as grass, leashes, or outdoor scenes, without actually recovering the dog itself. This co-occurrence phenomenon, where models exploit spurious correlations between target concepts and co-occurring context rather than learning the concept itself, is well-documented in visual recognition [52]. This is because Lrec operates in the noise space, where semantically distinct outputs can yield similar denoising errors. Our ablation study (Sec. V-H) confirms this effect: removing the alignment term consistently reduces recovery quality across all tested configurations. We address this by introducing a latent alignment objective that operates in the clean latent space, where co-occurring attributes and the target concept occupy distinct representa-tions. By directly comparing the model’s predicted clean latent against reference latents of the target concept, the alignment loss penalizes embeddings that reduce denoising error through co-occurring cues while failing to recover the actual spatiotem-poral structure of the concept. Formally, let z(i)0 denote the reference clean latent for clip i, and let ˆz(i)0 (v, t ) denote the clean latent predicted by the frozen model at timestep t when conditioned on the optimized embedding v. The alignment loss is defined as: 
+
+Lalign (v) = Ei,t 
+
+
+
+ˆz(i)0 (v, t ) − z(i)0
+
+> 22
+
+
+
+. (5) The predicted clean latent ˆz(i)0 (v, t ) is computed from a single forward pass using the recovery formulas defined in Eqs. (1) and (2) for v-prediction and flow matching respec-tively. The overall probing objective combines diagnostic recon-struction with latent alignment: 
+
+Ltotal (v) = Lrec (v) + λ Lalign (v), (6) where λ controls the strength of alignment. We analyze the sensitivity to λ in Sec. V-H. 
+
+D. Multi-Level Evaluation Framework 
+
+The optimization procedure described above produces a pseudo-token embedding that may or may not recover the target concept. To assess whether recovery is genuine, we evaluate across multiple complementary levels, as no single metric can reliably distinguish concept recovery from detector artifacts. For each metric, we define a standardized three-point comparison: the baseline generation rate of the unerased model, the post-erasure rate under direct prompting, and the post-PROBE rate after diagnostic probing (original → erased 
+
+→ probed). 
+
+1) Classifier-Based Detection: Classifier-based metrics provide the primary quantitative signal for concept recovery. Since different concept categories require different detection capabilities, we employ domain-specific classifiers following established practice [4], [36]. For object concepts, we re-port Top-1 and Top-5 classification accuracy via a pretrained ResNet-50 [53]. For NSFW concepts, we use NudeNet [54] detection rate, which provides fine-grained subclass predic-tions enabling analysis of which semantic components resist erasure. For celebrity identities, we compute cosine similarity between face recognition embeddings [55], referred to as ID-similarity. 
+
+2) Semantic Similarity: Classifier-based detection is inher-ently domain-specific and may exhibit biases tied to training distributions. To provide a detector-independent assessment, we measure CLIP-based similarity [56] between generated frames and text descriptions of the target concept c∗. Formally, for each generated frame Ij and a text description pc∗ of the target concept, we compute: 
+
+SCLIP = 1
+
+|F| 
+
+X
+
+> j∈F
+
+sim (fimg (Ij ), f txt (pc∗ )) , (7) where fimg and ftxt denote the CLIP image and text encoders, and sim (·, ·) denotes cosine similarity. A higher SCLIP after PROBE relative to the post-erasure baseline indicates that the recovered content aligns semantically with the original concept. 
+
+3) Human Validation: Automated metrics may be suscep-tible to detector artifacts or distribution mismatch between generated and real content. As a final consistency check, we conduct human evaluation on a subset of generated videos. Annotators provide binary judgments on whether the target concept is recognizably present, with inter-annotator agree-ment reported via Fleiss’ κ. Agreement between automated and human assessments strengthens confidence that measured recovery reflects genuine concept restoration. Specific evalua-tion configurations are reported in Sec. V. 
+
+E. Temporal Reactivation Analysis 
+
+The evaluation metrics described above all operate at the frame level and therefore cannot capture failure modes specific to video generation. We identify one such failure mode, 
+
+temporal re-emergence : a concept that appears suppressed in early frames may progressively resurface across the generated sequence as latent activations propagate through temporal attention layers. This phenomenon has no counterpart in T2I evaluation and, to our knowledge, has not been previously characterized in the concept erasure literature. To detect temporal re-emergence, we compute the concept detection score at each frame and average across evaluation samples, producing a temporal reactivation curve. Formally, let d(I(k) 
+
+> j
+
+) denote the detection score for frame j of generated video k. The temporal reactivation curve is defined as: 
+
+R(j) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+d(I(k) 
+
+> j
+
+), (8) 5
+
+Algorithm 1 PROBE: Diagnostic Protocol                                                                                    
+
+> Require: Erased model θ′(frozen), target concept c∗,reference videos R=
+> {V(i)}Ni=1
+> Ensure: Reactivation potential across multi-level evaluation
+> 1: // Phase 1: Setup
+> 2: Encode reference videos: z(i)0← E (V(i))for all i
+> 3: Initialize pseudo-token vfrom c∗’s token embedding
+> 4: // Phase 2: Optimization
+> 5: for step = 1 to Smax do
+> 6: Sample reference clip i, timestep t, noise ϵ
+> 7: Construct z(i)
+> t=αtz(i)0+σtϵ
+> 8: Compute Ltotal (v) = Lrec (v) + λLalign (v)Eqs. (4)–(6)
+> 9: Update v←v−η∇vLtotal
+> 10: end for
+> 11: // Phase 3: Generation
+> 12: Insert optimized ⟨v∗⟩into evaluation prompts
+> 13: Generate videos {ˆV(k)}Kk=1 using erased model θ′
+> 14: // Phase 4: Multi-Level Evaluation
+> 15: Compute classifier-based detection Sec. IV-D
+> 16: Compute CLIP semantic similarity SCLIP Eq. (7)
+> 17: Compute temporal reactivation curves R(j)Sec. IV-E
+> 18: Conduct human validation with Fleiss’ κSec. IV-D
+> 19: Return three-point comparison (original →erased →probed)
+
+where K is the number of evaluation videos. The instantiation of the frame-level score d(·) is tailored to the concept category: for objects, d(Ij ) adopts a Top-1 confidence gating mechanism that yields the confidence score when the concept is within the Top-1 predictions and 0 otherwise; for NSFW concepts, d(Ij )
+
+uses the raw maximum detection probability to capture latent temporal risks; for identity concepts, d(Ij ) denotes the frame-level CLIP similarity. We compare R(j) across the three-point comparison (origi-nal, erased, and probed) to identify three temporal signatures. The first is delayed onset , where the concept is absent in early frames but reappears after a threshold frame index. The second is mid-sequence resurgence , where the concept is suppressed at the beginning and end but peaks in the mid-dle. The third is progressive accumulation , where detection scores increase monotonically across frames, suggesting that temporal attention amplifies residual signals over time. These patterns reveal how different erasure strategies interact with the model’s temporal processing and provide diagnostic insights that frame-averaged metrics cannot capture. V. E XPERIMENTS 
+
+We apply the PROBE protocol across three T2V architec-tures, three erasure strategies, and three concept categories. This section describes the experimental setup (Sec. V-A), then presents residual capacity measurements for object con-cepts (Sec. V-B), NSFW concepts (Sec. V-C), and celebrity identities (Sec. V-D). We further report comparisons with adversarial baselines (Sec. V-E), cross-model and cross-method transferability (Sec. V-F), visual quality assess-ment (Sec. V-G), and ablation studies (Sec. V-H). 
+
+A. Experimental Setup 
+
+Models. We evaluate PROBE on three T2V architectures: CogVideoX-2B and CogVideoX-5B [8], which adopt v-prediction with spatiotemporal attention, and Wan2.2-5B [9], which uses flow matching with a distinct text encoder. The CogVideoX family enables controlled comparison across model scale, while Wan2.2 provides a complementary back-bone with different inductive biases. 
+
+Erasure methods. We evaluate three strategies spanning different intervention levels: NegPrompt [2], an input con-ditioning method that appends negative tokens during infer-ence without model modification; SAFREE [3], an activation steering method that modifies cross-attention to de-weight concept-relevant features while keeping parameters frozen; and T2VUnlearning [15], a weight-space method that perma-nently modifies model parameters through LoRA-based fine-tuning [57]. 
+
+Concept categories. We consider three categories: everyday object concepts ( e.g. , “garbage truck,” “church”) for evaluating fine-grained semantic forgetting, nudity-related NSFW content for safety-critical evaluation, and celebrity identities (Barack Obama and Donald Trump) for privacy-sensitive evaluation. 
+
+Evaluation metrics. Following the multi-level framework in Sec. IV-D, we report classifier-based metrics (Top-1/Top-5 via ResNet-50 for objects, NudeNet [54] for NSFW, ID-similarity via ArcFace [55] for identities), CLIP-based similarity [56] as a detector-independent measure, temporal reactivation curves as defined in Sec. IV-E, and human validation with Fleiss’ κ
+
+for inter-annotator agreement. For human validation, annota-tors classify generated outputs in a blind setup, aggregated via majority vote. For each configuration, we report the three-point comparison: original, post-erasure, and post-PROBE. 
+
+Implementation details. The pseudo-token embedding v is initialized from the target concept’s original token embedding when available, or from the mean of common neutral descrip-tors otherwise. During optimization, prompt augmentation is applied by randomly paraphrasing the reference prompt at each step. We use AdamW [58] with cosine learning rate decay, warmup, and gradient clipping. The default configuration uses 5 pseudo-tokens, a learning rate of 0.02, and λ = 1 . Training typically converges within 1k–3k steps. We generate 100 reference videos for nudity concepts, 20 per object category, and 30 per celebrity identity. All experiments use a single NVIDIA H100 GPU with a fixed random seed of 42. For CogVideoX-2B, we use 49, 17, and 17 frames per video for nudity, object, and celebrity concepts respectively, with training times of approximately 10, 3, and 3 hours. For CogVideoX-5B and Wan2.2-5B, we use 25 frames per video, taking approximately 7 hours per category. During generation, we use CFG = 6.0 for CogVideoX and CFG = 5.0 for Wan2.2, with 50 sampling steps. Spatial resolutions are 720 ×480 for CogVideoX and 1280 ×720 for Wan2.2. Our modular codebase supports all three evaluated erasure methods and provides extensible interfaces for integrating future mech-anisms. More details are provided in supplementary material. 
+
+B. Residual Capacity on Object Concepts 
+
+We begin by evaluating residual concept capacity on object categories in CogVideoX-2B, which represent a broad class of everyday semantics beyond safety-critical settings. 
+
+Classifier-based results. Table I presents Top-1, Top-5, and CLIP results across all object classes. All three erasure methods reduce the original Top-1 accuracy (56.23%) sub-stantially under direct prompting, with NegPrompt, SAFREE, 6
+
+TABLE I: Object erasure results on CogVideoX-2B across three metrics (Erased / After PROBE). T1: Top-1 accuracy (%), T5: Top-5 accuracy (%), CL: CLIP similarity. The highest post-PROBE recovery per row per metric is in bold .
+
+Origin NegPrompt SAFREE T2VUnlearning Object Class T1 T5 CL T1 T5 CL T1 T5 CL T1 T5 CL Cassette player 9.41 39.71 .175 1.76 / 2.65 21.76 / 25.00 .120 / .139 0.59 / 2.65 18.82 / 13.53 .104 / .112 0.00 / 1.18 8.82 / 19.41 .092 / .102 Chain saw 42.35 63.82 .146 18.24 / 22.06 41.76 / 44.41 .118 / .119 5.59 / 6.76 14.71 / 17.35 .110 / .117 0.00 / 0.00 3.24 / 1.47 .091 / .087 Church 59.70 77.65 .160 24.12 / 30.00 47.65 / 60.00 .147 / .152 3.53 / 6.47 15.88 / 37.35 .123 / .144 19.12 / 21.76 51.18 / 45.00 .141 / .141 Eng. springer 10.59 16.76 .141 11.47 / 11.76 24.12 / 32.35 .134 / .142 0.00 / 3.82 6.18 / 8.82 .088 / .097 5.59 / 6.67 7.94 / 11.18 .128 / .133 French horn 80.29 93.24 .188 24.41 / 29.71 50.59 / 66.18 .121 / .208 7.35 / 10.88 26.18 / 22.06 .171 / .177 1.47 / 3.53 10.00 / 15.59 .148 / .158 Garbage truck 78.82 98.24 .161 19.41 / 35.88 60.59 / 72.65 .145 / .144 22.65 / 25.88 34.12 / 51.18 .138 / .139 0.00 / 0.00 0.00 / 0.00 .104 / .108 Gas pump 79.12 94.12 .139 21.18 / 59.12 54.12 / 77.06 .144 / .148 34.71 / 36.76 40.29 / 47.94 .104 / .124 5.88 / 6.47 17.94 / 19.71 .080 / .080 Golf ball 96.47 97.06 .190 70.29 / 85.88 95.29 / 96.94 .198 / .183 46.76 / 64.41 61.76 / 82.06 .161 / .166 14.41 / 24.12 52.65 / 58.82 .163 / .152 Parachute 69.41 84.41 .149 33.24 / 44.41 71.18 / 77.94 .130 / .132 24.12 / 37.06 47.94 / 55.88 .126 / .128 8.82 / 16.76 41.47 / 45.88 .127 / .121 Tench 36.18 54.41 .134 26.18 / 28.53 47.35 / 45.00 .161 / .165 0.29 / 0.29 6.18 / 5.29 .122 / .148 19.12 / 22.65 33.53 / 48.53 .158 / .170 Average 56.23 71.94 .158 25.03 / 35.00 51.44 / 59.75 .142 / .153 14.51 / 19.50 27.21 / 34.15 .125 / .135 7.44 / 10.32 26.41 / 26.56 .123 / .125 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17                                 
+
+> Frame Sequence
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Mean Detection Score
+> (a) Parachute NegPrompt Erasure
+> Origin
+> NegPrompt
+> PROBE
+> 12345678910 11 12 13 14 15 16 17
+> Frame Sequence
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Mean Detection Score
+> (b) Parachute SAFREE Erasure
+> Origin
+> SAFREE
+> PROBE
+> 12345678910 11 12 13 14 15 16 17
+> Frame Sequence
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Mean Detection Score
+> (c) Parachute T2VUnlearning Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 2: Temporal reactivation curve of parachute across different erasure strategies on CogX-2B. TABLE II: Temporal reactivation statistics for object erasure on CogX-2B (Erased / After PROBE). 
+
+Metrics Origin NegPrompt SAFREE T2VUnlearning Mean Var 0.1834 0.0011 0.0819 / 0.1080 0.0009 / 0.0012 0.0514 / 0.0654 0.0007 / 0.0011 0.0137 / 0.0183 0.0002 / 0.0003 
+
+and T2VUnlearning dropping to 25.03%, 14.51%, and 7.44% respectively. Applying PROBE reveals measurable resid-ual capacity across all methods: average Top-1 recovers to 35.00% (NegPrompt), 19.50% (SAFREE), and 10.32% (T2VUnlearning). Recovery is particularly pronounced for certain object classes under inference-time methods, with gas pump recovering to 59.12% Top-1 under NegPrompt and golf ball reaching 64.41% under SAFREE. The gap between Top-1 and Top-5 metrics provides additional insight: for “Church” under SAFREE, Top-1 post-PROBE accuracy is only 6.47% while Top-5 reaches 37.35%, indicating that the erasure shifts generated features away from the exact classification boundary but leaves the core semantic attributes within the top-k pre-dictive distribution. T2VUnlearning shows the strongest resis-tance, maintaining stable post-PROBE averages and achieving near-complete suppression for several categories ( e.g. , chain saw, garbage truck). 
+
+CLIP-based results. The CLIP columns in Table I cor-roborate the classifier-based findings through a detector-independent measure. NegPrompt’s average CLIP similarity rebounds from 0.142 to 0.153 under PROBE, approaching the original model’s baseline of 0.158. SAFREE shows a similar pattern (0.125 → 0.135). T2VUnlearning maintains the highest stability (0.123 → 0.125), though for semantically entangled concepts such as “Church” and “Tench,” CLIP TABLE III: Nudity rate (%) across three T2V models (Erased / After PROBE). 
+
+Model Origin NegPrompt SAFREE T2VUnlearning CogX-2B 56.14 42.82 / 56.16 35.16 / 56.16 19.63 / 28.90 CogX-5B 56.08 47.08 / 61.76 38.48 / 58.32 11.12 / 12.40 Wan2.2-5B 67.28 56.12 / 65.28 45.76 / 51.68 18.64 / 31.28 
+
+similarities under T2VUnlearning remain persistently high, suggesting that weight-space updates can disrupt classifier-tracked decision boundaries while leaving broader semantic correlations partially intact. 
+
+Temporal analysis. Figure 2 shows the temporal reactivation curves for “parachute.” Even prior to PROBE, NegPrompt and SAFREE exhibit high frame-to-frame variance, with the target concept flickering across the sequence. Applying PROBE induces a pronounced upward shift in both curves, with reactivation peaks appearing in early and middle frames (e.g. , frames 3, 9, and 11), consistent with the delayed onset and mid-sequence resurgence patterns defined in Sec. IV-E. T2VUnlearning produces a flat temporal curve near zero both before and after PROBE, indicating stronger temporal consistency in concept removal. These patterns are supported by the statistical data in Table II: under PROBE, NegPrompt’s mean detection score increases from 0.0819 to 0.1080. 
+
+C. Residual Capacity on NSFW Concepts 
+
+We next evaluate nudity-related concepts, which pose direct safety risks when incompletely erased. 
+
+Detection-based results. As shown in Table III, all three erasure methods substantially suppress nudity under direct prompting, with T2VUnlearning achieving the strongest reduc-71 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25                                                 
+
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (a) Nudity NegPrompt Erasure
+> Origin
+> NegPrompt
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (b) Nudity SAFREE Erasure
+> Origin
+> SAFREE
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (c) Nudity T2VUnlearning Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 3: Temporal reactivation curve of nudity across different erasure strategies on CogX-2B. TABLE IV: Class-level NudeNet detections on CogVideoX-2B and CogVideoX-5B (Erased / After PROBE). 
+
+Exposed Class Origin NegPrompt SAFREE T2VUnlearning 
+
+CogVideoX-2B 
+
+Female genitalia 213 91 / 111 82 / 130 48 / 48 Male genitalia 13 14 / 17 86 / 33 56 / 69 Female breast 1003 631 / 910 397 / 536 377 / 615 Male breast 75 70 / 43 78 / 51 8 / 25 Buttocks 650 449 / 925 470 / 700 168 / 223 Armpits 1258 1249 / 1055 634 / 692 497 / 803 Belly 793 560 / 746 381 / 457 191 / 292 Feet 330 326 / 341 257 / 294 90 / 199 
+
+CogVideoX-5B 
+
+Female genitalia 53 82 / 153 39 / 171 6 / 33 Male genitalia 14 34 / 24 5 / 43 0 / 2 Female breast 430 377 / 514 281 / 421 85 / 70 Male breast 59 18 / 10 50 / 61 0 / 30 Buttocks 617 476 / 672 377 / 618 61 / 83 Armpits 512 572 / 760 369 / 511 70 / 110 Belly 367 203 / 371 161 / 389 57 / 89 Feet 203 161 / 227 220 / 182 83 / 81 
+
+TABLE V: CLIP-based similarity for NSFW concepts across three T2V models (Erased / After PROBE). 
+
+Model Origin NegPrompt SAFREE T2VUnlearning CogX-2B 0.1597 0.1421 / 0.1522 0.1417 / 0.1516 0.1309 / 0.1385 CogX-5B 0.1422 0.1334 / 0.1444 0.1285 / 0.1483 0.1039 / 0.1036 Wan2.2-5B 0.1333 0.1286 / 0.1395 0.1159 / 0.1303 0.1029 / 0.1188 Average 0.1451 0.1347 / 0.1454 0.1287 / 0.1434 0.1126 / 0.1203 
+
+tion. Applying PROBE reveals that NegPrompt and SAFREE provide only distributional suppression: nudity rates rebound to near-original levels ( e.g. , 56.16% vs. 56.14% on CogX-2B), indicating that the concept remains fully encoded in the model’s parameters while erasure merely alters the condition-ing path. T2VUnlearning retains smaller but persistent resid-uals across all architectures, with a notably modest recovery on CogX-5B (11.12% → 12.40%) and a larger recovery on Wan2.2-5B (18.64% → 31.28%), suggesting that the flow matching formulation may retain residual information differ-ently than v-prediction. Class-level NudeNet analysis (Table IV) reveals that resid-ual traces are distributed across multiple semantic levels. On CogX-2B, female breast detections drop from 1003 to 377 under T2VUnlearning but recover to 615 after PROBE. Some categories exceed their unerased baseline after probing ( e.g. ,buttocks under NegPrompt: 449 → 925 vs. 650 original), suggesting that erasure introduces distributional biases that PROBE exploits. On CogX-5B, T2VUnlearning shows gen-TABLE VI: Temporal reactivation statistics for nudity erasure (Erased / After PROBE). 
+
+Model Metrics Origin NegPrompt SAFREE T2VUnlearning CogX-2B Mean Var 0.3201 0.0003 0.2566 / 0.3146 0.0001 / 0.0002 0.2163 / 0.2497 0.0001 / 0.0001 0.1212 / 0.1851 0.0001 / 0.0000 CogX-5B Mean Var 0.3387 0.0000 0.2891 / 0.3550 0.0001 / 0.0001 0.2464 / 0.3625 0.0001 / 0.0001 0.0824 / 0.0994 0.0000 / 0.0000 Wan-5B Mean Var 0.4437 0.0001 0.3660 / 0.4171 0.0001 / 0.0001 0.3003 / 0.3370 0.0000 / 0.0000 0.1364 / 0.2059 0.0000 / 0.0000 
+
+TABLE VII: Human validation of nudity erasure (Erased / After PROBE). 
+
+Metrics Origin NegPrompt SAFREE T2VUnlearning CogX-2B Avg. Score Std Dev 1.150 0.484 1.410 / 1.490 0.367 / 0.433 1.040 / 0.950 0.629 / 0.331 0.550 / 0.300 0.448 / 0.343 Fleiss’ κ 0.2577 CogX-5B Avg. Score Std Dev 1.440 0.613 1.420 / 1.310 0.410 / 0.507 1.070 / 1.570 0.579 / 0.313 0.490 / 0.540 0.595 / 0.642 Fleiss’ κ 0.3457 Wan-5B Avg. Score Std Dev 1.250 0.803 1.520 / 1.560 0.555 / 0.433 0.700 / 1.270 0.751 / 0.598 0.770 / 1.060 0.442 / 0.409 Fleiss’ κ 0.3362 
+
+erally lower recovery magnitudes, consistent with the stronger overall erasure. 
+
+CLIP-based results. Table V provides a detector-independent confirmation. Under PROBE, NegPrompt’s average CLIP sim-ilarity rebounds from 0.1347 to 0.1454, effectively reaching the original model’s baseline of 0.1451. SAFREE shows a par-allel recovery to 0.1434. T2VUnlearning maintains the lowest post-PROBE average (0.1203) but is not immune: on Wan2.2-5B, its similarity increases from 0.1029 to 0.1188. These trends are consistent across all three architectures, reinforcing the conclusion that inference-time methods suppress the output distribution without removing the underlying representations. 
+
+Temporal analysis. Figure 3 visualizes the temporal reacti-vation curves for nudity on CogX-2B. Unlike object concepts that exhibit localized spikes, nudity-related semantics show a pervasive temporal pattern: even without PROBE, inference-time baselines demonstrate a gradual upward trend in detection scores across frames. This is quantitatively confirmed by the low variance values in Table VI ( e.g. , σ2 ≤ 0.0001 for Neg-Prompt and SAFREE), indicating continuous leakage rather than isolated anomalous frames. Applying PROBE induces a uniform upward shift across the entire temporal axis for NegPrompt and SAFREE. While T2VUnlearning generally maintains lower temporal scores, it lacks absolute robustness: 8
+
+TABLE VIII: ID-similarity for celebrity identity recovery on CogVideoX with T2VUnlearning.                                                   
+
+> Model Identity Origin Erased After PROBE CogX-2B Obama 0.4653 0.2684 0.2834 Trump 0.6503 0.2621 0.2966 CogX-5B Obama 0.6548 0.0600 0.0945 Trump 0.6233 0.1232 −0.0066 12345678910 11 12 13 14 15 16 17
+> Frame Sequence
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Mean Detection Score
+> (a) Obama Identity Erasure
+> 12345678910 11 12 13 14 15 16 17
+> Frame Sequence
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Mean Detection Score
+> (b) Trump Identity Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 4: Temporal reactivation curve of identity on CogX-2B. on Wan-5B, PROBE forces the mean score to rise from 0.1364 to 0.2059, exposing residual temporal vulnerabilities even within weight-space erasure. 
+
+Human validation. Human validation aligns with automated metrics on 5B models (Table VII), confirming that PROBE recovers perceptually recognizable content on architectures with stronger generative priors: on Wan-5B, SAFREE’s human score increases from 0.700 to 1.270 after PROBE, exceeding the original model’s score of 1.250. On compact 2B models, agreement is weaker, consistent with the well-documented observation that automatic metrics and human judgment can diverge in generative model evaluation [59], [60]. Full per-category results are provided in the supplementary material. 
+
+D. Residual Capacity on Celebrity Identities 
+
+ID-similarity results. We evaluate PROBE on CogVideoX models with T2VUnlearning applied to celebrity identities. As shown in Table VIII, for CogX-2B, PROBE consistently improves recovery (Obama: 0.2684 → 0.2834; Trump: 0.2621 
+
+→ 0.2966), indicating that the model preserves sufficient latent structure for embedding-level probing to extract identity sig-nals. For CogX-5B, erasure is substantially stronger: PROBE recovers part of the lost signal for Obama (0.0600 → 0.0945, a 57.5% relative improvement), but fails for Trump ( −0.0066), indicating that residual capacity is too low for PROBE to find a meaningful embedding direction. This delineates the bound-ary conditions of the protocol: when erasure achieves near-complete representational removal, embedding-level probing lacks sufficient gradient signal to reconstruct the concept. 
+
+Temporal analysis. Figure 4 shows that identity concepts exhibit a distinct temporal pattern compared to objects and NSFW content. The PROBE curves remain flat and closely coupled with the erased baselines, without the temporal spik-ing or reactivation observed in other categories (Table IX). This suggests a mechanistic difference in how identity is en-coded: facial identity is a fine-grained biometric attribute con-centrated in a localized spatial region. Once erasure disrupts this localized representation, surrounding contextual cues ( e.g. ,TABLE IX: Temporal reactivation statistics for identity erasure (Erased / After PROBE).      
+
+> Model Metrics Origin T2VUnlearning CogX-2B Mean Var 0.5578 0.0008 0.2653 / 0.2900 0.0004 / 0.0001 CogX-5B Mean Var 0.6391 0.0004 0.0916 / 0.0440 0.0004 / 0.0002
+
+TABLE X: Comparison of PROBE with P4D-K on CogX-2B under T2VUnlearning. Nudity rate (%).       
+
+> Model T2VUnlearning P4D-K PROBE CogX-2B 19.63 20.45 28.90
+
+clothing, background) lack sufficient semantic information to reconstruct the specific identity across temporal frames. 
+
+E. Comparison with Adversarial Baselines 
+
+To contextualize PROBE’s diagnostic capability, we com-pare it against P4D-K [48], a representative adversarial prompt search method. As shown in Table X, P4D-K achieves a nudity rate of 20.45% on CogX-2B with T2VUnlearning, represent-ing only a marginal increase over the 19.63% baseline. PROBE achieves 28.90%, providing a substantially stronger diagnostic signal. This gap suggests that discrete prompt-level search is less suited to probing residual capacity in T2V models, where concept representations are distributed across spatiotemporal structures that continuous embedding optimization can navi-gate more effectively. We further evaluate generalizability on the Ring-A-Bell benchmark [11] (Table XI). Pseudo-tokens trained on our reference set transfer effectively to this exter-nal prompt distribution, with consistent recovery across all methods. This confirms that PROBE captures concept-level semantics rather than dataset-specific artifacts. 
+
+F. Cross-Model and Cross-Method Transferability 
+
+A practically important question is whether probes opti-mized for one configuration transfer to another. As shown in Table XII, pseudo-tokens transfer effectively within the same model family: a token optimized on CogX-2B achieves 12.92% reactivation on CogX-5B versus the 11.12% baseline, consistent with shared text encoders and attention mechanisms. Cross-family transfer (CogVideoX → Wan2.2) is less effec-tive, attributable to differences in text encoder design and generative formulation (v-prediction vs. flow matching). Cross-method transfer (Table XIII) is notably strong: pseudo-tokens trained on T2VUnlearning boost reactivation on NegPrompt from 42.82% to 60.02% and on SAFREE from 35.16% to 41.63%. This indicates that the latent footprint of an erased concept is partially shared across erasure paradigms, enabling a single probe to diagnose multiple methods within the same model family. 
+
+G. Visual Quality Assessment 
+
+As shown in Table XIV, PROBE yields consistent improve-ments in both Imaging Quality and Aesthetic Quality across 9
+
+TABLE XI: Cross-dataset evaluation on Ring-A-Bell. Nudity rate (%) on CogX-2B (Erased / After PROBE).         
+
+> Model Origin NegPrompt SAFREE T2VUnlearning CogX-2B 36.45 22.14 / 26.53 17.44 / 32.27 11.37 / 13.95
+
+TABLE XII: Cross-model transferability. Nudity rate (%) under T2VUnlearning.                   
+
+> Transfer Direction Erased Baseline After Transfer CogX-2B →Wan2.2-5B 18.64 15.80 CogX-5B →Wan2.2-5B 18.64 17.24 CogX-2B →CogX-5B 11.12 12.92 Wan2.2-5B →CogX-5B 11.12 11.00
+
+all erasure methods. This indicates that the optimized pseudo-token operates within the model’s native generative manifold, restoring coherent generation trajectories rather than introduc-ing distributional distortions. This property is important for measurement reliability: if PROBE degraded quality, recovery scores could reflect generation artifacts rather than genuine concept recovery. 
+
+H. Ablation Studies 
+
+We first establish the necessity of latent alignment by comparing PROBE against reconstruction-only probing, which is equivalent to applying standard textual inversion to the erased model. We then analyze the sensitivity to the align-ment weight λ. Additional ablation on initialization strategy, reference data size, and pseudo-token count are provided in the supplementary material. 
+
+1) Reconstruction-Only Probing vs. PROBE: As shown in Table XV (left), reconstruction-only probing yields limited recovery across all configurations, while adding latent align-ment consistently improves reactivation rates. The largest gain appears on CogX-2B for nudity (+6.74 percentage points), confirming that standard textual inversion alone is an insuffi-cient diagnostic for residual concept capacity. The improve-ment generalizes across concept categories (object: +1.76), model scales (CogX-5B: +1.04), and architectures (Wan2.2-5B: +3.36), validating the design choice of anchoring recovery to the spatiotemporal structure of the original concept. 
+
+2) Effect of Alignment Weight λ: As shown in Table XV (right), increasing λ from 0 to 1 steadily improves reactiva-tion on both CogX-2B (22.16% → 28.90%) and Wan2.2-5B (27.92% → 31.28%). Excessive weighting yields diminishing returns: λ = 10 reduces performance on Wan2.2-5B to 27.04%, and λ = 20 decreases CogX-2B to 25.92%, as the alignment gradient becomes dominant and destabilizes optimization. In practice, λ ≈ 1 achieves a favorable balance. VI. C ONCLUSION 
+
+We have presented PROBE, a diagnostic protocol that quantifies the reactivation potential of erased concepts in text-to-video diffusion models by optimizing a pseudo-token embedding against frozen model parameters. PROBE intro-duces a latent alignment objective that anchors recovery to the spatiotemporal structure of the original concept, and a TABLE XIII: Cross-method transferability on CogX-2B. Nu-dity rate (%).           
+
+> Transfer Direction Erased Baseline After Transfer T2VUnlearning →NegPrompt 42.82 60.02 T2VUnlearning →SAFREE 35.16 41.63
+
+TABLE XIV: Visual quality on CogX-2B (Erased / After PROBE). Higher is better.           
+
+> Metric Origin NegPrompt SAFREE T2VUnlearning Imaging Quality 0.467 0.477 / 0.519 0.446 / 0.460 0.380 / 0.396 Aesthetic Quality 0.460 0.481 / 0.490 0.459 / 0.464 0.424 / 0.433
+
+TABLE XV: Ablation studies on T2VUnlearning. (Left) Reac-tivation rates (%) w/ and w/o the alignment loss Lalign . (Right) Nudity reactivation rates (%) under varying penalty weights λ.                     
+
+> Model (Concept) Erased w/o Lalign w/ Lalign
+> CogX-2B (Object) 7.44 8.56 10.32
+> CogX-2B (Nudity) 19.63 22.16 28.90
+> CogX-5B (Nudity) 11.12 11.36 12.40
+> Wan2.2-5B (Nudity) 18.64 27.92 31.28 00.1 110 20 20 25 30 Nudity Rate CogX-2B Wan2.2-5B Initialization Random Average Specify
+
+multi-level evaluation framework spanning classifier-based, semantic, temporal, and human assessments. Experiments across three T2V architectures, three concept categories, and three erasure strategies reveal that all tested methods leave measurable residual capacity, with robustness correlating with intervention depth. Temporal analysis further uncovers delayed re-emergence, a video-specific failure mode where suppressed concepts progressively resurface across frames, invisible to frame-level metrics. These findings suggest that current T2V erasure methods achieve output-level suppression rather than representational removal, underscoring the need for diagnostic tools that go beyond single-frame evaluation. We release our protocol to support reproducible safety auditing. REFERENCES [1] Y. Xie, P. Liu, and Z. Zhang, “Erasing concepts, steering genera-tions: A comprehensive survey of concept suppression,” arXiv preprint arXiv:2505.19398 , 2025. [2] T. Li, G. Pang, X. Bai, W. Miao, and J. Zheng, “Learning transferable negative prompts for out-of-distribution detection,” in CVPR , 2024. [3] J. Yoon, S. Yu, V. Patil, H. Yao, and M. Bansal, “SAFREE: Training-free and adaptive guard for safe text-to-image and video generation,” in 
+
+ICLR , 2025. [4] R. Gandikota, J. Materzynska, J. Fiotto-Kaufman, and D. Bau, “Erasing concepts from diffusion models,” in ICCV , 2023. [5] M. Pham, K. O. Marshall, N. Cohen, G. Mittal, and C. Hegde, “Circum-venting concept erasure methods for text-to-image generative models,” in ICLR , 2024. [6] K. Lu, N. Kriplani, R. Gandikota, M. Pham, D. Bau, C. Hegde, and N. Cohen, “When are concepts erased from diffusion models?” in CVPR workshops , 2025. [7] H. Chefer, U. Singer, A. Zohar, Y. Kirstain, A. Polyak, Y. Taigman, L. Wolf, and S. Sheynin, “VideoJAM: Joint appearance-motion repre-sentations for enhanced motion generation in video models,” in ICML ,2025. [8] Z. Yang, J. Teng, W. Zheng, M. Ding, S. Huang, J. Xu, Y. Yang, W. Hong, X. Zhang, G. Feng, D. Yin, Yuxuan.Zhang, W. Wang, Y. Cheng, B. Xu, X. Gu, Y. Dong, and J. Tang, “Cogvideox: Text-to-video diffusion models with an expert transformer,” in ICLR , 2025. 10 
+
+[9] A. Wang, B. Ai, B. Wen, C. Mao, C.-W. Xie, D. Chen, F. Yu, H. Zhao, J. Yang, J. Zeng et al. , “Wan: Open and advanced large-scale video generative models,” arXiv preprint arXiv:2503.20314 , 2025. [10] J. Wang, P. Liu, J. Liu, and W. Xu, “Text-guided eyeglasses manipulation with spatial constraints,” IEEE Transactions on Multimedia , 2024. [11] Y.-L. Tsai, C.-Y. Hsu, C. Xie, C.-H. Lin, J. Y. Chen, B. Li, P.-Y. Chen, C.-M. Yu, and C.-Y. Huang, “Ring-a-bell! how reliable are concept removal methods for diffusion models?” in ICLR , 2024. [12] L. Beerens, A. D. Richardson, K. Zhang, and D. Chen, “On the vulnerability of concept erasure in diffusion models,” arXiv preprints arXiv:2502.17537 , 2025. [13] S. Liu and Y. Tan, “Unlearning concepts from text-to-video diffusion models,” arXiv preprint arXiv:2407.14209 , 2024. [14] N. Xu, J. Zhang, C. Li, Z. Chen, C. Zhou, Q. Li, T. Du, and S. Ji, “Videoeraser: Concept erasure in text-to-video diffusion models,” in 
+
+EMNLP , 2025. [15] X. Ye, S. Cheng, Y. Wang, Y. Xiong, and Y. Li, “T2vunlearning: A concept erasing method for text-to-video diffusion models,” arXiv preprint arXiv:2505.17550 , 2025. [16] R. Gal, Y. Alaluf, Y. Atzmon, O. Patashnik, A. H. Bermano, G. Chechik, and D. Cohen-or, “An image is worth one word: Personalizing text-to-image generation using textual inversion,” in ICLR , 2023. [17] Y. Jiang, Q. Liu, D. Chen, L. Yuan, and Y. Fu, “Animediff: Customized image generation of anime characters using diffusion model,” IEEE Transactions on Multimedia , 2024. [18] Y. Xu, X. Xu, H. Gao, and F. Xiao, “Sgdm: An adaptive style-guided diffusion model for personalized text to image generation,” IEEE Transactions on Multimedia , 2024. [19] J. Ho, T. Salimans, A. Gritsenko, W. Chan, M. Norouzi, and D. J. Fleet, “Video diffusion models,” in NeurIPS , 2022. [20] X. Wang, H. Yuan, S. Zhang, D. Chen, J. Wang, Y. Zhang, Y. Shen, D. Zhao, and J. Zhou, “Videocomposer: compositional video synthesis with motion controllability,” in NeurIPS , 2023. [21] J. Z. Wu, Y. Ge, X. Wang, S. W. Lei, Y. Gu, Y. Shi, W. Hsu, Y. Shan, X. Qie, and M. Z. Shou, “Tune-a-video: One-shot tuning of image diffusion models for text-to-video generation,” in ICCV , 2023. [22] W. Peebles and S. Xie, “Scalable diffusion models with transformers,” in ICCV , 2023. [23] W. Menapace, A. Siarohin, I. Skorokhodov, E. Deyneka, T.-S. Chen, A. Kag, Y. Fang, A. Stoliar, E. Ricci, J. Ren, and S. Tulyakov, “Snap video: Scaled spatiotemporal transformers for text-to-video synthesis,” in CVPR , 2024. [24] Y. Mao, Z. Qin, X. Shen, J. Zhou, J. Zhang, Y. Zhong, and Y. Dai, “Ldt: Efficient scalable video generation using linear diffusion transformer,” 
+
+IEEE Transactions on Multimedia , 2026. [25] W. Kong, Q. Tian, Z. Zhang, R. Min, Z. Dai, J. Zhou, J. Xiong, X. Li, B. Wu, J. Zhang et al. , “Hunyuanvideo: A systematic framework for large video generative models,” arXiv preprint arXiv:2412.03603 , 2024. [26] Z. Zheng, X. Peng, T. Yang, C. Shen, S. Li, H. Liu, Y. Zhou, T. Li, and Y. You, “Open-sora: Democratizing efficient video production for all,” 
+
+arXiv preprint arXiv:2412.20404 , 2024. [27] Y. Hu, C. Luo, and Z. Chen, “A benchmark for controllable text-image-to-video generation,” IEEE Transactions on Multimedia , 2023. [28] Y. Li, Q. Mao, L. Chen, Z. Fang, L. Tian, X. Xiao, L. Jin, and H. Wu, “Starvid: Enhancing semantic alignment in video diffusion models via spatial and syntactic guided attention refocusing,” IEEE Transactions on Multimedia , 2026. [29] M. Zhao, W. Wang, T. Chen, R. Zhang, and R. Li, “Ta2v: Text-audio guided video generation,” IEEE Transactions on Multimedia , 2024. [30] M. Ishii, A. Hayakawa, T. Shibuya, and Y. Mitsufuji, “A simple but strong baseline for sounding video generation: Effective adaptation of audio and video diffusion models for joint generation,” in IJCNN , 2025. [31] H. Chen, X. Wang, G. Zeng, Y. Zhang, Y. Zhou, F. Han, Y. Wu, and W. Zhu, “Videodreamer: Customized multi-subject text-to-video generation with disen-mix finetuning on language-video foundation models,” IEEE Transactions on Multimedia , 2025. [32] Z. Wang, A. Li, L. Zhu, Y. Guo, Q. Dou, and Z. Li, “Customvideo: Customizing text-to-video generation with multiple subjects,” IEEE Transactions on Multimedia , 2026. [33] F. Nie, J. Ni, J. Zhang, B. Zhang, and W. Zhang, “Dip: diffusion learning of inconsistency pattern for general deepfake detection,” IEEE Transactions on Multimedia , 2024. [34] Y. Pan, T. Luo, Y. Li, W. Xing, M. Chen, and M. Han, “The safety illusion? testing the boundaries of concept removal in diffusion models,” 
+
+IEEE Transactions on Image Processing , 2025. [35] D. Sridhar and N. Vasconcelos, “Prompt sliders for fine-grained control, editing and erasing of concepts in diffusion models,” in ECCV , 2024. [36] S. Lu, Z. Wang, L. Li, Y. Liu, and A. W.-K. Kong, “Mace: Mass concept erasure in diffusion models,” in CVPR , 2024. [37] L. Li, S. Lu, Y. Ren, and A. W.-K. Kong, “Set you straight: Auto-steering denoising trajectories to sidestep unwanted concepts,” in ACM MM , 2025. [38] T.-Y. Lee, S. Park, M. Jeon, H. Hwang, and G.-M. Park, “Esc: Erasing space concept for knowledge deletion,” in CVPR , 2025. [39] R. Chavhan, D. Li, and T. Hospedales, “Conceptprune: Concept editing in diffusion models via skilled neuron pruning,” in ICLR , 2025. [40] C.-P. Huang, K.-P. Chang, C.-T. Tsai, Y.-H. Lai, F.-E. Yang, and Y.-C. F. Wang, “Receler: Reliable concept erasing of text-to-image diffusion models via lightweight erasers,” in ECCV , 2024. [41] R. Gandikota, H. Orgad, Y. Belinkov, J. Materzy´ nska, and D. Bau, “Unified concept editing in diffusion models,” in WACV , 2024. [42] M. Lyu, Y. Yang, H. Hong, H. Chen, X. Jin, Y. He, H. Xue, J. Han, and G. Ding, “One-dimensional adapter to rule them all: Concepts diffusion models and erasing applications,” in CVPR , 2024. [43] D. Gao, S. Lu, S. Walters, W. Zhou, J. Chu, J. Zhang, B. Zhang, M. Jia, J. Zhao, Z. Fan et al. , “Eraseanything: Enabling concept erasure in rectified flow transformers,” ICML , 2025. [44] H. Fan, S. Zhang, Baohunesitu, Z. Guo, and H. Zhang, “Ear: Eras-ing concepts from unified autoregressive models,” arXiv preprint arXiv:2506.20151 , 2025. [45] J. Yoon, S. Yu, V. Patil, H. Yao, and M. Bansal, “Safree: Training-free and adaptive guard for safe text-to-image and video generation,” arXiv preprint arXiv:2410.12761 , 2024. [46] P. Liu and C. Zhang, “Erased or dormant? rethinking concept erasure through reversibility,” arXiv preprint arXiv:2505.16174 , 2025. [47] M. Pham, K. O. Marshall, N. Cohen, G. Mittal, and C. Hegde, “Circum-venting concept erasure methods for text-to-image generative models,” in ICLR , 2024. [48] Z.-Y. Chin, C.-M. Jiang, C.-C. Huang, P.-Y. Chen, and W.-C. Chiu, “Prompting4debugging: red-teaming text-to-image diffusion models by finding problematic prompts,” in ICML , 2024. [49] F. Yang, C. Zhang, and L. Wang, “Culture-based adversarial attack on text-to-image models,” in ICME , 2025. [50] Y. Zhang, X. Chen, J. Jia, Y. Zhang, C. Fan, J. Liu, M. Hong, K. Ding, and S. Liu, “Defensive unlearning with adversarial training for robust concept erasure in diffusion models,” in NeurIPS , 2024. [51] L. Wei, Y. Nakashima, and N. Garcia, “Emma: Concept erasure bench-mark with comprehensive semantic metrics and diverse categories,” 
+
+arXiv preprint arXiv:2512.17320 , 2025. [52] F. Shao, Y. Luo, L. Chen, P. Liu, W. Yang, Y. Yang, and J. Xiao, “Counterfactual co-occurring learning for bias mitigation in weakly-supervised object localization,” IEEE Transactions on Multimedia , 2026. [53] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in CVPR , 2016. [54] P. Bedapudi, “Nudenet: Neural nets for nudity detection and censoring,” 2022. [Online]. Available: https://github.com/platelminto/ NudeNetClassifier [55] J. Deng, J. Guo, N. Xue, and S. Zafeiriou, “Arcface: Additive angular margin loss for deep face recognition,” in CVPR , 2019. [56] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, G. Krueger, and I. Sutskever, “Learning transferable visual models from natural language supervi-sion,” in ICML , 2021. [57] E. J. Hu, yelong shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, “LoRA: Low-rank adaptation of large language models,” in ICLR , 2022. [58] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,” in ICLR , 2019. [59] M. Chen, Y. Liu, J. Yi, C. Xu, Q. Lai, H. Wang, T.-Y. Ho, and Q. Xu, “Evaluating text-to-image generative models: An empirical study on human image synthesis,” arXiv preprint arXiv:2403.05125 , 2024. [60] Y. Liu, L. Li, S. Ren, R. Gao, S. Li, S. Chen, X. Sun, and L. Hou, “Fetv: A benchmark for fine-grained evaluation of open-domain text-to-video generation,” in NeurIPS , 2023. 11 
+
+VII. S UPPLEMENTARY 
+
+A. Concept-Specific Pseudo-Token Adjustments 
+
+The default configuration uses 5 pseudo-tokens for all concepts. For certain object categories, shorter pseudo-token representations yield more stable optimization. Specifically, in the NegPrompt setting, “church” uses 3 tokens and “golf ball” uses 1 token; in the SAFREE setting, “French horn” and “gas pump” use 1 token; in the T2VUnlearning setting, “English springer” and “gas pump” use 1 token. These adjustments suggest that shorter pseudo-token lengths can concentrate the residual signal more effectively for specific concepts. TABLE XVI: Sensitivity to reference data size and pseudo-token count on CogX-2B under T2VUnlearning (nudity rate, %).                 
+
+> Erased 10 50 100 200 Reference size 19.63 25.60 25.92 28.90 23.47 Erased 3 tokens 5 tokens 10 tokens Token count 19.63 27.18 28.90 25.20
+
+B. Additional Ablation Study 1) Effect of Token Initialization: As also shown in Fig. XV, initialization from the erased concept’s original token embed-ding yields the highest reactivation (28.90%), compared to 20.98% with averaged embeddings and 19.43% with random initialization. Semantically grounded initialization provides a more stable starting point, enabling faster convergence toward residual representations. 
+
+2) Effect of Reference Data Size and Pseudo-Token Count: 
+
+Table XVI shows that recovery improves from 10 to 100 ref-erence samples (25.60% → 28.90%) but drops at 200 samples (23.47%), likely due to over-smoothing that dilutes concept-specific activation patterns. For pseudo-token count, 5 tokens achieves the best recovery (28.90%), with 3 tokens yielding moderate performance (27.18%) and 10 tokens leading to degradation (25.20%) from over-parameterization. TABLE XVII: Human validation of object and identity erasure on CogX-2B (Erased / After PROBE).                  
+
+> CogX-2B Object erasure
+> Metrics Origin NegPrompt SAFREE T2VUnlearning Avg. Score 1.340 1.215 / 0.835 0.660 / 0.790 0.695 / 0.515 Std Dev 0.593 0.593 / 0.627 0.620 / 0.548 0.670 / 0.545 Fleiss’ κ0.3391
+> Identity erasure
+> Metrics Origin T2VUnlearning CogX-2B Avg. Score Std Dev 1.450 0.661 0.825 / 0.550 0.310 / 0.071 Fleiss’ κ0.2119 CogX-5B Avg. Score Std Dev 1.450 0.777 0.350 / 0.125 0.370 / 0.050 Fleiss’ κ0.4609
+
+C. Human Validation for Object and Identity Concepts 
+
+Table XVII reports the human validation results for object and identity erasure, complementing the NSFW results in the main text (Table VII). On CogVideoX-2B, human-perceived scores for objects occasionally decrease after PROBE, and identity scores decrease across both model scales. These patterns are consistent with known discrepancies between automatic metrics and human judgment in generative model evaluation [59], [60]. This observation suggests that different evaluation dimensions may capture complementary aspects of residual capacity, motivating the multi-level evaluation design adopted in PROBE. 
+
+D. Attention Heatmap Visualization 
+
+To provide additional insight into how PROBE recovers erased concepts, Fig. 5 visualizes the last-layer 3D full atten-tion heatmaps across different settings. Under T2VUnlearning, attention patterns for the target object become diffuse and unstructured compared to the original model. After PROBE is applied, coherent spatial attention re-emerges, indicating that the pseudo-token successfully steers the model’s internal representations back toward the target concept. Similar pat-terns are observed under NegPrompt (Fig. 5 (a)) and SAFREE (Fig. 5 (b)), where residual attention structure is even more pronounced, consistent with the weaker erasure strength of these methods. 
+
+E. Additional Temporal Reactivation Curves 
+
+Figures 6, 7, and 8 provide temporal reactivation curves on additional model configurations, complementing the CogX-2B results in the main text. 
+
+F. PROBE in Practice 
+
+To facilitate reproducibility and support future research in video diffusion safety, we provide the complete source code for the PROBE framework. This section outlines the environment setup, core executable scripts, and hyperparam-eter configurations required to perform adversarial concept inversion on erased Text-to-Video (T2V) models. 
+
+Environment Setup and Initialization. The PROBE frame-work is implemented using PyTorch and the Hugging Face 
+
+diffusers library. We recommend running the code on a Linux system with at least one NVIDIA H100 (80GB) GPU for optimizing large-scale models (e.g., CogVideoX-5B and Wan2.2-5B).                       
+
+> #Create and activate aconda environment
+> conda create -n probe python=3.10 -y conda activate probe
+> #Install dependencies
+> pip install torch torchvision --index-url https:// download.pytorch.org/whl/cu118 pip install -r requirements.txt
+
+Reference Data Preparation. Before executing the PROBE optimization, a high-quality reference dataset must be curated to provide the spatial-temporal priors for the target concept. This dataset typically consists of some representative video clips that contain the erased concept (e.g., objects, nudity, or identities). The reference clips can be generated by origin models as follows: 12 
+
+(a) Attention heatmaps under NegPrompt. 
+
+(b) Attention heatmaps under SAFREE. 
+
+(c) Attention heatmaps under T2VUnlearning. 
+
+Fig. 5: Attention heatmaps across different erasure methods. Rows: original model, erased, PROBE. Columns: different object categories. PROBE recovers coherent spatial attention patterns even after weight-space erasure.                              
+
+> python ./inference/CogX_2b.py --csv_path "./evaluation/data/nudity_cogvideox. csv" --out_put "./output/cogx2b/nudity" --seed 42 --num_frames 49 --generate_clean True --generate_neg False #you can set it true as need
+> --generate_probe False #same as above
+> --embed_path "" #if you want to generate videos after probe, please provide it
+
+Automated Video Filtering. To provide high quality reference data. we need to transfer videos to frames and use pre-trained classifiers to automatically filter frames containing the target concept.             
+
+> #Transfer videos to frames
+> python ./evaluation/mp4_to_png.py --input_folder "./ouput/cogx2b/nudity" --out_put "./output/cogx2b/nudity_png"
+> #Selection
+> python ./evaluation/q16_nudenet_detect_select.py --folder_path "./output/cogx2b/nudity_png" --prompt_path "./evaluation/data/ nudity_cogvideox.csv" --unsafe_output_path "./train_data/cogvideo2bX/ nudity"
+
+Pseudo-word Training. The core entry point for our probe is train.py . This script freezes the targeted T2V model’s weights and optimizes the continuous token embeddings to maximize the adversarial objective Ltotal = Lrec + λLalign .This will train a pseudo-word and save the results accordingly:                 
+
+> #Execute PROBE on an erased model
+> python train.py --erasure_model "cogvideox2b" --concept "nudity" --initializer_token "naked" --learnable_property "object" --neg_prompt "nudity" --num 5--num_steps 3000 --train_data_dir "./train_data/cogvideo2bX/ nudity" --output_dir "./results/probe_nudity"
+
+Multi Dimensions Evaluation. To rigorously quantify the reactivation rates and structural integrity of the generated videos, our repository provides a unified evaluation pipeline covering four distinct metrics (Classifier-based, CLIP-based, Temporal reactivation curve and Human validation).                              
+
+> #Classifier-based Evaluation (For nudity)
+> python ./evaluation/q16_nudenet_detect_select.py --folder_path "./output/cogx2b/nudity_png" --prompt_path "./evaluation/data/ nudity_cogvideox.csv" --unsafe_output_path "./train_data/cogvideo2bX/ nudity"
+> #CLIP-based Metrics
+> python ./evaluation/CLIP-based_Score.py --videos_path "./ouput/cogx2b/nudity" --output_path "./ouput/cogx2b/clip_eval"
+> #Temporal reactivation curve
+> python ./evaluation/temporal_eval.py --base_path "./ouput/cogx2b/nudity_png" --type_input "nudity" --target_word "nudity" --n_frames 49
+> #Human validation (Prepare blind videos)
+> python sample_for_human_validation.py --nudity_path "./output/cogx2b/nudity" --samples_per_class 3
+
+In summary, we outline the comprehensive and end-to-end codebase for the PROBE framework. By providing stan-dardized scripts for reference data preparation, automated quality filtering, pseudo-word training, and multi-dimensional evaluation, we ensure the strict reproducibility of all empirical findings presented in the main text. Furthermore, we recognize that the field of video diffusion safety and machine unlearning is evolving at an unprecedented pace. To ensure PROBE remains a highly relevant and rigorous diagnostic tool for the community, we are committed to actively maintaining and continuously updating this open-source repository. 13 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25                                                 
+
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (a) Nudity NegPrompt Erasure
+> Origin
+> NegPrompt
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (b) Nudity SAFREE Erasure
+> Origin
+> SAFREE
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> Mean Detection Score
+> (c) Nudity T2VUnlearning Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 6: Temporal reactivation curve of nudity across different erasure strategies on CogX-5B. 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25                                                 
+
+> Frame Sequence
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Mean Detection Score
+> (a) Nudity NegPrompt Erasure
+> Origin
+> NegPrompt
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Mean Detection Score
+> (b) Nudity SAFREE Erasure
+> Origin
+> SAFREE
+> PROBE
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+> Frame Sequence
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Mean Detection Score
+> (c) Nudity T2VUnlearning Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 7: Temporal reactivation curve of nudity across different erasure strategies on Wan2.2-5B. 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17                 
+
+> Frame Sequence
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Mean Detection Score
+> (a) Obama Identity Erasure
+> 12345678910 11 12 13 14 15 16 17
+> Frame Sequence
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Mean Detection Score
+> (b) Trump Identity Erasure
+> Origin
+> T2VUnlearning
+> PROBE
+
+Fig. 8: Temporal reactivation curve of identity erasure on CogX-5B. TABLE XVIII: Nudity rate (%) on HunyuanVideo under T2VUnlearning and PROBE with different λ values. 
+
+Setting Origin λ = 0 λ = 1 
+
+T2VUnlearning 78.61 → 16.67 27.78 20.45 
+
+G. Analysis: Gradient Alignment in CFG-Distilled Models 
+
+Beyond the three model families evaluated in Sec. V, we investigate PROBE’s behavior on HunyuanVideo [25], a CFG-distilled model optimized via classifier-free guidance imitation. This analysis reveals a fundamental limitation of the dual-loss formulation under distillation, providing both theoretical insight and practical guidance for future protocol extensions. As shown in Table XVIII, when applied to HunyuanVideo, PROBE with λ = 0 (reconstruction only) achieves meaningful recovery (27.78%), but adding the alignment term ( λ = 1 )
+
+decreases performance to 20.45%. This is the opposite of the consistent improvement observed on CogVideoX and Wan2.2 (Table XV). We provide a theoretical analysis explaining this reversal. For standard diffusion backbones such as CogVideoX and Wan2.2, the predicted velocity vθ follows clean diffusion dynamics. Combining with the v-prediction and flow matching recovery formulas (Eqs. 1 and 2), the gradients of both losses with respect to the pseudo-token embedding v are approximately aligned: 
+
+∇vLrec ∝ − (ϵ − x), ∇vLalign ∝ − σt(ϵ − x), (9) which differ only by a scale factor σt. Both losses therefore reinforce the same semantic direction during optimization, yielding the stable and consistent improvements observed in Sec. V-H. In CFG-distilled models such as HunyuanVideo, the net-work no longer predicts the pure diffusion velocity (ϵ − x),but rather a biased velocity field: 
+
+vdistill 
+
+θ (xt, t ) = ( ϵ − x) + ∆ CFG (xt, t ), (10) where ∆CFG (xt, t ) is a latent guidance bias learned during distillation. When training pseudo-tokens on such models, the two losses optimize in opposing directions: 
+
+∇vLrec ∝ − ∆CFG , ∇vLalign ∝ + ˆ∆CFG , (11) where ˆ∆CFG = R
+
+t ∆CFG (xt, t ) dt is the integrated guidance bias. Lrec attempts to remove the CFG bias, while Lalign at-tempts to reinforce it, causing gradient opposition and unstable optimization. 14 
+
+This analysis reveals that CFG-distilled models inherently break the gradient alignment assumption underlying the dual-loss design. To extend PROBE to such architectures, one would need to explicitly estimate or compensate for the internal bias ∆CFG . We leave this extension as future work. For CFG-distilled models, we recommend using λ = 0
+
+(reconstruction only) as a conservative diagnostic.
