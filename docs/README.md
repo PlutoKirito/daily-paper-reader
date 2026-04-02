@@ -6,85 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-31
-- 运行时间：2026-03-31 20:29:42 UTC
+- 最新运行日期：2026-04-02
+- 运行时间：2026-04-02 19:42:16 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日深度解析 21 篇视觉前沿论文，重点攻克生成式视频压缩与超分辨率一致性难题。
-满分论文揭示了随机修正流在零样本视频编码中的巨大潜力，InstaVSR 则实现了扩散模型下的高效视频修复。
-建议关注如何通过蒸馏与分治框架优化长视频生成，探索生成式技术在底层视觉任务中的工程化落地。
-- 详情：[/202603/31/README](/202603/31/README)
+今日精选 21 篇前沿论文，深度聚焦生成式技术在视频编码与插帧领域的颠覆性突破。
+重点关注满分论文提出的随机修正流零样本视频编码，以及利用编解码器运动矢量实现的加速器原生视频插帧技术。
+建议关注生成模型如何通过“以生成代压缩”的思路，大幅提升视频处理的效率与质量。
+- 详情：[/202604/02/README](/202604/02/README)
 
 ### 精读区论文标签
-1. [Generation Is Compression: Zero-Shot Video Coding via Stochastic Rectified Flow](/202603/31/2603.26571v1-generation-is-compression-zero-shot-video-coding-via-stochastic-rectified-flow)  
+1. [Generation Is Compression: Zero-Shot Video Coding via Stochastic Rectified Flow](/202604/02/2603.26571v1-generation-is-compression-zero-shot-video-coding-via-stochastic-rectified-flow)  
    标签：评分：10.0/10、query:vcodec
-   evidence：基于随机整流流和预训练模型的零样本生成式视频编解码器。
-2. [InstaVSR: Taming Diffusion for Efficient and Temporally Consistent Video Super-Resolution](/202603/31/2603.26134v1-instavsr-taming-diffusion-for-efficient-and-temporally-consistent-video-super-resolution)  
+   evidence：基于随机修正流的生成式视频编解码器，实现零样本压缩
+2. [ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors](/202604/02/2603.26835v1-anvil-accelerator-native-video-interpolation-via-codec-motion-vector-priors)  
    标签：评分：9.0/10、query:vcodec
-   evidence：具有光流引导时间正则化的轻量化视频超分扩散模型
-3. [ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors](/202603/31/2603.26835v1-anvil-accelerator-native-video-interpolation-via-codec-motion-vector-priors)  
-   标签：评分：9.0/10、query:train-trick
-   evidence：复用编解码器运动矢量实现低复杂度插帧
-4. [Adaptive Video Distillation: Mitigating Oversaturation and Temporal Collapse in Few-Step Generation](/202603/31/2603.21864v1-adaptive-video-distillation-mitigating-oversaturation-and-temporal-collapse-in-few-step-generation)  
+   evidence：复用编解码器运动矢量以实现高效视频插帧和运动补偿
+3. [Region-Adaptive Generative Compression with Spatially Varying Diffusion Models](/202604/02/2604.01122v1-region-adaptive-generative-compression-with-spatially-varying-diffusion-models)  
+   标签：评分：9.0/10、query:vcodec
+   evidence：基于区域自适应扩散模型的感知图像编解码器
+4. [DreamerAD: Efficient Reinforcement Learning via Latent World Model for Autonomous Driving](/202604/02/2603.24587v1-dreamerad-efficient-reinforcement-learning-via-latent-world-model-for-autonomous-driving)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于视频生成的潜空间世界模型，压缩扩散采样步骤
+5. [DreamerAD: Efficient Reinforcement Learning via Latent World Model for Autonomous Driving](/202604/02/2603.24587v2-dreamerad-efficient-reinforcement-learning-via-latent-world-model-for-autonomous-driving)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：压缩扩散采样以提高效率的潜空间世界模型
+6. [PQuantML: A Tool for End-to-End Hardware-aware Model Compression](/202604/02/2603.26595v1-pquantml-a-tool-for-end-to-end-hardware-aware-model-compression)  
    标签：评分：8.0/10、query:train-trick
-   evidence：专为视频扩散模型设计的蒸馏框架
-5. [Viewport-based Neural 360° Image Compression](/202603/31/2603.22776v1-viewport-based-neural-360-image-compression)  
+   evidence：端到端工作流中剪枝与量化的统一接口
+7. [ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors](/202604/02/2603.26835v2-anvil-accelerator-native-video-interpolation-via-codec-motion-vector-priors)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：复用编解码器运动矢量进行插帧与NPU优化
+8. [HLC: A High-Quality Lightweight Mezzanine Codec Featuring High-Throughput Palette](/202604/02/2603.29864v1-hlc-a-high-quality-lightweight-mezzanine-codec-featuring-high-throughput-palette)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：针对360度图像的神经压缩流水线
-6. [Once-for-All Channel Mixers (HYPERTINYPW): Generative Compression for TinyML](/202603/31/2603.24916v1-once-for-all-channel-mixers-hypertinypw-generative-compression-for-tinyml)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：用于TinyML的生成式压缩与低复杂度模型合成
-7. [Adaptive Learned Image Compression with Graph Neural Networks](/202603/31/2603.25316v1-adaptive-learned-image-compression-with-graph-neural-networks)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：使用图神经网络的内容自适应图像压缩框架
-8. [PQuantML: A Tool for End-to-End Hardware-aware Model Compression](/202603/31/2603.26595v1-pquantml-a-tool-for-end-to-end-hardware-aware-model-compression)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：结合剪枝和量化的硬件感知模型压缩
+   evidence：轻量化编解码器的率失真优化模块协同设计
 
 ### 速读区论文标签
-1. [DUO-VSR: Dual-Stream Distillation for One-Step Video Super-Resolution](/202603/31/2603.22271v1-duo-vsr-dual-stream-distillation-for-one-step-video-super-resolution)  
+1. [MegaFlow: Zero-Shot Large Displacement Optical Flow](/202604/02/2603.25739v1-megaflow-zero-shot-large-displacement-optical-flow)  
    标签：评分：8.0/10、query:vcodec
-   evidence：基于扩散模型的视频超分辨率及单步生成蒸馏
-2. [DA-Flow: Degradation-Aware Optical Flow Estimation with Diffusion Models](/202603/31/2603.23499v1-da-flow-degradation-aware-optical-flow-estimation-with-diffusion-models)  
+   evidence：利用预训练视觉先验进行零样本大位移光流估计
+2. [ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors](/202604/02/2603.26835v3-anvil-accelerator-native-video-interpolation-via-codec-motion-vector-priors)  
    标签：评分：8.0/10、query:vcodec
-   evidence：针对压缩伪影的光流扩散模型
-3. [DCARL: A Divide-and-Conquer Framework for Autoregressive Long-Trajectory Video Generation](/202603/31/2603.24835v1-dcarl-a-divide-and-conquer-framework-for-autoregressive-long-trajectory-video-generation)  
+   evidence：复用H.264/AVC解码器的运动矢量进行插帧预对齐
+3. [EFlow: Fast Few-Step Video Generator Training from Scratch via Efficient Solution Flow](/202604/02/2603.27086v1-eflow-fast-few-step-video-generator-training-from-scratch-via-efficient-solution-flow)  
    标签：评分：8.0/10、query:vcodec
-   evidence：视频扩散模型与无时间压缩的关键帧生成
-4. [CardioDiT: Latent Diffusion Transformers for 4D Cardiac MRI Synthesis](/202603/31/2603.25194v1-cardiodit-latent-diffusion-transformers-for-4d-cardiac-mri-synthesis)  
+   evidence：通过解流和令牌丢弃进行高效的少步视频生成器训练
+4. [MotiMem: Motion-Aware Approximate Memory for Energy-Efficient Neural Perception in Autonomous Vehicles](/202604/02/2603.27108v1-motimem-motion-aware-approximate-memory-for-energy-efficient-neural-perception-in-autonomous-vehicles)  
    标签：评分：8.0/10、query:vcodec
-   evidence：用于4D时空合成的潜扩散Transformer
-5. [EFlow: Fast Few-Step Video Generator Training from Scratch via Efficient Solution Flow](/202603/31/2603.27086v1-eflow-fast-few-step-video-generator-training-from-scratch-via-efficient-solution-flow)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：高效视频扩散Transformer训练与令牌丢弃
-6. [Rateless DeepJSCC for Broadcast Channels: a Rate-Distortion-Complexity Tradeoff](/202603/31/2603.21616v1-rateless-deepjscc-for-broadcast-channels-a-rate-distortion-complexity-tradeoff)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：DeepJSCC框架用于率失真-复杂度权衡
-7. [WorldCache: Content-Aware Caching for Accelerated Video World Models](/202603/31/2603.22286v1-worldcache-content-aware-caching-for-accelerated-video-world-models)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：视频扩散模型的运动自适应阈值与特征缓存技术
-8. [FAAR: Format-Aware Adaptive Rounding for NVFP4](/202603/31/2603.22370v1-faar-format-aware-adaptive-rounding-for-nvfp4)  
+   evidence：针对视频数据的运动感知近似内存和稀疏感知编码
+5. [EdgeDiT: Hardware-Aware Diffusion Transformers for Efficient On-Device Image Generation](/202604/02/2603.28405v1-edgedit-hardware-aware-diffusion-transformers-for-efficient-on-device-image-generation)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对边缘设备高效扩散Transformer的硬件感知剪枝
+6. [Powerful Teachers Matter: Text-Guided Multi-view Knowledge Distillation with Visual Prior Enhancement](/202604/02/2603.24208v1-powerful-teachers-matter-text-guided-multi-view-knowledge-distillation-with-visual-prior-enhancement)  
    标签：评分：7.0/10、query:train-trick
-   evidence：针对超低精度量化的可学习舍入策略
-9. [On the Suboptimality of Rate--Distortion-Optimal Compression: Fundamental Accuracy Limits for Distributed Localization](/202603/31/2603.23006v1-on-the-suboptimality-of-rate--distortion-optimal-compression-fundamental-accuracy-limits-for-distributed-localization)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：率失真优化压缩与频谱信息限制
-10. [ALADIN:Attribute-Language Distillation Network for Person Re-Identification](/202603/31/2603.21482v1-aladinattribute-language-distillation-network-for-person-re-identification)  
+   evidence：从大型教师模型到小型学生模型的知识蒸馏，用于高效推理
+7. [ScrollScape: Unlocking 32K Image Generation With Video Diffusion Priors](/202604/02/2603.24270v1-scrollscape-unlocking-32k-image-generation-with-video-diffusion-priors)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：利用视频扩散先验进行高分辨率图像生成
+8. [TuneShift-KD: Knowledge Distillation and Transfer for Fine-tuned Models](/202604/02/2603.24518v1-tuneshift-kd-knowledge-distillation-and-transfer-for-fine-tuned-models)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：用于在模型间迁移专业知识的知识蒸馏
+9. [DCARL: A Divide-and-Conquer Framework for Autoregressive Long-Trajectory Video Generation](/202604/02/2603.24835v1-dcarl-a-divide-and-conquer-framework-for-autoregressive-long-trajectory-video-generation)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：视频扩散模型与关键帧生成用于长视频合成
+10. [Latent Bias Alignment for High-Fidelity Diffusion Inversion in Real-World Image Reconstruction and Manipulation](/202604/02/2603.23903v1-latent-bias-alignment-for-high-fidelity-diffusion-inversion-in-real-world-image-reconstruction-and-manipulation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：扩散反演与VQ自编码器中的潜在偏差对齐
+11. [CAKE: Real-time Action Detection via Motion Distillation and Background-aware Contrastive Learning](/202604/02/2603.23988v1-cake-real-time-action-detection-via-motion-distillation-and-background-aware-contrastive-learning)  
    标签：评分：6.0/10、query:train-trick
-   evidence：从 CLIP 到轻量化学生模型的知识蒸馏
-11. [Manifold-Aware Exploration for Reinforcement Learning in Video Generation](/202603/31/2603.21872v1-manifold-aware-exploration-for-reinforcement-learning-in-video-generation)  
+   evidence：将运动知识转移到 RGB 模型的运动蒸馏框架
+12. [InstanceRSR: Real-World Super-Resolution via Instance-Aware Representation Alignment](/202604/02/2603.24240v1-instancersr-real-world-super-resolution-via-instance-aware-representation-alignment)  
    标签：评分：6.0/10、query:vcodec
-   evidence：用于视频生成对齐的强化学习
-12. [CLEAR: Context-Aware Learning with End-to-End Mask-Free Inference for Adaptive Video Subtitle Removal](/202603/31/2603.21901v1-clear-context-aware-learning-with-end-to-end-mask-free-inference-for-adaptive-video-subtitle-removal)  
+   evidence：生成式先验与语义信息建模用于重建
+13. [Accelerating Diffusion-based Video Editing via Heterogeneous Caching: Beyond Full Computing at Sampled Denoising Timestep](/202604/02/2603.24260v1-accelerating-diffusion-based-video-editing-via-heterogeneous-caching-beyond-full-computing-at-sampled-denoising-timestep)  
    标签：评分：6.0/10、query:vcodec
-   evidence：基于扩散的生成式细化和端到端视频处理
-13. [Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model](/202603/31/2603.21986v1-speed-by-simplicity-a-single-stream-architecture-for-fast-audio-video-generative-foundation-model)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：具有运动协调能力的音视频生成基础模型
+   evidence：通过缓存加速基于扩散的视频编辑
 
 
 <div class="dpr-home-promo-card">
