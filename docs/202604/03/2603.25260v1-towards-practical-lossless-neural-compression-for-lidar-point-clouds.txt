@@ -1,0 +1,1513 @@
+Title: Towards Practical Lossless Neural Compression for LiDAR Point Clouds
+
+URL Source: https://arxiv.org/pdf/2603.25260v1
+
+Published Time: Fri, 27 Mar 2026 00:59:01 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# Towards Practical Lossless Neural Compression for LiDAR Point Clouds 
+
+Pengpeng Yu 1,2, Haoran Li 1,2, Runqing Jiang 1,2, Dingquan Li 2, Jing Wang 2
+
+Liang Lin 1,2, and Yulan Guo 1,2 
+
+> 1
+
+Sun Yat-sen University, China  
+
+> 2
+
+Pengcheng Laboratory, China guoyulan@sysu.edu.cn guoyulan@sysu.edu.cn 
+
+Abstract. LiDAR point clouds are fundamental to various applications, yet the extreme sparsity of high-precision geometric details hinders ef-ficient context modeling, thereby limiting the compression speed and performance of existing methods. To address this challenge, we pro-pose a compact representation for efficient predictive lossless coding. Our framework comprises two lightweight modules. First, the Geome-try Re-Densification Module iteratively densifies encoded sparse geom-etry, extracts features at a dense scale, and then sparsifies the features for predictive coding. This module avoids costly computation on highly sparse details while maintaining a lightweight prediction head. Second, the Cross-scale Feature Propagation Module leverages occupancy cues from multiple resolution levels to guide hierarchical feature propaga-tion, enabling information sharing across scales and reducing redundant feature extraction. Additionally, we introduce an integer-only inference pipeline to enable bit-exact cross-platform consistency, which avoids the entropy-coding collapse observed in existing neural compression meth-ods and further accelerates coding. Experiments demonstrate compet-itive compression performance at real-time speed. Code is available at https://github.com/pengpeng-yu/FastPCC. 
+
+Keywords: Point cloud compression · Real-time codec · Cross-platform consistency 
+
+1 Introduction 
+
+With the rapid advancement of 3D sensing technologies, massive amounts of point cloud data have been accumulated in various fields such as autonomous driving and mapping [50]. This surge in data volume has led to an increas-ing demand for precise point cloud compression (PCC). Currently, most PCC methods represent raw coordinate data using quantized structures such as range images [37,44,45,55], voxels [16,32,42,51], or octrees [2,5,11,17,33,36], and then apply techniques like prediction or transformation to achieve compression. Although existing PCC methods have made significant progress in rate-distortion (RD) performance, their foundational representations, namely voxels 
+
+> arXiv:2603.25260v1 [cs.CV] 26 Mar 2026
+
+2 P. Yu et al.         
+
+> (a) Level-8 octree of a KITTI point cloud
+> (b) Level-12 octree of a KITTI point cloud 810 12 14 16
+> Octree Level
+> 0
+> 20k
+> 40k
+> 60k
+> 80k
+> 100k
+> 120k
+> Number of Octree Nodes
+> # Octree Nodes
+> # Neighbors
+> 0
+> 2
+> 4
+> 6
+> 8
+> Number of Neighbors
+> Number of Octree Nodes and Neighbors vs. Level (c) Number of nodes and neighbors vs. level.
+
+Fig. 1: Illustration of the High-Resolution Contextual Sparsity (HRCS) phenomenon: (a) and (b) depict the voxelized octree representations at levels 8 and 12 for a point cloud from the KITTI dataset, respectively. The red bounding box highlights a 3×3×3
+
+neighborhood. (c) quantifies HRCS on the KITTI dataset, where the average number of neighbors per node decreases sharply with increasing octree level. 
+
+or octrees, exhibit inherent limitations in high-precision compression scenarios. Both representations quantize a 3D space into discrete volumes, marking each as occupied only if it contains at least one point. However, as shown in Fig. 1a and Fig. 1b, as the quantization resolution increases, the local neighborhood around a given voxel becomes increasingly sparse, drastically reducing the availabil-ity of contextual information. We term this phenomenon as High-Resolution Contextual Sparsity (HRCS) . In such cases, occupancy prediction becomes increasingly difficult due to the lack of local context. To quantify HRCS, we conducted a statistical analysis on all frames of the KITTI dataset. For the octree of each sample, we collected two key statistics: (i) the total number of nodes at each level, and (ii) the average number of occupied neighbors within a 3 × 3 × 3 neighborhood. As illustrated in Fig. 1c, with increasing resolution ( i.e ., at deeper octree levels), the average number of neighbors per node drops sharply. At certain levels, the average number of neighbors even falls below one. Notably, this decline exhibits a marked inflection point at a specific octree level, indicating a nonlinear loss of contextual richness. To address HRCS without sacrificing coding efficiency, we propose a Ge-ometry Re-Densification (GRED) strategy. Instead of directly predicting sparse high-resolution nodes, GRED traces back to a shallower level, where geometry remains relatively dense, and performs dense-to-sparse feature transformation through lightweight convolutions and upsampling. The resulting features are spatially aligned with the target level and used to facilitate occupancy predic-tion. This process forms an iterative dense → sparse → predictive coding cycle across octree levels, executed from coarse to fine resolutions. Built upon GRED, we further introduce a Cross-Scale Feature Propagation (XFP) module to fuses dense features from shallow levels with sparse geometric cues from deeper lev-Towards Practical Lossless Neural Compression for LiDAR Point Clouds 30 5 10 15 20       
+
+> FPS of Encoding and Decoding at 12-bit Precision
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> BD D1 PSNR Gains (dB) over G-PCC
+> Better
+> Ours (Float)
+> Ours (Integer)
+> Light EHEM
+> Unicorn
+> OctAttention
+> RENO
+> G-PCC octree
+> (a) BD-rate gains vs. the speed of complete encod-ing–decoding process on KITTI at 12-bit precision.
+> (b) Non-deterministic floating-point inference leads to cross-platform decoding failure.
+> (c) Integer-only inference enables bit-exact cross-platform decoding.
+
+Fig. 2: (a) RD performance versus coding speed on KITTI at 12-bit precision, evalu-ated on an AMD EPYC 7R32 CPU and an NVIDIA RTX 4090 GPU. (b) Decoding failure caused by non-deterministic floating-point computation, where encoding is per-formed on an NVIDIA RTX 4090 GPU and decoding on an RTX 5880 GPU. The recon-structed point cloud collapses into an approximately uniform distribution in 3D space. (c) Bit-exact decoding achieved with the proposed integer-only inference pipeline. 
+
+els, enabling effective cross-scale interaction while maintaining computational efficiency. Beyond compression performance and coding latency, practical neural codecs must guarantee cross-platform bitstream decodability. However, floating-point inference is inherently non-deterministic across heterogeneous devices and soft-ware stacks, and even minor numerical discrepancies in probability prediction may catastrophically break entropy coding. To address this practical challenge, we further develop an integer-only inference pipeline, ensuring bit-exact cross-platform consistency while enabling efficient execution. In the following sections, we first review related work in PCC, followed by a detailed description of GRED, XFP, and our integer-only inference pipeline. Extensive experiments on KITTI [14] and Ford [26] demonstrate the effectiveness of the proposed method in terms of compression performance, coding efficiency, and cross-platform consistency. 
+
+2 Related work 
+
+This section reviews representative point cloud compression methods and briefly discusses recent advances in cross-platform consistency for neural codecs. Ac-cording to the underlying geometric representation, existing PCC approaches can be broadly categorized into two groups: (1) voxel-based PCC and (2) octree-based PCC. 
+
+Voxel-based PCC . Voxel-based approaches split the point cloud into suffi-ciently small voxels, utilizing sparse convolution [38] to optimize memory usage. 4 P. Yu et al. 
+
+Based on the voxel, many PCC techniques have emerged [23–25,27,41,48,53,54]. For example, Wang et al . [43] proposed a voxel-based geometry compression method that partitions point clouds into non-overlapping 3D cubes and lever-ages a variational autoencoder-driven convolutional neural network to extract latent features and hyperpriors for entropy coding. Recently, Wang et al . [42] proposed a universal multiscale conditional coding framework, Unicorn, which leverages sparse tensors from voxelized point clouds and cross-scale temporal pri-ors to enhance geometry compression. Zhang et al . [52] proposed a dynamic point cloud compression framework based on voxelized data, featuring a slimmable ar-chitecture with multiple coding routes for rate-distortion optimization, and a coarse-to-fine motion module to improve inter-frame prediction. 
+
+Octree-based PCC . Octree-based approaches typically construct an L level octree by recursively subdividing the point cloud within a pre-defined bound-ing volume, and achieve compression by predicting the occupancy status of each octree node. Based on the octree structure, many PCC techniques have emerged [13,15,19,21,46,47]. For example, Huang et al . [17] proposed an octree-based compression method that leverages a tree-structured conditional entropy model to exploit sparsity and structural redundancy in LiDAR point clouds. Similarly, Fu et al . [11] proposed an octree-based deep learning framework that encodes point clouds by leveraging rich sibling and ancestor contexts with an attention mechanism. Cui et al . [9] proposed OctFormer, which constructs node sequences with non-overlapping context windows and shares attention results to reduce computation. Song et al . [36] proposed an octree-based entropy model with a hierarchical attention mechanism and grouped context structure, reducing the complexity and decoding latency of large-scale auto-regressive models. 
+
+Cross-platform consistency. Prior studies in neural image/video compres-sion reveal that even tiny floating-point computation errors can cause encoder-decoder mismatch and lead to decoding failures [1, 8, 18, 20, 40]. This issue typ-ically stems from entropy coding, which requires the encoder and decoder to share exactly the same probability distribution. A principled solution is model integerization, which enforces bit-exact deterministic computations [1, 8, 18, 20]. Alternative approaches transmit auxiliary calibration information to correct cross-platform mismatch, at the cost of extra side information [40]. Compared with image/video codecs, neural PCC often involves sparse operators and data-dependent control flow, which complicates deterministic deployment across het-erogeneous platforms. While cross-platform consistency is increasingly studied for image/video neural codecs, it remains largely underexplored in neural PCC. 
+
+In summary , both voxel-based and octree-based PCC approaches have achieved remarkable progress, with learning-based methods significantly improv-ing RD performance over traditional codecs [4,12,22,31,34,35,44]. However, un-der high-resolution settings, both representations tend to suffer from HRCS. See the supplementary materials for further discussion. A representative attempt to alleviate sparsity is GRASPNet [28], which introduces PointNet-based [29, 30] analysis for sparse geometry. Nevertheless, such heterogeneous designs introduce considerable computational complexity. Moreover, existing PCC studies primar-Towards Practical Lossless Neural Compression for LiDAR Point Clouds 5
+
+ily focus on RD performance, while the practical requirement of cross-platform deterministic coding remains largely overlooked. This motivates our work to jointly address HRCS and cross-platform consistency within a unified neural PCC framework. 
+
+3 Method 
+
+To address the HRCS problem while satisfying the practical requirements of real-time LiDAR PCC, we propose a fast octree-based encoding framework. The overall architecture is illustrated in Fig. 3. The proposed framework consists of four key components: octree construction, prior construction, cross-scale feature propagation, and entropy coding. In the following, we first introduce the Cross-Scale Feature Propagation module with its core Geometry Re-Densification de-sign, and then describe the integer-only inference pipeline that guarantees cross-platform consistent coding. 
+
+3.1 Geometry Re-Densification Module 
+
+The irregular and unordered nature of LiDAR point clouds poses significant challenges for efficient processing on modern hardware architectures. To better exploit existing hardware, most compression methods convert raw point clouds into octree structures. By recursively dividing space into eight subcells at each level, octrees provide a compact and hierarchical representation of geometry. The maximum level L of the octree controls reconstruction fidelity. With octree, existing codecs can perform progressive, dense-to-sparse predictive lossless cod-ing of occupancy codes, modeling the distribution by exploiting contexts from encoded sibling nodes and ancestral nodes to minimize storage. Despite the compact and regular structure of octree representations, they face the challenge of HRCS in encoding high-resolution LiDAR point clouds. To address this problem, we propose a Geometry Re-Densification (GRED) 
+
+module and integrate it into the dense-to-sparse progressive coding pipeline. At each HRCS-affected level, GRED downsamples sparse occupancy codes to obtain denser contextual features, and then reverts to the original sparse domain for predictive coding. For each HRCS-affected level, the module performs: 1. Re-Densification. Downsample the occupancy codes of the last encoded level into a denser octree level, producing an aligned dense feature map with zero-padding for empty nodes. 2. Feature Extraction. Apply lightweight convolutions to the dense feature map to extract rich local spatial representations. 3. Re-Sparsification. Recursively upsample and prune the dense features using the encoded occupancy codes, producing a sparse feature map aligned with the nodes at the current level. 4. Prediction & Coding. Use a multilayer perceptron-based predictor on the sparse feature map to estimate the occupancy distribution over 255 classes (8-bit occupancy patterns), and entropy-encode the occupancy codes. 6 P. Yu et al. 164               
+
+> 80128 00800
+> 00009000
+> 21
+
+Shallow -Level 
+
+Propagation 
+
+Deep -Level 
+
+Propagation 
+
+ෝ𝐩 𝑙 
+
+𝐗 𝑙 
+
+Octree construction  Cross -Scale  Feature  Propagation  Entropy Coding 
+
+𝐅 𝑙 
+
+> Upsampling
+> ResBlock
+
+𝐗 𝑙 −1     
+
+> Pruning
+> 𝐅 𝑘 +1
+> 𝐆 𝒌 𝐅 𝑘
+> 𝑘 =𝑙
+> 𝑘 =𝑘 +1
+> False
+> True
+
+𝐅 𝑙     
+
+> Upsampling
+> ResBlock
+> Pruning
+> 𝐅 𝑘 +1
+> 𝐆 𝑘
+> 𝐇 𝑘
+> 𝑘 =𝑙
+> 𝑘 =𝑘 +1
+> False
+> True
+
+𝐗 𝑙 −1
+
+𝐅 𝒕 
+
+𝐅 𝑙 
+
+> Upsampling
+> ResBlock
+> Pruning
+> 𝐒 𝑙 −1
+
+𝐗 𝑙 −1
+
+𝐅 𝑙 −1
+
+Geometry Re -Densification Module  Deep -Level Propagation Shallow -Level Propagation 
+
+⋯
+
+⋯  
+
+> 𝐗 𝑘 𝐗 𝑘
+> Entropy
+> Encoder
+> Entropy
+> Decoder
+> 0
+> 9
+> 0
+> 0
+> 0
+> ⋯
+> Decoded
+
+𝐗 𝑙 
+
+> Bitstream
+
+⋯
+
+> Cross -Scale
+> Adaptation
+> Cross -Scale
+> Adaptation
+> Predictor
+> Downsampling
+> Downsampling
+> 𝑙  > 𝑡  ?
+> False
+> True
+
+Prior construction         
+
+> Occupancy code:
+> 𝐗 𝑙 −1
+> Feature s: 𝐅 𝑙 −1
+> Occupancy code:
+> 𝐗 𝑡 ,⋯,𝐗 𝑙 −1
+> Feature s: 𝐅 𝑡
+> Initialize
+> 𝑘 =𝑡
+
+Fig. 3: Pipeline of compressing a single octree level in the proposed lossless LiDAR PCC framework. The framework consists of four main stages: octree construction, prior construction, cross-scale feature propagation, and entropy coding. The cross-scale feature propagation module comprises two key components: the shallow-level propa-gation block and the deep-level propagation block, both adapted from the geometry re-densification module to exploit cross-scale features. 
+
+Without loss of generality, we denote octree as X = {X1, X2, . . . , XL}, where 
+
+L is the maximum level of octree, Xl ∈ { 1, . . . , 255 }N l
+
+represents the occupancy sequence of all nodes at level l, and N l denotes the number of nodes at that level. Lossless compression approximates the true occupancy distribution P (X)
+
+with an estimated distribution Q(X) by minimizing the cross-entropy: 
+
+H(P, Q ) = EP (X) [− log Q(X)] . (1) Standard octree-based codecs typically estimate the distribution of occu-pancy codes in a layer-wise autoregressive manner, i.e ., previously encoded levels serve as priors for predicting the current one: 
+
+Q(X) = 
+
+LY
+
+l=1 
+
+Q  Xl | X1: l−1 , (2) where each conditional distribution is predicted by an occupancy predictor: 
+
+Q  Xl | X1: l−1 = Predictor  X1: l−1 . (3) Suppose predictions are being made at level l. Given the encoded occupancy codes {X1, · · · , Xl−1}, to obtain denser context features, GRED first downsam-ples Xl−1 into a pre-defined dense octree level k:
+
+Gk = Downsampling  Xl−1 , (4) Towards Practical Lossless Neural Compression for LiDAR Point Clouds 7
+
+where the Downsampling( ·) operation embeds the occupancy codes of l − 1 into feature maps at level k using sparse convolutions. In Gk, each channel corre-sponds to a specific occupancy state of a node at level l − 1, thereby enriching contextual information with higher density. To extract contextual features, Gk is fed to a ResBlock for Feature Extraction ,thereby obtaining the feature Fk:
+
+Fk = ResBlock  Gk . (5) Although it is possible to directly predict occupancy in this dense space, it would incur prohibitive computational costs due to the vast number of potential sub-nodes. Instead, GRED progressively reverts Fk to the original sparse space 
+
+Fl through multi-step upsampling, thereby achieving the Re-Sparsification of the features: 
+
+Fk+1 = Pruning  Upsampling  Fk , Xk , (6) where Upsampling( ·) is a linear transformation followed by a PReLU activation, performing an 8 × channel expansion, and Pruning( ·) discards features of unoc-cupied child nodes. This process is recursively applied until the feature map Fl
+
+is obtained. The feature is then fed into an MLP-based predictor to estimate the occupancy distribution: 
+
+ˆpl = Predictor  Fl . (7) Then the true occupancy codes Xl are entropy-encoded using ˆpl, finishing 
+
+Prediction & Coding . Overall, GRED enriches contextual information with low computational overhead while preserving the progressive decoding workflow. Although many 3D tasks employ densification operations [6,10], such as quan-tization and downsampling, before processing and analysis, LiDAR point cloud compression presents a unique constraint: the decoder cannot access the full geometry at the beginning of decoding. Therefore, globally pre-densifying all oc-tree levels is infeasible. This insight, combined with the observed nonlinear drop in occupancy density across octree levels, supports the necessity of on-the-fly re-densification within a progressive octree coding pipeline. 
+
+3.2 Cross-Scale Feature Propagation Module 
+
+While the proposed GRED module effectively mitigates HRCS, we delve into the rich inter-scale contextual dependencies across the octree. Existing octree-based codecs typically extract features and predict occupancy codes independently at each octree level or within local node windows. However, this per-level processing overlooks the strong contextual dependencies across octree levels, leading to redundant feature extraction. To fully leverage inter-scale context, we propose a unified Cross-Scale Fea-ture Propagation (XFP) Module that (i) directly propagates features across octree levels and (ii) generalizes the core idea of the GRED Module into a broader, multi-scale framework. In fact, the GRED Module can be viewed as a special case of XFP, applied only at the deepest levels. XFP shares features 8 P. Yu et al. 
+
+from coarser (shallower) levels with finer (deeper) levels, avoiding redundant feature extraction and enhancing contextual awareness. Suppose we are predicting the occupancy codes at level l, meaning that the preceding feature maps {F1, · · · , Fl−1} and occupancy codes {X1, · · · , Xl−1}
+
+are available. The first step in XFP is to determine an appropriate feature prop-agation strategy. In this work, we define two propagation regimes based on a pre-defined decision-making level t:1. Shallow levels (l ≤ t): feature propagation is conducted without re-densification, as the geometry remains relatively dense. 2. Deep levels (l > t ): feature propagation incorporates contextual informa-tion from the dense level k through occupancy-based re-densification. 
+
+Shallow-Level Propagation . For levels l ≤ t, the octree is relatively shal-low and the contextual information is sufficiently dense, making the HRCS prob-lem less prominent. At these levels, we adopt a simplified version of the GRED module, omitting the Re-Densification step. In the Feature Extraction step, since the re-densified feature G is omitted, the input is directly the encoded feature from level l−1, denoted as Fl−1. A 
+
+ResBlock is then applied to extract features, obtain the representation Sl−1:
+
+Sl−1 = ResBlock( Fl−1). (8) Next, through one step of Re-Sparsification , Sl−1 is upsampled to level l to produce the re-sparsified feature Fl:
+
+Fl =Pruning  Upsampling  Concat  Sl−1,Xl−1 ,Xl−1, (9) where Concat denotes channel-wise concatenation of matrices. The obtained feature Fl then undergoes the same Prediction & Coding as GRED. 
+
+Deep-Level Propagation with Re-Densification . For l > t , the spatial sparsity makes direct propagation less effective. Therefore, we apply the full GRED module at these levels. During this process, we incorporate additional inter-scale contextual information to enrich the extracted features. GRED utilizes the re-densified feature Gk for Feature Extraction . To fully leverage the information from the previous scale, we concatenate Gk with the original feature map Fk and use ResBlock to obtain the fused representation: 
+
+Hk = ResBlock  Concat( Fk, Gk) . (10) The fused representation Hk will replace the original input feature Fk in the 
+
+Re-Sparsification , enabling multi-scale features to be fused into the current level: 
+
+Fk+1 = Pruning  Upsampling  Concat( Hk,Xk), Xk, k = t,...,l − 1. (11) By recursively applying the above process, we obtain the fused feature Fl.Finally, Prediction & Coding is performed at level l based on the feature Fl.Towards Practical Lossless Neural Compression for LiDAR Point Clouds 9
+
+This cross-scale propagation scheme reuses context-rich features from earlier levels and adapts them to finer resolutions through sparse, occupancy-aware operations. By combining shallow and deep propagation pathways, XFP unifies dense and sparse processing, enabling efficient feature extraction throughout the octree hierarchy. 
+
+3.3 Integer-Only Inference for Cross-Platform Consistency 
+
+Neural compression models require strict numerical consistency between the en-coder and the decoder, since entropy coding is highly sensitive to numerical errors. Even minor discrepancies in predicted probabilities may lead to decoding failures [1, 8, 18, 40]. However, floating-point computations are inherently non-deterministic across hardware and software. In practical deployment, enforcing identical execution environments is unrealistic. To enable reliable cross-platform coding, we therefore develop an integer-only inference pipeline that guarantees deterministic computation. To the best of our knowledge, this is the first cross-platform integer-only inference pipeline for neural PCC. Our objective is to eliminate all floating-point operations during inference while preserving both runtime efficiency and compression performance. To this end, we adopt a mixed-precision integer design that balances computational cost and numerical stability: (i) computation-intensive operators are executed using low-bit integer arithmetic for efficiency; (ii) lightweight yet numerically sensitive operators are implemented with higher-precision fixed-point arithmetic to control quantization error. This design enables fully integerized end-to-end deterministic execution without sacrificing much performance. 
+
+Quantization. We employ 8-bit integer quantization for compute-dominant op-erators, including linear layers and sparse convolutions, while using 32-bit fixed-point arithmetic for re-quantization and activation functions. Given a floating-point tensor x, its quantized integer representation is defined as 
+
+qx = Q(x; s, z ) = clip 
+
+j x
+
+s
+
+m
+
++ z, q min , q max 
+
+
+
+, (12) where s and z denote the scale and zero-point, respectively, and ⌊·⌉ represents a rounding operation. Quantization parameters for activations in linear and sparse convolution operators are obtained via lightweight calibration on a small subset of training data. All remaining operators are implemented in fixed-point format and therefore do not require distribution statistics. During inference, all compu-tations are performed directly in integer space, ensuring deterministic behavior. 
+
+Integer linear and sparse convolution. For linear layers, activations and weights are represented as 8-bit integers, while accumulation operations are performed using 32-bit integers: 
+
+yint32 = X
+
+> c
+
+(qx − zx) ( qw − zw) + bint32 , (13) 10 P. Yu et al. 
+
+where qx and qw denote quantized activations and weights, zx and zw are the corresponding zero-points, and bint32 denotes the quantized bias. In our imple-mentation, weights are symmetrically quantized ( i.e ., zw = 0 ). The accumulated result is then re-quantized to 8-bit representation via fixed-point scaling: 
+
+qy = clip( ⌊yint32 · m/ 2r ⌉ + zy ) , (14) where m is a precomputed integer multiplier, r is a fixed right-shift factor, and 
+
+zy denotes the output zero-point. For sparse convolution, each operator is decomposed into multiple indexed linear transforms [7]. This decomposition preserves sparsity while enabling effi-cient execution using integer linear primitives. 
+
+Integer softmax. The occupancy predictor outputs a 255-way probability distri-bution via a softmax operation that is directly consumed by entropy coding. To avoid platform-dependent floating-point exponentiation and division, we imple-ment softmax entirely in fixed-point arithmetic. Given the logits ℓ, the softmax probability is computed in a numerically stable form as 
+
+pi = exp( ℓi − max k ℓk)
+
+P 
+
+> j
+
+exp( ℓj − max k ℓk) , i, j, k ∈ { 1, . . . , 255 }. (15) The exponential function is approximated using a precomputed lookup table that only covers the non-positive domain (i.e., ℓi − max k ℓk ≤ 0), which sig-nificantly reduces table size while preserving numerical stability. Accumulation and normalization are performed using 32-bit integer arithmetic. The resulting probabilities are represented in high-precision fixed-point format, guaranteeing bit-exact consistency across different platforms. 
+
+4 Experiments 
+
+In this section, we present a comprehensive experimental evaluation of our method, including experimental settings, comparative results with state-of-the-art approaches, and ablation studies. 
+
+4.1 Settings 
+
+In this section, we detail the experimental setup, including the benchmark datasets, evaluation metrics, and comparative baselines. The implementation details are provided in the supplementary materials. 
+
+Benchmark Datasets . Experiments are conducted on two different LiDAR datasets: KITTI [14] and Ford [26]. The KITTI dataset consists of 22 stereo sequences collected by a Velodyne LiDAR scanner across diverse continuous scenes, totaling 43,552 frames. Following Fu et al . [11], we use sequences #00 to 
+
+#10 for training and #11 to #21 for testing. The Ford dataset comprises three Towards Practical Lossless Neural Compression for LiDAR Point Clouds 11 0 1 2 3 4 5 6 7 8 9 10 11 12                            
+
+> BPP (Bits Per Input Point)
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> D1 PSNR (dB)
+> D1 PSNR vs. BPP on KITTI 20,351 frames
+> Ours (Float)
+> Ours (Integer)
+> Light EHEM
+> Unicorn
+> OctAttention
+> RENO
+> G-PCC octree 012345678910 11 12
+> BPP (Bits Per Input Point)
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> 95
+> D2 PSNR (dB)
+> D2 PSNR vs. BPP on KITTI 20,351 frames
+> Ours (Float)
+> Ours (Integer)
+> Light EHEM
+> Unicorn
+> OctAttention
+> RENO
+> G-PCC octree 2345678910 11 12 13 14 15 16 17
+> BPP (Bits Per Input Point)
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> D1 PSNR (dB)
+> D1 PSNR vs. BPP on Ford 3,000 frames
+> Ours (Float)
+> Ours (Integer)
+> Light EHEM
+> Unicorn
+> OctAttention
+> RENO
+> G-PCC octree
+
+Fig. 4: RD performance comparison with existing methods on KITTI and Ford datasets from 11 bits to 16 bits. 
+
+sequences, each containing 1,500 frames. Consistent with Song et al . [36], we use sequence #01 for training, and sequences #02 and #03 for testing. 
+
+Evaluation Metrics . We adopt point-to-point PSNR (D1 PSNR) and point-to-plane PSNR (D2 PSNR) [39] as distortion measures. These are standard metrics recommended by MPEG [34]. We employ the Bjøntegaard Delta (BD) metrics [3] for evaluating rate-distortion performance, namely Bjøntegaard Delta Peak Signal-to-Noise Ratio (BD-PSNR) and Bjøntegaard Delta Rate (BD-Rate). It is important to note that both BD-Rate and BD-PSNR measure the relative gains of a tested model compared to a baseline. A negative BD-Rate or a positive BD-PSNR indicates that the tested model outperforms the baseline. 
+
+Compared Methods . We compare the proposed framework with 5 rep-resentative PCC methods. G-PCC [34], standardized by MPEG, serves as the classical geometry-based benchmark. OctAttention [11] and Light EHEM [36] are transformer-based octree compression methods, while Unicorn [42] repre-sents a recent voxel-based PCC framework. In addition, RENO [49] introduces an efficient sampling strategy to balance compression performance and compu-tational efficiency. Unless otherwise specified, all methods are re-evaluated on a computer equipped with an AMD EPYC 7R32 CPU and an NVIDIA RTX 4090 GPU. Due to the unavailability of the official implementation of Light EHEM, we report the performance metrics as provided in the original paper. 
+
+4.2 Performance Analysis 
+
+This section evaluates the proposed method in terms of rate-distortion perfor-mance, computational efficiency, and qualitative visualization, providing a com-prehensive assessment of its effectiveness. 
+
+Rate-Distortion Performance . This section presents the RD performance of the proposed method compared to several existing methods, using two stan-dard evaluation curves: D1 PSNR vs. Bits Per input Point (BPP) and D2 PSNR vs. BPP. A curve closer to the upper-left corner indicates higher geometry pre-cision at lower bitrates, reflecting better compression performance. The experimental results are illustrated in Fig. 4. On the KITTI dataset, our method achieves performance comparable to the transformer-based Light EHEM 12 P. Yu et al. 
+
+Table 1: BD-Rate (%) and BD-PSNR (dB) gains of our floating-point model.                                                       
+
+> Ours (Float) vs. KITTI Ford Existing BD-Rate BD-PSNR BD-Rate BD-PSNR Methods D1 D2 D1 D2 D1 D2 D1 D2 OctAttention [11] (AAAI’22) -7.294 -7.332 0.754 0.760 -6.205 -6.193 0.969 0.969 Light EHEM [36] (CVPR’23) 1.429 1.422 -0.152 -0.152 11.535 11.987 -1.899 -1.960 Unicorn [42] (TPAMI’25) -10.862 -10.889 1.367 1.373 3.922 3.989 -0.622 -0.637 RENO [49] (CVPR’25) -15.582 -15.579 1.887 1.890 -11.049 -11.040 1.938 1.938 G-PCC octree [34] -21.931 -21.954 2.532 2.541 -19.150 -19.143 3.411 3.412
+
+Table 2: BD-Rate (%) and BD-PSNR (dB) gains of our integer-only model.                               
+
+> Ours (Integer) vs. KITTI Ford Existing Real-time BD-Rate BD-PSNR BD-Rate BD-PSNR Methods D1 D2 D1 D2 D1 D2 D1 D2 RENO [49] (CVPR’25) -14.289 -14.285 1.728 1.730 -6.875 -6.864 1.185 1.185 G-PCC octree [34] -20.705 -20.728 2.378 2.387 -15.355 -15.348 2.694 2.694
+
+and consistently outperforms the sparse convolution-based Unicorn, demonstrat-ing clear advantages in RD performance while providing substantially improved computational efficiency. Notably, the integer-only model maintains RD perfor-mance comparable to its floating-point counterpart. On the Ford dataset, the overall RD performance is relatively less competitive, yet our method still sur-passes approaches with similar coding latency, such as RENO and G-PCC octree. This performance gap is likely due to the limited number of training samples (1,500 frames), which constrains generalization capability. Table 1 presents the quantitative BD-rate and BD-PSNR metrics of the proposed method with ex-isting approaches, and Table 2 reports the corresponding results of the integer-only model over real-time baselines. On the KITTI dataset, compared with the efficiency-oriented method RENO, our approach achieves gains of 1.887 dB and 1.890 dB in D1 and D2 PSNR, respectively, while the integer-only model obtains gains of 1.728 dB and 1.730 dB under the same setting. These results demonstrate that the proposed framework effectively exploits structural redundancy within the octree representation, achieving competitive compression performance to-gether with high runtime efficiency and strict cross-platform consistency. 
+
+Computational Efficiency . To evaluate the real-time capability of the pro-posed framework, we measure the encoding and decoding time of our method and several representative methods, as summarized in Table 3. FLOPs statistics are additionally provided in the supplementary materials. The proposed method demonstrates faster runtime than most competing methods. For a clearer com-parison, Fig. 5 illustrates the BD-PSNR gains versus frames per second (FPS) on the 12-bit quantized KITTI dataset. Our method achieves 14 FPS for the com-plete encoding–decoding process, surpassing other methods with similar com-pression performance. To further analyze runtime behavior under varying ge-Towards Practical Lossless Neural Compression for LiDAR Point Clouds 13 
+
+Table 3: Comparison of coding time across 11–16 bits with existing real-time methods. 
+
+Methods Device KITTI Ford Enc Time Dec Time Enc Time Dec Time G-PCC octree AMD EPYC 7R32 0.149s 0.103s 0.150s 0.107s RENO NVIDIA RTX 4090 0.059s 0.056s 0.072s 0.057s Ours (Float) NVIDIA RTX 4090 0.075s 0.081s 0.093s 0.103s Ours (Integer) NVIDIA RTX 4090 0.060s 0.070s 0.067s 0.082s Ours (Integer) NVIDIA RTX 5880 0.047s 0.056s 0.054s 0.067s Ours (Integer) NVIDIA Tesla V100 0.166s 0.175s 0.187s 0.199s 60 65 70 75 80 85 90       
+
+> D1 PSNR (dB)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Encoding Time (s)
+> Encoding Time vs. D1 PSNR (KITTI)
+> Ours (Float)
+> Ours (Integer)
+> RENO
+> G-PCC octree 60 65 70 75 80 85 90
+> D1 PSNR (dB)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Decoding Time (s)
+> Decoding Time vs. D1 PSNR (KITTI)
+> Ours (Float)
+> Ours (Integer)
+> RENO
+> G-PCC octree
+
+Fig. 5: Comparison of coding time across 11–16 bits with existing real-time methods. 
+
+ometry precisions, we compare the averaged encoding and decoding time across 11–16-bit quantization settings against existing real-time methods. As shown in Fig. 5, the integer-only model consistently outperforms G-PCC, while maintain-ing runtime comparable to the efficiency-oriented RENO. These results confirm that the proposed framework achieves a favorable balance between compression performance and computational efficiency. In addition, Table 3 reports the averaged runtime of our integer-only model across multiple GPUs beyond the default NVIDIA RTX 4090, including RTX 5880 and Tesla V100. The integer-only pipeline achieves robust throughput on different devices, while its runtime varies with hardware capability as expected (e.g ., faster on RTX 5880 and slower on V100). These results further validate the practicality of our cross-platform design for deployment on heterogeneous platforms. 
+
+4.3 Ablation Studies 
+
+To evaluate the individual contributions of the proposed components, we conduct ablation studies on the GRED module and the XFP module. Each component is systematically removed to assess its impact on overall RD performance. See the supplementary materials for more ablation studies. 
+
+Ablation of XFP . We ablate the XFP module by removing cross-scale fea-ture propagation. As shown by the “Baseline + GRED” curves in Fig. 6, this leads to a clear RD drop at high quantization precisions, but has negligible impact at 14 P. Yu et al. 1 2 3 4 5 6 7 8 9 10 11 12            
+
+> BPP (Bits Per Input Point)
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> D1 PSNR (dB)
+> D1 PSNR vs. BPP (KITTI)
+> G-PCC octree
+> Baseline + GRED + XFP
+> Baseline + GRED
+> Baseline 12345678910 11 12
+> BPP (Bits Per Input Point)
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> 95
+> D2 PSNR (dB)
+> D2 PSNR vs. BPP (KITTI)
+> G-PCC octree
+> Baseline + GRED + XFP
+> Baseline + GRED
+> Baseline
+
+Fig. 6: RD performance comparison of ablated models from 11 bits to 16 bits. 
+
+Table 4: BD-Rate (%) and BD-PSNR (dB) gains of the proposed modules. 
+
+Compared with Baseline Compared with G-PCC octree Methods BD-Rate BD-PSNR BD-Rate BD-PSNR D1 D2 D1 D2 D1 D2 D1 D2 Baseline 0.00 0.00 0.00 0.00 -10.04 -10.08 1.13 1.14 + GRED -3.78 -3.78 0.40 0.40 -13.44 -13.47 1.49 1.50 + GRED + XFP -13.22 -13.21 1.46 1.46 -21.93 -21.95 2.53 2.54 
+
+low precisions, consistent with our theoretical analysis. Quantitative results in Table 4 show that this removal results in a degradation of approximately 1.06 dB, indicating that the integration of cross-scale information through XFP is critical for improving RD performance. 
+
+Ablation of GRED . To evaluate the effectiveness of the GRED module, we removed GRED on top of the XFP ablation. In this setting, the dense fea-tures extracted from the shallow level are no longer utilized for predicting the occupancy of deeper levels. As a result, the model is directly exposed to the HRCS problem under high-resolution encoding. The corresponding RD perfor-mance is shown as the “Baseline” curves in Fig. 6. The results reveal that, as the resolution increases, the RD performance of the model without GRED de-clines significantly compared to the variant equipped with GRED. Quantitative results in Table 4 show that removing the GRED module leads to a further performance drop of approximately 0.40 dB. This performance gap highlights the positive impact of the GRED module in mitigating the effects of HRCS and enhancing performance. 
+
+5 Conclusion 
+
+This paper proposes a cross-platform, real-time neural compression framework for LiDAR point clouds, jointly addressing deterministic coding requirements and the High-Resolution Contextual Sparsity challenge. We introduce an octree-based design that integrates the Geometry Re-Densification module and the Cross-Scale Feature Propagation module, enabling effective intra-scale and cross-Towards Practical Lossless Neural Compression for LiDAR Point Clouds 15 
+
+scale context modeling under extreme sparsity. In addition, an integer-only infer-ence pipeline is developed to ensure bit-exact coding across heterogeneous plat-forms. Extensive experiments demonstrate that the proposed framework achieves competitive rate-distortion performance while maintaining real-time encoding and decoding speed. 
+
+References 
+
+1. Ballé, J., Johnston, N., Minnen, D.: Integer networks for data compression with latent-variable models. In: International Conference on Learning Representations (ICLR) (2019) 2. Biswas, S., Liu, J., Wong, K., Wang, S., Urtasun, R.: MuSCLE: Multi sweep com-pression of LiDAR using deep entropy models. In: Proceedings of the International Conference on Neural Information Processing Systems (NeurIPS) (2020) 3. Bjøntegaard, G.: Calculation of average PSNR differences between RD-curves. In-put document VCEG-M33, Video Coding Experts Group, 13th VCEG Meeting, Austin, Texas, USA (2001) 4. Cao, Y., Wang, Y., Chen, H.: Real-time LiDAR point cloud compression and transmission for resource-constrained robots. In: IEEE International Conference on Robotics and Automation (ICRA). pp. 12789–12795 (2025) 5. Chen, Z., Qian, Z., Wang, S., Chen, Q.: Point cloud compression with sibling context and surface priors. In: European Conference on Computer Vision (ECCV). pp. 744–759 (2022) 6. Choe, J., Joung, B., Rameau, F., Park, J., Kweon, I.S.: Deep point cloud recon-struction. In: International Conference on Learning Representations (ICLR) (2022) 7. Choy, C., Gwak, J., Savarese, S.: 4D spatio-temporal convnets: Minkowski convolu-tional neural networks. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 3075–3084 (2019) 8. Conceição, R., Porto, M., Peng, W.H., Agostini, L.: Cross-platform neural video coding: A case study. In: IEEE International Symposium on Circuits and Systems (ISCAS). pp. 1–5 (2025) 9. Cui, M., Long, J., Feng, M., Li, B., Kai, H.: OctFormer: Efficient octree-based transformer for point cloud compression with local enhancement. In: Proceedings of the AAAI Conference on Artificial Intelligence (AAAI). pp. 470–478 (2023) 10. Deng, H., Jing, K., Cheng, S., Liu, C., Ru, J., Bo, J., Wang, L.: LinNet: Linear network for efficient point cloud representation learning. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 37, pp. 43189–43209 (2024) 11. Fu, C., Li, G., Song, R., Gao, W., Liu, S.: OctAttention: Octree-based large-scale contexts model for point cloud compression. In: Proceedings of the AAAI Confer-ence on Artificial Intelligence (AAAI). pp. 625–633 (2022) 12. Garcia, D.C., Fonseca, T.A., Ferreira, R.U., de Queiroz, R.L.: Geometry coding for dynamic voxelized point clouds using octrees and multiple contexts. IEEE Trans-actions on Image Processing 29 , 313–322 (2020) 13. Garcia, D.C., de Queiroz, R.L.: Context-based octree coding for point-cloud video. In: IEEE International Conference on Image Processing (ICIP). pp. 1412–1416 (2017) 14. Geiger, A., Lenz, P., Urtasun, R.: Are we ready for autonomous driving? The KITTI vision benchmark suite. In: Proceedings of the IEEE Conference on Com-puter Vision and Pattern Recognition (CVPR). pp. 3354–3361 (2012) 16 P. Yu et al. 15. Golla, T., Klein, R.: Real-time point cloud compression. In: IEEE/RSJ Interna-tional Conference on Intelligent Robots and Systems (IROS). pp. 5087–5092 (2015) 16. He, Y., Ren, X., Tang, D., Zhang, Y., Xue, X., Fu, Y.: Density-preserving deep point cloud compression. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR). pp. 2333–2342 (2022) 17. Huang, L., Wang, S., Wong, K., Liu, J., Urtasun, R.: OctSqueeze: Octree-structured entropy model for LiDAR compression. In: Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR). pp. 1313–1323 (2020) 18. Jia, Z., Li, B., Li, J., Xie, W., Qi, L., Li, H., Lu, Y.: Towards practical real-time neural video compression. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 12543–12552 (2025) 19. Kammerl, J., Blodow, N., Rusu, R.B., Gedikli, S., Beetz, M., Steinbach, E.: Real-time compression of point cloud streams. In: IEEE International Conference on Robotics and Automation (ICRA). pp. 778–785 (2012) 20. Koyuncu, E., Solovyev, T., Alshina, E., Kaup, A.: Device interoperability for learned image compression with weights and activations quantization. In: Picture Coding Symposium (PCS). pp. 151–155 (2022) 21. Luo, A., Song, L., Nonaka, K., Unno, K., Sun, H., Goto, M., Katto, J.: SCP: Spherical-coordinate-based learned point cloud compression. In: Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) (2024) 22. Mekuria, R., Blom, K., Cesar, P.: Design, implementation, and evaluation of a point cloud codec for tele-immersive video. IEEE Transactions on Circuits and Systems for Video Technology 27 (4), 828–842 (2017) 23. Meng, L., Ou, R., Zhang, Q., Liu, S., Li, G.: PCGCD: Joint point cloud geometry compression and denoising. In: Data Compression Conference (DCC). pp. 23–32 (2025) 24. Nguyen, D.T., Kaup, A.: Learning-based lossless point cloud geometry coding using sparse tensors. In: IEEE International Conference on Image Processing (ICIP). pp. 2341–2345 (2022) 25. Nguyen, D.T., Quach, M., Valenzise, G., Duhamel, P.: Lossless coding of point cloud geometry using a deep generative model. IEEE Transactions on Circuits and Systems for Video Technology 31 (12), 4617–4629 (2021) 26. Pandey, G., McBride, J.R., Eustice, R.M.: Ford campus vision and LiDAR data set. The International Journal of Robotics Research 30 (13), 1543–1552 (2011) 27. Pang, J., Bui, K., Tian, D.: PIVOT-Net: Heterogeneous point-voxel-tree-based framework for point cloud compression. In: International Conference on 3D Vision (3DV). pp. 1270–1279 (2024) 28. Pang, J., Lodhi, M.A., Tian, D.: GRASP-Net: Geometric residual analysis and syn-thesis for point cloud compression. In: Proceedings of the International Workshop on Advances in Point Cloud Compression, Processing and Analysis (APCCPA). p. 11–19 (2022) 29. Qi, C.R., Su, H., Kaichun, M., Guibas, L.J.: PointNet: Deep learning on point sets for 3D classification and segmentation. In: IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 77–85 (2017) 30. Qi, C.R., Yi, L., Su, H., Guibas, L.J.: PointNet++: Deep hierarchical feature learn-ing on point sets in a metric space. In: Proceedings of the International Conference on Neural Information Processing Systems (NeurIPS). p. 5105–5114 (2017) 31. Qin, T., Li, G., Gao, W., Liu, S.: Multi-grained point cloud geometry compression via dual-model prediction with extended octree. ACM Transactions on Multimedia Computing, Communications, and Applications 20 (9) (2024) Towards Practical Lossless Neural Compression for LiDAR Point Clouds 17 32. Quach, M., Valenzise, G., Dufaux, F.: Learning convolutional transforms for lossy point cloud geometry compression. In: Proceedings of the IEEE International Con-ference on Image Processing (ICIP). pp. 4320–4324 (2019) 33. Que, Z., Lu, G., Xu, D.: VoxelContext-Net: An octree based framework for point cloud compression. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 6042–6051 (2021) 34. Schwarz, S., Preda, M., Baroncini, V., Budagavi, M., Cesar, P., Chou, P.A., Co-hen, R.A., Krivokuća, M., Lasserre, S., Li, Z., Llach, J., Mammou, K., Mekuria, R., Nakagami, O., Siahaan, E., Tabatabai, A., Tourapis, A.M., Zakharchenko, V.: Emerging MPEG standards for point cloud compression. IEEE Journal on Emerg-ing and Selected Topics in Circuits and Systems 9(1), 133–148 (2019) 35. Song, F., Shao, Y., Gao, W., Wang, H., Li, T.: Layer-wise geometry aggregation framework for lossless LiDAR point cloud compression. IEEE Transactions on Cir-cuits and Systems for Video Technology 31 (12), 4603–4616 (2021) 36. Song, R., Fu, C., Liu, S., Li, G.: Efficient hierarchical entropy model for learned point cloud compression. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR). pp. 14368–14377 (2023) 37. Stathoulopoulos, N., Saucedo, M.A., Koval, A., Nikolakopoulos, G.: RecNet: An invertible point cloud encoding through range image embeddings for multi-robot map sharing and reconstruction. In: IEEE International Conference on Robotics and Automation (ICRA). pp. 4883–4889 (2024) 38. Tang, H., Yang, S., Liu, Z., Hong, K., Yu, Z., Li, X., Dai, G., Wang, Y., Han, S.: TorchSparse++: Efficient training and inference framework for sparse convo-lution on GPUs. In: Proceedings of the IEEE/ACM International Symposium on Microarchitecture (MICRO). pp. 225–239 (2023) 39. Tian, D., Ochimizu, H., Feng, C., Cohen, R., Vetro, A.: Geometric distortion met-rics for point cloud compression. In: IEEE International Conference on Image Pro-cessing (ICIP). pp. 3460–3464 (2017) 40. Tian, K., Guan, Y., Xiang, J., Zhang, J., Han, X., Yang, W.: Towards real-time neural video codec for cross-platform application using calibration information. In: ACM International Conference on Multimedia. pp. 7961–7970 (2023) 41. Tzamarias, D.E.O., Chow, K., Blanes, I., Serra-Sagristà, J.: Fast run-length com-pression of point cloud geometry. IEEE Transactions on Image Processing 31 ,4490–4501 (2022) 42. Wang, J., Xue, R., Li, J., Ding, D., Lin, Y., Ma, Z.: A versatile point cloud com-pressor using universal multiscale conditional coding – Part I: Geometry. IEEE Transactions on Pattern Analysis and Machine Intelligence 47 (1), 269–287 (2025) 43. Wang, J., Zhu, H., Liu, H., Ma, Z.: Lossy point cloud geometry compression via end-to-end learning. IEEE Transactions on Circuits and Systems for Video Technology 
+
+31 (12), 4909–4923 (2021) 44. Wang, S., Jiao, J., Cai, P., Wang, L.: R-PCC: A baseline for range image-based point cloud compression. In: International Conference on Robotics and Automation (ICRA). pp. 10055–10061 (2022) 45. Wang, S., Liu, M.: Point cloud compression with range image-based entropy model for autonomous driving. In: European Conference on Computer Vision (ECCV). pp. 323–340 (2022) 46. Wang, X., Zhang, Y., Liu, T., Liu, X., Xu, K., Wan, J., Guo, Y., Wang, H.: TopNet: Transformer-efficient occupancy prediction network for octree-structured point cloud geometry compression. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 27305–27314 (June 2025) 18 P. Yu et al. 47. Wen, X., Wang, X., Hou, J., Ma, L., Zhou, Y., Jiang, J.: Lossy geometry com-pression of 3D point cloud data via an adaptive octree-guided network. In: IEEE International Conference on Multimedia and Expo (ICME). pp. 1–6 (2020) 48. Wiesmann, L., Milioto, A., Chen, X., Stachniss, C., Behley, J.: Deep compression for dense point cloud maps. IEEE Robotics and Automation Letters 6(2), 2060– 2067 (2021) 49. You, K., Chen, T., Ding, D., Asif, M.S., Ma, Z.: RENO: Real-time neural compres-sion for 3D LiDAR point clouds. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 1–10 (2025) 50. You, Y., Wang, Y., Chao, W.L., Garg, D., Pleiss, G., Hariharan, B., Campbell, M., Weinberger, K.Q.: Pseudo-LiDAR++: Accurate depth for 3D object detection in autonomous driving. In: International Conference on Learning Representations (ICLR) (2020) 51. Yu, P., Zhang, Y., Liang, F., Li, H., Guo, Y.: Hierarchical distortion learning for fast lossy compression of point clouds. IEEE Transactions on Multimedia pp. 1–16 (2025) 52. Zhang, C., Gao, W.: AdaDPCC: Adaptive rate control and rate-distortion-complexity optimization for dynamic point cloud compression. In: Proceedings of the AAAI Conference on Artificial Intelligence (AAAI). pp. 13188–13196 (2025) 53. Zhang, J., Wang, J., Ding, D., Ma, Z.: Scalable point cloud attribute compression. IEEE Transactions on Multimedia 27 , 889–899 (2025) 54. Zhang, Q., Shao, Y., Meng, L., Jiao, H., Liu, S., Li, G.: Rate-distortion optimized motion estimation for dynamic point cloud geometry compression. In: Data Com-pression Conference (DCC). pp. 417–417 (2025) 55. Zhou, X., Qi, C.R., Zhou, Y., Anguelov, D.: RIDDLE: Lidar data compression with range image deep delta encoding. In: IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 17191–17200 (2022) Supplementary Material: Towards Practical Lossless Neural Compression for LiDAR Point Clouds 
+
+Pengpeng Yu 1,2, Haoran Li 1,2, Runqing Jiang 1,2, Dingquan Li 2, Jing Wang 2
+
+Liang Lin 1,2, and Yulan Guo 1,2   
+
+> 1Sun Yat-sen University, China
+> 2Pengcheng Laboratory, China guoyulan@sysu.edu.cn guoyulan@sysu.edu.cn
+
+1 Differences with Existing Methods 
+
+This work explicitly identifies and addresses the High-Resolution Contextual Sparsity (HRCS) problem in point cloud compression. While it is difficult to determine whether existing methods implicitly mitigate HRCS in a generalizable way, we examine several representative approaches to clarify this issue. 
+
+Transformer-based Methods (e.g ., EHEM, OctAttention). These methods represent octree nodes as explicit feature vectors and use transformer architectures to capture long-range dependencies between nodes, thereby en-larging the receptive field. However, such methods essentially process octree nodes in a 1D sequence space rather than in the native 3D space. While their attention mechanism can implicitly model 3D geometry, it does not explicitly preserve 3D structural information and instead relies heavily on learned embed-dings. As a result, these methods typically require large attention windows (e.g., 8192 nodes in Light EHEM) to achieve competitive performance. According to our analysis, this leads to about 10 × the FLOPs of our approach. Thus, while transformer-based methods might sidestep the HRCS problem by modeling 1D node sequences via long-range attention, this comes at the cost of significantly increased computational complexity and latency. 
+
+Sparse Convolution-based Methods ( e.g ., Unicorn, SparsePCGC). 
+
+These methods exploit voxel-level neighborhoods via sparse convolutions in a coarse-to-fine reconstruction pipeline. By design, sparse convolutions skip com-putation on empty voxels to improve efficiency. However, this sparsity impedes information propagation across voxels when the point cloud is highly sparse at finer scales. For instance, if an occupied voxel is surrounded by 26 empty neigh-bors ( 3 × 3 × 3 − 1), no amount of stacking sparse convolution layers with a 
+
+3 × 3 × 3 kernel can retrieve geometric context for this voxel, making it isolated. Although SparsePCGC alleviates this problem to some extent by increasing the depth of the convolution blocks, it suffers from high coding latency. In summary, while existing methods may touch on related ideas, none have explicitly recognized HRCS as a distinct challenge or introduced a targeted prac-tical solution for it. For clarity, we provide a visualization comparing the context 20 P. Yu et al. 164       
+
+> 0800
+> 9000
+> 21
+
+## ⋯
+
+## ⋯
+
+## ⋯ 164       
+
+> 0800
+> 9000
+> 21
+
+## ⋯
+
+## ⋯
+
+## ⋯
+
+Common context flow  Our context flow 
+
+Comparison of different context flows of octree -based point cloud coding  
+
+> Shallow levels
+> (Dense)
+> Deep levels
+> (Sparse)
+> 1
+> 2
+> 3
+> 1
+> 2
+> 3
+> Fig. 1: Comparison of context flows in existing octree-based methods (left) and our approach (right). Lines with different colors and numbers indicate different feature extraction and occupancy prediction steps. In common designs, context flow is typically unidirectional, and encoding/decoding at each octree level depends on geometry from multiple preceding levels. By contrast, our approach adopts a bidirectional context flow at deeper octree levels, while at shallow levels, each octree level relies only on the feature and geometry of the immediately preceding level.
+
+modeling processes of existing methods with our approach in Fig. 1, highlighting the key differences in design. 
+
+2 Detailed Model Structure 
+
+To clarify the structure and workflow of the key modules in our network, we present a detailed breakdown of the Upsampling( ·), ResBlock( ·), Downsampling( ·),and Predictor( ·) components. The detailed workflow is illustrated in Fig. 2. In the current implementation, our primary goal is to validate the core ideas of geometry re-densification and cross-scale feature propagation. To ensure an isolated evaluation of the proposed modules, we intentionally omit the cross-scale parameter-sharing mechanisms employed in previous works. Consequently, our model is less parameter-efficient compared to prior methods, as shown in Table 1, since the number of parameters grows linearly with the number of ex-plicitly modeled octree levels ( i.e ., L − 11 levels in this paper). For the geometry remaining at the maximum downsampling level, we directly encode the coor-dinates based on their symbol frequencies. In future work, we plan to improve parameter efficiency by introducing level-aware neural blocks that support pa-rameter sharing across octree levels. 
+
+3 Implementation Details 
+
+This section outlines the details of our implementation, including quantization strategies for the KITTI dataset, octree-based operations, training configura-tions, and evaluation metrics. Title Suppressed Due to Excessive Length 21 Input feats:  𝑁 × 𝑐ℎ                                                         
+
+> Input coords: 𝑁 ×3
+> SparseConv3d
+> 𝑐ℎ →𝑐ℎ
+> kernel size=3
+> PReLU
+> +
+> ResBlock Workflow
+> PReLU
+> Linear 𝑐ℎ →𝑐ℎ ×8
+> Input coords ↑×2
+> ResBlock
+> Upsampling Workflow
+> PReLU
+> Downsampling Workflow Predictor Workflow
+> Softmax
+> Linear 𝑐ℎ →255
+> Input feats: 𝑁 ×𝑐ℎ
+> Input coords: 𝑁 ×3
+> Input feats: 𝑁 ×𝑐ℎ
+> Input coords: 𝑁 ×3
+> Input feats: 𝑁 ×8
+> Input coords: 𝑁 ×3
+> Linear 𝑐ℎ →𝑐ℎ
+> SparseConv3d
+> 𝑐ℎ →𝑐ℎ
+> kernel size=3
+> SparseConv3d
+> 𝑐ℎ →𝑐ℎ
+> kernel size=3 SparseConv3d
+> 𝑐ℎ →𝑐ℎ
+> kernel size=3
+> PReLU
+> Linear 𝑐ℎ →𝑐ℎ
+> PReLU
+
+Fig. 2: Illustration of the detailed workflows of the Upsampling( ·), ResBlock( ·),
+
+Downsampling( ·), and Predictor( ·) modules within the proposed network architecture. 
+
+Table 1: Comparison of the number of model parameters. Methods PCGCv2 OctAttn EHEM Ours RENO #Parameters 0.77M 6.99M 13.01M 102.51M 0.28M 
+
+3.1 Quantization of KITTI Dataset 
+
+The KITTI point clouds are not officially quantized, and two different quantiza-tion approaches have therefore been adopted in prior works: 1. The first approach normalizes the point clouds within a bounding box of size 
+
+400 × 400 × 400 centered at the origin (0 , 0, 0) , scales the coordinates by 216 ,and then applies quantization. 2. The second approach, adopted by RENO, scales the original floating-point coordinates by 10000, followed by quantization using an additional scale fac-tor posQ ∈ { 8, 16 , 32 , 64 , 128 , 256 , 512 } to generate point clouds of different precision levels. These two approaches yield point clouds of different fidelity, leading to dif-ferent PSNR values even under lossless compression settings, where the only distortion arises from the quantization process. Consequently, the RD points of RENO do not align with those of other methods, despite all of them being loss-less codecs. While it is technically feasible to unify the quantization strategy, we follow RENO’s official setting to report its results, as it better reflects the RD performance under its original setting. For clarity, we refer to the highest-precision results from both quantization approaches as 16-bit quantization throughout this paper. In our experiments, the octree level is varied from 11 to 16, enabling control over the RD trade-off by adjusting the spatial resolution. 22 P. Yu et al. 
+
+3.2 Implementation of Octree Operations 
+
+Two components are essential for implementing octree-based operations with sparse convolution: coordinate upsampling/downsampling and occupancy code generation. 
+
+Coordinate Sampling . To efficiently generate node coordinates for all oc-tree levels, we first sort the input coordinates in Morton order, which exploits the hierarchical spatial locality of the octree. Starting from the input coordinates, we repeatedly divide them by 2, apply floor rounding, and remove consecutive duplicates. This yields the coordinates of nodes at progressively shallower oc-tree levels. For coordinate upsampling, we reconstruct child node coordinates by adding a pre-defined offset matrix (leveraging matrix broadcasting) to the parent coordinates. We then apply a masking operation to discard coordinates corre-sponding to unoccupied nodes. Importantly, this process preserves the original Morton order of the coordinate matrix, ensuring consistent alignment between the encoder and decoder without the need for explicit reordering. 
+
+Occupancy Code Generation . To generate the 0–255 occupancy codes, we apply a fixed-weight sparse convolution with kernel size 2 and stride 2, using an all-one input feature tensor. Each 8-neighbor group (in 2 × 2 × 2) is encoded as an 8-bit occupancy code. For the reverse process, the occupancy code can be efficiently decoded into binary masks using bitwise operations and matrix broadcasting. 
+
+3.3 Training Loss Function . To train the proposed model, we adopt the standard cross-entropy loss, which is widely used in octree-based PCC. Specifically, the model outputs a probability distribution Q ∈ RN ×255 , where each row corresponds to the predicted occupancy distribution of one of the N nodes over the 255 possible occupancy codes. Let the ground truth occupancy codes be represented by X ∈ { 1, . . . , 255 }N . The loss function is defined as: 
+
+LCE = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+log Qi, Xi , (1) where Qi, Xi denotes the predicted probability for the ground truth occupancy code Xi at the i-th node. This loss encourages the model to assign higher prob-abilities to the correct occupancy codes. 
+
+Other Settings . We adopt the AdamW optimizer with a weight decay of 0.0001 and a learning rate of 0.0001. Gradient clipping is applied with a max-imum norm threshold of 1.0 to stabilize training. The model is trained for 60 epochs with a batch size of 8. All experiments were conducted on a computer equipped with an AMD EPYC 7R32 CPU and 2× 4090 GPUs. Training takes approximately 4 days. Title Suppressed Due to Excessive Length 23 1 2 3 4 5 6 7 8 9        
+
+> BPP (Bits Per Input Point)
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> D1 PSNR (dB)
+> D1 PSNR vs. Bitrate (KITTI)
+> Ours (t=L-4)
+> Ours (t=L-3) 123456789
+> BPP (Bits Per Input Point)
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> 95
+> D2 PSNR (dB)
+> D2 PSNR vs. Bitrate (KITTI)
+> Ours (t=L-4)
+> Ours (t=L-3)
+
+Fig. 3: Rate-distortion performance comparison for different choices of t on KITTI. 
+
+Table 2: BD gains of the t = L − 4 setting over the t = L − 3 setting. BD-Rate (%) BD-PSNR (dB) Dataset D1 D2 D1 D2 KITTI -0.760 -0.759 0.093 0.093 
+
+4 More Quantitative Analysis 
+
+In this section, we provide further quantitative analysis to complement the main results. 
+
+4.1 Ablation on the Choice of t
+
+As demonstrated in the Method section, we apply the re-densification module only at levels l > t , making t a key hyperparameter. A smaller t applies re-densification to more levels, enabling more efficient context modeling but at the cost of higher re-densification overhead. Moreover, applying re-densification to shallower levels with dense geometry is often redundant. Therefore, the marginal benefit of reducing t quickly diminishes. In our experiments, unless otherwise stated, we set t = L − 4 by default, where L is the deepest octree level. Here, we compare the performance of two settings: t = L − 4 and t = L − 3. The resulting RD performance is shown in Fig. 3 and Table 2. We observe slight improvements at high precision when reducing t from L − 3 to L − 4. However, the average gain across all bitrates is relatively minor. Overall, the setting t = L − 4 achieves a 0.76% bitrate reduction on the KITTI dataset. 
+
+4.2 FLOPs 
+
+We conducted additional experiments to measure the computational complexity of encoding and decoding, and the results are summarized in Table 3. Note that the FLOPs of sparse convolution depend on the sparsity of the input point clouds, 24 P. Yu et al. 
+
+Table 3: Detailed complexity metrics of our model on the KITTI dataset.                             
+
+> Prec. (bits) Enc Mem (GB) Dec Mem (GB) Enc GFLOPs Dec GFLOPs 16 2.1 2.0 752.9 752.9 15 1.6 1.5 455.7 455.7 14 1.2 1.1 238.2 238.2 13 0.9 0.8 108.9 108.9 12 0.7 0.6 44.7 44.7 11 0.6 0.6 16.9 16.9
+
+Table 4: Detailed complexity metrics of Light EHEM on the KITTI dataset.                                
+
+> Enc/Dec GFLOPs Number of Enc/Dec Prec. (bits) Mem (GB) per Window Octree Nodes GFLOPs 16 2.6 102.9 421911.3 5299.6 15 2.6 102.9 302393.4 3798.4 14 2.6 102.9 191616.0 2406.9 13 2.6 102.9 105002.2 1318.9 12 2.6 102.9 49486.4 621.6 11 2.6 102.9 20591.8 258.7
+
+which varies across samples. The reported FLOPs of our model are averaged over the KITTI test set. For comparison, we provide the official metrics of Light EHEM in Table 4. Note that the FLOPs reported by Light EHEM are measured per window (with 8192 octree nodes). To ensure a fair comparison, we converted this into an expected average per sample using the mean octree node count of the quantized KITTI point clouds. These results show that our approach is more efficient than the transformer-based Light EHEM in terms of memory usage, FLOPs, and execution speed. 
+
+4.3 Sequence-wise Performance 
+
+To account for the variation in sequence characteristics within the KITTI dataset, we provide sequence-wise RD performance for further analysis and comparison among G-PCC, OctAttention, and our method. The evaluation metrics include D1 PSNR, D2 PSNR, and Chamfer Distance (CD), a widely adopted geometric distortion metric. The results are illustrated in Fig. 4 (sequences #11 -#15 ) and Fig. 5 (sequences #16 -#20 ). These plots highlight the consistency and robust-ness of our method across different scenes. 
+
+5 Qualitative Analysis 
+
+To further evaluate the effectiveness of the proposed method, we visualize com-pression results at three different bitrates, ranging from low to high. As shown Title Suppressed Due to Excessive Length 25 0 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 11) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 0 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 11) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 0 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 11) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 12) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 12) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 12) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 13) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 13) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 13) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 14) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 14) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 14) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 15) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 15) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 15) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 
+
+Fig. 4: Sequence-wise rate-distortion performance comparison on the KITTI test se-quences #11 -#15 .26 P. Yu et al. 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 16) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 16) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 16) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 17) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 17) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 17) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 0 1 2 3 4 5 6 7 8 9 10 11 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 18) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 0 1 2 3 4 5 6 7 8 9 10 11 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 18) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 0 1 2 3 4 5 6 7 8 9 10 11 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 18) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 19) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 19) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 19) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+> D1 PSNR (dB)
+
+D1 PSNR vs. BPP (KITTI 20) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> D2 PSNR (dB)
+
+D2 PSNR vs. BPP (KITTI 20) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+BPP (Bits Per Input Point) 
+
+0.000 
+
+0.002 
+
+0.004 
+
+0.006 
+
+0.008 
+
+> Chamfer Distance (M)
+
+Chamfer Distance vs. BPP (KITTI 20) 
+
+Ours (Float) 
+
+Ours (Integer) 
+
+OctAttention 
+
+G-PCC octree 
+
+Fig. 5: Sequence-wise rate-distortion performance comparison on the KITTI test se-quences #16 -#20 .Title Suppressed Due to Excessive Length 27 
+
+in Fig. 6, the proposed method consistently produces reconstructed point clouds with lower distortion at comparable bitrates. These visual results align well with the findings in the Rate-Distortion Performance section, further supporting its advantage in compression performance.               
+
+> (a) Ours: 72.52dB (D1), 2.46BPP (b) RENO: 70.17dB (D1), 2.26BPP
+> (c) Ours: 78.55dB (D1), 4.11BPP (d) RENO: 76.21dB (D1), 4.17BPP
+> (e) Ours: 84.59dB (D1), 5.90BPP (f ) RENO: 82.25dB (D1), 6.53BPP 00.0 10.0 20.0 30.0 40. 05
+
+Fig. 6: Visualization of reconstruction quality of sample “11_000000.bin” at different quantization precisions.
