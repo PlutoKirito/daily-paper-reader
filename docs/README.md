@@ -6,85 +6,83 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-04
-- 运行时间：2026-04-04 19:35:20 UTC
+- 最新运行日期：2026-04-05
+- 运行时间：2026-04-05 20:12:10 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日深挖 21 篇前沿论文，见证生成式技术如何通过“生成即压缩”范式重塑视频编码与增强领域。
-满分论文利用随机修正流实现零样本视频编码，配合物理感知与编解码器先验技术，显著提升了视频生成的效率与一致性。
-建议关注生成式模型在超低带宽流媒体中的应用，这预示着未来视频传输与修复技术的颠覆性变革。
-- 详情：[/202604/04/README](/202604/04/README)
+今日深度研读 21 篇视觉前沿论文，聚焦高吞吐轻量级编解码 HLC 与结合运动先验的驾驶视频
+- 详情：[/202604/05/README](/202604/05/README)
 
 ### 精读区论文标签
-1. [Generation Is Compression: Zero-Shot Video Coding via Stochastic Rectified Flow](/202604/04/2603.26571v1-generation-is-compression-zero-shot-video-coding-via-stochastic-rectified-flow)  
-   标签：评分：10.0/10、query:vcodec
-   evidence：基于随机修正流和零样本视频编码的生成式视频编解码器
-2. [Generation Is Compression: Zero-Shot Video Coding via Stochastic Rectified Flow](/202604/04/2603.26571v2-generation-is-compression-zero-shot-video-coding-via-stochastic-rectified-flow)  
-   标签：评分：10.0/10、query:vcodec
-   evidence：基于随机修正流和生成模型的零样本视频编码
-3. [PQuantML: A Tool for End-to-End Hardware-aware Model Compression](/202604/04/2603.26595v1-pquantml-a-tool-for-end-to-end-hardware-aware-model-compression)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：端到端工作流中剪枝与量化的统一接口
-4. [KV Cache Quantization for Self-Forcing Video Generation: A 33-Method Empirical Study](/202604/04/2603.27469v1-kv-cache-quantization-for-self-forcing-video-generation-a-33-method-empirical-study)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：视频生成模型的KV缓存量化研究
-5. [LG-HCC: Local Geometry-Aware Hierarchical Context Compression for 3D Gaussian Splatting](/202604/04/2603.28431v2-lg-hcc-local-geometry-aware-hierarchical-context-compression-for-3d-gaussian-splatting)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：用于 3D 高斯压缩的熵编码和上下文模型
-6. [FlowIt: Global Matching for Optical Flow with Confidence-Guided Refinement](/202604/04/2603.28759v1-flowit-global-matching-for-optical-flow-with-confidence-guided-refinement)  
+1. [HLC: A High-Quality Lightweight Mezzanine Codec Featuring High-Throughput Palette](/202604/05/2603.29864v1-hlc-a-high-quality-lightweight-mezzanine-codec-featuring-high-throughput-palette)  
+   标签：评分：9.0/10、query:train-trick
+   evidence：具有率失真优化的高质量轻量级中间编码器
+2. [HMPDM: A Diffusion Model for Driving Video Prediction with Historical Motion Priors](/202604/05/2603.27371v1-hmpdm-a-diffusion-model-for-driving-video-prediction-with-historical-motion-priors)  
    标签：评分：8.0/10、query:vcodec
-   evidence：采用分层Transformer和全局匹配的光流估计
-7. [HLC: A High-Quality Lightweight Mezzanine Codec Featuring High-Throughput Palette](/202604/04/2603.29864v1-hlc-a-high-quality-lightweight-mezzanine-codec-featuring-high-throughput-palette)  
+   evidence：结合历史运动先验的视频预测扩散模型
+3. [KV Cache Quantization for Self-Forcing Video Generation: A 33-Method Empirical Study](/202604/05/2603.27469v1-kv-cache-quantization-for-self-forcing-video-generation-a-33-method-empirical-study)  
    标签：评分：8.0/10、query:train-trick
-   evidence：具有率失真优化的高质量轻量级编解码器 (HLC)
-8. [Video Patch Pruning: Efficient Video Instance Segmentation via Early Token Reduction](/202604/04/2604.00827v1-video-patch-pruning-efficient-video-instance-segmentation-via-early-token-reduction)  
+   evidence：视频生成模型中的KV缓存量化与压缩
+4. [EdgeDiT: Hardware-Aware Diffusion Transformers for Efficient On-Device Image Generation](/202604/05/2603.28405v1-edgedit-hardware-aware-diffusion-transformers-for-efficient-on-device-image-generation)  
    标签：评分：8.0/10、query:train-trick
-   evidence：视频补丁剪枝与早期令牌减少以提高效率
+   evidence：针对高效生成式扩散Transformer的硬件感知剪枝
+5. [Quantization with Unified Adaptive Distillation to enable multi-LoRA based one-for-all Generative Vision Models on edge](/202604/05/2603.29535v1-quantization-with-unified-adaptive-distillation-to-enable-multi-lora-based-one-for-all-generative-vision-models-on-edge)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对边缘侧生成式视觉模型的量化与自适应蒸馏技术
+6. [Big2Small: A Unifying Neural Network Framework for Model Compression](/202604/05/2603.29768v1-big2small-a-unifying-neural-network-framework-for-model-compression)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：包含剪枝、量化和知识蒸馏的统一模型压缩框架
+7. [Video Patch Pruning: Efficient Video Instance Segmentation via Early Token Reduction](/202604/05/2604.00827v1-video-patch-pruning-efficient-video-instance-segmentation-via-early-token-reduction)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：利用时间先验知识的视频补丁剪枝框架
+8. [MotionGrounder: Grounded Multi-Object Motion Transfer via Diffusion Transformer](/202604/05/2604.00853v1-motiongrounder-grounded-multi-object-motion-transfer-via-diffusion-transformer)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于运动迁移的扩散Transformer与基于流的运动先验
 
 ### 速读区论文标签
-1. [InstaVSR: Taming Diffusion for Efficient and Temporally Consistent Video Super-Resolution](/202604/04/2603.26134v1-instavsr-taming-diffusion-for-efficient-and-temporally-consistent-video-super-resolution)  
+1. [DynaVid: Learning to Generate Highly Dynamic Videos using Synthetic Motion Data](/202604/05/2604.01666v1-dynavid-learning-to-generate-highly-dynamic-videos-using-synthetic-motion-data)  
    标签：评分：8.0/10、query:vcodec
-   evidence：剪枝单步扩散骨干网络与流引导视频时间调节
-2. [PhysVid: Physics Aware Local Conditioning for Generative Video Models](/202604/04/2603.26285v2-physvid-physics-aware-local-conditioning-for-generative-video-models)  
+   evidence：使用以光流表示的合成运动数据的视频扩散模型
+2. [Can Video Diffusion Models Predict Past Frames? Bidirectional Cycle Consistency for Reversible Interpolation](/202604/05/2604.01700v1-can-video-diffusion-models-predict-past-frames-bidirectional-cycle-consistency-for-reversible-interpolation)  
    标签：评分：8.0/10、query:vcodec
-   evidence：具有物理感知局部调节的生成式视频模型
-3. [ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors](/202604/04/2603.26835v2-anvil-accelerator-native-video-interpolation-via-codec-motion-vector-priors)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：复用编解码器运动矢量先验进行视频插帧及量化感知
-4. [HMPDM: A Diffusion Model for Driving Video Prediction with Historical Motion Priors](/202604/04/2603.27371v1-hmpdm-a-diffusion-model-for-driving-video-prediction-with-historical-motion-priors)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：基于历史运动先验的扩散模型视频预测
-5. [EdgeDiT: Hardware-Aware Diffusion Transformers for Efficient On-Device Image Generation](/202604/04/2603.28405v1-edgedit-hardware-aware-diffusion-transformers-for-efficient-on-device-image-generation)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：边缘端扩散Transformer的硬件感知优化与剪枝
-6. [DiReCT: Disentangled Regularization of Contrastive Trajectories for Physics-Refined Video Generation](/202604/04/2603.25931v1-direct-disentangled-regularization-of-contrastive-trajectories-for-physics-refined-video-generation)  
+   evidence：用于插帧和时间一致性的视频扩散模型
+3. [EFlow: Fast Few-Step Video Generator Training from Scratch via Efficient Solution Flow](/202604/05/2603.27086v1-eflow-fast-few-step-video-generator-training-from-scratch-via-efficient-solution-flow)  
    标签：评分：7.0/10、query:vcodec
-   evidence：具有物理精炼正则化的流匹配视频生成
-7. [Low-Rank-Modulated Functa: Exploring the Latent Space of Implicit Neural Representations for Interpretable Ultrasound Video Analysis](/202604/04/2603.25951v1-low-rank-modulated-functa-exploring-the-latent-space-of-implicit-neural-representations-for-interpretable-ultrasound-video-analysis)  
+   evidence：高效视频扩散Transformer训练与视频生成的令牌丢弃技术
+4. [MotiMem: Motion-Aware Approximate Memory for Energy-Efficient Neural Perception in Autonomous Vehicles](/202604/05/2603.27108v1-motimem-motion-aware-approximate-memory-for-energy-efficient-neural-perception-in-autonomous-vehicles)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：运动感知的近似内存与稀疏感知编码，用于提高能效
+5. [TokenDial: Continuous Attribute Control in Text-to-Video via Spatiotemporal Token Offsets](/202604/05/2603.27520v1-tokendial-continuous-attribute-control-in-text-to-video-via-spatiotemporal-token-offsets)  
    标签：评分：7.0/10、query:vcodec
-   evidence：用于超声视频分析的隐式神经表示潜空间
-8. [Learnable Instance Attention Filtering for Adaptive Detector Distillation](/202604/04/2603.26088v1-learnable-instance-attention-filtering-for-adaptive-detector-distillation)  
+   evidence：文本生成视频中用于运动动力学控制的时空令牌偏移
+6. [V-CAST: Video Curvature-Aware Spatio-Temporal Pruning for Efficient Video Large Language Models](/202604/05/2603.27650v1-v-cast-video-curvature-aware-spatio-temporal-pruning-for-efficient-video-large-language-models)  
    标签：评分：7.0/10、query:train-trick
-   evidence：用于紧凑学生模型的知识蒸馏
-9. [Efficient Few-Shot Learning for Edge AI via Knowledge Distillation on MobileViT](/202604/04/2603.26145v1-efficient-few-shot-learning-for-edge-ai-via-knowledge-distillation-on-mobilevit)  
+   evidence：用于高效视频大语言模型的时空剪枝策略
+7. [ITQ3_S: High-Fidelity 3-bit LLM Inference via Interleaved Ternary Quantization with Rotation-Domain Smoothing](/202604/05/2603.27914v2-itq3s-high-fidelity-3-bit-llm-inference-via-interleaved-ternary-quantization-with-rotation-domain-smoothing)  
    标签：评分：7.0/10、query:train-trick
-   evidence：用于边缘设备高效模型的知识蒸馏
-10. [DRiffusion: Draft-and-Refine Process Parallelizes Diffusion Models with Ease](/202604/04/2603.25872v1-driffusion-draft-and-refine-process-parallelizes-diffusion-models-with-ease)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：用于降低延迟的扩散模型并行采样框架
-11. [THFM: A Unified Video Foundation Model for 4D Human Perception and Beyond](/202604/04/2603.25892v1-thfm-a-unified-video-foundation-model-for-4d-human-perception-and-beyond)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：源自预训练文本到视频扩散模型
-12. [Pioneering Perceptual Video Fluency Assessment: A Novel Task with Benchmark Dataset and Baseline](/202604/04/2603.26055v1-pioneering-perceptual-video-fluency-assessment-a-novel-task-with-benchmark-dataset-and-baseline)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：关注运动一致性的感知视频流畅度评估
-13. [Knowledge Distillation for Efficient Transformer-Based Reinforcement Learning in Hardware-Constrained Energy Management Systems](/202604/04/2603.26249v1-knowledge-distillation-for-efficient-transformer-based-reinforcement-learning-in-hardware-constrained-energy-management-systems)  
+   evidence：用于推理的3比特权重量化与旋转域平滑技术
+8. [RAWIC: Bit-Depth Adaptive Lossless Raw Image Compression](/202604/05/2603.28105v1-rawic-bit-depth-adaptive-lossless-raw-image-compression)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：针对Raw图像的位深自适应学习型无损压缩框架
+9. [GeoHCC: Local Geometry-Aware Hierarchical Context Compression for 3D Gaussian Splatting](/202604/05/2603.28431v1-geohcc-local-geometry-aware-hierarchical-context-compression-for-3d-gaussian-splatting)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：几何感知的熵编码与锚点剪枝压缩技术
+10. [On-Device Super Resolution Imaging Using Low-Cost SPAD Array and Embedded Lightweight Deep Learning](/202604/05/2603.27018v1-on-device-super-resolution-imaging-using-low-cost-spad-array-and-embedded-lightweight-deep-learning)  
    标签：评分：6.0/10、query:train-trick
-   evidence：硬件受限系统下紧凑模型的知识蒸馏
+   evidence：用于端侧图像重建的轻量化神经网络
+11. [LightMover: Generative Light Movement with Color and Intensity Controls](/202604/05/2603.27209v1-lightmover-generative-light-movement-with-color-and-intensity-controls)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：视频扩散先验与自适应令牌剪枝
+12. [TrackMAE: Video Representation Learning via Track Mask and Predict](/202604/05/2603.27268v1-trackmae-video-representation-learning-via-track-mask-and-predict)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：将显式运动信息作为视频建模的重建信号
+13. [Extremum-Based Joint Compression and Detection for Distributed Sensing](/202604/05/2603.27733v1-extremum-based-joint-compression-and-detection-for-distributed-sensing)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：低速率链路的联合压缩与检测
 
 
 <div class="dpr-home-promo-card">

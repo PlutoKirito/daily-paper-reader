@@ -1,0 +1,451 @@
+Title: RAWIC: Bit-Depth Adaptive Lossless Raw Image Compression
+
+URL Source: https://arxiv.org/pdf/2603.28105v1
+
+Published Time: Tue, 31 Mar 2026 02:03:48 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# RAWIC: Bit-Depth Adaptive Lossless Raw Image Compression 
+
+Chunhang Zheng 1,⋆ , Tongda Xu 2, Mingli Xie 3, Yan Wang 2,†, Dou Li 1,† 
+
+> 1
+
+School of Electronics, Peking University, Beijing, 100871, China  
+
+> 2
+
+Institute for AI Industry Research (AIR), Tsinghua University, Beijing, 100084, China  
+
+> 3
+
+the University of Chinese Academy of Sciences, Beijing, 100190, China zhengch@stu.pku.edu.cn, wangyan@air.tsinghua.edu.cn, lidou@pku.edu.cn 
+
+Abstract —Raw images preserve linear sensor measurements and high bit-depth information crucial for advanced vision tasks and photography applications, yet their storage remains challenging due to large file sizes, varying bit depths, and sensor-dependent characteristics. Existing learned lossless compression methods mainly target 8-bit sRGB images, while raw reconstruc-tion approaches are inherently lossy and rely on camera-specific assumptions. To address these challenges, we introduce RAWIC, a bit-depth-adaptive learned lossless compression framework for Bayer-pattern raw images. We first convert single-channel Bayer data into a four-channel RGGB format and partition it into patches. For each patch, we compute its bit depth and use it as auxiliary input to guide compression. A bit-depth-adaptive entropy model is then designed to estimate patch distributions conditioned on their bit depths. This architecture enables asingle model to handle raw images from diverse cameras and bit depths. Experiments show that RAWIC consistently surpasses traditional lossless codecs, achieving an average 7.7% bitrate reduction over JPEG-XL. Our code is available at https://github. com/chunbaobao/RAWIC. 
+
+Index Terms —lossless image compression, learned image com-pression, raw image, bit depth, entropy model 
+
+I. I NTRODUCTION 
+
+Raw images are unprocessed and uncompressed measure-ments directly captured by camera sensors. Owing to their linear relationship with scene radiance and their preservation of the original signal before any image signal processing (ISP), raw data have become indispensable for numerous low-level vision tasks, including image denoising [1], image super-resolution [2], and low-light enhancement [3]. Compared with processed standard RGB (sRGB) images rendered from raw image through ISP pipelines, raw images retain richer intensity information, higher bit depth, and sensor-specific characteristics that are crucial for downstream computational photography and imaging applications. However, the storage and transmission of raw images pose significant challenges due to their (i) different characteristics of various camera sensors and (ii) variable bit depths, typically ranging from 10 to 14 bits. These factors result in substantial file sizes, making efficient compression techniques essential for practical deployment. To improve storage efficiency, a series of raw image reconstruction methods [4]–[7] have been 
+
+⋆ Work done during an internship at AIR, Tsinghua University  
+
+> †
+
+Corresponding authors. (a) Previous Bit -Depth -Specific Methods         
+
+> 𝝅
+> 𝝁
+> 𝝈
+> 𝜷 Pixels
+> Prob.
+> 255 0
+> (b) The Proposed Bit -Depth -Agnostic Methods (Ours)
+> Encoder Decoder
+> Latent
+> Feature
+> Entropy
+> Model
+> Encoder
+> Norm Bit Depths
+> Latent
+> Feature Decoder
+> Entropy
+> Model
+> Embedding
+> 02047
+> 04095
+> 08191
+> 016383
+
+Fig. 1. The comparison between previous bit-depth-specific lossless image compression methods and our proposed bit-depth adaptive lossless raw image compression method. (a) Exiting methods train the model a specific bit depth and can only compress raw images with the same bit depth. (b) Our proposed method uses a single model to compress raw images across different bit depths. 
+
+explored to recover high-quality raw data either blindly or with the assistance of limited metadata. Despite their promising performance, reconstruction-based methods still suffer from several fundamental limitations. First, they are inherently lossy, as they attempt to approximate the original raw data from sRGB images or sparse samples, inevitably disrupting the linear radiance relationship that raw data are expected to preserve. Second, these methods typically operate on three-channel representations after demosaicing rather than the original single-channel Bayer pattern mea-surements, introducing additional non-linear distortions. Third, these methods are often camera-specific and bit-depth-specific, requiring separate models for different camera sensors and bit depths, which limits their generalizability and practical applicability. To address these limitations, instead reconstruction raw image from metadata, we propose RAWIC, a novel framework for bit-depth adaptive lossless raw image compression that can effectively accommodate different bit depths and cameras. Specifically, we first convert the single-channel Bayer pattern raw images from different cameras into an RGGB four-channel 
+
+> arXiv:2603.28105v1 [cs.CV] 30 Mar 2026
+
+representation and split the resulting data into patches. For each patch, we compute its bit depth and feed this information into the model as an auxiliary input to guide the compression process. A bit-depth adaptive entropy model then estimates the probability distribution of raw patches conditioned on their bit depths, enabling efficient and fully lossless compression across a wide range of bit depths. Figure 1 illustrates the distinction between our proposed method and previous methods. Our key contributions are summarized as follows:  
+
+> •
+
+We propose the first learned lossless raw image compres-sion framework that directly compresses single-channel Bayer pattern raw images without any distortions intro-duced by demosaicing or lossy reconstruction.  
+
+> •
+
+We design a camera-agnostic and bit-depth adaptive ar-chitecture that enables a single model to compress raw images from different camera sensors and bit depths, enhancing its versatility and practical utility.  
+
+> •
+
+We extensively evaluate our proposed RAWIC frame-work on multiple raw image datasets with varying bit depths, demonstrating its superior compression perfor-mance compared to existing methods. II. R ELATED WORKS 
+
+A. Raw Image Reconstruction 
+
+Raw image reconstruction aims to recover raw images from their rendered sRGB counterparts. According if there is additional metadata available during reconstruction, existing methods can be broadly categorized into two groups: blind raw reconstruction and raw reconstruction with metadata. 
+
+Blind Raw Reconstruction. Blind raw reconstruction meth-ods aim to recover raw images solely from sRGB inputs without relying on any auxiliary information. Since early digital cameras did not provide access to sensor-level raw RGB data, initial research in this area primarily focused on linearizing sRGB images, a problem commonly formulated as radiometric calibration [8]. Subsequent works attempted to better describe the pipeline of ISP as access to raw sensor data became more prevalent [9], [10]. 
+
+Raw Reconstruction with Metadata. With the increasing availability of raw images and their associated metadata, recent approaches have leveraged this additional information to en-hance reconstruction quality. Metadata such as low resolution raw [11], estimated parameters of the simplified ISP [12], and sample of raw images [4], [5] have been utilized to guide the reconstruction process. Most recently, Wang et al. [6], [7] proposed to treat raw reconstruction as a learned lossy compression problem, where sRGB images serve as priors and the resulting latent features act as metadata to facilitate more accurate raw recovery. 
+
+B. Learned Lossless Image Compression 
+
+Unlike learned lossy codecs that optimize the distortion metric between original and reconstructed images, lossless learned compression approaches focus on directly modeling the probability distributions of pixel intensities. These methods Raw Image Bit Depth Map    
+
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Bit Depth
+> Fig. 2. Visualization of raw image and corresponding pixel-wise bit depth map. The pixel-wise bit depth is computed as ⌈log 2(value + 1) ⌉. It can be observed that different regions in the raw image exhibit varying bit depths.
+
+aim to minimize the total bit rate, which comprises contribu-tions from both latent representations and pixel data: 
+
+L = R = Rlatent + Rpixel , (1) The efficacy of learned lossless compression hinges on how precisely the pixel probability distributions are esti-mated. To capture inter-pixel dependencies effectively, re-searchers have developed diverse neural architectures, which can be grouped into four main categories: autoregressive ap-proaches, variational autoencoder (VAE) frameworks, normal-izing flow methods, and overfitting-based methods. Autore-gressive approaches, exemplified by PixelCNN [13] and Pixel-CNN++ [14], employ recurrent or convolutional architectures to factorize the joint pixel distribution as p(x1, x 2, . . . , x n) = Qni=1 p(xi|x1, x 2, . . . , x i−1). VAE-based methods, including PixelVAE [15], DLPR [16] and SEEC [17], model pixel probabilities conditional on learned latent representations by optimizing the evidence lower bound (ELBO) through varia-tional autoencoders [18]. Normalizing flow techniques, such as iFlow [19], leverage invertible transformations to map simple base distributions to complex data distributions through dif-ferentiable bijective mappings. Overfitting-based methods, like CALLIC [20] and FNLIC [21], achieve lossless compression by training models specifically on individual images, and storing the model parameters alongside the compressed data. These methods each exhibit their own strengths and limitations with respect to compression ratio and computational efficiency. III. M ETHODOLOGY 
+
+A. Motivation 
+
+Existing learned lossless image compression methods pre-dominantly focus on sRGB images with a fixed 8-bit depth per channel. However, raw images captured by different camera sensors exhibit varying bit depths, typically ranging from 10 to 14 bits. Moreover, even within a single raw image, pixel values can vary substantially as shown in Figure 2; thus, using a fixed bit depth for the entire image inevitably leads to significant bit redundancy. 𝒛  ො𝒛  
+
+> 𝒚 ෝ𝒚
+> Norm &
+> Patchify
+> Bit Depths
+
+## +      
+
+> Mask Conv
+> Hyper
+> synthesis
+> Q
+> 𝑔 𝑎
+> Q
+> AE
+> AD
+> Bits
+> AE
+> AD
+> Bits
+> Synthesis
+> transform
+> Fusion
+> Entropy
+> Model
+> 02047
+> 04095
+> 08191
+> 016383
+> Embedding
+> Layer
+> Bits Bit Depths
+> Analysis
+> transform
+> Hyper
+> analysis Fig. 3. The overall architecture of RAWIC. The input raw image is first converted to an RGGB four-channel format and split into patches. Each patch is then processed by a bit-depth adaptive entropy model that estimates the pixel distribution conditioned on the bit depth of the patch. Q denotes the quantization operation. AE and AD represent arithmetic encoder and arithmetic decoder, respectively.
+
+B. The overall Framework 
+
+To tackle the challenges posed by varying bit depths in raw images, we propose RAWIC, a bit-depth adaptive lossless raw image compression framework, as illustrated in Figure 3. Starting with a Bayer pattern raw image x containing a single channel, we transform it into a four-channel RGGB format and partition it into N non-overlapping patches denoted as 
+
+{xi}Ni=1 . For each patch xi, we compute its bit depth bi.The bit depth bi is then fed into embedding layers to obtain the corresponding bit depth embedding ei. We employ hyper-prior [22] based ELIC framework [23] as our backbone archi-tecture. Specifically, the input patch xi is first transformed into a latent representation using an analysis transform conditioned on the bit depth embedding yi = ga(xi, ei). Subsequently, the quantized latent is then passed through a hyper analysis to generate side information zi = ha(ˆyi), which is used to estimate the distribution parameters of the quantized latent representation ˆyi. We model the quantized latent ˆyi using a Gaussian distribution, where the mean μi and variance 
+
+σi are predicted via hyper synthesis: μi, σi = hs(ˆzi).The prior features f i are derived from the quantized latent through synthesis transformation f i = gs(ˆyi). To enable end-to-end training, quantization is simulated by incorporat-ing uniform noise: p(˜yi) = Q 
+
+> j
+
+U(yij − 12 , yij + 12 ) and 
+
+p(˜zi) = Q 
+
+> j
+
+U(zij − 12 , zij + 12 ), where j indexes the latent variables within the i-th patch. Leveraging the prior features f i alongside context features 
+
+Cxi obtained from causal convolutions, we derive the distri-bution for individual pixels within raw patch xi:
+
+p(xi | Cxi , f i) = pθ (xi | Pi) = 
+
+> H×W
+
+Y
+
+> j=1
+
+p(xij | xi,<j , f i),
+
+(2) Where the θ denotes the parameters of the entropy model, and 
+
+Pi denotes the prior for the patch xi.
+
+C. Bit-Depth Adaptive Entropy Model 
+
+Fixed bit-depth entropy models are suboptimal for raw images due to significant variations in pixel values both across different images and within a single image. To address this challenge, we introduce a bit-depth adaptive entropy model that dynamically adapts to the varying bit depths of raw image patches. Given a pixel xcij (where c denotes the channel index) with predicted probability mass function (PMF) p(xcij ) produced by the bit-depth-specific entropy model for patch xi and its corresponding bit depth bcij , we define the bit-depth adaptive probability distribution as follows: 
+
+˜p(xcij | bcij ) = p(xcij ) · I(0 ≤ xcij < 2bcij )
+
+P2bcij −1 
+
+> k=0
+
+p(k)
+
+, (3) where I(·) is an indicator function that masks out invalid pixel values outside the valid range [0 , 2bcij −1] , and the denominator renormalizes the PMF to ensure P2bcij −1 
+
+> k=0
+
+˜p(k | bcij ) = 1 .To model the distribution of pixel values in raw images with RGGB Bayer pattern, we extend the discrete logistic mixture likelihood [14] to handle multi-channel raw image data. For a raw image patch xi in RGGB format, the likelihood factorizes as: 
+
+pθ (xi | Pi) = 
+
+> H×W
+
+Y
+
+> j=1
+
+pθ (xr 
+
+> ij
+
+, xg1 
+
+> ij
+
+, xg2 
+
+> ij
+
+, xb 
+
+> ij
+
+| Pi), (4) where xr 
+
+> ij
+
+, xg1 
+
+> ij
+
+, xg2 
+
+> ij
+
+, and xb 
+
+> ij
+
+represent the pixel values at spatial location j in the red, first green, second green, and blue channels of the Bayer pattern, respectively. Channel autoregressive modeling [14] is employed to capture inter-channel dependencies, factorizing the joint distribution as: 
+
+pθ (xr 
+
+> ij
+
+, xg1 
+
+> ij
+
+, xg2 
+
+> ij
+
+, xb 
+
+> ij
+
+| Pi) = pθ (xr 
+
+> ij
+
+| Pi) · pθ (xg1 
+
+> ij
+
+| xr 
+
+> ij
+
+, Pi)
+
+· pθ (xg2 
+
+> ij
+
+| xr 
+
+> ij
+
+, xg1 
+
+> ij
+
+, Pi) · pθ (xb 
+
+> ij
+
+| xr 
+
+> ij
+
+, xg1 
+
+> ij
+
+, xg2 
+
+> ij
+
+, Pi). (5) TABLE I LOSSLESS IMAGE COMPRESSION PERFORMANCE (BPP ) OF OUR PROPOSED METHOD COMPARED TO OTHER LOSSLESS IMAGE CODEC CANON 1D S MKIII, CANON 600D, O LYMPUS EPL6, P ANASONIC GX1, S AMSUNG NX2000 AND RAISE. T HE BEST RESULTS ARE HIGHLIGHTED IN BOLD . W E SHOW THE DIFFERENCE (%) BETWEEN OUR METHOD AND EACH TRADITIONAL CODEC IN GREEN COLOR . N OTE THAT OUR METHOD INCLUDES THE BITRATES FOR STORING BIT DEPTHS .Codec Canon 1Ds MkIII Canon 600D Olympus EPL6 Panasonic GX1 Samsung NX2000 RAISE QOI [24] 11.36 (+67.3%) 12.09 (+61.9%) 10.22 (+100.0%) 10.97 (+83.1%) 10.73 (+84.1%) 12.86 (+64.9%) 
+
+PNG [25] 10.28 (+51.4%) 10.96 (+46.7%) 8.13 (+59.1%) 9.45 (+57.8%) 9.16 (+57.1%) 11.37 (+45.8%) 
+
+WebP [26] 7.80 (+14.9%) 8.44 (+13.0%) 5.88 (+15.1%) 7.07 (+18.0%) 6.66 (+14.2%) 8.82 (+13.1%) 
+
+FLIF [27] 7.82 (+15.2%) 8.34 (+11.7%) 6.12 (+19.8%) 7.02 (+17.2%) 6.86 (+17.7%) 8.86 (+13.6%) 
+
+JPEG2000 [28] 7.34 (+8.1%) 8.04 (+7.7%) 5.70 (+11.6%) 6.67 (+11.3%) 6.58 (+12.9%) 8.58 (+10.0%) 
+
+JPEG-LS [29] 7.25 (+6.8%) 7.87 (+5.4%) 5.67 (+11.0%) 6.54 (+9.2%) 6.49 (+11.3%) 8.38 (+7.4%) 
+
+JPEG-XL [30] 7.29 (+7.4%) 7.95 (+6.4%) 5.60 (+9.6%) 6.57 (+9.7%) 6.46 (+10.8%) 8.29 (+6.3%) 
+
+RAWIC (Ours) 6.79 7.47 5.11 5.99 5.83 7.80 
+
+Each conditional distribution is modeled as a discrete logis-tic mixture with K components. For channel c ∈ { r, g1, g2, b},the probability mass function is given by: 
+
+pθ (xcij | · ) = 
+
+> K
+
+X
+
+> k=1
+
+πck ij ·
+
+"
+
+σ xcij + ∆cij /2 − μck ij 
+
+sck ij 
+
+!
+
+−
+
+σ xcij − ∆cij /2 − μck ij 
+
+sck ij 
+
+! # 
+
+. (6) where σ(·) is the sigmoid function, μck ij and sck ij are the mean and scale of the k-th mixture component, πck ij is the mixture weight with PKk=1 πck ij = 1, and ∆cij represents the quantization bin width determined by the bit depth bcij 
+
+as ∆cij = 1 /(2 bcij − 1) . For edge cases where xcij = 0 or 
+
+xcij = 2 bcij − 1, xcij − ∆cij /2 or xcij + ∆cij /2 is clipped to −∞ 
+
+or ∞, respectively. The autoregressive dependencies are modeled through the means of the mixture components: 
+
+ˆμrkij = μrkij , ˆμg1kij = μg1kij + βrkij · xr 
+
+> ij
+
+,
+
+ˆμg2kij = μg2kij + βg1kij · xg1 
+
+> ij
+
+,
+
+ˆμbkij = μbkij + βg2kij · xr 
+
+> ij
+
++ βbk ij ·  xg1 
+
+> ij
+
++ xg2
+
+> ij
+
+ /2, (7) where βck ij are learnable coefficients that capture inter-channel dependencies. All distribution parameters, including the base means μck ij ,scales sck ij , mixture weights πck ij , and autoregressive coeffi-cients βck ij , are jointly produced by the entropy parameter network conditioned on the prior Pi and bit depth bcij .IV. E XPERIMENTS 
+
+A. Settings 
+
+We train our RAWIC model using raw data from five cameras in the NUS dataset [31], including Canon 1Ds MkIII, Canon 600D, Olympus EPL6, Panasonic GX1, and Samsung NX2000, whose raw images have bit depths of 14, 14, 12, 12, 12 and 14 bits, respectively. For each camera, we randomly split the images into 80% for training, 10% for validation, and 10% for testing. In addition, we incorporate 5% of randomly selected raw images from the RAISE dataset [32]. In total, 1088 raw images are used for training. During training, raw images are initially split into non-overlapping 
+
+128 × 128 patches. We apply horizontal and vertical flipping with a probability of 0.5, then randomly crop the patches to 64 × 64 . The model is trained for 200 epochs using the Adam optimizer [33] with a batch size of 128 . The learning rate is initialized at 1 × 10 −4 and adaptively reduced by a factor of 0.1 if the validation loss does not improve for 10 
+
+consecutive epoch. The implementation of the model is based on CompressAI [34]. We train the RAWIC model on NVIDIA A100 GPU. 
+
+B. Coding Performance 
+
+To evaluate the effectiveness of our proposed RAWIC codec, we compare it against seven traditional lossless im-age compression methods, including QOI [24], PNG [25], JPEG-LS [29], JPEG2000 [28], WebP [26], JPEG-XL [30], and FLIF [27]. We split each raw image into a most-significant-byte (MSB) subimage and a least-significant-byte (LSB) subimage when evaluating WebP and FLIF, since both formats only support 8-bit-per-channel images. All methods are evaluated in terms of bits per pixel (bpp) on the corre-sponding test sets, as shown in Table I. Our RAWIC model consistently outperforms all traditional codecs across different camera sensors and bit depth with one single trained model. On average, our method achieves a bitrate reduction of 7.7% compared to the best traditional method, JPEG-XL. To compare with sRGB lossless image compression meth-ods, we also extend our RAWIC to compress sRGB images with 8-bit per channel. Our model is retrained on the DIV2K dataset and evaluated alongside a range of recent learned lossless compression methods including L3C [35], RC [36], SReC [37], iVPF [38], iFlow [19], Near-Lossless [39], ArIB-BPS [40], and DLPR [16]. We evaluate all methods on the DIV2K validation set, CLIC [41] and the Kodak [42]. For fair comparison, we exclude LLM-based methods and overfitting-based methods due to their excessive encoding or decoding time. The results are summarized in Table II. 
+
+TABLE II LOSSLESS RGB IMAGE COMPRESSION PERFORMANCE (BPP ) COMPARED TO OTHER LEARNED LOSSLESS IMAGE CODECS .Codec DIV2K CLIC.m Kodak L3C [35] 9.27 (+22.9%) 7.92 (+23.4%) 9.78 (+15.5%) 
+
+RC [36] 9.24 (+22.6%) 7.62 (+18.7%) -SReC [37] 8.47 (+12.3%) 7.32 (+14.0%) 9.10 (+7.4%) 
+
+Near-Lossless [39] 8.43 (+11.8%) 7.53 (+17.3%) 9.12 (+7.7%) 
+
+iVPF [38] 8.04 (+6.6%) 7.17 (+11.7%) -iFlow [19] 7.71 (+2.3%) 6.78 (+5.6%) -ArIB-BPS [40] 7.65 (+1.5%) - -DLPR [16] 7.65 (+1.5%) 6.48 (+0.9%) 8.58 (+1.3%) 
+
+RAWIC (Ours) 7.54 6.42 8.47 
+
+C. Efficiency of Codec 
+
+To evaluate the efficiency of our RAWIC codec, we measure the average runtime (in seconds) required to encode and decode a single raw image. We compare the runtime of our RAWIC framework with several traditional lossless image codecs on raw images from the Canon 600D and Olympus EPL6 datasets, whose raw resolutions are 3464 × 5202 and 
+
+3472 ×4640 with bit depths of 14 bits and 12 bits, respectively. The results are summarized in Table III. 
+
+TABLE III AVERAGE RUNTIME (SEC .) OF RAWIC COMPARED TO OTHER CODECS 
+
+(E NCODING /D ECODING TIME ). Codec Canon 600D Olympus EPL6 PNG [25] 4.55/0.59 4.56/0.46 WebP [26] 5.99/0.26 3.86/0.18 JPEG-XL [30] 6.08/1.38 6.62/1.46 FLIF [27] 25.97/9.36 20.41/9.36 RAWIC (Ours) 45.7/119.3 37.1/98.4 
+
+We also evaluate the runtime of our RAWIC codec on sRGB images with 8-bit per channel. We compare the runtime of our RAWIC framework with several learned lossless image codecs on RGB images from the Kodak dataset with different resolutions. The results are summarized in Table IV. 
+
+D. Ablation Study 1) Ablation of Bit-Depth Adaptive Entropy Model: To validate the effectiveness of our proposed bit-depth adaptive entropy model, we conduct an ablation study by replacing it with a fixed-bit-depth entropy model that applies a constant bit depth to all raw patches. As shown in Table V, the bit-depth adaptive entropy model consistently outperforms the fixed-bit-depth counterpart across all camera sensors, with notably larger gains on datasets with lower bit depths. This demonstrates its effectiveness in modeling the varying bit-depth characteristics of raw images. 
+
+TABLE IV AVERAGE RUNTIME (SEC .) OF RAWIC COMPARED TO OTHER CODECS 
+
+(E NCODING /D ECODING TIME ). OOM: OUT OF MEMORY .Codec 768 ×512 1024 ×768 2048 ×1536 WebP [26] 0.15/0.01 0.20/0.01 2.23/0.05 JPEG-XL [30] 0.24/0.06 0.39/0.09 2.97/0.53 BPG [43] 0.23/0.19 0.44/0.32 5.71/1.42 FLIF [27] 4.13/0.66 7.31/1.13 33.07/5.27 SReC [37] 0.58/0.59 1.10/1.16 4.11/4.58 L3C [35] 0.70/0.64 1.30/1.26 4.93/5.06 Minnen [44] 1.26/2.50 2.48/5.01 9.97/19.81 ArIB-BPS [40] 6.59/6.42 OOM OOM DLPR [16] 0.97/1.49 1.68 /2.76 6.96 /11.27 RAWIC (Ours) 0.96/1.43 1.62/2.56 6.71/10.72 TABLE V ABLATION STUDY ON THE EFFECTIVENESS OF THE BIT -DEPTH ADAPTIVE ENTROPY MODEL .Dataset Bit-Depth Adaptive (Ours) Fixed Bit Depth Canon 1Ds MkIII 6.79 8.78 (+29.3%) 
+
+Canon 600D 7.47 8.77 (+17.4%) 
+
+Olympus EPL6 5.11 8.98 (+75.7%) 
+
+Panasonic GX1 5.99 9.20 (+53.6%) 
+
+Samsung NX2000 5.83 9.37 (+60.7%) 
+
+RAISE 7.80 9.29 (+19.1%) 
+
+2) Ablation of All-in-One Model: To assess the advantage of our all-in-one model that compresses raw images across different camera sensors, we compare it with camera-specific models that are individually trained for each camera sensor. As shown in Table VI, our all-in-one model achieves better compression performance than camera-specific models on most datasets, demonstrating its effectiveness in handling raw images from diverse cameras with varying characteristics. 
+
+TABLE VI ABLATION STUDY ON THE EFFECTIVENESS OF THE ALL -IN -ONE MODEL .Dataset All-in-One Model (Ours) Camera-Specific Model Canon 1Ds MkIII 6.79 7.91 (+16.5%) 
+
+Canon 600D 7.47 8.85 (+18.5%) 
+
+Olympus EPL6 5.11 6.79 (+32.9%) 
+
+Panasonic GX1 5.99 6.46 (+7.8%) 
+
+Samsung NX2000 5.83 5.82 (-0.1%) 
+
+RAISE 7.79 7.80 (+0.1%) 
+
+V. C ONCLUSION 
+
+In this paper, we propose RAWIC, a novel framework for bit-depth adaptive lossless raw image compression. By lever-aging adaptive entropy modeling conditioned on bit depth, our method efficiently compresses raw images from diverse cameras and bit depths using a single unified model. Exten-sive experiments show that RAWIC consistently outperforms traditional lossless codecs. Future work will explore reducing the computational complexity and latency of the raw neural codec to enable real-time applications. VI. ACKNOWLEDGEMENTS This work was supported by the National Key R&D Pro-gram of China under Award Numbers 2020YFB1807802 and 2016ZX03001018-005, and by the Wuxi Research Institute of Applied Technologies, Tsinghua University under Grant 20242001120. REFERENCES [1] Yi Zhang et al., “Rethinking noise synthesis and modeling in raw denoising,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2021, pp. 4593–4601. 1 [2] Xiangyu Xu, Yongrui Ma, and Wenxiu Sun, “Towards real scene super-resolution with raw images,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2019, pp. 1723–1731. 1 [3] Haofeng Huang et al., “Towards low light enhancement with raw images,” IEEE Transactions on Image Processing , vol. 31, pp. 1391– 1405, 2022. 1 [4] Abhijith Punnappurath and Michael S Brown, “Spatially aware metadata for raw reconstruction,” in Proceedings of the IEEE/CVF winter conference on applications of computer vision , 2021, pp. 218–226. 1, 2 [5] Seonghyeon Nam et al., “Learning srgb-to-raw-rgb de-rendering with content-aware metadata,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 17704–17713. 1, 2[6] Yufei Wang et al., “Raw image reconstruction with learned compact metadata,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023, pp. 18206–18215. 1, 2 [7] Yufei Wang et al., “Beyond learned metadata-based raw image recon-struction,” International Journal of Computer Vision , vol. 132, no. 12, pp. 5514–5533, 2024. 1, 2 [8] Tomoo Mitsunaga and Shree K Nayar, “Radiometric self calibration,” in Proceedings. 1999 IEEE computer society conference on computer vision and pattern recognition (Cat. No PR00149) . IEEE, 1999, vol. 1, pp. 374–380. 2 [9] Ayan Chakrabarti et al., “Modeling radiometric uncertainty for vision with tone-mapped color images,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 36, no. 11, pp. 2185–2198, 2014. 2 [10] Han Gong et al., “Rank-based radiometric calibration,” Journal of Imaging Science and Technology , vol. 62, no. 5, pp. 50404–1, 2018. 2 [11] Lu Yuan and Jian Sun, “High quality image reconstruction from raw and jpeg image pair,” in 2011 international conference on computer vision . IEEE, 2011, pp. 2158–2165. 2 [12] Rang MH Nguyen and Michael S Brown, “Raw image reconstruction using a self-contained srgb-jpeg image with only 64 kb overhead,” in 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , 2016, pp. 1655–1663. 2 [13] Aaron Van den Oord et al., “Conditional image generation with pixelcnn decoders,” Advances in neural information processing systems , vol. 29, 2016. 2 [14] Tim Salimans et al., “Pixelcnn++: Improving the pixelcnn with dis-cretized logistic mixture likelihood and other modifications,” arXiv preprint arXiv:1701.05517 , 2017. 2, 3 [15] Ishaan Gulrajani et al., “Pixelvae: A latent variable model for natural images,” arXiv preprint arXiv:1611.05013 , 2016. 2 [16] Yuanchao Bai et al., “Deep lossy plus residual coding for lossless and near-lossless image compression,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 46, no. 5, pp. 3577–3594, 2024. 2, 4, 5 [17] Chunhang Zheng, Zichang Ren, and Dou Li, “Seec: Segmentation-assisted multi-entropy models for learned lossless image compression,” 
+
+arXiv preprint arXiv:2509.07704 , 2025. 2 [18] Diederik P Kingma, Max Welling, et al., “Auto-encoding variational bayes,” 2013. 2 [19] Shifeng Zhang et al., “iflow: Numerically invertible flows for efficient lossless compression via a uniform coder,” Advances in Neural Infor-mation Processing Systems , vol. 34, pp. 5822–5833, 2021. 2, 4, 5 [20] Daxin Li et al., “Callic: Content adaptive learning for lossless image compression,” in Proceedings of the AAAI Conference on Artificial Intelligence , 2025, vol. 39, pp. 4679–4688. 2 [21] Zhe Zhang, Zhenzhong Chen, and Shan Liu, “Fitted neural lossless image compression,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 23249–23258. 2 [22] Johannes Ball´ e et al., “Variational image compression with a scale hyperprior,” arXiv preprint arXiv:1802.01436 , 2018. 3 [23] Dailan He et al., “Elic: Efficient learned image compression with unevenly grouped space-channel contextual adaptive coding,” in Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 5718–5727. 3 [24] Dominic Szablewski, “The quite ok image format for fast, lossless compression,” 2021. 4 [25] Thomas Boutell, “Png (portable network graphics) specification version 1.0,” Tech. Rep., 1997. 4, 5 [26] Google, “Web picture format,” 2010. 4, 5 [27] Jon Sneyers and Pieter Wuille, “Flif: Free lossless image format based on maniac compression,” in 2016 IEEE international conference on image processing (ICIP) . IEEE, 2016, pp. 66–70. 4, 5 [28] Athanassios Skodras, Charilaos Christopoulos, and Touradj Ebrahimi, “The jpeg 2000 still image compression standard,” IEEE Signal processing magazine , vol. 18, no. 5, pp. 36–58, 2001. 4 [29] Marcelo J Weinberger, Gadiel Seroussi, and Guillermo Sapiro, “The loco-i lossless image compression algorithm: Principles and standard-ization into jpeg-ls,” IEEE Transactions on Image processing , vol. 9, no. 8, pp. 1309–1324, 2000. 4 [30] Jyrki Alakuijala et al., “Jpeg xl next-generation image compression ar-chitecture and coding tools,” in Applications of digital image processing XLII . SPIE, 2019, vol. 11137, pp. 112–124. 4, 5 [31] Dongliang Cheng, Dilip K Prasad, and Michael S Brown, “Illuminant estimation for color constancy: why spatial-domain methods work and the role of the color distribution,” Journal of the Optical Society of America A , vol. 31, no. 5, pp. 1049–1058, 2014. 4 [32] Duc-Tien Dang-Nguyen et al., “Raise: A raw images dataset for digital image forensics,” in Proceedings of the 6th ACM multimedia systems conference , 2015, pp. 219–224. 4 [33] Diederik P Kingma and Jimmy Ba, “Adam: A method for stochastic optimization,” arXiv preprint arXiv:1412.6980 , 2014. 4 [34] Jean B´ egaint et al., “Compressai: a pytorch library and evalua-tion platform for end-to-end compression research,” arXiv preprint arXiv:2011.03029 , 2020. 4 [35] Fabian Mentzer et al., “Practical full resolution learned lossless image compression,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2019, pp. 10629–10638. 4, 5 [36] Fabian Mentzer, Luc Van Gool, and Michael Tschannen, “Learning better lossless compression using lossy compression,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,2020, pp. 6638–6647. 4, 5 [37] Sheng Cao, Chao-Yuan Wu, and Philipp Kr¨ ahenb¨ uhl, “Loss-less image compression through super-resolution,” arXiv preprint arXiv:2004.02872 , 2020. 4, 5 [38] Shifeng Zhang et al., “ivpf: Numerical invertible volume preserving flow for efficient lossless compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2021, pp. 620– 629. 4, 5 [39] Yuanchao Bai et al., “Learning scalable ly=-constrained near-lossless image compression via joint lossy image and residual compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2021, pp. 11946–11955. 4, 5 [40] Zhe Zhang et al., “Learned lossless image compression based on bit plane slicing,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2024, pp. 27579–27588. 4, 5 [41] George Toderici et al., “Workshop and challenge on learned image compression (clic),” http://www.compression.cc, 2020. 4 [42] Eastman Kodak, “Kodak lossless true color image suite (photocd pcd0992),” http://r0k.us/graphics/kodak, 1993. 4 [43] Fabrice Bellard, “Bpg image format,” URL https://bellard. org/bpg , vol. 1, no. 2, pp. 1, 2015. 5 [44] David Minnen, Johannes Ball´ e, and George D Toderici, “Joint au-toregressive and hierarchical priors for learned image compression,” 
+
+Advances in neural information processing systems , vol. 31, 2018. 5
