@@ -1,0 +1,513 @@
+Title: Drift-AR: Single-Step Visual Autoregressive Generation via Anti-Symmetric Drifting
+
+URL Source: https://arxiv.org/pdf/2603.28049v1
+
+Published Time: Tue, 31 Mar 2026 02:25:10 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Drift-AR: Single-Step Visual Autoregressive Generation via Anti-Symmetric Drifting 
+
+Zhen Zou 1, Xiaoxiao Ma 1, Mingde Yao 2, Jie Huang 3, LinJiang Huang 4, and Feng Zhao 1 
+
+> 1
+
+University of Science and Technology of China  
+
+> 2
+
+The Chinese University of Hong Kong, MMLAB  
+
+> 3
+
+JD Explore Academy  
+
+> 4
+
+Behang University 
+
+zouzhen@mail.ustc.edu.cn 
+
+Abstract. Autoregressive (AR)-Diffusion hybrid paradigms combine AR’s structured semantic modeling with diffusion’s high-fidelity synthesis, yet suffer from a dual speed bottleneck: the sequential AR stage and the iterative multi-step denoising of the diffusion vision decode stage. Exist-ing methods address each in isolation without a unified principle design. We observe that the per-position prediction entropy of continuous-space AR models naturally encodes spatially varying generation uncertainty, which simultaneously governing draft prediction quality in the AR stage and reflecting the corrective effort required by vision decoding stage, which is not fully explored before. Since entropy is inherently tied to both bottlenecks, it serves as a natural unifying signal for joint accel-eration. In this work, we propose Drift-AR , which leverages entropy signal to accelerate both stages: 1) for AR acceleration, we introduce Entropy-Informed Speculative Decoding that align draft–target entropy distributions via a causal-normalized entropy loss, resolving the entropy mismatch that causes excessive draft rejection; 2) for visual decoder ac-celeration, we reinterpret entropy as the physical variance of the initial state for an anti-symmetric drifting field—high-entropy positions acti-vate stronger drift toward the data manifold while low-entropy positions yield vanishing drift—enabling single-step (1-NFE) decoding without it-erative denoising or distillation. Moreover, both stages share the same entropy signal, which is computed once with no extra cost. Experiments on MAR, TransDiff, and NextStep-1 demonstrate 3.8–5.5 × speedup with genuine 1-NFE decoding, matching or surpassing original quality. Code will be available at https://github.com/aSleepyTree/Drift-AR. 
+
+Keywords: Autoregressive generation · Drifting models · Single-step generation 
+
+## 1 Introduction 
+
+Autoregressive (AR) models have achieved remarkable success in large language models (LLMs) [1, 2, 33], inspiring extensions to visual generation [19, 30]. To     
+
+> arXiv:2603.28049v1 [cs.CV] 30 Mar 2026 2Z. Zou et al. 3.81 ×
+> (a) vanilla teacher, Nextstep-1 (b) speculative decoding + 1-NFE decoding, Ours
+> Fig. 1: Qualitative generation comparison between the vanilla NextStep-1 [31] and our method on GenEval [7].
+
+overcome the quality ceiling imposed by discrete tokenization [6, 34], recent hy-brid AR-Diffusion paradigms [13, 22, 31, 42] shift generation to continuous latent spaces with two stages, combining AR stage’s structured semantic modeling with diffusion decoder stage’s high-fidelity synthesis [10, 27, 29]. These hybrids have achieved impressive results, balancing semantic coherence and visual realism without the information loss inherent to vector quantization. However, the two-stage design introduces a dual speed bottleneck . In this hy-brid inference paradigm, the AR transformer generates tokens sequentially. Each generated AR latent is then decoded by the diffusion decoder through iterative multi-step denoising. Existing acceleration methods treat these two bottlenecks independently: 1) speculative decoding [14, 15] for the AR acceleration and, 2) typical distillation [38,39] for the visual decoder acceleration. This isolated treat-ment lacks a unified guiding principle and leaves substantial room for their joint acceleration. Moreover, distillation methods such as consistency or distribution-matching distillation (CD/DMD) [28, 38, 39] remain tied to the multi-step dif-fusion paradigm: although they reduce the number of denoising steps, iterative inference is still required. We start our work to accelerate the AR-Diffusion hybrids generation by making a key observation: unlike LLMs generation, real-world images exhibit highly non-uniform information distribution, leading to heterogeneous genera-tion uncertainty across spatial positions. In continuous-space AR models, the 
+
+per-position predicted entropy naturally captures this heterogeneity, providing a signal with deep implications for both AR acceleration and diffusion visual decoding acceleration, which is not fully explored by existing methods. Specif-ically, redundant regions ( e.g ., sky, blank walls) tend to induce low entropy, whereas complex structures (textures, object boundaries) produce high entropy. Crucially, this entropy carries a dual meaning for the dual speed bottleneck: (1) it reflects the reliability of draft predictions in speculative decoding: entropy mismatch between small draft models and target large models often leads to ex-cessive rejection (see Fig. 2(a)); and (2) it encodes the local generation difficulty at each spatial position, indicating how much “corrective effort” the diffusion-derived visual decoder should apply. We therefore argue that entropy forms a 
+
+natural bridge that connects AR acceleration and diffusion visual decoding ac-celeration within a unified framework. Drift-AR: Single-Step Visual AR via Drifting 3
+
+Based on the above observation and analysis, we first address the AR ac-celeration bottleneck via Entropy-Informed Speculative Decoding (see left in Fig. 3). Directly applying speculative decoding approach (e.g., EAGLE [15]) to continuous-space AR yields poor acceptance rates, as smaller draft mod-els tend to produce low-entropy, overconfident features that deviate from the large target’s entropy distribution (see Fig. 2(a)). This mismatch arises from the low information density of visual data, where the limited capacity of the draft model causes predictions to collapse toward dominant modes. To mitigate this issue, we adapt EAGLE to continuous latent spaces with two key modifications: (i) a continuous-feature regression loss that replaces the discrete classification objective that matches the vision AR model’s characteristics, and (ii) a causal-normalized entropy loss that explicitly aligns the entropy distributions of the draft and target models, thereby improving acceptance rates of speculative de-coding in AR acceleration. We then address the visual decoding bottleneck by going beyond entropy as a simple confidence signal (see middle and right in Fig. 3). We replace the iterative diffusion-derived decoder with an anti-symmetric drifting field [5] and reinterpret the AR prediction entropy as the physical variance of the drifting process’s initial distribution. This leads to an Entropy-Parameterized Prior :at each spatial position, the AR feature serves as the prior mean, while the entropy-derived variance determines the spread of the initial state. Empirically, this formulation is well supported. As shown in Fig. 2(c)(d), per-position AR pre-diction error strongly correlates with entropy (Pearson r=0 .64 ), indicating that high-entropy regions correspond to locations where AR predictions deviate most from the ground truth and therefore require stronger correction during decoding. The formulation is physically consistent with the anti-symmetric drifting field (Vp,q =−Vq,p ): high-entropy positions induce larger variance and thus stronger drift toward the data manifold, while low-entropy positions yield near-zero vari-ance where the drift naturally vanishes ( q≈p ⇒ V →0). This enables principled single-step generation for visual decoding stage without iterative refinement. The two components are naturally unified through the shared entropy signal: the per-position entropy E(r) 
+
+> entropy
+
+computed once during speculative decoding is directly reused as the variance parameter for the visual decoder’s initial distri-bution, requiring no additional computation or separate uncertainty estimation. Therefore, the proposed framework is end-to-end training, which is enabled by an annealed schedule that first stabilizes the AR entropy, then optimizes the drift-ing field over a fixed prior. Unlike CD/DMD-based acceleration, our framework eliminates the need for a multi-step teacher and avoids distillation instability, achieving 1-NFE visual decoding from first principles. Our contributions are: 
+
+– We identify the dual role of prediction entropy in continuous-space AR-Diffusion hybrids, which governs both draft quality in speculative decoding for AR stage and local generation difficulty for visual decoding stage, and thus identify entropy signal to unify the two stage’s joint acceleration. 4 Z. Zou et al. (a) Vision Entropy distribution  
+
+> (c) Entropy vs. AR Prediction Error (r = 0.64) (d) Binned Analysis
+> (b) Language Entropy distribution
+
+Fig. 2: Entropy as a diagnostic signal for AR-Diffusion hybrids. (a) Vision AR entropy: the draft model (red) concentrates at low entropy while the target model (blue) spans higher values, revealing severe entropy mismatch . (b) Language AR entropy: large and small models overlap substantially, explaining why speculative decoding succeeds in LLMs, which cannot be directly applied for vision AR models. (c) Per-position AR prediction error ∥z(r)
+
+> AR
+
+−x(r) 
+
+> gt
+
+∥ vs. entropy E(r) (Pearson r=0 .64 ): higher entropy correlates with larger prediction error, confirming that entropy encodes local generation difficulty. (d) Binned analysis: mean AR error increases monotonically with entropy, motivating entropy-parameterized variance for the drifting decoder. 
+
+– We introduce Drift-AR, which couples entropy-informed speculative decod-ing for AR stage acceleration, along with an entropy-parameterized anti-symmetric drifting field for visual decoding stage acceleration, achieving genuine single-step (1-NFE) visual generation without iterative denoising or distillation. 
+
+– Extensive experiments on MAR, TransDiff, and NextStep-1 demonstrate 3.8–5.5 × speedup while matching or surpassing original generation quality and diversity. 
+
+## 2 Related Work 
+
+2.1 AR-Diffusion Hybrid Paradigm for Generation 
+
+The AR-Diffusion hybrid bridges AR’s structured semantic modeling and diffu-sion’s high-fidelity synthesis. MAR [13] introduced a diffusion-inspired denoising loss on continuous latent features, avoiding discrete vector quantization while preserving AR’s sequential prediction. TransDiff [42] achieved end-to-end inte-gration by coupling an AR transformer with a DiT-based diffusion decoder, mit-igating AR’s O(n2) complexity. FlowAR [22] replaced diffusion with flow match-ing [18,20] and added Spatial-adaLN for feature alignment, while NextStep-1 [31] unified AR and flow matching in a single transformer. These models share core Drift-AR: Single-Step Visual AR via Drifting 5
+
+principles: AR supplies hierarchical semantic guidance, diffusion/flow matching handles high-dimensional visual synthesis, and tight integration via joint training or adaptive feature injection preserves guidance–synthesis alignment. 
+
+2.2 Acceleration of Generative Models 
+
+Acceleration techniques for generative models target the distinct bottlenecks of AR (sequential latency) and diffusion (iterative denoising) [3, 4, 8, 21, 25, 26, 32, 35, 40, 41]. For diffusion, distillation-based methods such as DMD [39] and DMD2 [38] align student–teacher distributions to reduce denoising to one or few steps, while SDXL-Lightning [17] combines progressive distillation [24] with ad-versarial loss. Other works train few-step or single-step generators directly [5]. However, synergistic acceleration for AR-Diffusion hybrids remains largely un-addressed, with current methods optimizing each component in isolation. 
+
+## 3 Preliminary 
+
+3.1 AR-Diffusion Hybrid Paradigm 
+
+As an AR-Diffusion hybrid model, MAR [13] operates directly on continuous latents x ∈ Rd with a diffusion-inspired objective: 
+
+LM AR = Eϵ∼N (0 ,I ),t ∼Uniform (0 ,1) 
+
+∥ϵ − ϵθ (xt | t, z AR )∥2 , (1) where xt = √¯αtx + √1 − ¯αtϵ is the noisy latent, zAR denotes AR’s predicted feature, and ϵθ represents the diffusion noise estimator. TransDiff [42] further enables end-to-end integration: its AR transformer models sequential semantic features as z = ART (x1: i−1, c ), where c is class/text condition and x1: i−1 are preceding latents, ART is the AR diffusion transformer. A DiT-based diffusion decoder Diff θ then reconstructs images via: x0 = Diff θ (xt |
+
+t, z ). Although TransDiff is capable of generating all tokens in one step, we treat it as a multi-step method for improved performance. 
+
+3.2 Acceleration 
+
+Speculative decoding accelerates AR generation via a “draft–verify” mechanism: a lightweight draft model proposes predictions in parallel, which a stronger target model verifies. EAGLE [15] and its successors [14, 16] are the state-of-the-art for discrete-token NLP models, employing feature regression and classification objectives: 
+
+Lreg = Smooth L1 (fj+1 , Draft Model (T2: j+1 , F 1: j )) ,
+
+Lcls = Cross-Entropy (pj+2 , ˆpj+2 ), (2) where F1: j denotes draft model’s current feature sequence, ˆfj+1 the target model’s next-step feature, T2: j+1 the output tokens, and p/ ˆp the corresponding dis-crete probability distributions. Adapting EAGLE to the continuous-space AR-Diffusion setting requires non-trivial modifications, as we discuss in Sec. 4. 6 Z. Zou et al. ����. = 1                       
+
+> ��=2
+> �1
+> 푙�  (�)�=1
+> �Ω�,�푙�  (Ω�,�)
+> Attn. map �
+> (Eq. 5)
+> Initial.
+> Draft AR
+> Transformer
+> Target AR
+> Transformer
+> ...
+> ����.=
+> −1
+> 푙�  (�)�=1
+> �Ω�,�푙�  (Ω�,�)
+> (Eq. 4)
+> ����.
+> ���
+> Mapping
+> �2(∙)
+> （Eq. 6 ）
+> �(�,�2)
+> Sampling
+> (Eq. 7)
+> 1-NFE
+> Feature
+> Encoder ∅
+> (p) Real Image y+
+> (q) Negative
+> Samples y−
+> Generated
+> Image �
+> �=���
+> �=�2(�)Drifting Loss
+> (Eq. 8)
+> Single-Step
+> Visual Decoder
+> (��)
+> Kernelized
+> Drifting Field
+> ��,�Entropy-
+> Parameterized
+> prior
+
+Fig. 3: Illustration of the proposed Drift-AR framework. (Left) Entropy-informed spec-ulative decoding alleviates entropy mismatch between draft AR model and target AR model, which provides entropy-aligned semantic guidance that drives the draft AR model learns diverse, uncertainty-aware feature predictions rather than collapsing to overconfident modes. (Right) The visual decoder learns an anti-symmetric drifting field Vθ guided by Entropy-Parameterized Prior over the pushforward distribution q;the training procedure evolves q toward the data distribution p, thus when equilibrium the drift vanishes and single-step (1-NFE) generation is achieved. The overall Drift-AR framework is end-to-end training, which couples entropy-guided AR with drifting-field vision decoder optimization. 
+
+In contrast, drift-based generative models [5] avoid time-step-based iterative denoising. A network fθ maps noise ϵ ∼ pϵ to samples x = fθ (ϵ); the pushfor-ward distribution q = ( fθ )#pϵ is evolved during training via a drifting field 
+
+Vp,q (x) so that q approaches the data distribution p. When V is anti-symmetric 
+
+(Vp,q = −Vq,p ), equilibrium q = p implies V = 0 , enabling single-step (1-NFE) 
+
+generation at inference without iterative refinement. This avoids distillation-based acceleration (e.g., DMD [39]) and its need for a multi-step teacher. 
+
+## 4 Method 
+
+As shown in Fig. 3, Drift-AR is organized around a single guiding signal—the per-position prediction entropy E(r)
+
+> entropy
+
+—which drives both AR acceleration and single-step visual decoding. First, entropy informs speculative decoding by align-ing draft–target entropy distributions (Sec. 4.1). The same entropy is then rein-terpreted as the physical variance of an entropy-parameterized prior for an anti-symmetric drifting field, enabling 1-NFE generation (Sec. 4.2). A unified pipeline ties both components together (Sec. 4.3). Drift-AR: Single-Step Visual AR via Drifting 7
+
+4.1 Entropy-Informed Speculative Decoding 
+
+Speculative decoding is a natural candidate for accelerating the AR stage of AR-Diffusion models, but direct application of EAGLE [15] yields poor perfor-mance. The draft model’s outputs are frequently rejected by the target, and its low-entropy (overconfident) predictions lead to diminished diversity (Fig. 2(a)). The root cause is entropy mismatch : the small model produces overly confident features that deviate from the target’s entropy distribution. As shown in the left of Fig. 3, we adapt EAGLE to the continuous latent space with two changes. 
+
+Continuous-space regression loss. We remove EAGLE’s discrete classifi-cation loss Lcls (Eq. 2) and replace its token-conditioned regression with a continuous-feature variant. The draft is conditioned on the continuous AR fea-ture sequence rather than discrete output tokens: 
+
+Lreg = Smooth L1 (zj+1 , DraftModel (Z1: j , F 1: j )) , (3) where Z1: j is the sequence of continuous AR features produced so far, F1: j is the target model’s hidden-state sequence, and zj+1 is the target’s next-step feature. This preserves structural alignment between draft and target while remaining consistent with continuous-space AR. 
+
+Causal-normalized entropy loss. In a causal-masked attention matrix, row r
+
+attends only to row 1, . . . , r , so its maximum possible entropy is log( r). A plain average over rows would unfairly penalize early rows (e.g., r=1 has entropy zero by construction) and distort gradients. We normalize each row’s negative entropy by log( r):
+
+E(r) 
+
+> entropy
+
+≜ − 1log( r)
+
+> r
+
+X
+
+> c=1
+
+Ωr,c log Ωr,c , (4) where per-position entropy indicator E(r) 
+
+> entropy
+
+∈ [0 , 1] , and total entropy loss is calculated as: 
+
+Lentropy = − 1
+
+R
+
+> R
+
+X
+
+> r=2
+
+E(r)
+
+> entropy
+
+, (5) where Ωr,c is the (r, c )-th softmax entry of the penultimate attention map (Ωr,c =0 for c>r ; we start at r=2 since row r=1 has a single support and zero entropy). Minimizing Lentropy maximizes the normalized attention entropy at every position, so that training and the length-normalized inference threshold (Sec. 4.3) use the same scale. Note that E(r) 
+
+> entropy
+
+has a dual role: it regularizes the draft to match the target’s entropy during speculative decoding, and it is reused as the physical variance 
+
+of the r-th AR feature when building the initial distribution for the drifting decoder (Sec. 4.2), tying AR uncertainty directly to the generative process. 
+
+4.2 Entropy-Parameterized Single-Step Generative Drifting 
+
+In typical AR-Diffusion hybrids (e.g., MAR, TransDiff, NextStep-1), the visual decoder is conditioned on AR features but its initial state is drawn from a fixed 8 Z. Zou et al. 
+
+Gaussian prior unrelated to the AR prediction’s confidence; the visual decoder does not treat AR uncertainty as part of the generative state. We instead treat the AR output as the physical initial distribution for a single-step drifting process: the prior q is defined directly from the AR features, with variance tied to per-position entropy, where entropy is related to the de-terminacy of generation—higher entropy indicates greater uncertainty like what we have shown in Fig. 2(c)(d), so that confident predictions yield low-variance initial states and uncertain ones yield higher variance. 
+
+Mapping E(r) 
+
+> entropy
+
+to vision decoder initial distribution. As shown in the middle of Fig. 3, we first map the normalized per-position entropy E(r) 
+
+> entropy
+
+∈ [0 , 1] 
+
+to a non-negative variance scale. Since entropy reflects structural uncertainty in the AR process, we use a monotonic mapping so that higher entropy corresponds to larger variance. Specifically, we adopt a bounded exponential temperature mapping: 
+
+σ(E) = σmax · eE/τ σ − 1
+
+eEmax /τ σ − 1 , (6) where σmax caps the variance, τσ controls curvature, and Emax normalizes the input range to [0 , σ max ] (σmax =0 .5, τσ =2 .0 in experiments). When E is small (confident AR), σ(E) remains close to zero; as E approaches 1, the variance smoothly increases toward σmax .The R=h×w AR features are reshaped into a 2D entropy map E ∈ Rh×w
+
+with Ei,j = E(r) 
+
+> entropy
+
+(r=i·w+j). At each position r, we construct a Gaussian prior centered at the AR feature with entropy-determined variance: 
+
+q
+
+
+
+x(r) | z(r)
+
+> AR
+
+, E(r)
+
+> entropy
+
+
+
+= N
+
+
+
+x(r); z(r)
+
+> AR
+
+, σ 2
+
+E(r)
+
+> entropy
+
+
+
+I
+
+
+
+. (7) Thus, positions with low entropy (confident AR grounding) produce sharply concentrated initial states, whereas high-entropy positions yield broader initial distributions. We sample x(r)0 from q(r) via the standard Gaussian reparameterization 
+
+x(r)0 = z(r) 
+
+> AR
+
++ σ(E(r)
+
+> entropy
+
+) ϵ, where ϵ ∼ N (0 , I ), yielding the initial decoder state 
+
+x0 ∈ Rh×w×d.
+
+Aligning AR latents with image feature via drifting field. As shown in the right of Fig. 3, we train a visual decoder fθ with x0 sampled from the prior 
+
+q as input and c as the condition. The entropy map E is injected via additional Entropy-AdaLN. The corresponding output is ˆx = fθ (x0, c, E), through which the decoder aligns the AR latents with the VAE-constrained image latent space. To avoid dimension mismatch between the decoder’s latent output and the drifting field defined in feature space, we map ˆx into the corresponding latent space using a frozen feature encoder ϕ. For simplicity and effectiveness, we use a copy of the target AR model’s penultimate layer as ϕ, which is fixed through-out training. The loss is therefore formulated entirely in ϕ-space, following the kernelized attraction–repulsion construction of the drifting field Vp,q :
+
+Ldrift = Ex∼q
+
+
+
+ϕ(ˆ x) − stopgrad 
+
+
+
+ϕ(ˆ x) + Vp,q 
+
+ ϕ(ˆ x) 22
+
+
+
+. (8) Drift-AR: Single-Step Visual AR via Drifting 9
+
+Specifically, with prediction and regression target constrained in same feature space, Vp,q is computed following drifting model [5]: for each generated sample, real samples exert an attraction with field V + 
+
+> p
+
+, and generated samples repulsion 
+
+with V − 
+
+> q
+
+, where p, q represents real data and generated samples, respectively. With kernel functions at multiple temperatures for characterizing similarities among positive and negative samples, the net force yields the drift direction. Gradients flow through ϕ(ˆ x) and the decoder fθ , while ϕ itself remains frozen. This design is physically self-consistent: high-entropy positions receive larger variance and therefore stronger drift, whereas low-entropy positions have near-zero variance where the field naturally vanishes. This property enables 1-NFE generation without iterative refinement. 
+
+4.3 Unified Training and Inference Pipeline Annealed training for stabilizing the drifting field. A naive end-to-end training that jointly updates the AR module and the drifting visual decoder suffers from the “moving prior” problem: since the source distribution q is induced by the AR outputs, updating the AR module changes q at every iteration. As a result, the drifting field is effectively asked to transport samples toward a continuously shifting target, which makes the drifting dynamics unstable. This is particularly problematic because the anti-symmetric drifting field Vp,q 
+
+is well-defined only when both the source q and the target p are stationary, in which case q=p ⇒ Vp,q =0 corresponds to a true equilibrium. When q keeps moving, this equilibrium interpretation breaks. We therefore adopt a two-phase schedule controlled by a scalar weight α(t):
+
+α(t) = 
+
+
+
+α0 − α0 · tTfreeze 
+
+, t ≤ Tfreeze ,
+
+0, t > T freeze ,
+
+(9) where α0 = 0 .95 and Tfreeze = 0 .8 · Ttotal . The total loss is: 
+
+Ltotal = α(t) · (Lreg + Lentropy ) + (1 − α(t)) · L drift , (10) with Ldrift (Eq. 8), Lreg (Eq. 3), and Lentropy (Eq. 5). Accordingly, the training process is divided into two phases: 
+
+Phase I ( t ≤ Tfreeze ): Joint optimization. α(t) decays linearly from α0 to 0. We initialize α0<1 (0.95 rather than 1) so that the drifting decoder receives a small supervisory signal from the beginning, avoiding cold-start collapse. During this phase, the AR prior is optimized with Lreg and Lentropy , while the drifting de-coder simultaneously learns to correct the evolving source distribution q toward the target distribution p. By the end of Phase I, the AR-induced prior q becomes sufficiently stable for subsequent drifting-field optimization. 
+
+Phase II ( t > T freeze ): Pure drifting. α(t) = 0 , so only Ldrift remains active. To keep the source distribution q stationary, the AR prior is frozen in Phase II when constructing x0, preventing Ldrift from back-propagating into the AR mod-ule and avoiding potential gradient leakage introduced by the reparameterization 10 Z. Zou et al. 
+
+(Sec. 4.2). The drifting decoder then optimizes Vp,q over a fixed source distribu-tion q, restoring the stationary-source assumption required by the equilibrium condition of drifting dynamics. 
+
+Context-aware early-stopping for efficient speculation. During specula-tive decoding we monitor the draft’s attention entropy E(r) 
+
+> entropy
+
+to decide when to stop speculation and fall back to the target. We use the shallow -layer en-tropy [36], which correlates with prediction quality and is computationally ef-ficient. When the normalized entropy falls below a threshold, speculation stops and the target model verifies the draft prefix in parallel [11]. The target accepts the longest matching prefix, discards the rest, and continues autoregressive gen-eration from the accepted position. This avoids wasting target forward passes on low-quality draft segments. The threshold τglobal must handle two issues: 
+
+Length normalization. Based on the normalized entropy E(r) 
+
+> entropy
+
+at position r
+
+(denoted as Er ) in Eq. 4, we set a global baseline τglobal = 0 .3 E[Er ] − 0.1 std (Er )
+
+from training statistics, so that the draft acceptance policy is neither overly con-servative nor aggressive, achieving a better balance between generation efficiency and quality. 
+
+Content-aware adaptation. A constant τglobal can trigger premature or late stop-ping in inherently low-entropy regions (e.g., smooth sky). To make the stopping criterion content-aware, we set the threshold based on the target model’s nor-malized entropy. Specifically, at context length c we compute the target entropy 
+
+ˆEtarget  
+
+> c
+
+and maintain an EMA ¯Er 
+
+> target
+
+= 0 .9 ¯Er 
+
+> target
+
++ 0 .1 Er 
+
+> target
+
+with initialization 
+
+¯Etarget  
+
+> 0
+
+= τglobal /γ . We then define a dynamic stopping threshold τc = γ · ¯Etarget 
+
+> c
+
+where γ=0 .8. We stop speculation when the draft entropy Er 
+
+> entropy
+
+< τ c. The threshold thus tightens in complex, high-entropy regions and relaxes in smooth ones, with no extra cost because the target already computes entropy during verification. 
+
+## 5 Experiments 
+
+5.1 Implementation Details 
+
+To validate the effectiveness of Drift-AR, we conduct extensive experiments on representative AR-Diffusion hybrids. We cover a broad range of architectures: MAR [13], TransDiff [42], and NextStep-1 [31]. Our method achieves 1-NFE 
+
+for the visual decoding stage: the drift-based decoder performs a single forward pass at inference, without timestep or iterative denoising. 
+
+Baselines. We compare against the original implementations and state-of-the-art acceleration methods. For AR acceleration: vanilla speculative decoding (SD) and LazyMAR [37] (MAR-specific). For diffusion acceleration: standalone DMD [39]. All DMD and LazyMAR results use their official configurations; SD uses 6-layer draft models initialized from the target, consistent across baselines. 
+
+Drift-AR training. We train the drifting field and AR components end-to-end in a single pipeline (no separate CD/DMD stages). For TransDiff: the draft AR has 6 transformer blocks; the drifting decoder replaces the original DiT with our Drift-AR: Single-Step Visual AR via Drifting 11 
+
+Table 1: Class-conditional generation on ImageNet 256 ×256. Drift-AR achieves the highest speedup while matching or improving FID and IS across all model scales.                                                                     
+
+> Method Latency/s Speedup FID ↓IS ↑
+> MAR [13] MAR-L [13] 5.31 1.00 1.78 296.0 MAR-L [13] + DMD [39] 1.99 2.67 1.81 295.5 MAR-L [13] + LazyMAR [37] 2.29 2.32 1.93 297.4 MAR-L [13] + Ours 0.96 5.53 1.76 297.4
+> MAR-H [13] 9.97 1.00 1.55 303.7 MAR-H [13] + DMD [39] 4.17 2.39 1.73 301.0 MAR-H [13] + LazyMAR [37] 4.24 2.35 1.69 299.2 MAR-H [13] + Ours 1.93 5.16 1.53 304.6
+> TransDiff [42] TransDiff-L [42] 3.17 1.00 1.61 295.1 TransDiff-L [42] + SD [15] 1.75 1.81 1.88 283.6 TransDiff-L [42] + DMD [39] 1.61 1.97 1.79 288.3 TransDiff-L [42] + Ours 0.64 4.96 1.61 295.8
+> TransDiff-H [42] 6.72 1.00 1.55 297.9 TransDiff-H [42] + SD [15] 3.52 1.91 1.68 291.1 TransDiff-H [42] + DMD [39] 3.48 1.93 1.71 289.9 TransDiff-H [42] + Ours 1.33 5.06 1.57 298.1
+
+drift-based generator. Phase I spans 80% of total epochs ( Tfreeze = 0 .8 · Ttotal )with α linearly decaying from 0.95 to 0; Phase II freezes the AR and optimizes only Ldrift . Key hyperparameters: σmax = 0 .5, τσ = 2 .0, Emax estimated from training entropy; kernel temperatures τ ∈ { 0.02 , 0.05 , 0.2}. Optimizer: AdamW (lr = 1 × 10 −4, batch size 32 for ImageNet). All models are evaluated following the original papers. ImageNet: FID [9], IS [23], latency on 50,000 images. Text-to-image: GenEval [7], FID and CLIP on MJHQ-30K [12]. 
+
+5.2 Comparison ImageNet 256 ×256 (Class-Conditional). As shown in Table 1, Drift-AR consistently delivers the highest speedup while maintaining or improving gener-ation quality. For MAR , our method attains 5.53 × and 5.16 × speedup on MAR-L and MAR-H respectively. On MAR-L, we improve both FID (1.76 vs. baseline 1.78) and IS (297.4 vs. 296.0); on MAR-H, we improve FID (1.53 vs. 1.55) and IS (304.6 vs. 303.7), with both metrics surpassing DMD and LazyMAR. DMD and LazyMAR achieve only ∼2.4 × speedup with degraded or marginal quality. For TransDiff , Drift-AR reaches 4.96 × and 5.06 × speedup on the L and H vari-ants. We improve IS (295.8, 298.1) relative to the baseline (295.1, 297.9). Vanilla SD suffers severe quality collapse (IS drops to 283.6 and 291.1); DMD improves speed but degrades FID/IS. The key advantage is 1-NFE visual decoding: our drift-based generator dispenses with iterative denoising entirely, whereas DMD still requires multi-step or distilled sampling. 
+
+Text-to-Image (NextStep-1). On GenEval and MJHQ-30K (Table 2), Drift-AR achieves 3.81 × speedup with GenEval 0.66, FID 6.66, and CLIP 29.02—all superior to the baseline (0.63, 6.71, 28.67). SD reaches 2.03 × but loses quality (FID 6.90, CLIP 27.96); DMD collapses (FID 8.33, CLIP 25.19). Qualitative 12 Z. Zou et al. Teacher  
+
+> (1.00x)
+> Ours
+> (3.81x)
+> Speculative
+> Decoding
+> (2.03 x)
+> Diffusion
+> Distillation
+> (1 .66x)
+> Fig. 4: Visual comparisons with NextStep-1 [31] on MJHQ-30K [12].
+
+comparisons in Fig. 4 confirm that our method preserves fine-grained details and semantic consistency while dramatically reducing latency. 
+
+5.3 Ablation Study 
+
+We ablate five key components on TransDiff-H, with all other settings consistent with our full framework. Refer to the supplementary material for more details. 
+
+A: Ablating Entropy Parameterization. We replace the entropy-parameterized variance σ2(Eentropy ) with a constant variance for the initial drifting state, test-ing whether entropy as the physical variance is essential for the drifting field’s equilibrium. 
+
+B: Ablating Stage-Wise Loss Reweighting. We fix α = 0 .5 throughout training instead of the dynamic annealing α(t), examining whether adaptive reweighting is necessary to coordinate AR and drifting-field components. 
+
+C: Ablating the Anti-Symmetric Kernel Objective. We keep only the 
+
+attraction term and remove the repulsion term (non-antisymmetric variant). The resulting field no longer satisfies q=p ⇒ V =0 , so drift need not vanish at equilibrium. 
+
+D: Ablating Entropy-Based Early Stopping in Inference. We disable entropy monitoring during speculative decoding, assessing whether the early stopping mechanism mitigates residual low-quality draft output. 
+
+E: Ablating Prior Freezing in Phase II. We allow Ldrift gradients to back-propagate through the AR module in Phase II (i.e., we do not detach zAR and 
+
+E), testing the “moving prior” hypothesis. Drift-AR: Single-Step Visual AR via Drifting 13 
+
+Table 2: (left) Text-to-image comparison on GenEval and MJHQ-30K. (right) Abla-tion study on TransDiff-H (ImageNet 256 ×256): removing entropy parameterization (A) causes the largest degradation, validating entropy as the core design.                                              
+
+> Method Speedup GenEval ↑FID ↓CLIP ↑
+> NextStep-1 [31] 1.00 0.63 6.71 28.67 NextStep-1 [31] + SD [15] 2.03 0.63 6.90 27.96 NextStep-1 [31] + DMD [39] 1.66 0.59 8.33 25.19 NextStep-1 [31] + Ours 3.81 0.66 6.66 29.02
+> Method FID ↓IS ↑
+> TransDiff-H 1.55 297.9 Ours w/o A1.72 289.3 Ours w/o B1.69 292.6 Ours w/o C1.69 291.8 Ours w/o D1.62 295.5 Ours w/o E1.67 291.9 Ours (full) 1.57 298.1
+
+Analysis of Ablation Results (Table 2). Removing any component degrades both FID and IS. w/o A (entropy parameterization) produces the largest degra-dation: FID rises to 1.72 and IS drops to 289.3. This is the most critical abla-tion, as it directly validates the core thesis that entropy should parameterize the drifting prior: without entropy-driven variance, the drifting field receives a fixed-variance prior that cannot adapt to local generation difficulty (cf. Fig. 2(c)(d)). 
+
+w/o B (stage-wise reweighting): FID 1.69, IS 292.6. Fixing α=0 .5 prevents the AR prior from stabilizing before Phase II; the drifting field is trained against a moving prior, undermining the equilibrium condition. w/o C (anti-symmetric kernel): FID 1.69, IS 291.8. The non-antisymmetric variant lacks the guarantee 
+
+q=p ⇒ V =0 , leading to residual drift at convergence and lower-quality 1-NFE samples. w/o D (early stopping): FID 1.62, IS 295.5. Disabling context-aware early stopping allows low-quality or overconfident draft outputs to propagate, increasing rejection overhead and slightly degrading diversity. w/o E (prior freez-ing): FID 1.67, IS 291.9. Allowing drift gradients to update the AR in Phase II creates a moving prior that destabilizes the drifting field; the equilibrium con-dition q=p ⇒ V =0 is never satisfied stably, leading to noticeable quality degra-dation. The full model (1.57 FID, 298.1 IS) confirms that all five components contribute to the final performance. 
+
+5.4 Analysis Decoder Step Analysis. A natural question is whether the drifting decoder truly needs only one forward pass. Table 3 compares three decoder types on TransDiff-H at varying step counts. TransDiff uses 20 denoising steps by default. The original decoder degrades rapidly when fewer steps are used, collapsing to FID 14.72 at 1 step. DMD recovers quality through distillation but still yields FID 2.93 at 1 step. In contrast, our drifting decoder achieves FID 1.57 at 1 step— on par with the 20-step diffusion baseline—confirming that the anti-symmetric drifting field concentrates the generative capacity into a single pass. 
+
+Sensitivity to σmax . The maximum variance σmax in Eq. 6 controls the range of entropy-to-variance mapping. Table 4 shows that performance is robust across a moderate range ( 0.3–0.7), peaking at σmax =0 .5. Too small a value ( 0.1) col-lapses the prior toward a Dirac delta, depriving the drifting field of sufficient 14 Z. Zou et al. 
+
+Table 3: Decoder step analysis on TransDiff-H (ImageNet 256 ×256). Our drifting decoder at 1 step matches the 20-step diffusion baseline, while DMD still degrades significantly at 1 step.                                       
+
+> Decoder Steps Latency/s Speedup FID ↓IS ↑
+> Diffusion 20 (default) 6.72 1.00 ×1.55 297.9 Diffusion 82.85 2.36 ×2.34 279.8 Diffusion 41.65 4.07 ×3.89 261.5 Diffusion 11.28 5.25 ×14.72 148.3 DMD [39] 41.85 3.63 ×2.11 282.9 DMD [39] 11.30 5.17 ×2.93 273.2 Drifting (Ours) 1 1.33 5.06 ×1.57 298.1
+
+Table 4: Sensitivity to σmax on TransDiff-H (ImageNet 256 ×256). Performance is robust across 0.3–0.7; extremes hurt by under- or over-spreading the entropy-parameterized prior. 
+
+σmax 0.1 0.3 0.5 0.7 1.0 
+
+FID ↓ 1.68 1.58 1.57 1.57 1.64 
+
+IS ↑ 292.7 296.5 298.1 296.3 293.1 
+
+randomness to cover the data manifold. Too large a value ( 1.0) produces an overly diffuse prior that demands excessive drift, degrading quality. 
+
+Entropy–Prediction Error Correlation. Fig. 2(c)(d) quantifies the relation-ship between per-position AR entropy E(r) and prediction error ∥z(r) 
+
+> AR
+
+− x(r) 
+
+> gt
+
+∥ on the ImageNet validation set. The scatter plot shows a clear positive correlation (Pearson r=0 .64 ), and the binned analysis confirms that mean error increases monotonically with entropy. This validates our entropy-parameterized variance: positions where the AR model is uncertain are precisely those where the de-coder must apply the strongest correction, and our mapping (Eq. 6) allocates prior spread accordingly. 
+
+## 6 Discussion and Conclusion 
+
+We show that the per-position prediction entropy of continuous-space AR mod-els, a signal previously overlooked, simultaneously governs draft quality in spec-ulative decoding and encodes local generation difficulty for visual decoding. This dual role makes entropy the natural unifying principle for accelerating AR-Diffusion hybrids. Drift-AR exploits this by (1) aligning draft–target en-tropy distributions for efficient speculation, and (2) reinterpreting entropy as the physical variance of an anti-symmetric drifting field, achieving 1-NFE visual decoding without distillation. Experiments on MAR, TransDiff, and NextStep-1 demonstrate 3.8–5.5 × speedup while matching or surpassing original quality. 
+
+Limitations. The entropy estimation relies on attention-map statistics, whose quality may degrade under distribution shift or for architectures without causal Drift-AR: Single-Step Visual AR via Drifting 15 
+
+attention. The two-phase annealed training requires a longer schedule than stan-dard distillation to stabilize the prior before drifting-field optimization. Extend-ing the framework to video or higher-resolution generation, where spatial entropy patterns become more complex, remains future work. 
+
+## References 
+
+1. Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I., Aleman, F.L., Almeida, D., Altenschmidt, J., Altman, S., Anadkat, S., et al.: Gpt-4 technical report. arXiv preprint arXiv:2303.08774 (2023) 1 2. Anil, R., Dai, A.M., Firat, O., Johnson, M., Lepikhin, D., Passos, A., Shakeri, S., Taropa, E., Bailey, P., Chen, Z., et al.: Palm 2 technical report. arXiv preprint arXiv:2305.10403 (2023) 1 3. Bolya, D., Fu, C.Y., Dai, X., Zhang, P., Feichtenhofer, C., Hoffman, J.: Token merging: Your vit but faster. arXiv preprint arXiv:2210.09461 (2022) 5 4. Bolya, D., Hoffman, J.: Token merging for fast stable diffusion. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 4599– 4603 (2023) 5 5. Deng, M., Li, H., Li, T., Du, Y., He, K.: Generative modeling via drifting. arXiv preprint arXiv:2602.04770 (2026) 3, 5, 6, 9 6. Esser, P., Rombach, R., Ommer, B.: Taming transformers for high-resolution image synthesis. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 12873–12883 (2021) 2 7. Ghosh, D., Hajishirzi, H., Schmidt, L.: Geneval: An object-focused framework for evaluating text-to-image alignment. Advances in Neural Information Processing Systems 36 , 52132–52152 (2023) 2, 11 8. Gongfan, F., Xinyin, M., Xinchao, W.: Structural pruning for diffusion models. arXiv preprint arXiv:2305.10924 (2023) 5 9. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S.: Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems 30 (2017) 11 10. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 2 11. Leviathan, Y., Kalman, M., Matias, Y.: Fast inference from transformers via spec-ulative decoding (2023), https://arxiv.org/abs/2211.17192 10 12. Li, D., Kamko, A., Akhgari, E., Sabet, A., Xu, L., Doshi, S.: Playground v2. 5: Three insights towards enhancing aesthetic quality in text-to-image generation. arXiv preprint arXiv:2402.17245 (2024) 11, 12 13. Li, T., Tian, Y., Li, H., Deng, M., He, K.: Autoregressive image generation with-out vector quantization. Advances in Neural Information Processing Systems 37 ,56424–56445 (2024) 2, 4, 5, 10, 11 14. Li, Y., Wei, F., Zhang, C., Zhang, H.: Eagle-2: Faster inference of language models with dynamic draft trees. arXiv preprint arXiv:2406.16858 (2024) 2, 5 15. Li, Y., Wei, F., Zhang, C., Zhang, H.: Eagle: Speculative sampling requires re-thinking feature uncertainty. arXiv preprint arXiv:2401.15077 (2024) 2, 3, 5, 7, 11, 13 16. Li, Y., Wei, F., Zhang, C., Zhang, H.: Eagle-3: Scaling up inference acceleration of large language models via training-time test. arXiv preprint arXiv:2503.01840 (2025) 5 16 Z. Zou et al. 17. Lin, S., Wang, A., Yang, X.: Sdxl-lightning: Progressive adversarial diffusion dis-tillation. arXiv preprint arXiv:2402.13929 (2024) 5 18. Lipman, Y., Chen, R.T., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 (2022) 4 19. Liu, D., Zhao, S., Zhuo, L., Lin, W., Qiao, Y., Li, H., Gao, P.: Lumina-mgpt: Illu-minate flexible photorealistic text-to-image generation with multimodal generative pretraining. arXiv preprint arXiv:2408.02657 (2024) 1 20. Liu, X., Gong, C., Liu, Q.: Flow straight and fast: Learning to generate and transfer data with rectified flow. In: International conference on learning representations (2023) 4 21. Lou, J., Luo, W., Liu, Y., Li, B., Ding, X., Hu, W., Cao, J., Li, Y., Ma, C.: To-ken caching for diffusion transformer acceleration. arXiv preprint arXiv:2409.18523 (2024) 5 22. Ren, S., Yu, Q., He, J., Shen, X., Yuille, A., Chen, L.C.: Flowar: Scale-wise autore-gressive image generation meets flow matching. arXiv preprint arXiv:2412.15205 (2024) 2, 4 23. Salimans, T., Goodfellow, I., Zaremba, W., Cheung, V., Radford, A., Chen, X.: Improved techniques for training gans. Advances in neural information processing systems 29 (2016) 11 24. Salimans, T., Ho, J.: Progressive distillation for fast sampling of diffusion models. arXiv preprint arXiv:2202.00512 (2022) 5 25. Shang, Y., Yuan, Z., Xie, B., Wu, B., Yan, Y.: Post-training quantization on dif-fusion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 1972–1981 (2023) 5 26. So, J., Lee, J., Ahn, D., Kim, H., Park, E.: Temporal dynamic quantization for diffusion models. Advances in Neural Information Processing Systems 36 (2024) 5 27. Sohl-Dickstein, J., Weiss, E., Maheswaranathan, N., Ganguli, S.: Deep unsuper-vised learning using nonequilibrium thermodynamics. In: International conference on machine learning. pp. 2256–2264. PMLR (2015) 2 28. Song, Y., Dhariwal, P., Chen, M., Sutskever, I.: Consistency models. In: Interna-tional conference on machine learning. pp. 32211–32252. PMLR (2023) 2 29. Song, Y., Sohl-Dickstein, J., Kingma, D.P., Kumar, A., Ermon, S., Poole, B.: Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 (2020) 2 30. Sun, P., Jiang, Y., Chen, S., Zhang, S., Peng, B., Luo, P., Yuan, Z.: Autoregres-sive model beats diffusion: Llama for scalable image generation. arXiv preprint arXiv:2406.06525 (2024) 1 31. Team, N., Han, C., Li, G., Wu, J., Sun, Q., Cai, Y., Peng, Y., Ge, Z., Zhou, D., Tang, H., et al.: Nextstep-1: Toward autoregressive image generation with contin-uous tokens at scale. arXiv preprint arXiv:2508.10711 (2025) 2, 4, 10, 12, 13 32. Tian, K., Jiang, Y., Yuan, Z., Peng, B., Wang, L.: Visual autoregressive modeling: Scalable image generation via next-scale prediction. Advances in Neural Informa-tion Processing Systems 37 , 84839–84865 (2024) 5 33. Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux, M.A., Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al.: Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971 (2023) 1 34. Van Den Oord, A., Vinyals, O., et al.: Neural discrete representation learning. Advances in neural information processing systems 30 (2017) 2 35. Wang, Y., Ren, S., Lin, Z., Han, Y., Guo, H., Yang, Z., Zou, D., Feng, J., Liu, X.: Parallelized autoregressive visual generation. arXiv preprint arXiv:2412.15119 (2024) 5 Drift-AR: Single-Step Visual AR via Drifting 17 36. Wang, Z., Zhang, R., Ding, K., Yang, Q., Li, F., Xiang, S.: Continuous specula-tive decoding for autoregressive image generation. arXiv preprint arXiv:2411.11925 (2024) 10 37. Yan, F., Wei, Q., Tang, J., Li, J., Wang, Y., Hu, X., Li, H., Zhang, L.: Lazymar: Accelerating masked autoregressive models via feature caching. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 15552–15561 (2025) 10, 11 38. Yin, T., Gharbi, M., Park, T., Zhang, R., Shechtman, E., Durand, F., Freeman, B.: Improved distribution matching distillation for fast image synthesis. Advances in neural information processing systems 37 , 47455–47487 (2024) 2, 5 39. Yin, T., Gharbi, M., Zhang, R., Shechtman, E., Durand, F., Freeman, W.T., Park, T.: One-step diffusion with distribution matching distillation. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 6613– 6623 (2024) 2, 5, 6, 10, 11, 13, 14 40. Yuan, Z., Zhang, H., Lu, P., Ning, X., Zhang, L., Zhao, T., Yan, S., Dai, G., Wang, Y.: Ditfastattn: Attention compression for diffusion transformer models. arXiv preprint arXiv:2406.08552 (2024) 5 41. Zhang, D., Li, S., Chen, C., Xie, Q., Lu, H.: Laptop-diff: Layer pruning and normal-ized distillation for compressing diffusion models. arXiv preprint arXiv:2404.11098 (2024) 5 42. Zhen, D., Qiao, Q., Zheng, X., Yu, T., Wu, K., Zhang, Z., Liu, S., Yin, S., Tao, M.: Marrying autoregressive transformer and diffusion with multi-reference autore-gression. arXiv preprint arXiv:2506.09482 (2025) 2, 4, 5, 10, 11
