@@ -1,0 +1,391 @@
+Title: On the Robustness of Diffusion-Based Image Compression to Bit-Flip Errors
+
+URL Source: https://arxiv.org/pdf/2604.05743v1
+
+Published Time: Wed, 08 Apr 2026 01:19:22 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# On the Robustness of Diffusion-Based Image Compression to Bit-Flip Errors 
+
+## Amit Vaisman *
+
+## Department of Computer Science Technion - Israel Institute of Technology 
+
+> amit.vaisman@campus.technion.ac.il
+
+## Gal Pomerants *
+
+## Department of Computer Science Technion - Israel Institute of Technology 
+
+> galkesten@campus.technion.ac.il
+
+## Raz Lapid Deepkeep Tel Aviv, Israel 
+
+> raz.lapid@deepkeep.ai
+
+## Abstract 
+
+Modern image compression methods are typically opti-mized for the rate–distortion–perception trade-off, whereas their robustness to bit-level corruption is rarely examined. We show that diffusion-based compressors built on the Re-verse Channel Coding (RCC) paradigm are substantially more robust to bit flips than classical and learned codecs. We further introduce a more robust variant of Turbo-DDCM that significantly improves robustness while only minimally affecting the rate–distortion–perception trade-off. Our find-ings suggest that RCC-based compression can yield more resilient compressed representations, potentially reducing reliance on error-correcting codes in highly noisy environ-ments. A reference implementation is available at .
+
+## 1. Introduction 
+
+The field of image compression has undergone a significant transformation in recent years, shifting toward neural-based approaches [ 3, 4, 15 , 24 ]. These methods have enabled a new regime of increased compression, reaching very low bitrates compared to the non-neural methods, while maintaining strong perceptual quality [ 2, 23 ]. More recently, diffusion models have emerged as a powerful paradigm for image com-pression, leveraging learned priors over the natural image manifold [ 11 , 17 , 37 ]. They have been employed through dedicated end-to-end training [ 37 ], adaptation or reuse of pre-trained/foundation generative models [ 11 , 30 ], and even in zero-shot settings [ 13 , 27 , 34 , 35 ]. Collectively, these approaches represent some of the strongest current results on the rate–distortion–perception trade-off in perceptual image compression [8, 17, 30]. 
+
+> *Equal contribution
+
+However, real-world systems face practical challenges that prevent the full utilization of compression methods. One such challenge is the occurrence of bit-flip errors. Bit-flips may affect compressed representations in several scenarios. First, errors can arise during transmission over communi-cation networks, for example due to noisy channels [ 9 , 26 ]. Second, when compressed data is stored, bit-flips may oc-cur as a result of hardware degradation or memory faults over time [ 10 ]. Finally, bit-flips may also be induced inten-tionally through adversarial attacks. For instance, attackers can manipulate stored bit representations in memory using a row-hammer attack [ 21 , 29 ], or deliberately perturb the communication channel to disrupt data transmission [20]. As illustrated in Fig. 1, even a small number of bit-flips in the compressed representation may significantly degrade reconstruction quality, and in extreme cases may render the file undecodable. To mitigate such errors, practical systems typically employ error-correcting codes (ECC). However, ECC increases the size of the compressed representation and consequently degrades rate-distortion-perception [12]. In this work, we ask a fundamental question: can diffusion-based image compression deliver increased robust-ness as well as increased compression? We first show em-pirically that zero-shot diffusion-based compressors built on the reverse channel coding (RCC) paradigm [ 32 ] are sub-stantially more resilient to bit-flip errors than both classical (non-neural) codecs and trained neural compression meth-ods, maintaining perceptual quality under corruption levels that severely degrade competing bitstreams. We then propose a robust variant of Turbo-DDCM [ 34 ], a recently introduced zero-shot diffusion-based compression method. Our approach, Robust Turbo-DDCM , achieves state-of-the-art robustness to bit flips with only a minor impact on the rate–distortion–perception trade-off (see Appendix A). Under highly noisy channel conditions, our method 
+
+> arXiv:2604.05743v1 [cs.CV] 7 Apr 2026
+
+yields near-identical reconstructions, whereas competing approaches, including the vanilla Turbo-DDCM, exhibit pro-nounced artifacts or fail to preserve comparable quality. Together, these findings show that diffusion-based com-pression can offer not only increased compression, but also strong robustness to bit-level corruption. 
+
+## 2. Related Work & Background 
+
+2.1. Lossy Image Compression 
+
+Lossy image compression aims to minimize the number of bits required to represent an image while allowing irre-versible information loss. Classical codecs, such as JPEG [ 36 ] and BPG [ 5], rely on handcrafted transforms, quantiza-tion, and entropy coding. In contrast, many deep learning-based methods learn the compression process directly, using architectures such as variational autoencoders, GANs, and diffusion models [ 2– 4, 23 , 24 , 30 , 38 ]. More recently, pre-trained diffusion models have been employed in a zero-shot manner for image compression. These include PSC [ 13 ], which constructs an image-adaptive transform using a pre-trained diffusion model, as well as RCC-based methods such as DiffC [ 35 ], DDCM [ 27 ], and Turbo-DDCM [ 34 ], which transmit information that explicitly steers the denoising pro-cess toward a target image. 
+
+2.2. Bit-Flip Errors 
+
+Bit-flip errors (BFEs) occur when a stored or transmitted bit is unintentionally inverted from 0 to 1 or from 1 to 0. Such errors may arise from transmission noise, hardware faults, memory degradation, or external interference [ 22 , 28 ]. In information theory, these effects are typically modeled using a noisy channel , where transmitted symbols may be corrupted before reaching the receiver [31]. To mitigate such errors, communication pipelines typi-cally integrate compression with error protection. Data is first compressed to reduce redundancy and subsequently pro-tected using ECC, which introduces controlled redundancy that enables the receiver to detect or correct corrupted bits [ 12 , 26 ]. This strategy is widely used in practical commu-nication standards such as Wi-Fi [ 19 ], where poor chan-nel conditions may require stronger protection, sometimes adding roughly one redundant bit for every information bit transmitted. In the standard pipeline, where compression is followed by separate error correction, many compression algorithms rely on variable-length entropy coding, such as Huffman or arithmetic coding, to achieve low bitrates [ 22 , 28 ]. In such schemes, a single bit error can disrupt decoding, cause loss of synchronization, and propagate corruption across many subsequent symbols [ 18 ]. By contrast, diffusion RCC-based compression methods such as DDCM and Turbo-DDCM can achieve very low bitrates without additional entropy coding, raising the question of whether introducing entropy coding provides a worthwhile benefit if these methods are more robust to bit-flip errors. 
+
+2.3. DDCM and Turbo-DDCM 
+
+Denoising diffusion probabilistic models (DDPMs) generate samples through a reverse diffusion process [ 16 ]. At each timestep the model predicts the mean of the reverse transition and adds Gaussian noise, 
+
+xt−1 = μt(xt) + σtzt, zt ∼ N (0, I), (1) for t = T + 1 , . . . , 2, while no noise is added at the final step t = 1 .Denoising diffusion codebook model (DDCM) [ 27 ] re-formulates this stochastic reverse transition by replacing the Gaussian noise with a structured selection from reproducible codebooks Ct. Each codebook Ct contains K i.i.d. Gaus-sian noise vectors (“atoms”), 
+
+Ct =
+
+h
+
+z(1)  
+
+> t
+
+, z(2)  
+
+> t
+
+, . . . , z(K)
+
+> t
+
+i
+
+, t = 2 , . . . , T + 1 , (2) and the reverse step becomes 
+
+xt−1 = μt(xt) + σtCt(kt), (3) where kt ∼ Unif( {1, . . . , K }).A key property of DDCM is that it enables zero-shot image compression. Given a target image x0, the encoder computes the denoising residual between x0 and the MMSE estimate ˆx0|t at each timestep t, and selects the atom with maximal correlation with this residual, 
+
+kt = arg max 
+
+> k∈{ 1,...,K }
+
+⟨Ct(k), x0 − ˆx0|t⟩. (4) The resulting sequence of indices (kt)T +1  
+
+> t=2
+
+forms the com-pressed representation. During decompression the same re-verse process (Eq. 3) is executed deterministically using the stored indices. Compression rate is measured in bits per pixel (BPP), defined as the number of transmitted bits di-vided by the number of image pixels. The resulting bitrate of DDCM is 
+
+BPP DDCM = T ⌈log 2 K⌉
+
+number of pixels . (5) Turbo-DDCM [ 34 ] builds on DDCM and introduces a more efficient sparse approximation. At each timestep t, the residual is approximated using a sparse linear combination of M codebook atoms obtained by solving 
+
+s∗ 
+
+> t
+
+= arg min 
+
+> st∈RK
+
+Ctst − (x0 − ˆx0|t) 22 ,
+
+s.t. ∥st∥0 = M, ∀i, (st)i ∈ V ∪ { 0}.
+
+(6) 10 −4            
+
+> Original JPEG BPG ILLM S.C.DiffC T−DDCM Robust Turbo −DDCM
+
+10 −3Figure 1. Image Compression Methods Robustness to Bit-Flip Errors: The figure shows reconstructed images from the Kodak24 dataset after transmission through a noisy channel with bit-flip probabilities of 10 −4 (first row) and 10 −3 (second row). S.C. denotes StableCodec, and T-DDCM denotes Turbo-DDCM. At a bit-flip probability of 10 −4, RCC-based methods (the last three) perform well, whereas the others degrade significantly. At 10 −3, our proposed method, Robust Turbo-DDCM, is the only approach that maintains good reconstruction quality. All methods operate at bit-per-pixel rate, yielding high-fidelity reconstructions in a noise-free channel. 
+
+Here st is a sparse coefficient vector indicating the selected atoms. Due to the near-orthogonality of Gaussian atoms in high-dimensional spaces, this optimization admits an effi-cient closed-form thresholding solution that avoids the itera-tive search required by matching pursuit. The resulting noise is 
+
+z∗ 
+
+> t
+
+= Cts∗
+
+> t
+
+std( Cts∗ 
+
+> t
+
+) , (7) which replaces the stochastic noise in Eq. 1. Turbo-DDCM also introduces a more efficient bitstream protocol to further reduce the bitrate. At each timestep, the encoder transmits an unordered combination of M
+
+atoms from the K-atom codebook, together with their quan-tized coefficients, each encoded using C bits, for a total of 
+
+l
+
+log 2
+
+ KM
+
+m 
+
++ M C bits compared to the original. In addition, the final N denoising steps are replaced by deter-ministic DDIM updates, which act as refinement steps and require no transmitted noise information. Hence, only the first T − N − 1 steps contribute to the bitrate. 
+
+BPP Turbo -DDCM =(T − N − 1) 
+
+l 
+
+log 2
+
+ KM
+
+m 
+
++ M C 
+
+
+
+number of pixels .
+
+(8) 
+
+## 3. Bit-flips Robustness Analysis 
+
+RCC-based diffusion compression methods represent an im-age indirectly, by encoding control signals that guide the denoising trajectory toward the target image rather than stor-ing pixel values or transform coefficients directly. Because the compressed representation affects reconstruction through this iterative generative process, we hypothesize that such methods may exhibit some tolerance to bit errors, so that a limited number of bit flips does not necessarily cause catastrophic reconstruction failure. For example, in Turbo-DDCM, the bitstream specifies, at each denoising step, a sparse approximation of the noise used to steer the reverse diffusion process. Small perturbations in this representa-tion may still yield a similar steering signal and therefore a similar reconstruction trajectory. To test this hypothesis, we evaluate the robustness of sev-eral image compression methods to bit flips by simulating transmission through a Binary Symmetric Channel (BSC) [31 ]. In this model, each bit in the compressed bitstream is independently flipped with probability p, known as the bit error rate (BER), i.e., the probability that a transmitted bit is received incorrectly. For each compression method, we corrupt the compressed bitstream according to this model, decode it using the corresponding decoder, and measure the resulting reconstruction quality. We evaluate BER values of 10 −6, 10 −5, 10 −4, 10 −3, 10 −2, and 10 −1. For each im-age and BER value, we repeat the corruption and decoding process 10 times. To evaluate reconstruction quality, we report metrics cap-turing both distortion and perceptual quality. Distortion is measured using PSNR and LPIPS [ 39 ], while perceptual quality is evaluated using FID [7]. In some cases, bit flips in the compressed bitstream may produce corrupted files that cannot be decoded by the corre-sponding decoder. Such cases are excluded from the image-quality metrics, and the fraction of corrupted files is reported as an additional robustness measure (see Sec. 5). 
+
+## 4. Robust Turbo-DDCM 
+
+When examining the bit-protocol of Turbo-DDCM, it be-comes apparent that the portion encoding the lexicographic order of the chosen atoms is highly sensitive to bit flips. In the original protocol, the selected subset of atoms is encoded as a single lexicographic index representing one combination out of  KM
+
+ possibilities. Consequently, a single bit flip in this index may change the decoded combination entirely, re-sulting in a substantially different set of atoms and therefore a significantly different constructed noise. For example, with K = 8 atoms and selecting M = 3 
+
+atoms, the lexicographic index 0 corresponds to the atom set 
+
+{0, 1, 2}. Flipping the most significant bit changes the index to 32 , which corresponds to the atom set {1, 4, 7}. Thus, a single bit flip can alter multiple atoms simultaneously, leading to large reconstruction errors. In contrast, bit flips in the coefficient portion affect only the corresponding atom coefficient and therefore have a much more localized effect on the constructed noise. To mitigate this failure mode, we propose Robust Turbo-DDCM , which encodes each selected atom independently rather than jointly via a lexicographic index. Specifically, each atom index is encoded separately as an integer in 
+
+{0, . . . , K − 1}. As a result, a bit flip can only corrupt the index of a single atom rather than the entire subset selection. This significantly improves robustness to bit errors. The cost of this modification is an increase in the bit-rate, since encoding atoms independently requires ⌈log 2(K)⌉ bits per atom instead of the more compact lexicographic encod-ing. Denoting by C the number of bits used to encode each atom coefficient, the BPP of Robust Turbo-DDCM is BPP Robust Turbo-DDCM = (T − 1 − N ) ( M ⌈log 2(K)⌉ + M C )
+
+number of pixels .
+
+(9) Here, ⌈log 2(K)⌉ bits encode the index of each selected atom from M atoms and C bits encode its corresponding coeffi-cient. Although the robust protocol requires more bits per atom than the original Turbo-DDCM encoding, this does not nec-essarily lead to a large quality gap under a fixed bit bud-get. Reconstruction quality improves with the number of selected atoms M , but with diminishing returns (see Fig. 3). Thus, while the original protocol can encode more atoms for the same bit budget, the resulting quality gain is limited, whereas the robust protocol provides substantially improved resilience to bit flips as presented in Section 5. This creates a direct trade-off between quality and robustness, allowing the choice of protocol to depend on the application require-ments. 
+
+## 5. Experiments 
+
+5.1. Experimental Setting 
+
+We perform our robustness analysis and evaluate our proposed method on the Kodak24 [ 14 ] and DIV2K [ 1]datasets, using center-cropped images of size 512 × 512 .We compare against several diffusion RCC-based meth-ods, including DDCM [27 ], Turbo-DDCM [ 34 ], and DiffC [ 33 ], implemented using the custom CUDA kernel of DiffC [ 35 ]. We also compare against non-neural codecs such as JPEG [ 36 ] and BPG [ 6], the hybrid autoencoder– GAN method ILLM [ 25 ], and the one-step diffusion-based approach StableCodec [ 40 ]. Based on preliminary visual inspection of reconstruction quality, we evaluate JPEG at 
+
+1.0 BPP, BPG at 0.5 BPP, and the neural-based methods at approximately 0.1 BPP. Full configurations, bitrate-selection details, and method-specific hyperparameters are provided in Table 1. Distortion is measured using PSNR and LPIPS [ 39 ], while perceptual quality is evaluated with FID [ 7 ], computed on 64 × 64 patches following Mentzer et al. [23]. 
+
+5.2. Experimental Results 
+
+As shown quantitatively in Fig. 2 and qualitatively in Figs. 4 and 5, diffusion RCC-based methods consistently demon-strate superior robustness to bit flips across all datasets and metrics. While conventional codecs and learned compres-sion methods rapidly degrade even at low BER, RCC-based approaches maintain stable performance over a wide noise range. In particular, our Robust Turbo-DDCM exhibits near-immunity to channel noise, with minimal degradation ob-served up to BER 10 −3, where all other methods fail. PSNR for non-RCC methods drops sharply already at BER ∼ 10 −5–10 −4, whereas RCC-based methods degrade much more gradually. Our method consistently achieves the highest PSNR across almost all BER values. Similarly, FID increases rapidly for standard methods, reflecting se-vere distributional shifts, while RCC-based methods exhibit significantly slower growth. Our robust variant maintains the lowest FID for almost all BER values, indicating better preservation of global image structure and semantics under noise. The gap is most pronounced in the “% Corrupted Files” metric. Non-RCC methods undergo a sharp failure transition, reaching more than 80% corrupted outputs around BER 
+
+10 −2. In contrast, RCC-based methods largely avoid failures, with our approach maintaining zero corrupted files across the entire BER range. These results highlight the robustness of RCC-based compression and establish our method as a reliable solution for transmission over noisy channels. We further analyze the rate–distortion–perception trade-10                                 
+
+> 15
+> 20
+> 25
+> 30
+> Kodak24 512
+> PSNR ↑
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> LPIPS ↓
+> 10 2
+> FID (log scale) ↓
+> 0%
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> % Corrupted Files ↓
+> 10 510 310 1
+> BER (log scale)
+> 10
+> 15
+> 20
+> 25
+> DIV2K 512
+> 10 510 310 1
+> BER (log scale)
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 10 510 310 1
+> BER (log scale)
+> 10 2
+> 10 510 310 1
+> BER (log scale)
+> 0%
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> JPEG BPG ILLM StableCodec DiffC DDCM Turbo-DDCM Robust Turbo-DDCM VAE Bound
+
+Figure 2. Quantitative Results: We compare the bit-flip robustness of several image compression methods, including non-neural, trained neural, and diffusion-based RCC methods, by evaluating distortion (PSNR or LPIPS) and perception (FID) across multiple BER values. Overall, RCC-based methods outperform the others, with Robust Turbo-DDCM demonstrating particularly strong robustness. The dashed vertical line in each subplot indicates the encoder–decoder distortion bound imposed by SD 2.1, obtained by passing clean images through the encoder–decoder without compression. Since all compared RCC-based methods rely on SD 2.1, they are all subject to this distortion bound. 20       
+
+> 22
+> 24
+> 26
+> Kodak24 512
+> PSNR ↑
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> LPIPS ↓
+> 30
+> 40
+> 50
+> 60
+> FID ↓
+> 10 −210 −1
+> Bits per pixel
+> 18
+> 20
+> 22
+> 24
+> DIV2K 512
+> 10 −210 −1
+> Bits per pixel
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 10 −210 −1
+> Bits per pixel
+> 30
+> 40
+> 50
+> 60
+
+DDCM DiffC Turbo − DDCM Robust Turbo − DDCM VAE Bound 
+
+Figure 3. Rate-Distortion-Perception Tradeoff: Robust Turbo-DDCM increases the bits per pixel compared to Turbo-DDCM. While it significantly improves robustness, it exhibits inferior rate–distortion–perception performance. 
+
+off of RCC-based methods in Fig. 3. While Turbo-DDCM and DiffC achieve the best performance in terms of distor-tion and perceptual quality at a given bitrate, Robust Turbo-DDCM exhibits a modest degradation due to its more redun-dant encoding scheme. This reflects an inherent trade-off: increased robustness to bit flips comes at the cost of a slight reduction in compression efficiency. 
+
+## 6. Discussion 
+
+Our results highlight a relatively underexplored aspect of neural image compression: robustness to bit-level corruption. Although such errors are typically mitigated using ECC, our experiments show that diffusion-based methods built on the RCC paradigm are more robust than classical and learned codecs across multiple noise levels. More broadly, these findings suggest that RCC-based compression may motivate moving beyond the standard pipeline of first compressing and then separately protecting the bitstream. Because the JPEG BPG ILLM StableCodec                  
+
+> DiffC DDCM Turbo −DDCM Robust Turbo −DDCM
+> Original JPEG BPG ILLM StableCodec
+> DiffC DDCM Turbo −DDCM Robust Turbo −DDCM
+> Original
+
+Figure 4. Qualitative Results: The presented reconstructions are based on images from the Kodak24 ( 512 × 512 ) dataset under a BER of 
+
+10 −4. While other methods produce reconstructions that aren’t resemble the original image, RCC-based methods maintains high fidelity. JPEG BPG ILLM StableCodec 
+
+DiffC DDCM Turbo − DDCM Robust Turbo − DDCM 
+
+Original JPEG BPG ILLM 
+
+> Corrupted
+> File
+> Corrupted
+> File
+
+StableCodec 
+
+DiffC DDCM Turbo − DDCM Robust Turbo − DDCM 
+
+Original Figure 5. Qualitative Results: The presented reconstructions are based on images from the Kodak24 ( 512 × 512 ) dataset under a BER of 
+
+10 −3. While other methods produce reconstructions that no longer resemble the original image, our method maintains high visual fidelity. compressed representation itself is more resilient to cor-ruption, it may be possible to use weaker ECC while still maintaining acceptable reconstructions when some bit errors remain. In addition, we show that the encoding protocol itself plays an important role in robustness. In Turbo-DDCM, a single corrupted lexicographic index may change the entire selected atom set, making the representation sensitive to bit flips. Robust Turbo-DDCM mitigates this issue by encoding atom indices independently, which localizes the impact of bit errors. This modification has only a small impact on the rate–distortion–perception trade-off, while substantially improving robustness to bit-level corruption. Our study has several limitations. First, we evaluate ro-bustness using a Binary Symmetric Channel with indepen-dent bit flips, whereas real communication channels may exhibit burst or other structured errors. Second, some of the evaluated methods use entropy coding, which increases sensitivity to bit flips, whereas DDCM, Turbo-DDCM, and Robust Turbo-DDCM do not. This makes it difficult to fully disentangle the contribution of the underlying representa-tion from that of the encoding scheme. Still, we observe robustness differences both among entropy-coded methods and among non-entropy-coded methods, suggesting that the advantage of Robust Turbo-DDCM is not solely due to the absence of entropy coding. These limitations could be ad-dressed in future work. 
+
+## References 
+
+[1] Eirikur Agustsson and Radu Timofte. NTIRE 2017 challenge on single image super-resolution: Dataset and study. In Proceedings of the IEEE conference on computer vision and pattern recognition workshops ,pages 126–135, 2017. 4 [2] Eirikur Agustsson, Michael Tschannen, Fabian Mentzer, Radu Timofte, and Luc Van Gool. Gener-ative adversarial networks for extreme learned image compression. In Proceedings of the IEEE/CVF interna-tional conference on computer vision , pages 221–231, 2019. 1, 2 [3] Johannes Ballé, Valero Laparra, and Eero P Simoncelli. End-to-end optimized image compression. In Interna-tional Conference on Learning Representations , 2017. 1[4] Johannes Ballé, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston. Variational image compression with a scale hyperprior. In International Conference on Learning Representations , 2018. 1, 2 [5] Fabrice Bellard. BPG image format. https:// bellard.org/bpg/ , 2018. Accessed: 2026-03-11. 2 [6] Fabrice Bellard. BPG image format, 2018. 4 [7] Mikołaj Bi´ nkowski, Dougal J. Sutherland, Michael Ar-bel, and Arthur Gretton. Demystifying MMD GANs. In International Conference on Learning Representa-tions , 2018. 3, 4 [8] Yochai Blau and Tomer Michaeli. Rethinking lossy compression: The rate-distortion-perception tradeoff. In Proceedings of the 36th International Conference on Machine Learning , pages 675–685. PMLR, 2019. 1 [9] Eirina Bourtsoulatze, David Burth Kurka, and Deniz Gündüz. Deep joint source-channel coding for wireless image transmission. IEEE Transactions on Cognitive Communications and Networking , 5(3):567–579, 2019. 1[10] Yu Cai, Yixin Luo, Erich F Haratsch, Ken Mai, and Onur Mutlu. Data retention in mlc nand flash memory: Characterization, optimization, and recovery. In 2015 IEEE 21st International Symposium on High Perfor-mance Computer Architecture (HPCA) , pages 551–563. IEEE, 2015. 1 [11] Marlene Careil, Matthew J Muckley, Jakob Verbeek, and Stéphane Lathuilière. Towards image compression with perfect realism at ultra-low bitrates. In The Twelfth International Conference on Learning Representations ,2023. 1 [12] Kristy Choi, Kedar Tatwawadi, Aditya Grover, Tsachy Weissman, and Stefano Ermon. Neural joint source-channel coding, 2019. 1, 2 [13] Noam Elata, Tomer Michaeli, and Michael Elad. Psc: Posterior sampling-based compression. arXiv preprint arXiv:2407.09896 , 2024. 1, 2 [14] Rich Franzen. Kodak lossless true color image suite. 
+
+source: http://r0k. us/graphics/kodak , 1999. 4 [15] Dailan He, Ziming Yang, Weikun Peng, Rui Ma, Hong-wei Qin, and Yan Wang. Elic: Efficient learned im-age compression with unevenly grouped space-channel contextual adaptive coding. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 5718–5727, 2022. 1 [16] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neu-ral Information Processing Systems , pages 6840–6851. Curran Associates, Inc., 2020. 2 [17] Emiel Hoogeboom, Eirikur Agustsson, Fabian Mentzer, Luca Versari, George Toderici, and Lucas Theis. High-fidelity image compression with score-based generative models. arXiv preprint arXiv:2305.18231 , 2023. 1 [18] Abir Jaafar Hussain, Ali Al-Fayadh, and Naeem Radi. Image compression techniques: A survey in lossless and lossy algorithms. Neurocomputing , 300:44–69, 2018. 2 [19] IEEE. Ieee standard for information technol-ogy—telecommunications and information exchange between systems local and metropolitan area net-works—specific requirements part 11: Wireless lan medium access control (mac) and physical layer (phy) specifications, 2020. 2 [20] Brian Kim, Yalin E Sagduyu, Kemal Davaslioglu, Tugba Erpek, and Sennur Ulukus. Channel-aware ad-versarial attacks against deep learning-based wireless signal classifiers. IEEE Transactions on Wireless Com-munications , 21(6):3868–3880, 2021. 1 [21] Yoongu Kim, Ross Daly, Jeremie Kim, Chris Fallin, Ji Hye Lee, Donghyuk Lee, Chris Wilkerson, Konrad Lai, and Onur Mutlu. Flipping bits in memory with-out accessing them: an experimental study of dram disturbance errors. In Proceeding of the 41st Annual International Symposium on Computer Architecuture ,page 361–372. IEEE Press, 2014. 1 [22] David J. C. MacKay. Information Theory, Inference and Learning Algorithms . Cambridge University Press, Cambridge, UK, 2003. 2 [23] Fabian Mentzer, George D Toderici, Michael Tschan-nen, and Eirikur Agustsson. High-fidelity generative image compression. Advances in neural information processing systems , 33:11913–11924, 2020. 1, 2, 4 [24] David Minnen, Johannes Ballé, and George D Toderici. Joint autoregressive and hierarchical priors for learned image compression. Advances in neural information processing systems , 31, 2018. 1, 2 [25] Matthew J Muckley, Alaaeldin El-Nouby, Karen Ull-rich, Hervé Jégou, and Jakob Verbeek. Improving statistical fidelity for neural image compression with implicit local likelihood models. In International Con-ference on Machine Learning , pages 25426–25443. PMLR, 2023. 4 [26] Mostafa Naseri, Pooya Ashtari, Mohamed Seif, Eli De Poorter, H Vincent Poor, and Adnan Shahid. Deep learning-based image compression for wireless com-munications: impacts on reliability, throughput, and latency. arXiv preprint arXiv:2411.10650 , 2024. 1, 2 [27] Guy Ohayon, Hila Manor, Tomer Michaeli, and Michael Elad. Compressed image generation with denoising diffusion codebook models. In Forty-second International Conference on Machine Learning , 2025. 1, 2, 4 [28] John G. Proakis and Masoud Salehi. Digital Commu-nications . McGraw-Hill, New York, 5 edition, 2008. 2[29] Adnan Siraj Rakin, Zhezhi He, and Deliang Fan. Bit-flip attack: Crushing neural network with progressive bit search. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision , pages 1211– 1220, 2019. 1 [30] Lucas Relic, Roberto Azevedo, Markus Gross, and Christopher Schroers. Lossy image compression with foundation diffusion models. In European Conference on Computer Vision , pages 303–319. Springer, 2024. 1, 2 [31] Claude E. Shannon. A mathematical theory of commu-nication. ACM SIGMOBILE Mobile Computing and Communications Review , 5(1):3–55, 2001. 2, 3 [32] Lucas Theis and Noureldin Yosri. Algorithms for the communication of samples, 2022. 1 [33] Lucas Theis, Tim Salimans, Matthew D Hoffman, and Fabian Mentzer. Lossy compression with gaussian diffusion. arXiv preprint arXiv:2206.08889 , 2022. 4 [34] Amit Vaisman, Guy Ohayon, Hila Manor, Michael Elad, and Tomer Michaeli. Turbo-ddcm: Fast and flexible zero-shot diffusion-based image compression, 2025. 1, 2, 4 [35] Jeremy Vonderfecht and Feng Liu. Lossy compression with pretrained diffusion models. In The Thirteenth International Conference on Learning Representations ,2025. 1, 2, 4 [36] Gregory K. Wallace. The JPEG still picture compres-sion standard. Commun. ACM , 34(4):30–44, 1991. 2, 4[37] Ruihan Yang and Stephan Mandt. Lossy image com-pression with conditional diffusion models. Advances in Neural Information Processing Systems , 36:64971– 64995, 2023. 1 [38] Ruihan Yang and Stephan Mandt. Lossy image com-pression with conditional diffusion models. Advances in Neural Information Processing Systems , 36, 2024. 2 [39] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. The unreasonable ef-fectiveness of deep features as a perceptual metric. In 
+
+CVPR , 2018. 3, 4 [40] Tianyu Zhang, Xin Luo, Li Li, and Dong Liu. Stable-codec: Taming one-step diffusion for extreme image compression. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision (ICCV) , pages 17379–17389, 2025. 4 Appendix A. Experimental Configurations and Additional Results 
+
+In this section, we first summarize the configurations of all evaluated compression methods in Table 1. To determine the target bitrate for each method, we first performed a manual search for operating points that did not introduce clear visible artifacts in the reconstructed images. Based on this preliminary inspection, we used higher bitrates for the classical codecs, namely 1.0
+
+BPP for JPEG and 0.5 BPP for BPG. For the remaining neural-based methods, we targeted a bitrate of approximately 0.1 BPP, which provided a reasonable trade-off between compression and perceptual quality. In addition, Tables 2 and 3 provide the exact results from Fig. 2. 
+
+Table 1. Experimental configurations for the evaluated compression methods. 
+
+Method Representation Hyperparameters BPP setting Entropy JPEG Quantized DCT coefficients from a fixed transform on each 8 × 8 block Quality parameter q Target BPP = 1 .0; per-image binary search on q
+
+Yes BPG Block prediction information and quantized HEVC residual transform coefficients Quality parameter q Target BPP = 0 .5; per-image binary search on q
+
+Yes ILLM Quantized learned encoder outputs Pretrained model 
+
+msillm_quality_2 
+
+Fixed by pretrained model ( 0.07 BPP) Yes StableCodec Quantized learned latent features decoded via one-step diffusion 
+
+stablecodec_ft2 
+
+checkpoint (highest available publicly) 
+
+≈ 0.035 BPP; fixed by pretrained model Yes DiffC RCC-based seeds defining Gaussian noise for each image patch and reverse-diffusion step Stable Diffusion 2.1; reconstruction timestep 20 
+
+≈ 0.1 BPP Yes DDCM RCC-based indices of selected Gaussian codebook atoms with coefficients Stable Diffusion 2.1; 
+
+T = 1000 , K = 8192 ,
+
+M = 2 , C = 3 
+
+Fixed image size; binary search over 
+
+M for ≈ 0.1 BPP No Turbo-DDCM RCC-based indices of selected Gaussian codebook atoms with coefficients; atoms jointly encoded as one lexicographic index over  KM
+
+ subsets Stable Diffusion 2.1; 
+
+T = 30 , K = 16384 ,
+
+M = 114 , C = 1 
+
+Fixed image size; binary search over 
+
+M for ≈ 0.1 BPP No Robust Turbo-DDCM RCC-based indices of selected Gaussian codebook atoms with coefficients; unlike Turbo-DDCM, the M atoms are encoded separately Stable Diffusion 2.1; 
+
+T = 30 , K = 16384 ,
+
+M = 73 , C = 1 
+
+Fixed image size; binary search over 
+
+M for ≈ 0.1 BPP No 
+
+Table 2. Exact aggregated results for all methods at BER 10 −4. The table reports bit-flip robustness on Kodak24 and DIV2K using PSNR, LPIPS, FID, and the percentage of corrupted output files. Values are mean ± standard deviation, except corrupted files, which are reported as percentages. Bold indicates the best result for each metric and dataset. 
+
+Dataset Method PSNR ↑ LPIPS ↓ FID ↓ % Corrupted Files ↓
+
+Kodak24 JPEG 9.15 ± 2.54 0.75 ± 0.17 157.98 ± 24.56 0.83 BPG 10.43 ± 2.00 0.75 ± 0.11 120.03 ± 4.26 2.08 ILLM 17.43 ± 5.45 0.42 ± 0.22 75.05 ± 5.25 7.08 StableCodec 19.12 ± 4.81 0.38 ± 0.28 57.30 ± 6.82 0.42 DiffC 20.92 ± 4.18 0.29 ± 0.18 33.95 ± 1.74 0.87 DDCM 20.52 ± 3.70 0.30 ± 0.18 40.31 ± 6.17 0.00 
+
+Turbo-DDCM 21.68 ± 4.18 0.25 ± 0.18 31.35 ± 2.53 0.42 Robust Turbo-DDCM 24.05 ± 2.90 0.15 ± 0.07 27.46 ± 0.19 0.00 
+
+DIV2K JPEG 8.52 ± 2.48 0.72 ± 0.17 173.06 ± 7.18 2.20 BPG 9.13 ± 1.84 0.74 ± 0.12 150.19 ± 2.27 1.50 ILLM 15.08 ± 5.11 0.45 ± 0.20 106.93 ± 4.87 9.70 StableCodec 17.01 ± 4.71 0.40 ± 0.28 61.96 ± 5.10 1.70 DiffC 18.62 ± 4.14 0.30 ± 0.18 37.27 ± 1.29 0.80 DDCM 19.04 ± 3.56 0.28 ± 0.17 43.12 ± 1.64 0.00 
+
+Turbo-DDCM 20.17 ± 4.12 0.24 ± 0.17 34.78 ± 1.59 0.20 Robust Turbo-DDCM 22.03 ± 3.07 0.17 ± 0.08 31.54 ± 0.19 0.00 Table 3. Exact aggregated results for all methods at BER 10 −3. The table reports bit-flip robustness on Kodak24 and DIV2K using PSNR, LPIPS, FID, and the percentage of corrupted output files. Values are mean ± standard deviation, except corrupted files, which are reported as percentages. Bold indicates the best result for each metric and dataset. 
+
+Dataset Method PSNR ↑ LPIPS ↓ FID ↓ % Corrupted Files ↓
+
+Kodak24 JPEG 7.84 ± 2.14 0.98 ± 0.08 420.95 ± 38.97 20.83 BPG 9.33 ± 1.56 0.84 ± 0.08 140.70 ± 6.28 15.83 ILLM 10.12 ± 2.78 0.75 ± 0.10 169.38 ± 9.16 61.67 StableCodec 13.18 ± 3.62 0.74 ± 0.21 129.21 ± 15.79 10.83 DiffC 14.85 ± 3.00 0.62 ± 0.15 57.94 ± 3.53 8.26 DDCM 16.74 ± 2.69 0.52 ± 0.16 76.57 ± 7.09 0.00 
+
+Turbo-DDCM 14.28 ± 3.17 0.66 ± 0.17 70.22 ± 4.81 2.92 Robust Turbo-DDCM 22.57 ± 2.58 0.20 ± 0.08 30.15 ± 0.57 0.00 
+
+DIV2K JPEG 7.47 ± 2.64 0.97 ± 0.10 456.82 ± 35.16 22.60 BPG 8.72 ± 1.77 0.80 ± 0.10 164.36 ± 2.57 17.00 ILLM 9.21 ± 2.59 0.72 ± 0.13 185.79 ± 7.23 64.10 StableCodec 11.28 ± 3.17 0.75 ± 0.21 135.96 ± 4.88 13.00 DiffC 13.48 ± 2.83 0.58 ± 0.15 55.33 5.20 DDCM 15.58 ± 2.67 0.47 ± 0.16 65.78 ± 2.94 0.20 Turbo-DDCM 13.41 ± 3.13 0.62 ± 0.18 77.59 ± 3.36 2.70 Robust Turbo-DDCM 20.74 ± 2.69 0.21 ± 0.09 34.71 ± 0.40 0.00
