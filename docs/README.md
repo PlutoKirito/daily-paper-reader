@@ -6,84 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-08
-- 运行时间：2026-04-08 20:12:28 UTC
+- 最新运行日期：2026-04-09
+- 运行时间：2026-04-09 19:58:40 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日深度研读 21 篇论文，聚焦高吞吐轻量化编解码器 HLC 与扩散模型底层几何原理的突破。
-重点推荐 HLC 带来的高效调色板编码技术，以及通过费舍尔几何对潜空间
-- 详情：[/202604/08/README](/202604/08/README)
+今日精选 21 篇论文，深度聚焦可控生成式视频压缩与多模态大模型的高效剪枝技术。
+满分论文《Controllable Generative Video Compression》与 QAPruner 重新定义了视觉 Token 处理与量化感知的效率边界。
+建议重点关注生成式压缩与轻量化多模态模型的结合，这是提升大模型端侧性能的关键。
+- 详情：[/202604/09/README](/202604/09/README)
 
 ### 精读区论文标签
-1. [HLC: A High-Quality Lightweight Mezzanine Codec Featuring High-Throughput Palette](/202604/08/2603.29864v1-hlc-a-high-quality-lightweight-mezzanine-codec-featuring-high-throughput-palette)  
+1. [Controllable Generative Video Compression](/202604/09/2604.06655v1-controllable-generative-video-compression)  
+   标签：评分：10.0/10、query:vcodec
+   evidence：具有结构先验的可控生成式视频压缩
+2. [QAPruner: Quantization-Aware Vision Token Pruning for Multimodal Large Language Models](/202604/09/2604.02816v1-qapruner-quantization-aware-vision-token-pruning-for-multimodal-large-language-models)  
    标签：评分：9.0/10、query:train-trick
-   evidence：具有率失真优化的高质量轻量级中间编解码器
-2. [Understanding Latent Diffusability via Fisher Geometry](/202604/08/2604.02751v1-understanding-latent-diffusability-via-fisher-geometry)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：VAE潜空间扩散性分析
-3. [Prune-Quantize-Distill: An Ordered Pipeline for Efficient Neural Network Compression](/202604/08/2604.04988v1-prune-quantize-distill-an-ordered-pipeline-for-efficient-neural-network-compression)  
+   evidence：量化与令牌剪枝的联合模型压缩
+3. [Prune-Quantize-Distill: An Ordered Pipeline for Efficient Neural Network Compression](/202604/09/2604.04988v1-prune-quantize-distill-an-ordered-pipeline-for-efficient-neural-network-compression)  
    标签：评分：9.0/10、query:train-trick
-   evidence：剪枝、量化和蒸馏的有序流水线
-4. [On the Robustness of Diffusion-Based Image Compression to Bit-Flip Errors](/202604/08/2604.05743v1-on-the-robustness-of-diffusion-based-image-compression-to-bit-flip-errors)  
+   evidence：结合剪枝、量化感知训练和知识蒸馏的有序流水线
+4. [CWRNN-INVR: A Coupled WarpRNN based Implicit Neural Video Representation](/202604/09/2604.06564v1-cwrnn-invr-a-coupled-warprnn-based-implicit-neural-video-representation)  
    标签：评分：9.0/10、query:vcodec
-   evidence：基于扩散的图像压缩与率失真感知权衡
-5. [Quantization with Unified Adaptive Distillation to enable multi-LoRA based one-for-all Generative Vision Models on edge](/202604/08/2603.29535v1-quantization-with-unified-adaptive-distillation-to-enable-multi-lora-based-one-for-all-generative-vision-models-on-edge)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：边缘端生成式视觉模型的量化与蒸馏
-6. [Prompt-Guided Prefiltering for VLM Image Compression](/202604/08/2604.00314v1-prompt-guided-prefiltering-for-vlm-image-compression)  
+   evidence：用于视频压缩和网格结构的隐式神经视频表示
+5. [A Noise Constrained Diffusion (NC-Diffusion) Framework for High Fidelity Image Compression](/202604/09/2604.06568v1-a-noise-constrained-diffusion-nc-diffusion-framework-for-high-fidelity-image-compression)  
+   标签：评分：9.0/10、query:vcodec
+   evidence：基于扩散模型的图像压缩框架
+6. [Efficient Learned Data Compression via Dual-Stream Feature Decoupling](/202604/09/2604.07239v1-efficient-learned-data-compression-via-dual-stream-feature-decoupling)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：双流解耦的高效学习型数据压缩
+7. [Singular Relative Entropy Coding with Bits-Back Rejection Sampling](/202604/09/2604.06055v1-singular-relative-entropy-coding-with-bits-back-rejection-sampling)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：面向视觉语言模型的提示引导预滤波图像压缩
-7. [Video Patch Pruning: Efficient Video Instance Segmentation via Early Token Reduction](/202604/08/2604.00827v1-video-patch-pruning-efficient-video-instance-segmentation-via-early-token-reduction)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：用于高效ViT部署的视频补丁剪枝
-8. [Don't Waste Bits! Adaptive KV-Cache Quantization for Lightweight On-Device LLMs](/202604/08/2604.04722v1-dont-waste-bits-adaptive-kv-cache-quantization-for-lightweight-on-device-llms)  
+   evidence：相对熵编码与Bits-back拒绝采样
+8. [TC-AE: Unlocking Token Capacity for Deep Compression Autoencoders](/202604/09/2604.07340v1-tc-ae-unlocking-token-capacity-for-deep-compression-autoencoders)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：受哈夫曼编码原理启发的自适应量化
+   evidence：基于ViT的深度压缩自编码器架构与令牌缩放研究
 
 ### 速读区论文标签
-1. [Big2Small: A Unifying Neural Network Framework for Model Compression](/202604/08/2603.29768v1-big2small-a-unifying-neural-network-framework-for-model-compression)  
+1. [Prompt-Guided Prefiltering for VLM Image Compression](/202604/09/2604.00314v1-prompt-guided-prefiltering-for-vlm-image-compression)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：用于任务特定图像压缩的提示引导预过滤
+2. [Video Patch Pruning: Efficient Video Instance Segmentation via Early Token Reduction](/202604/09/2604.00827v1-video-patch-pruning-efficient-video-instance-segmentation-via-early-token-reduction)  
    标签：评分：8.0/10、query:train-trick
-   evidence：包含剪枝、量化和蒸馏的统一模型压缩框架
-2. [PixelPrune: Pixel-Level Adaptive Visual Token Reduction via Predictive Coding](/202604/08/2604.00886v1-pixelprune-pixel-level-adaptive-visual-token-reduction-via-predictive-coding)  
+   evidence：用于提升效率的视频补丁剪枝框架
+3. [A Hierarchical Importance-Guided Multi-objective Evolutionary Framework for Deep Neural Network Pruning](/202604/09/2604.01076v1-a-hierarchical-importance-guided-multi-objective-evolutionary-framework-for-deep-neural-network-pruning)  
    标签：评分：8.0/10、query:train-trick
+   evidence：用于网络剪枝的分层进化框架
+4. [Can Video Diffusion Models Predict Past Frames? Bidirectional Cycle Consistency for Reversible Interpolation](/202604/09/2604.01700v1-can-video-diffusion-models-predict-past-frames-bidirectional-cycle-consistency-for-reversible-interpolation)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于插帧和时间一致性的视频扩散模型
+5. [MMPhysVideo: Scaling Physical Plausibility in Video Generation via Joint Multimodal Modeling](/202604/09/2604.02817v1-mmphysvideo-scaling-physical-plausibility-in-video-generation-via-joint-multimodal-modeling)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：具有时空轨迹建模的视频扩散模型
+6. [Spectral Compact Training: Pre-Training Large Language Models via Permanent Truncated SVD and Stiefel QR Retraction](/202604/09/2604.00733v1-spectral-compact-training-pre-training-large-language-models-via-permanent-truncated-svd-and-stiefel-qr-retraction)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：通过SVD进行频谱紧凑训练以减少内存
+7. [IWP: Token Pruning as Implicit Weight Pruning in Large Vision Language Models](/202604/09/2604.00757v1-iwp-token-pruning-as-implicit-weight-pruning-in-large-vision-language-models)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：将Token剪枝作为视频任务的隐式权重剪枝
+8. [PixelPrune: Pixel-Level Adaptive Visual Token Reduction via Predictive Coding](/202604/09/2604.00886v1-pixelprune-pixel-level-adaptive-visual-token-reduction-via-predictive-coding)  
+   标签：评分：7.0/10、query:train-trick
    evidence：基于预测编码的压缩与剪枝
-3. [DynaVid: Learning to Generate Highly Dynamic Videos using Synthetic Motion Data](/202604/08/2604.01666v1-dynavid-learning-to-generate-highly-dynamic-videos-using-synthetic-motion-data)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：结合合成运动数据与光流的视频扩散模型
-4. [Can Video Diffusion Models Predict Past Frames? Bidirectional Cycle Consistency for Reversible Interpolation](/202604/08/2604.01700v1-can-video-diffusion-models-predict-past-frames-bidirectional-cycle-consistency-for-reversible-interpolation)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：用于帧预测和时间一致性的视频扩散模型
-5. [QAPruner: Quantization-Aware Vision Token Pruning for Multimodal Large Language Models](/202604/08/2604.02816v1-qapruner-quantization-aware-vision-token-pruning-for-multimodal-large-language-models)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：用于模型压缩的量化感知视觉令牌剪枝
-6. [MacTok: Robust Continuous Tokenization for Image Generation](/202604/08/2603.29634v1-mactok-robust-continuous-tokenization-for-image-generation)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：具有结构化潜空间表示和KL正则化的连续图像标记化
-7. [MotionGrounder: Grounded Multi-Object Motion Transfer via Diffusion Transformer](/202604/08/2604.00853v1-motiongrounder-grounded-multi-object-motion-transfer-via-diffusion-transformer)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：用于运动迁移的扩散 Transformer 与基于流的运动信号
-8. [Forecasting Motion in the Wild](/202604/08/2604.01015v1-forecasting-motion-in-the-wild)  
+9. [Forecasting Motion in the Wild](/202604/09/2604.01015v1-forecasting-motion-in-the-wild)  
    标签：评分：7.0/10、query:vcodec
    evidence：用于运动预测和摄像机运动补偿的扩散Transformer
-9. [A Hierarchical Importance-Guided Multi-objective Evolutionary Framework for Deep Neural Network Pruning](/202604/08/2604.01076v1-a-hierarchical-importance-guided-multi-objective-evolutionary-framework-for-deep-neural-network-pruning)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：分层重要性引导的多目标进化深度神经网络剪枝框架
-10. [PolarQuant: Optimal Gaussian Weight Quantization via Hadamard Rotation for LLM Compression](/202604/08/2603.29078v1-polarquant-optimal-gaussian-weight-quantization-via-hadamard-rotation-for-llm-compression)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：用于模型压缩的最佳高斯权重量化
-11. [MotionScale: Reconstructing Appearance, Geometry, and Motion of Dynamic Scenes with Scalable 4D Gaussian Splatting](/202604/08/2603.29296v1-motionscale-reconstructing-appearance-geometry-and-motion-of-dynamic-scenes-with-scalable-4d-gaussian-splatting)  
+10. [MotionGrounder: Grounded Multi-Object Motion Transfer via Diffusion Transformer](/202604/09/2604.00853v1-motiongrounder-grounded-multi-object-motion-transfer-via-diffusion-transformer)  
    标签：评分：6.0/10、query:vcodec
-   evidence：4D重建中的可扩展运动场与运动一致性
-12. [VecAttention: Vector-wise Sparse Attention for Accelerating Long Context Inference](/202604/08/2603.29494v1-vecattention-vector-wise-sparse-attention-for-accelerating-long-context-inference)  
+   evidence：用于视频生成中运动迁移的扩散Transformer
+11. [Multi-Mode Quantum Annealing for Variational Autoencoders with General Boltzmann Priors](/202604/09/2604.00919v1-multi-mode-quantum-annealing-for-variational-autoencoders-with-general-boltzmann-priors)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：具有结构化潜验先验的变分自编码器
+12. [Integer-State Dynamics of Quantized Spiking Neural Networks for Efficient Hardware Acceleration](/202604/09/2604.01042v1-integer-state-dynamics-of-quantized-spiking-neural-networks-for-efficient-hardware-acceleration)  
    标签：评分：6.0/10、query:train-trick
-   evidence：用于加速视频模型的稀疏注意力机制
-13. [Representation Selection via Cross-Model Agreement using Canonical Correlation Analysis](/202604/08/2604.00921v1-representation-selection-via-cross-model-agreement-using-canonical-correlation-analysis)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：高效图像编码器的表示选择与降维
+   evidence：用于硬件加速的量化脉冲神经网络
+13. [EgoFlow: Gradient-Guided Flow Matching for Egocentric 6DoF Object Motion Generation](/202604/09/2604.01421v1-egoflow-gradient-guided-flow-matching-for-egocentric-6dof-object-motion-generation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：视频中物体运动生成的流匹配框架
 
 
 <div class="dpr-home-promo-card">
