@@ -1,0 +1,195 @@
+Title: PhaseFlow4D: Physically Constrained 4D Beam Reconstruction via Feedback-Guided Latent Diffusion
+
+URL Source: https://arxiv.org/pdf/2604.03885v1
+
+Published Time: Tue, 07 Apr 2026 00:56:07 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# PhaseFlow4D: Physically Constrained 4D Beam Reconstruction via Feedback-Guided Latent Diffusion 
+
+# Alexander Scheinker Los Alamos National Laboratory Los Alamos 87545, NM, USA 
+
+ascheink@lanl.gov 
+
+# Alexander Plastun Peter Ostroumov Facility for Rare Isotopes Beams Michigan State University, East Lansing, MI 48824, USA 
+
+{plastun, ostroumo }@frib.msu.edu 
+
+Figure 1. A: FRIB accelerator injector beam plasma source and charge selection system. B: 4D phase space density ρ(x, x ′, y, y ′) of beam initial conditions. Simulating complex space charge-dominated beam dynamics of 13 beam species computationally expensive (6 hours). 4D VAE encodes 128 4 4D density into a low-dimensional latent representation 16 × 16 × 4. C: Latent diffusion conditional input based on beamline settings and non-invasive measurements. D: Latent diffusion maps beamline conditions to full 4D phase space density from which physically consistent 2D projections are made. E: A single generated 2D projection compared with measurement and the difference (F) is minimized by adaptive conditional vector tuning. G: Time-Varying 4D phase space distribution tracked based on 2D measurements. 
+
+# Abstract 
+
+We address the problem of recovering a time-varying 4D distribution from a sparse sequence of 2D projections — analogous to novel-view synthesis from sparse cam-eras, but applied to the 4D transverse phase space den-sity ρ(x, p x, y, p y ) of charged particle beams. Direct sin-gle shot measurement of this high-dimensional distribution is physically impossible in real particle accelerator sys-tems; only limited 1D or 2D projections are accessible. We propose PhaseFlow4D, a feedback-guided latent diffu-sion model that reconstructs and tracks the full 4D phase space from incomplete 2D observations alone, with built-in hard physics constraints. Our core technical contribution is a 4D VAE whose decoder generates the full 4D phase space tensor, from which 2D projections are analytically computed and compared against 2D beam measurements. This projection-consistency constraint guarantees physical 
+
+> arXiv:2604.03885v1 [physics.acc-ph] 4 Apr 2026
+
+correctness by construction — not as a soft penalty, but as an architectural prior. An adaptive feedback loop then con-tinuously tunes the conditioning vector of the latent diffu-sion model to track time-varying distributions online with-out retraining. We validate on multi-particle simulations of heavy-ion beams at the Facility for Rare Isotope Beams (FRIB), where full physics simulations require ∼6 hours on a 100-core HPC system. PhaseFlow4D achieves accurate 4D reconstructions 11000 × faster while faithfully tracking distribution shifts under time-varying source conditions — demonstrating that principled generative reconstruction un-der incomplete observations transfers robustly beyond vi-sual domains. 
+
+# 1. Introduction 
+
+Recovering a complete high-dimensional distribution from a sparse set of lower-dimensional projections is a funda-mental inverse problem with applications spanning compu-tational imaging, scientific simulation, and geometric re-construction. In computer vision, this challenge underlies the problem of novel-view synthesis (NVS) and 3D scene recovery from sparse camera observations, the task of gen-erating images of a scene from previously unobserved view-points. Early work explored image-based approaches such as view interpolation from pairs of images [1], as well as dense ray-based representations including light fields [2] and lumigraphs [3]. Recently, the NVS domain that has seen rapid progress through the combination of learned neu-ral representations with generative modeling priors [4–8]. The central question common to all such settings is how to enforce consistency between the recovered representa-tion and the available observations, while producing recon-structions that are physically or geometrically faithful rather than merely visually plausible. We address an instance of this problem that is strictly harder than its visual coun-terpart: reconstructing the full 4D transverse phase space density ρ(x, p x, y, p y ) of an intense charged particle beam — a time-varying, high-dimensional distribution observable only through a handful of 2D projection measurements. Generative diffusion models have emerged as a power-ful paradigm for high-dimensional reconstruction under in-complete observations. Foundational latent diffusion archi-tectures [9] demonstrate that learning a compressed latent space via a variational autoencoder (VAE) enables stable, high-fidelity generation; conditional guidance mechanisms [10] further allow the denoising process to be steered toward specific targets at inference time. Building on these foun-dations, recent work has extended diffusion-based genera-tion directly to 3D and 4D domains. DiFix3D+ [8] demon-strates that a single-step diffusion model can substantially improve artifact-corrupted 3D reconstructions by acting as a learned prior over plausible geometry, yielding metric-
+
+> Figure 2. Examples of conditional latent diffusion-generated latent embeddings and all 6 unique 2D projections associated with the 4D phase space densities that those latent images are decoded to by the VAE’s decoder.
+
+accurate improvements without iterative optimization. Sim-ilarly, Gen3C [11] shows that 3D-informed conditioning en-ables temporally consistent video generation with precise camera control, revealing how structural 3D priors propa-gate faithfully across time. Object-X [12] further extends the generative paradigm to multi-modal 3D object represen-tations, underscoring the generality of learned latent spaces as reconstruction intermediaries across diverse observation modalities. A parallel and complementary line of work addresses the challenge of reconstruction under sparse or degraded obser-vations. SPARF [5] establishes that neural radiance field op-timization from as few as three input images — with noisy camera poses — is feasible when multi-view geometric con-sistency constraints are folded into the training objective. This principle, that learned representations should be inter-nally consistent with respect to projections under known geometric transformations, is central to our own design. FlowR [7] takes this further, framing the problem of going from sparse to dense 3D reconstructions as a generative flow process that progressively refines incomplete point sets into geometrically complete structures. At the diffusion-for-3D-geometry intersection, P2P-Bridge [13] reformulates point cloud denoising as a Schr¨ odinger bridge problem, learning an optimal transport plan from noisy to clean 3D point sets — a formulation that shares our intuition that geometry re-covery should be cast as a principled probabilistic mapping rather than a regression problem. Despite this progress, existing generative reconstruction methods share a critical implicit assumption: observations consist of rendered images or depth maps from calibrated cameras. In scientific and engineering domains, however, the available measurements are often projections of the underlying distribution in a strictly physical sense — in-tegrals of the full-dimensional density along unmeasured coordinates. No camera or view-synthesis prior applies. For charged particle beams in accelerator systems such as FRIB, direct 4D measurement of the transverse phase space 
+
+ρ(x, p x, y, p y ) is physically impossible: the system is de-structive, high-dimensional, and operates on microsecond timescales. Only 2D marginal projections (beam profile images) are observable, and the beam distribution itself evolves continuously under time-varying source conditions. This setting calls for a reconstruction paradigm centered on metric accuracy, projection consistency, and adaptive online tracking — precisely the goals motivating this workshop — but currently unaddressed by existing methods. The most closely related prior work for charged particle beams [14] used a VAE to map a 2D beam projection to a low-resolution 6D phase space tensor ρ(x, p x, y, p y , z, p z ),followed by a super-resolution diffusion model to refine in-dividual 2D projections from 32 × 32 to 256 × 256 . This two-stage design is conceptually similar to FlowR, in that a generative model is used to upscale an initially coarse reconstruction. Its key limitation, however, is that the super-resolution diffusion model operates on individual 2D projections independently, breaking the hard physics con-straints enforced by the VAE: the refined projections are no longer guaranteed to be marginals of any single consistent 4D or 6D distribution. We propose PhaseFlow4D , a feedback-guided latent diffusion framework that avoids this inconsistency by maintaining a single physically consistent representation throughout. We focus on the 4D transverse phase space 
+
+(x, p x, y, p y ) for two reasons. First, GPU memory con-straints make single-pass generation of full-resolution ten-sors prohibitive in 6D: generating 128 4 tensors on an H100 is already at the limit of feasibility, and scaling to 128 6
+
+would require dedicated HPC resources beyond the scope of this study. Second, the 4D transverse plane captures the dominant dynamical degrees of freedom in the accelerator systems we consider: the longitudinal coordinates (z, p z )
+
+are tightly controlled by the source voltage and are effec-tively known, so recovering (x, p x, y, p y ) is sufficient to re-construct the full 6D distribution in practice. Our approach introduces a 4D VAE whose decoder gen-erates the complete phase space tensor, from which 2D pro-jections are computed analytically and can then be com-pared against real beam measurements. A high level view of our approach is shown in Figure 1. This projection-consistency constraint acts as a hard architectural prior rather than a soft penalty, guaranteeing by construction that all marginal projections of the reconstructed distribution are physically correct. An adaptive feedback mechanism then continuously tunes the conditioning vector of the la-tent diffusion model — analogous in spirit to the pose-NeRF joint refinement of SPARF [5] and the iterative arti-fact correction of DiFix3D+ [8] — enabling online tracking of time-varying distributions without retraining. Validated on multi-particle heavy-ion simulations at FRIB, Phase-Flow4D achieves accurate 4D reconstructions 300 × faster than the physics-based simulator, while faithfully tracking distribution shifts driven by time-varying ECR source con-ditions. Our results demonstrate that the core principles of generative reconstruction under incomplete observations — learned latent spaces, projection consistency, and adaptive conditioning — transfer robustly beyond the visual domain, opening a new frontier for AI-driven scientific diagnostics. Some examples of the latent images and the 2D projec-tions of the resulting 4D phase space density distribution are shown in Figure 2. 
+
+# 2. Background and Related Work 
+
+Latent diffusion models. Latent diffusion models (LDMs) [9] factorize generative modeling into two stages: a variational autoencoder (VAE) that compresses high-dimensional data into a compact latent space, and a denoising diffusion model that learns the prior over that latent space. Conditioning mechanisms, most notably classifier-free guidance (CFG) [10], allow the generative process to be steered at inference time toward a desired target by interpolating between conditional and uncon-ditional score estimates. More recent work has explored 
+
+inference-time optimization of the conditioning signal itself: rather than fixing the condition at the start of sampling, the condition (or the initial noise) is refined online using verifier feedback [15], enabling substantial quality improvements without retraining the model. Phase-Flow4D adopts a closely related philosophy: we treat the conditioning vector c as a free variable to be optimized at deployment time, driven not by a perceptual verifier but by a physically grounded projection-consistency error. 
+
+Generative models for 3D/4D reconstruction. 
+
+Diffusion-based priors have proven effective for 3D reconstruction under incomplete observations. DiFix3D+ [8] shows that a single-step diffusion model can restore artifact-corrupted radiance fields by acting as a learned geometric prior, achieving metric-accurate improve-ments without iterative scene optimization. Gen3C [11] demonstrates that structural 3D conditioning propagates faithfully across time, enabling world-consistent video generation with precise camera control. Object-X [12] extends learned latent representations to multi-modal 3D object recovery, underscoring the generality of VAE-based intermediaries across diverse observation modalities. In the sparse-observation regime, SPARF [5] establishes that joint pose–NeRF optimization from as few as three input images is feasible when multi-view projection-consistency constraints are embedded in the training objective — a principle directly mirrored in our projection-consistency VAE loss. FlowR [7] frames sparse-to-dense 3D recon-struction as a generative flow, progressively completing a partial point set; like FlowR, our approach uses a generative model to recover a high-fidelity representation from an initially incomplete observation, but our “observations” are physical marginal projections rather than camera images. P2P-Bridge [13] reformulates point-cloud denoising as a Schr¨ odinger bridge between noisy and clean point sets, reinforcing the broader theme that geometry recovery is best cast as principled probabilistic mapping rather than direct regression. 
+
+Phase space reconstruction for charged particle beams. 
+
+A multi-modal conditional diffusion model was previously developed to track 2D projections of a charged particle beam’s 6D phase space distribution [16], but that approach conditionally generated single 2D projections thus lacking projection-consistency constraints. The most closely re-lated prior work for particle accelerators [14] used a VAE to map a single 2D beam image to a low-resolution 6D phase space tensor ρ(x, p x, y, p y , z, p z ) at 32 6 voxels, followed by a super-resolution diffusion model to refine individual 2D projections from 32 × 32 to 256 × 256 pixels. The key limitation is that the super-resolution stage operates on indi-vidual projections independently, breaking the hard physics constraint imposed by the VAE: the refined images are no longer guaranteed to be marginals of any single consistent phase space distribution. PhaseFlow4D avoids this incon-sistency entirely by maintaining a single physically consis-tent 4D representation throughout, generating the full tensor in one pass and computing all projections analytically from it. In what follows, as is typical in the accelerator commu-nity, instead of px, and py we will refer to x′ = px/p z and 
+
+y′ = py /p z which represents the divergence of the beam from a straight parallel path along the accelerator in the z-direction, where in our case pz is a fixed constant for all particles in the beam which is a continuous stream uniform in z.
+
+Model-free adaptive feedback and extremum seeking. 
+
+Extremum seeking (ES) [17, 18] is a class of model-free, gradient-free real-time optimization methods that drive a dynamical system toward the extremum of a cost function using only online measurements of that cost. ES requires no model of the system, no derivatives, and no retraining, making it well suited to tracking slowly time-varying op-tima in physical systems. Here we use ES to continuously minimize the ℓ2 projection-consistency error between the observed 2D beam measurement and the 2D projection of our generated distribution, treating the conditioning vector 
+
+c as the tunable parameter. This is conceptually related to inference-time search over conditioning inputs [15], but op-erates in a closed-loop, real-time setting where the “veri-fier” is a live physical measurement rather than a learned discriminator. 
+
+# 3. Method 
+
+PhaseFlow4D combines three components: (1) a 4D VAE that encodes and decodes the full transverse phase space density with a hard projection-consistency constraint, (2) a conditional latent diffusion model that maps an accelera-tor condition vector to the corresponding VAE latent code, and (3) an extremum-seeking feedback loop that adaptively tunes the condition vector at deployment time to track a time-varying beam distribution using only live 2D projec-tion observations. Figure 1 provides a high-level schematic of the full system. 
+
+3.1. 4D Variational Autoencoder with Projection Consistency 
+
+Let X ∈ RN ×N ×N ×N denote a discretized 4D transverse phase space density on a grid of resolution N 4 (we use N =128 throughout). The VAE encoder qϕ(z | X) maps X to a latent code z ∈ R16 ×16 ×4, and the decoder pθ (X | z) maps 
+
+z back to a reconstructed density ˆX.The key architectural constraint is that the decoder out-put ˆX is used to compute all six 2D marginal projections analytically by summing over the appropriate pairs of di-mensions: 
+
+πij ˆX = X 
+
+> k,l ̸=i,j
+
+ˆX, i, j ∈ { x, x ′, y, y ′}, i̸ = j. (1) Figure 3. 4D VAE architecture. Top: the encoder compresses the    
+
+> 128 4phase space tensor to a compact latent code z. Bottom: the decoder reconstructs ˆX, from which all 2D marginal projections can be computed analytically and compared to the ground-truth projections during training.
+> Figure 4. The conditional latent diffusion architecture is a standard U-Net approach with 3 residual blocks at each resolution, Group-Norm, and attention and 100 denoising steps.
+
+The training loss combines the standard VAE evidence lower bound (ELBO) with a density prediction term: 
+
+LVAE = LELBO + λ X
+
+> (i,j,k,l )
+
+X − ˆX 22. (2) This constraint is a hard architectural prior : because in application all 2D projections will be computed from the same decoder output ˆX, physical consistency across projec-tions is guaranteed by construction at every forward pass — not enforced as a soft penalty that can be violated at infer-ence. Furthermore, by learning the actual 4D distribution, the model’s predictions can be sampled and used as inputs to particle tracking codes to continue predicting the beam’s evolution through further stages of the particle accelerator. The VAE’s encoder and decoder both utilize a 3 layer deep residual block at each resolution, as shown in Figure 3. At the input of the VAE, the 128 4 tensor is interpreted as a 
+
+128 3 3D volume with 128 channels and 3D convolutions are performed throughout, until a 16 4 object is re-shaped into a 
+
+16 × 16 image with 16 2 channels before finally converting to a 16 × 16 × 4 latent representation via 2D convolutions. 
+
+3.2. Conditional Latent Diffusion Model 
+
+Given the trained VAE, we train a conditional denoising dif-fusion probabilistic model (DDPM) [19] in the latent space of the VAE. The model takes as input a condition vector 
+
+c = [ c1, . . . , c 20 ] ∈ R20 , where c1, . . . , c 13 is a one-hot en-coding of 13 different beam species that are simultaneously being transported through the accelerator, c14 encodes one of 23 locations along the accelerator, c15 encodes a charge neutralization factor, which is a time-varying function of the source, and c16 , . . . , c 20 encode the settings of 5 mag-nets along the beamline. The magnets are 2 solenoids and 3 quadrupoles which are adjustable and used to focus the beam. This conditional vector is used to guide the genera-tive diffusion process to generate the latent code z(c) cor-responding to the equilibrium 4D phase space distribution associated with those accelerator conditions. Conditioning is implemented via cross-attention in the denoising U-Net, following the standard LDM formulation [9]. The full generative pipeline at inference is: 
+
+c LDM 
+
+−−−→ ˆz(c) VAE decoder 
+
+−−−−−−−→ ˆX(c) projection 
+
+−−−−−→ πij (c). (3) The entire chain is forward-only at deployment: no gradi-ents are computed, and no fine-tuning is performed. Gen-eration of a full 128 4 phase space estimate takes approxi-mately 2 seconds on a single H100 GPU, with the 100 diffu-sion steps taking approximately 1.5 seconds and the VAE’s decoder 0.5 seconds, compared to ∼6 hours for the TRACK physics simulation. 
+
+3.3. Adaptive Condition Tuning via Extremum Seeking 
+
+In a real accelerator, the beam distribution X(t) varies con-tinuously as operating conditions drift — for example, due to charge neutralization fluctuations in the ECR plasma source. We assume that at each time step t, we can ob-serve only a single 2D projection of the beam, specifically the (x, y ) transverse profile image πobs (t), as this is the one observable that is available in the FRIB front-end. We formulate tracking as online minimization of the projection-consistency cost: 
+
+J(c) = πobs (t) − πxy ˆX(c) 22. (4) We minimize J(c(t)) in real time using model-free ex-tremum seeking (ES) [18]. ES requires no analytical model of the mapping c 7 → J(c), no gradients, and no assumption Figure 5. The conditional latent diffusion generative process is shown at various diffusion steps for different beam conditions. In this image, we show only the first three channels, as RGB values, of each 16 × 16 × 4 latent images. 
+
+that the landscape is fixed — it continuously tracks a time-varying optimum by injecting small dither perturbations and correlating the resulting cost fluctuations to infer a descent direction. The update rule takes the form: 
+
+dc i(t)
+
+dt = √αω i cos( ωit + kJ (c(t)) , (5) where the dithering frequencies must be distinct with ωi =
+
+ωr i, where ri̸ = rj for all i̸ = j. In the limit as ω → ∞ ,the average dynamics of this feedback loop can be shown to follow dc(t)
+
+dt = − kα 
+
+2 ∇cJ(c(t)) , (6) a gradient descent of the cost function, as was proven in [17, 18]. The term α can be thought of as a dithering amplitude because at steady state, when J is not changing, parameters undergo a steady state oscillation of the form 
+
+ci(t) ≈
+
+r αωi
+
+sin( ωit), (7) and k can be thought of as a feedback gain. Although in-creasing either α or k results in faster convergence, it is convenient to decrease α, thereby limiting oscillation sizes, while increasing k to maintain convergence rate. This method which is implemented iteratively as a finite difference approximation according to 
+
+ci(n + 1) = ci(n) + ∆ t
+
+√αω i cos( ωin∆t + J(n)) , (8) where J(n) represents J(c(n∆t)) . Critically, the only in-formation consumed by ES is the scalar cost J evaluated at successive values of c: it is entirely model-independent. Because our 4D VAE enforces projection consistency by construction, minimizing the error on the single observable 
+
+projection πxy implicitly constrains all six 2D marginals of 
+
+ˆX. We therefore expect — and empirically verify — that accurately tracking the observable (x, y ) projection also causes PhaseFlow4D to track the remaining five unobserved projections, recovering the full 4D phase space distribution from a single 2D measurement stream. The adaptive setup is shown in Figure 6. As the ion source parameters drift, we assume that we have access only to πxy (t), we compare it its projection that we generate from the 4D density, and continuously minimize J(c(t)) real time by tracking c(t).
+
+> Figure 6. Overview of the the adaptive feedback setup.
+
+# 4. Experiments 
+
+4.1. Dataset: FRIB Heavy-Ion Beam Simulations 
+
+All experiments use multi-particle simulations of 13 iso-topes coming out of the FRIB ion source simultaneously, which creates a plasma beam composed of 7 Tin isotopes: 
+
+> 124
+
+Sn 22+ -124 Sn 28+ and 6 Oxygen isotopes: 16 O+1 -16 O+6 .It is important to simulate the transport of all the heavy-ions and the Oxygen through the charge selection section simul-taneously by the TRACK code [20] to correctly account for 3D space charge effects. Only the 124 Sn 26+ isotope is de-signed to travel along the center and survive through until the end as the beams come around a curve and are separated Figure 7. Top: Error statistics are shown for test and training data, where Gaussians have been fit to the 1D (x, x ′, y, y ′) projections that were created from the generated 4D tensors. Bottom: One detailed example of all of the generated 2D projections relative to the true projections for a single test data point at the end of the beamline, where the test data input was only the conditional vector into the latent diffusion model. 
+
+due to the different radius of curvature that each charge to mass ratio ion trajectory has. Each species is modeled by 300 thousand macroparticles and each simulation took approximately 6 hours on a 100-core machine. A total of 300,000 4D densities were used for model training. These densities were extracted from 1000 simulations with the full 4D phase space being recorded at 23 different locations along the beamline for each of the 13 charge states, resulting in ∼ 300 thousand 4D densities from which ∼ 1.8 million 2D projections can be generated. Out of these, 270,000 4D densities (900 simulations) were used for model training, and 3,000 4D densities (10 held out simulations) were held out as validation data, and 27,000 4D densities (90 simula-tions) were used as test data. In each simulation a uniformly distributed random per-turbation was introduced to the two solenoid magnets and the 2 dipole magnets in the charge separation section whose schematic is shown in Figure 6, as well as to an overall charge neutralization factor which influences all of the beam species due to an imperfect vacuum and the presence of electrons in the plasma. After training, we re-generated all 4D distributions be passing their associated conditional vec-tors into the latent diffusion model, decoding the resulting latent image, and then creating various 2D and 1D projec-tions to quantify the results in terms that are improtant to accelerator beam physicists. Figure 7 shows the train vs test statistics where all 4D tensors were projected to their various 2D images and then further projected to 1D so that Gaussians could be fit to measure σx, σx′ , σy , and σy′ of the beams relative to their true values, which are quantities of interest to beam physicists. A detailed test reconstruction is also shown relative to the true distribution. For the adaptive tracking experiment, we constructed a time-varying sequence by parameterizing a smooth trajec-tory through condition space that models a realistic charge-neutralization drift scenario in the ECR source, starting from a known calibrated condition and drifting. Through-out the drift we only have access the measurement πxy X(t).The results are shown in Figure 8 where clearly the πxy ˆX
+
+closely accurately tracks πxy X(t) by adaptive tuning of 
+
+c(t), resulting in accurate tracking of the entire 4D phase space which is quantified by accurate predictions of σx, σx′ ,
+
+σy , and σy′ throughout the drift process. Figure 9 shows accurate tracking of the time-varying charge state based only on matching πxy (t).Figure 8. Top: The true (x, y ) projection of the beam is shown (blue) relative to the generated prediction (red) where tracking is performed by adaptive tuning of the diffusion conditional vector. Bottom: Although only the (x, y ) projection is available and used for tracking, the entire 4D phase space density is accurately tracked as seen by the true vs predicted (σx, σ x′ , σ y , σ y′ ) fits of all 1D projections (x, x ′, y, y ′)
+
+of the beam. 
+
+Figure 9. ES-based charge state tracking based on the πxy X(t)
+
+measurement (left) and error with and without tracking (right). 
+
+# 5. Conclusion 
+
+We presented PhaseFlow4D, a feedback-guided latent diffu-sion framework for physically constrained 4D phase space reconstruction and adaptive online tracking of charged par-ticle beams. By embedding projection consistency as a hard architectural prior in the 4D VAE decoder, and by cou-pling the conditional latent diffusion model to a model-free extremum-seeking feedback loop, PhaseFlow4D achieves accurate 4D phase space recovery from a single observ-able 2D projection stream — without retraining, without gradients, and without any model of the time-varying dy-namics. On multi-particle heavy-ion beam simulations at FRIB, PhaseFlow4D reproduces full 4D phase space distri-butions 1800 × faster than the reference physics simulator while faithfully tracking distribution shifts driven by time-varying ECR source conditions. Our results demonstrate that the core principles de-veloped in the visual generative reconstruction commu-nity — learned latent spaces, projection-consistent archi-tectural priors, and adaptive conditioning at inference time — transfer robustly to scientific and engineering inverse problems where “observations” are physical projections rather than camera images. We anticipate that this ap-proach generalizes beyond particle accelerators to any high-dimensional dynamical system that is only partially ob-servable through lower-dimensional projections, including plasma diagnostics, medical tomography, and fluid state es-timation. 
+
+# References 
+
+[1] S. E. Chen and L. Williams, “View interpolation for image synthesis,” in Proceedings of the 20th Annual Conference on Computer Graphics and Interactive Techniques (SIG-GRAPH’93) . ACM, 1993, p. 279–288. 2 [2] M. Levoy and P. Hanrahan, “Light field rendering,” in 
+
+Proceedings of the 23rd Annual Conference on Com-puter Graphics and Interactive Techniques (SIGGRAPH’96) .ACM, 1996, p. 31–42. 2 [3] S. J. Gortler, R. Grzeszczuk, R. Szeliski, and M. F. Cohen, “The lumigraph,” in Proceedings of the 23rd Annual Con-ference on Computer Graphics and Interactive Techniques (SIGGRAPH’96) . ACM, 1996, p. 43–54. 2 [4] B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng, “Nerf: Representing scenes as neural radiance fields for view synthesis,” Communications of the ACM , vol. 65, no. 1, pp. 99–106, 2021. 2 [5] P. Truong, M.-J. Rakotosaona, F. Manhardt, and F. Tombari, “SPARF: Neural radiance fields from sparse and noisy poses,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2023, pp. 4190–4200. 2, 3, 4 [6] B. Kerbl, G. Kopanas, T. Leimk¨ uhler, G. Drettakis et al. ,“3D Gaussian splatting for real-time radiance field render-ing.” ACM Trans. Graph. , vol. 42, no. 4, pp. 139–1, 2023. [7] T. Fischer, S. R. Bul` o, Y.-H. Yang, N. Keetha, L. Porzi, N. M¨ uller, K. Schwarz, J. Luiten, M. Pollefeys, and P. Kontschieder, “FlowR: Flowing from sparse to dense 3D reconstructions,” in IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition (CVPR) , 2025. 3, 4 [8] J. Z. Wu, Y. Zhang, H. Turki, X. Ren, J. Gao, M. Z. Shou, S. Fidler, Z. Gojcic, and H. Ling, “Difix3d+: Improving 3d reconstructions with single-step diffusion models,” in Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025, pp. 26 024–26 035. 2, 3, 4 [9] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Om-mer, “High-resolution image synthesis with latent diffusion models,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2022, pp. 10 684–10 695. 2, 3, 5[10] J. Ho and T. Salimans, “Classifier-free diffusion guidance,” in NeurIPS 2021 Workshop on Deep Generative Models and Downstream Applications , 2021. 2, 3 [11] X. Ren, T. Shen, J. Huang, H. Ling, Y. Lu, M. Nimier-David, T. M¨ uller, A. Keller, S. Fidler, and J. Gao, “Gen3C: 3D-informed world-consistent video generation with precise camera control,” in IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition (CVPR) , 2025. 2, 4 [12] G. Di Lorenzo, F. Tombari, M. Pollefeys, and D. Barath, “Object-X: Learning to reconstruct multi-modal 3D object representations,” in Advances in Neural Information Pro-cessing Systems (NeurIPS) , 2025. 2, 4 [13] M. Vogel, K. Tateno, M. Pollefeys, F. Tombari, M.-J. Rako-tosaona, and F. Engelmann, “P2P-Bridge: Diffusion bridges for 3D point cloud denoising,” in European Conference on Computer Vision (ECCV) , 2024. 3, 4 [14] A. Scheinker, “Physics-constrained superresolution diffu-sion for six-dimensional phase space diagnostics,” Physical Review Research , vol. 7, no. 2, p. 023091, 2025. 3, 4 [15] N. Ma, M. Goldstein, M. S. Albergo, N. M. Boffi, E. Vanden-Eijnden, and S. Xie, “Inference-time scaling for diffusion models beyond scaling denoising steps,” in arXiv preprint arXiv:2501.09732 , 2025. 3, 4 [16] A. Scheinker, “cDVAE: VAE-guided diffusion for particle accelerator beam 6D phase space projection diagnostics,” 
+
+Scientific Reports , vol. 14, no. 1, p. 29303, 2024. 4 [17] ——, “Model independent beam tuning,” in Int. Particle Accelerator Conf.(IPAC’13), Shanghai, China, 19-24 May 2013 . JACOW Publishing, Geneva, Switzerland, 2013, pp. 1862–1864. [Online]. Available: http://accelconf. web.cern.ch/AccelConf/IPAC2013/papers/tupwa068.pdf?n= IPAC2013/papers/tupwa068.pdf 4, 6 [18] A. Scheinker and D. Scheinker, “Bounded extremum seeking with discontinuous dithers,” Automatica , vol. 69, pp. 250– 257, 2016. 4, 5, 6 [19] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion proba-bilistic models,” Advances in Neural Information Processing Systems , vol. 33, pp. 6840–6851, 2020. 5 [20] P. N. Ostroumov et al. , “TRACK: A code for beam dynamics simulations,” 2020, facility for Rare Isotope Beams, Michi-gan State University. 6 6. Appendix 
+
+All 6 projections of the 4D phase space are shown for the lowest and highest level of charge neutralization in Figure 10. Figures 11-20 show detailed comparisons of random test data reconstructions. Figure 10. True and tracked projections of the beam are shown for various charge states during the ES-based tracking procedure. Figure 11. True and generated examples from test set. 
+
+Figure 12. True and generated examples from test set. 
+
+Figure 13. True and generated examples from test set. Figure 14. True and generated examples from test set. 
+
+Figure 15. True and generated examples from test set. 
+
+Figure 16. True and generated examples from test set. Figure 17. True and generated examples from test set. 
+
+Figure 18. True and generated examples from test set. 
+
+Figure 19. True and generated examples from test set. Figure 20. True and generated examples from test set.
