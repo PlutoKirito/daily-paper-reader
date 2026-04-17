@@ -6,88 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-16
-- 运行时间：2026-04-16 19:54:03 UTC
+- 最新运行日期：2026-04-17
+- 运行时间：2026-04-17 20:36:20 UTC
 - 运行状态：成功
-- 本次总论文数：22
-- 精读区：9
+- 本次总论文数：21
+- 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日聚焦 22 篇前沿成果，实时扩散图像压缩技术凭借满分表现领跑全场。
-CoD-Lite 成功兼顾生成质量与推理效率，而低比特 LLM 稳定量化策略则为模型轻量化提供了新思路。
-推荐优先阅读生成式压缩相关章节，把握视觉编码与大模型优化融合的最新趋势。
-- 详情：[/202604/16/README](/202604/16/README)
+今日精选 21 篇视觉前沿，深度解析 TinyNeRV 极致视频压缩与机器视觉语义共调优技术。
+重点推荐通过蒸馏与低精度推理实现的轻量化视频表示，以及面向机器视觉的协同适配器架构。
+建议关注扩散模型的一键压缩与 HDR 生成，探索低算力环境下高质量影像的落地可能。
+- 详情：[/202604/17/README](/202604/17/README)
 
 ### 精读区论文标签
-1. [CoD-Lite: Real-Time Diffusion-Based Generative Image Compression](/202604/16/2604.12525v2-cod-lite-real-time-diffusion-based-generative-image-compression)  
-   标签：评分：10.0/10、query:vcodec
-   evidence：基于扩散模型的实时生成式图像压缩，采用轻量化卷积设计。
-2. [CoD-Lite: Real-Time Diffusion-Based Generative Image Compression](/202604/16/2604.12525v1-cod-lite-real-time-diffusion-based-generative-image-compression)  
-   标签：评分：9.5/10、query:vcodec
-   evidence：实时基于扩散的生成式图像压缩和轻量化扩散编解码器
-3. [Efficient Learned Data Compression via Dual-Stream Feature Decoupling](/202604/16/2604.07239v1-efficient-learned-data-compression-via-dual-stream-feature-decoupling)  
-   标签：评分：9.0/10、query:entropy-coding
-   evidence：具有双流特征解耦和并行处理的学习数据压缩
-4. [TC-AE: Unlocking Token Capacity for Deep Compression Autoencoders](/202604/16/2604.07340v1-tc-ae-unlocking-token-capacity-for-deep-compression-autoencoders)  
-   标签：评分：9.0/10、query:entropy-coding
-   evidence：通过优化Token容量实现的深度压缩自编码器
-5. [TinyNeRV: Compact Neural Video Representations via Capacity Scaling, Distillation, and Low-Precision Inference](/202604/16/2604.09220v1-tinynerv-compact-neural-video-representations-via-capacity-scaling-distillation-and-low-precision-inference)  
+1. [TinyNeRV: Compact Neural Video Representations via Capacity Scaling, Distillation, and Low-Precision Inference](/202604/17/2604.09220v1-tinynerv-compact-neural-video-representations-via-capacity-scaling-distillation-and-low-precision-inference)  
    标签：评分：9.0/10、query:train-trick
-   evidence：通过蒸馏和低精度推理实现紧凑的神经视频表示
-6. [What and Where to Adapt: Structure-Semantics Co-Tuning for Machine Vision Compression via Synergistic Adapters](/202604/16/2604.10017v1-what-and-where-to-adapt-structure-semantics-co-tuning-for-machine-vision-compression-via-synergistic-adapters)  
+   evidence：通过容量缩放、蒸馏和低精度推理实现的神经视频表示
+2. [What and Where to Adapt: Structure-Semantics Co-Tuning for Machine Vision Compression via Synergistic Adapters](/202604/17/2604.10017v1-what-and-where-to-adapt-structure-semantics-co-tuning-for-machine-vision-compression-via-synergistic-adapters)  
    标签：评分：9.0/10、query:entropy-coding
-   evidence：压缩熵模型中统计语义的自适应
-7. [Differentiable Vector Quantization for Rate-Distortion Optimization of Generative Image Compression](/202604/16/2604.10546v1-differentiable-vector-quantization-for-rate-distortion-optimization-of-generative-image-compression)  
+   evidence：针对机器视觉压缩的熵模型统计语义适配
+3. [Differentiable Vector Quantization for Rate-Distortion Optimization of Generative Image Compression](/202604/17/2604.10546v1-differentiable-vector-quantization-for-rate-distortion-optimization-of-generative-image-compression)  
    标签：评分：9.0/10、query:train-trick
-   evidence：生成式压缩中联合率失真优化的微分松弛技术
-8. [PAT-VCM: Plug-and-Play Auxiliary Tokens for Video Coding for Machines](/202604/16/2604.13294v1-pat-vcm-plug-and-play-auxiliary-tokens-for-video-coding-for-machines)  
+   evidence：生成式压缩中用于率失真优化的可微矢量量化
+4. [Representations Before Pixels: Semantics-Guided Hierarchical Video Prediction](/202604/17/2604.11707v1-representations-before-pixels-semantics-guided-hierarchical-video-prediction)  
    标签：评分：9.0/10、query:vcodec
-   evidence：用于机器视频编码的即插即用辅助Token
-9. [From Pixels to Nucleotides: End-to-End Token-Based Video Compression for DNA Storage](/202604/16/2604.13667v1-from-pixels-to-nucleotides-end-to-end-token-based-video-compression-for-dna-storage)  
+   evidence：用于表示引导视频合成的潜在扩散模型
+5. [PAT-VCM: Plug-and-Play Auxiliary Tokens for Video Coding for Machines](/202604/17/2604.13294v1-pat-vcm-plug-and-play-auxiliary-tokens-for-video-coding-for-machines)  
    标签：评分：9.0/10、query:vcodec
-   evidence：端到端神经网络联合优化视频压缩与DNA编码
+   evidence：带有辅助令牌的可扩展机器视频编码
+6. [Long-Horizon Streaming Video Generation via Hybrid Attention with Decoupled Distillation](/202604/17/2604.10103v1-long-horizon-streaming-video-generation-via-hybrid-attention-with-decoupled-distillation)  
+   标签：评分：8.5/10、query:vcodec
+   evidence：通过扩散蒸馏和混合注意力进行流式视频生成
+7. [A Full Compression Pipeline for Green Federated Learning in Communication-Constrained Environments](/202604/17/2604.11146v1-a-full-compression-pipeline-for-green-federated-learning-in-communication-constrained-environments)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：集成剪枝、量化和哈夫曼编码的全流程压缩流水线
+8. [TurboTalk: Progressive Distillation for One-Step Audio-Driven Talking Avatar Generation](/202604/17/2604.14580v1-turbotalk-progressive-distillation-for-one-step-audio-driven-talking-avatar-generation)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：视频扩散模型压缩的渐进式蒸馏
 
 ### 速读区论文标签
-1. [U$^{2}$Flow: Uncertainty-Aware Unsupervised Optical Flow Estimation](/202604/16/2604.10056v1-u2flow-uncertainty-aware-unsupervised-optical-flow-estimation)  
-   标签：评分：8.5/10、query:vcodec
-   evidence：无监督光流估计与自适应光流细化
-2. [Bit-by-Bit: Progressive QAT Strategy with Outlier Channel Splitting for Stable Low-Bit LLMs](/202604/16/2604.07888v1-bit-by-bit-progressive-qat-strategy-with-outlier-channel-splitting-for-stable-low-bit-llms)  
+1. [Multi-task Just Recognizable Difference for Video Coding for Machines: Database, Model, and Coding Application](/202604/17/2604.09421v1-multi-task-just-recognizable-difference-for-video-coding-for-machines-database-model-and-coding-application)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：面向机器视觉的多任务JRD建模视频编码
+2. [HDR Video Generation via Latent Alignment with Logarithmic Encoding](/202604/17/2604.11788v1-hdr-video-generation-via-latent-alignment-with-logarithmic-encoding)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：利用潜空间对齐和对数编码进行HDR视频生成
+3. [OFA-Diffusion Compression: Compressing Diffusion Model in One-Shot Manner](/202604/17/2604.12668v1-ofa-diffusion-compression-compressing-diffusion-model-in-one-shot-manner)  
    标签：评分：8.0/10、query:train-trick
-   evidence：渐进式量化感知训练策略
-3. [Multi-task Just Recognizable Difference for Video Coding for Machines: Database, Model, and Coding Application](/202604/16/2604.09421v1-multi-task-just-recognizable-difference-for-video-coding-for-machines-database-model-and-coding-application)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：用于机器视频编码 (VCM) 的多任务显著性差异模型，旨在提高编码效率
-4. [Long-Horizon Streaming Video Generation via Hybrid Attention with Decoupled Distillation](/202604/16/2604.10103v1-long-horizon-streaming-video-generation-via-hybrid-attention-with-decoupled-distillation)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：通过解耦蒸馏将视频扩散模型蒸馏为自回归模型
-5. [A Full Compression Pipeline for Green Federated Learning in Communication-Constrained Environments](/202604/16/2604.11146v1-a-full-compression-pipeline-for-green-federated-learning-in-communication-constrained-environments)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：集成剪枝、量化和哈夫曼编码的全压缩流水线
-6. [Structured State-Space Regularization for Compact and Generation-Friendly Image Tokenization](/202604/16/2604.11089v1-structured-state-space-regularization-for-compact-and-generation-friendly-image-tokenization)  
+   evidence：扩散模型的 Once-for-all 压缩框架，可生成适应不同约束的子网络
+4. [Object-Attribute-Relation Model Driven Adaptive Hierarchical Transmission for Multimodal Semantic Communication](/202604/17/2604.07859v1-object-attribute-relation-model-driven-adaptive-hierarchical-transmission-for-multimodal-semantic-communication)  
+   标签：评分：7.5/10、query:vcodec
+   evidence：绕过像素级重建的语义通信框架
+5. [VideoFlexTok: Flexible-Length Coarse-to-Fine Video Tokenization](/202604/17/2604.12887v1-videoflextok-flexible-length-coarse-to-fine-video-tokenization)  
    标签：评分：7.5/10、query:entropy-coding
-   evidence：用于生成式建模的紧凑潜空间特征和频率感知图像标记化
-7. [SL-FAC: A Communication-Efficient Split Learning Framework with Frequency-Aware Compression](/202604/16/2604.07316v1-sl-fac-a-communication-efficient-split-learning-framework-with-frequency-aware-compression)  
+   evidence：用于压缩表示的从粗到细的视频标记化
+6. [Bit-by-Bit: Progressive QAT Strategy with Outlier Channel Splitting for Stable Low-Bit LLMs](/202604/17/2604.07888v1-bit-by-bit-progressive-qat-strategy-with-outlier-channel-splitting-for-stable-low-bit-llms)  
    标签：评分：7.0/10、query:train-trick
-   evidence：基于频率感知的量化压缩以提升通信效率
-8. [Object-Attribute-Relation Model Driven Adaptive Hierarchical Transmission for Multimodal Semantic Communication](/202604/16/2604.07859v1-object-attribute-relation-model-driven-adaptive-hierarchical-transmission-for-multimodal-semantic-communication)  
+   evidence：用于稳定低比特优化的渐进式量化感知训练策略
+7. [InsEdit: Towards Instruction-based Visual Editing via Data-Efficient Video Diffusion Models Adaptation](/202604/17/2604.08646v1-insedit-towards-instruction-based-visual-editing-via-data-efficient-video-diffusion-models-adaptation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：绕过像素级重建的视频传输语义通信框架
-9. [Small Vision-Language Models are Smart Compressors for Long Video Understanding](/202604/16/2604.08120v1-small-vision-language-models-are-smart-compressors-for-long-video-understanding)  
+   evidence：基于指令的视频扩散模型适配与编辑
+8. [Modality-Aware Zero-Shot Pruning and Sparse Attention for Efficient Multimodal Edge Inference](/202604/17/2604.08971v1-modality-aware-zero-shot-pruning-and-sparse-attention-for-efficient-multimodal-edge-inference)  
    标签：评分：7.0/10、query:train-trick
-   evidence：长视频理解中的跨模态蒸馏视频压缩
-10. [One Token per Highly Selective Frame: Towards Extreme Compression for Long Video Understanding](/202604/16/2604.14149v1-one-token-per-highly-selective-frame-towards-extreme-compression-for-long-video-understanding)  
-   标签：评分：6.5/10、query:train-trick
-   evidence：极端视频令牌压缩和可学习的令牌级压缩模块
-11. [Efficient Quantization of Mixture-of-Experts with Theoretical Generalization Guarantees](/202604/16/2604.06515v1-efficient-quantization-of-mixture-of-experts-with-theoretical-generalization-guarantees)  
+   evidence：用于高效多模态边缘推理的零样本剪枝
+9. [StreamMeCo: Long-Term Agent Memory Compression for Efficient Streaming Video Understanding](/202604/17/2604.09000v1-streammeco-long-term-agent-memory-compression-for-efficient-streaming-video-understanding)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：流式视频理解中用于内存压缩的权重剪枝
+10. [Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs](/202604/17/2604.08003v1-rethinking-entropy-allocation-in-llm-based-asr-understanding-the-dynamics-between-speech-encoders-and-llms)  
+   标签：评分：6.5/10、query:entropy-coding
+   evidence：熵分配视角与多阶段训练策略
+11. [Lighting-grounded Video Generation with Renderer-based Agent Reasoning](/202604/17/2604.07966v1-lighting-grounded-video-generation-with-renderer-based-agent-reasoning)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：基于扩散模型的场景控制视频生成
+12. [Small Vision-Language Models are Smart Compressors for Long Video Understanding](/202604/17/2604.08120v1-small-vision-language-models-are-smart-compressors-for-long-video-understanding)  
    标签：评分：6.0/10、query:train-trick
-   evidence：针对训练后量化的专家级混合精度策略
-12. [Variational Feature Compression for Model-Specific Representations](/202604/16/2604.06644v1-variational-feature-compression-for-model-specific-representations)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：用于特征压缩的变分潜瓶颈，无需重建损失
-13. [KD-MARL: Resource-Aware Knowledge Distillation in Multi-Agent Reinforcement Learning](/202604/16/2604.06691v1-kd-marl-resource-aware-knowledge-distillation-in-multi-agent-reinforcement-learning)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：用于轻量化模型执行的资源感知知识蒸馏
+   evidence：用于视频理解时域压缩的跨模态蒸馏技术
+13. [Uni-ViGU: Towards Unified Video Generation and Understanding via A Diffusion-Based Video Generator](/202604/17/2604.08121v1-uni-vigu-towards-unified-video-generation-and-understanding-via-a-diffusion-based-video-generator)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：通过基于扩散的生成器统一视频生成与理解
 
 
 <div class="dpr-home-promo-card">

@@ -1,0 +1,817 @@
+Title: Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs
+
+URL Source: https://arxiv.org/pdf/2604.08003v1
+
+Published Time: Fri, 10 Apr 2026 00:49:20 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and Large Language Models 
+
+Yuan Xie 1 * Jiaqi Song 1 * Guang Qiu 1 Xianliang Wang 1 Ming Lei 1 Jie Gao 1 Jie Wu 1 † 
+
+> 1
+
+Advanced Intelligent Systems Group, NIO 
+
+{ryan.xie2, jiaqi.song2 }@nio.com 
+
+## Abstract 
+
+Integrating large language models (LLMs) into automatic speech recognition (ASR) has become a dominant paradigm. Although recent LLM-based ASR models have shown promising per-formance on public benchmarks, it remains chal-lenging to balance recognition quality with la-tency and overhead, while hallucinations further limit real-world deployment. In this study, we revisit LLM-based ASR from an entropy allo-cation perspective and introduce three metrics to characterize how training paradigms allocate entropy reduction between the speech encoder and the LLM. To remedy entropy-allocation inef-ficiencies in prevailing approaches, we propose a principled multi-stage training strategy grounded in capability-boundary awareness, optimizing pa-rameter efficiency and hallucination robustness. Specifically, we redesign the pretraining strategy to alleviate the speech-text modality gap, and further introduce an iterative asynchronous SFT stage between alignment and joint SFT to pre-serve functional decoupling and constrain encoder representation drift. Experiments on Mandarin and English benchmarks show that our method achieves competitive performance with state-of-the-art models using only 2.3B parameters, while also effectively mitigating hallucinations through our decoupling-oriented design. 
+
+## 1. Introduction 
+
+With the rapid advancement of large language mod-els (LLMs), the mainstream automatic speech recogni-tion (ASR) paradigm is shifting from traditional archi-tectures (Graves et al., 2006; Graves, 2012; Chorowski et al., 2015; Chan et al., 2016) toward LLM-based frame-works. Recent LLM-based ASR (hereafter LLM-ASR) mod-
+
+> *
+
+Equal contribution. †Corresponding author. 
+
+els, including Seed-ASR (Bai et al., 2024a), FireRedASR-LLM (Xu et al., 2025b), Voxtral Mini Transcribe (Liu et al., 2025), Fun-ASR (An et al., 2025), Qwen3-ASR (Shi et al., 2026), are specialized for transcription. By leveraging LLMs’ world knowledge and contextual reasoning to re-solve semantic ambiguity, LLM-ASR models have achieved promising results on public benchmarks. In contrast to Large Audio-Language Models (LALMs) (Chu et al., 2024; Wu et al., 2025; Goel et al., 2025), which target broad au-dio understanding tasks beyond ASR, LLM-ASR is more suitable for industrial speech applications, where accuracy, latency, computational overhead, and controllability are all critical concerns, and thus serves as the focus of this study. Despite strong benchmark performance, LLM-ASR still faces two fundamental challenges in real-world deployment. The first challenge is the trade-off between efficiency and recognition quality. In lightweight settings, LLM-ASR mod-els suffer not only from expected scaling-down degradation, but also from the inherent cost of bridging the speech-text modality gap, which consumes non-trivial model capac-ity (Aghajanyan et al., 2023; Zhang et al., 2026) and im-poses a disproportionate tax on smaller models (Endo & Yeung-Levy, 2025). The second challenge is hallucination. During joint training, the encoder is susceptible to being dominated by the LLM’s gradients, inducing representation drift that causes the encoder to progressively rely on linguis-tic shortcuts at the expense of acoustic fidelity, amplifying hallucination risk (Bai et al., 2024b; Zhou et al., 2024). To step beyond empirical observation and provide a prin-cipled account of these limitations, we revisit LLM-ASR from an entropy allocation perspective, viewing ASR as compressing high-entropy speech signals into low-entropy linguistic symbols. From this perspective, we propose a set of metrics (defined in Section 3.2) to diagnose how different training paradigms allocate uncertainty reduction across the encoder–LLM interface. Specifically, normalized spectral entropy (NSE) quantifies the spectral entropy of encoder rep-resentations, while phonetic accessible information (PAI) and conditional semantic accessible information (CSAI) serve as probe-inspired proxies for linearly accessible pho-1
+
+> arXiv:2604.08003v1 [eess.AS] 9 Apr 2026
+
+Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 76     
+
+> 78
+> 80
+> 82
+> 84
+> 86
+> 88
+> 90
+> 92
+> 94
+> NSE (%)  86.8
+> 85.1
+> NSE
+> FireRed Encoder (Before e2e SFT)
+> FireRed Encoder (After e2e SFT)
+> 19.5
+> 21.0
+> 22.5
+> 24.0
+> 25.5
+> PAI (bits)  23.50
+> 21.60
+> PAI
+> 9
+> 10
+> 11
+> 12
+> 13
+> CSAI (bits)
+> 11.37
+> 12.25
+> CSAI
+> 76
+> 78
+> 80
+> 82
+> 84
+> 86
+> 88
+> 90
+> 92
+> 94
+> NSE (%)
+> 90.2 90.2
+> NSE
+> Whisper Encoder (Before e2e SFT)
+> Whisper Encoder (After e2e SFT)
+> 16.5
+> 18.0
+> 19.5
+> 21.0
+> 22.5
+> PAI (bits)
+> 20.10 20.05
+> PAI
+> 8
+> 9
+> 10
+> 11
+> 12
+> CSAI (bits)  10.69 10.68
+> CSAI
+> FireRedASR-AED vs FireRedASR-LLM Whisper-large-v3 vs Voxtral-Mini-3B
+
+Figure 1. The shift in encoder-side metrics (NSE, PAI, and CSAI) before and after end-to-end joint training. By holding the encoder architecture constant within each group, we isolate the impact of joint training on encoder representations. 
+
+netic and semantic information, respectively. Figure 1 com-pares the metric shifts before and after end-to-end joint train-ing across two representative ASR model families, revealing distinct behavioral regimes. From FireRedASR-AED to FireRedASR-LLM with the same Conformer encoder, joint training markedly reduces NSE, indicating increased en-tropy reduction by the encoder. Yet, the concurrent decrease in PAI and increase in CSAI suggest that the compression may be associated with a shift away from phonetic special-ization toward semantic accessibility, consistent with the representation drift discussed above. In contrast, Voxtral’s Whisper encoder shows minimal changes during joint train-ing, with all metrics remaining largely stable. Compared to FireRedASR, it exhibits higher NSE but lower PAI and CSAI, indicating a lighter entropy-reduction load on the encoder and a greater share of residual uncertainty han-dled by the LLM. While this mitigates representation drift, it increases LLM capacity demands and forces the LLM to resolve phoneme-level uncertainties outside its primary modeling strengths, leading to poor parameter efficiency. These observations reveal two characteristic suboptimal regimes in prevailing LLM-ASR systems: one suffers rep-resentation drift and over-reliance on semantic priors, the other offloads residual uncertainty onto the LLM at the cost of parameter efficiency. Motivated by this diagnosis, we propose a capability-boundary-aware design principle that refines multi-stage training. We redesign the pretraining strategy to induce phoneme-anchored encoder representa-tions with minimal acoustic uncertainty, providing an ini-tialization that separates acoustic modeling from premature semantic anchoring and alleviates the modality gap. We further introduce an iterative asynchronous SFT (IA-SFT) stage between alignment and joint SFT, which explicitly narrows the speech-text modality gap and preserves func-tional decoupling while deepening encoder–LLM alignment. This refined multi-stage design encourages each module to devote more of its capacity to its designated role, thereby im-proving parameter efficiency and mitigating hallucinations. Our main contributions are summarized as follows. • We present an entropy-based perspective for LLM-ASR, with metrics on encoder representations that character-ize how training paradigms allocate entropy reduction between the encoder and the LLM. • We propose a capability-boundary-aware multi-stage train-ing paradigm that redesigns encoder pretraining and in-troduces an intermediate IA-SFT stage, jointly promoting clear module specialization and more stable joint training. • Our model achieves leading performance on Mandarin and English ASR benchmarks with only 2.3B parameters, while effectively mitigating hallucinations, facilitating efficient and robust real-world deployment. 
+
+## 2. Related Work 
+
+Recent advances in LLMs have redefined ASR, shifting the paradigm from acoustic transcription toward semanti-cally informed generation. By coupling speech encoders with LLMs, LLM-ASR leverages rich world knowledge and long-context semantic modeling to enhance recognition. In recent research, the encoder–adaptor–LLM architecture has emerged as a standard backbone, with variations primarily arising from training strategies and functional priorities. 
+
+LLM-based ASR models. Over the past two years, LLM-ASR models have emerged along diverse design principles. One line emphasizes lightweight adaptation: for instance, FireRedASR-LLM (Xu et al., 2025b) achieves state-of-the-art (SOTA) performance on Mandarin and English bench-marks via LoRA fine-tuning with only 70K hours of train-ing data. Another line of work scales up training with industrial-scale corpora. Representative studies such as Seed-ASR (Bai et al., 2024a) and Fun-ASR (An et al., 2025) are trained on tens of millions of hours and further leverage context-SFT and reinforcement learning to extend model capabilities. Moreover, a related trend leverages pretrained LALM backbones to build specialized ASR models — for example, Qwen3-ASR (Shi et al., 2026) built upon Qwen3-Omni (Xu et al., 2025a) and GPT-4o Transcribe derived 2Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+from GPT-4o. These models inherit the audio understanding capabilities of their LALM backbones, offering enhanced ASR performance and improved inference efficiency suited to production deployment. Additionally, general-purpose LALMs such as GLM-4-Voice (Zeng et al., 2024), Step-Audio 2 (Wu et al., 2025), and Kimi-Audio (Ding et al., 2025) also serve as relevant baselines in ASR benchmark-ing, albeit with different target scenarios from ASR. Although LLM-ASR models can achieve strong bench-mark results, latency and deployment cost remain major constraints for real-time speech interaction. As a result, many works have released lightweight variants – e.g., Fun-ASR-nano (0.8B) (An et al., 2025), GLM-ASR-nano (1.5B), and Qwen3-ASR (0.8B/2.0B) (Shi et al., 2026) – yet these typically rely on straightforward capacity reduction with-out principled changes to the training paradigm, leaving a substantial performance gap relative to their larger counter-parts. Moreover, the inherent modality gap between acoustic and textual representations inevitably amplifies hallucina-tions (Peng et al., 2024), posing challenges to the stability and controllability required for real-world deployment. 
+
+Divergent paths in uncertainty resolution. Most LLM-ASR models adopt the encoder–adaptor–LLM architec-ture, where divergent paths in uncertainty resolution arise from differences in encoder pretraining, cross-modal align-ment, and joint-training strategies. During encoder pre-training, many studies employ supervised ASR objec-tives such as Connectionist Temporal Classification (CTC), Attention-based Encoder-Decoder (AED), or their hybrid variants (Radford et al., 2022; Xu et al., 2025b; Xia et al., 2026), which direct the encoder to capture transcription-relevant acoustic structure and resolve a substantial portion of acoustic uncertainty through representations optimized for transcription-relevant discriminability. By contrast, sev-eral works (Bai et al., 2024a; An et al., 2025) leverage self-supervised learning (SSL) objectives such as Best-RQ (Chiu et al., 2022) to initialize encoders, learning general-purpose acoustic representations without collapsing toward linguistic units. Such SSL pretraining is often followed by supervised objectives (e.g., AED or CTC) before integration with the LLM. These strategies lead to distinct internal operating regimes, as analyzed in Appendix B. Following encoder pretraining, LLM-ASR models typically proceed through an alignment stage and then joint training with the LLM under natural-language supervision, which further shapes how uncertainty is resolved. Textual supervi-sion drives the encoder toward transcription-relevant acous-tic cues, progressively suppressing acoustic variations that are weakly associated with lexical discrimination. As the system maps high-dimensional continuous speech repre-sentations into low-dimensional symbolic sequences, the granularity retained in the encoder representations directly determines how much entropy reduction must be handled by the downstream LLM, thereby dictating its effective ca-pacity. In principle, the optimal scale of the LLM-ASR model should be jointly informed by its training paradigm, yet existing approaches remain largely data-driven and pay limited attention to this relationship. 
+
+## 3. Methodology 
+
+3.1. Preliminary LLM-based ASR as conditional generation. Let x denote the input speech features (e.g., log-Mel spectrograms), t =(t1, . . . , t M ) denote the text instruction prompt, and y =(y1, . . . , y N ) denote the output token sequence representing the transcription. The LLM-based ASR model formulates the ASR task as conditional language modeling: 
+
+pθ (y | x, t ) = 
+
+> N
+
+Y
+
+> n=1
+
+pθ (yn | y<n , x, t ) , (1) where the overall parameters are θ = {ϕ, ψ, ω }, consisting of the speech encoder parameters ϕ, the adaptor parameters 
+
+ψ, and the LLM decoder parameters ω. The speech encoder 
+
+Eϕ maps acoustic features to continuous representations: 
+
+E = Eϕ(x), E ∈ RL×de , (2) where L is the frame length and de is the encoder hidden size. To match the LLM embedding space Rdm , we use an adaptor Aψ for modality projection: 
+
+Z = Aψ (Down r (E)) , Z ∈ RL′×dm , (3) where E is downsampled (e.g., by frame concatenation) to length L′ using a downsampling operator Down r (·) with factor r before being fed to the adaptor. 
+
+Embedding composition and unified decoding. Let W(·)
+
+denote the LLM text token embedding operator. Given a text prompt with tokens t = ( t1, . . . , t M ), a unified contin-uous input sequence is constructed by replacing a dedicated speech placeholder token <speech> with a sequence of projected speech embeddings Z. Concretely, after embed-ding lookup and substitution, the LLM input is          
+
+> Sin =W(t1), . . . , W(tM) ; Z1, . . . , Z L′
+> ∈R(M+L′)×dm,
+
+(4) where {Zℓ}L′ 
+
+> ℓ=1
+
+are speech embeddings produced by the encoder–adaptor stack and occupy the position of the 
+
+<speech> placeholder in the input sequence. 
+
+Autoregressive formulation. Given speech x and prompt t,we construct a unified continuous input Sin (x, t ) by substi-tuting the <speech> placeholder with speech embeddings. The LLM decoder Dω then generates y autoregressively: 
+
+pθ (y | x, t ) = 
+
+> N
+
+Y
+
+> n=1
+
+pω (yn | y<n , S in (x, t )) . (5) 3Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+Entropy allocation at the encoder–LLM interface. The representation E defined above serves as the interface be-tween the encoder and the LLM. Since the total uncertainty to be resolved for a given utterance is invariant, the two modules can be viewed as operating under a zero-sum en-tropy budget: uncertainty absorbed by the encoder directly reduces what the LLM must resolve. Analyzing the prop-erties of E thus provides a principled lens into the entropy allocation across modules. 
+
+3.2. Metrics on Encoder Representations 
+
+Building on this entropy-based perspective, we focus on the encoder representation as the interface between the speech encoder and the LLM. For each utterance, let E′ denote the valid-frame representation obtained from E after removing padded positions according to the sequence mask. We char-acterize E′ from two complementary aspects: the overall spectral entropy retained in representations, and proxy esti-mates of how uncertainty reduction remains accessible in phonetic and semantic target spaces. 
+
+Normalized spectral entropy (NSE). We perform singular value decomposition (SVD) on the encoder representation matrix E′ = U ΣV ⊤, where Σ = diag( σ) is the diago-nal matrix of the singular value vector σ = ( σ1, . . . , σ d)⊤
+
+arranged in descending order, with d = min( L, d e). Nor-malizing the singular values by their ℓ1-norm, 
+
+¯σi = σi
+
+∥σ∥1
+
+= σi
+
+Pdj=1 σj
+
+. (6) Treating ¯σi as the singular value distribution (Roy & Vetterli, 2007), we define the normalized spectral entropy (Yang et al., 2005) as its Shannon entropy: 
+
+NSE( E′) = − 1log d
+
+> d
+
+X
+
+> i=1
+
+¯σi log(¯ σi). (7) It characterizes the global spectral geometry of E′. Lower NSE indicates a more anisotropic and more strongly com-pressed representation, whereas higher NSE indicates a more isotropic representation with higher retained entropy. 
+
+Phonetic and conditional semantic accessible informa-tion. While NSE characterizes the spectral entropy retained in E′, it does not indicate how much uncertainty reduction is accessible from that representation in phonetic and semantic target spaces. We therefore introduce two complementary utterance-level accessible-information proxies: phonetic ac-cessible information (PAI) , measuring how much phonetic information is linearly accessible from E′; and conditional semantic accessible information (CSAI) , measuring how much additional semantic information is accessible beyond what is already captured by the phonetic target spaces. To derive them, we first summarize the valid-frame rep-resentation E′ via temporal mean and standard deviation pooling, followed by Principal Component Analysis (PCA) and standardization, yielding a vector u. For the phonetic target P , we convert the reference transcript into phoneme tokens, form an ℓ1-normalized bag-of-phones count vector, and apply the same PCA-standardization pipeline. For the semantic target C, we encode the transcript using a frozen Qwen3-Embedding-8B model with last-token pooling and 
+
+ℓ2 normalization, followed by PCA and standardization. In practice, P and C are projected to the same dimension. Let q = [ u⊤, P ⊤, C ⊤]⊤ and let ˆΣ = Cov( q) denote the empirical covariance estimated over the evaluation set. We use a ridge-regularized covariance ˜Σ = ˆΣ + λI , where 
+
+λ > 0 ensures numerical stability. All covariance blocks below are taken as principal submatrices of ˜Σ. Under a joint Gaussian approximation on (u, P, C ), we define 
+
+PAI( E′) = 
+
+"
+
+12 log 2 log det ˜Σuu det ˜ΣP P 
+
+det ˜Σ[u,P ]
+
+#
+
+> +
+
+, (8) where [·]+ = max( ·, 0) clips residual negative values caused by numerical error. This quantity serves as a regular-ized Gaussian accessible-information proxy for the mutual information between u and P .Similarly, letting ˜Σ·| P denote the corresponding regularized conditional covariance matrices given P , computed from the same joint covariance ˜Σ, we define 
+
+CSAI( E′) = 
+
+"
+
+12 log 2 log det ˜Σuu |P det ˜ΣCC |P
+
+det ˜Σ[u,C ]|P
+
+#
+
+> +
+
+,
+
+(9) which serves as a regularized Gaussian proxy for the con-ditional accessible-information between u and C given P .Intuitively, CSAI captures semantic information in u unex-plained by phonetic structure, by removing the portion of 
+
+u–C dependence mediated by the phonetic target. Together, NSE, PAI, and CSAI form a practical diagnostic: NSE quantifies the spectral entropy, PAI quantifies phonetic accessibility, and CSAI quantifies semantic accessibility beyond the phonetic target 1. Jointly analyzing these met-rics reveals the entropy allocation dynamics across model components. As discussed in Section 1 regarding Figure 1, the trends of these metrics can reveal suboptimal behavior during training. In a desirable training trajectory, we ex-pect NSE not to remain persistently high, thereby reducing the capacity demand on the LLM; meanwhile, we expect CSAI not to exhibit a sustained rise at the expense of de-clining PAI during joint training, as this often indicates that the improvement stems not from representation refinement but from linguistic shortcuts gained by sacrificing acoustic fidelity—a trend that amplifies hallucination risk. 
+
+> 1PAI and CSAI are regularized proxies for relative comparison across training paradigms, not exact mutual-information estimates.
+
+4Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs Traditional                                                              
+
+> pipeline
+> Stage 1:Pre -training
+> 🔥 Encoder
+> 🔥 Decoder
+> Stage 2:Alignment
+> ❄/🔥 Encoder
+> 🔥 Adaptor
+> ❄LLM
+> Stage 3:Joint SFT
+> 🔥 Encoder
+> 🔥 Adaptor
+> 🔥 LL M
+> Stage 2:Alignment
+> ❄Encoder init
+> 🔥 Adaptor
+> ❄LLM
+> ❄Encoder 1
+> 🔥 Adaptor
+> 🔥 LLM
+> Stage 3:IA -SFT w/ iterative updates
+> ❄Encoder N
+> 🔥 Adaptor ……
+> Stage 1:Pre -training
+> 🔥 CTC head
+> 🔥 Encoder
+> Our proposed
+> training pipeline
+> xN
+> Iterate
+> Init. Update Update
+> xN
+> 🔥 LLM
+> 🔥 Encoder Final
+> 🔥 Adaptor
+> 🔥 LLM
+> Stage 4: Joint SFT
+> 🔥 Encoder 1🔥 Encoder init 🔥 Encoder N
+> Init.
+> Init
+> Iterate ❄Frozon
+> 🔥 Trainable
+> 🔥 CTC head 🔥 CTC head 🔥 CTC head
+
+Figure 2. Comparison of our multi-stage training design with the traditional training pipeline. 
+
+3.3. Design Principle 
+
+With these metrics, we can provide an intuitive diagnosis of entropy allocation in LLM-ASR models. Figure 1 exposes two contrasting suboptimal modes, which have been ana-lyzed in detail in Section 1. We therefore adopt a capability-boundary-aware design principle with two requirements: • The encoder should be guided toward low-entropy, acous-tically grounded representations before being exposed to LLM-dominated joint optimization. This narrows the modality gap early and reduces the risk that subsequent training resorts to semantically biased shortcuts. • During joint optimization, the functional boundary be-tween modules should be explicitly maintained, ensur-ing that further encoder compression proceeds along an acoustic-grounded direction rather than at the expense of acoustic representation quality. 
+
+3.4. Multi-Stage Training Paradigm 
+
+As shown in Figure 2, we illustrate our proposed training pipeline alongside a comparison with the traditional one. Our design features two core components: phoneme-level CTC pretraining, and an additional IA-SFT stage that runs asynchronously in parallel with the pretraining phase. 
+
+Phoneme-level CTC Pretraining. The pretraining stage starts from a Conformer encoder initialized with FireRedASR-AED weights, replacing the autoregressive decoder with a lightweight linear CTC head trained under the CR-CTC (Yao et al., 2024) objective. Motivated by prior findings that phoneme-based representations can offer a more universal and acoustically grounded interface than grapheme or subword units (Yusuyin et al., 2025), we adopt phoneme-level rather than word-level supervision. It is worth noting that we intentionally adopt CTC-based pretraining rather than the more prevalent AED-style or semi-supervised alternatives, driven by two structural con-siderations. First, the CTC objective, through its peaky behavior (Zeyer et al., 2021) and monotonic alignment con-straint, encourages the encoder to compress continuous speech into representations more aligned with the under-lying token sequence (Zhou et al., 2025b), bridging the structural gap with discrete text. Second, the lightweight CTC head acts as a capacity bottleneck, pushing the en-coder toward low-entropy representations. Together, these properties narrow the speech–text modality gap at the rep-resentation level, while the lower-entropy interface relaxes the capacity demand on the downstream LLM. 
+
+Alignment and IA-SFT. In traditional training paradigms, alignment and joint SFT are conducted sequentially after pretraining completes. To explicitly constrain representa-tion drift, we introduce an additional IA-SFT stage between alignment and joint SFT. As shown in Figure 2, neither align-ment nor IA-SFT waits for pretraining to complete; instead, they proceed asynchronously in parallel with pretraining. To govern encoder initialization and updates for the alignment and IA-SFT stages, we monitor representation drift using Centered Kernel Alignment (CKA) (Kornblith et al., 2019), which is applied to compare the evolving encoder with a ref-erence checkpoint that is initialized and updated throughout pretraining. The detailed procedure is as follows: 
+
+(1) Alignment: Once pretraining has run for a sufficient number of steps, we snapshot the encoder to initialize the reference checkpoint. As pretraining continues, we monitor the CKA score between the evolving encoder and reference checkpoint. When the CKA score first drops below a pre-set threshold, we take a new snapshot that both initializes the audio encoder for alignment and updates the reference checkpoint. During alignment, both the encoder and LLM are frozen, and only the adaptor is trained; 
+
+(2) IA-SFT: After alignment completes, the model enters the IA-SFT stage, where the encoder is frozen while the adaptor and LLM are trained. In essence, IA-SFT also serves an alignment purpose—it can be viewed as a prepara-tory curriculum that strengthens the LLM’s capacity to com-prehend speech representations before joint SFT. To expose the LLM to diverse encoder representations, we perform CKA-driven iterative encoder hot-swapping: whenever the CKA score drops below the threshold, the latest encoder checkpoint from the ongoing pretraining is hot-swapped into the model encoder under IA-SFT training, and the reference checkpoint is updated accordingly. The CKA constraint en-sures that each swap delivers a non-trivial representational evolution, enabling the LLM to learn from progressively refined encoders in a curriculum-like fashion. Throughout the IA-SFT stage, this iterative hot-swapping cycle repeats until pretraining concludes. Further details of IA-SFT are supplemented in Appendix A.4, including a more detailed procedural description, the formal definition of CKA, spe-cific training configurations, and an analysis of why direct encoder hot-swapping without realignment is viable. 
+
+Joint SFT. After IA-SFT, we proceed to joint SFT, where all modules are trained end-to-end. By this point, the modality 5Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 83            
+
+> 84
+> 85
+> 86
+> 87
+> NSE (%)
+> Pretrain IA-SFT Joint SFT
+> 86.8
+> 85.1
+> Normalized Spectral Entropy (NSE)
+> FireRedASR-AED
+> FireRedASR-LLM
+> Our Training Trajectory
+> Our Training Trajectory w/o IA-SFT
+> Char-Level Pretrain Trajectory
+> Skip IA-SFT
+> 85.2
+> 82.9
+> 84.6
+> 84.5
+> 19
+> 20
+> 21
+> 22
+> 23
+> 24
+> PAI (bits)
+> Pretrain IA-SFT Joint SFT
+> 23.50
+> 21.60
+> FireRedASR-AED FireRedASR-LLM
+> Phonetic Accessible Info (PAI)
+> Skip IA-SFT
+> 21.47
+> 22.95
+> 20.46
+> 22.58
+> 10
+> 12
+> 14
+> 16
+> CSAI (bits)
+> Pretrain IA-SFT Joint SFT
+> 11.37
+> 12.25
+> Conditional Semantic Accessible Info (CSAI)
+> Skip IA-SFT
+> 14.46 14.24
+> 16.35
+> 13.61
+> FireRedASR-AED FireRedASR-LLM FireRedASR-AED FireRedASR-LLM
+
+Figure 3. Comparison of the three metrics along our training trajectory and the FireRedASR-AED → FireRedASR-LLM transition, sharing the same encoder architecture. “Our Training Trajectory” corresponds to the “phoneme-level pretrain → IA-SFT → SFT” pipeline. 
+
+gap has been minimized, the acoustic-grounded properties of speech representations have been preserved, and the LLM has developed a robust capacity to comprehend audio repre-sentations—collectively reducing the risk of representation drift during joint training. Notably, although an additional stage is introduced, both alignment and IA-SFT run asyn-chronously in parallel with pretraining from its midpoint, ensuring that our overall pipeline remains time-efficient in large-scale industrial settings. 
+
+3.5. Empirical Analysis of Metric Dynamics 
+
+To empirically validate whether our multi-stage training paradigm adheres to the design principles, we trace the metrics across training stages and compare them against the direct transfer path from FireRedASR-AED to FireRedASR-LLM, as illustrated in Figure 3. The alignment stage is omitted in the figure, as no metric change occurs during this stage. Together, the metric trajectories reveal not only how much entropy reduction the encoder assumes across stages, but also whether such compression remains acoustically grounded or drifts toward semantic bias. During phoneme-level CTC pretraining, NSE drops no-ticeably, as the CTC bottleneck compels the encoder to form compact, low-entropy representations. Meanwhile, PAI decreases while CSAI rises steadily. Given that only phoneme-level supervision is provided, the PAI decline does not reflect a loss of acoustic information; rather, it is a struc-tural consequence of the peaky, sparse output distributions enforced by CTC. Such distributions bias encoder represen-tations toward discrete, symbol-like forms, which dilute the globally accessible linear phonetic structure after pooling and PCA. The moderate CSAI increase follows naturally, as monotonic alignment progressively drives representations toward finer token-level granularity. Moreover, we present a comparison between phoneme-level and character-level pretraining variants. Phoneme-level pretraining consistently achieves higher PAI and lower CSAI than its character-level counterpart throughout training, suggesting a clear advantage in instilling a robust acoustic foundation while suppressing premature semantic anchoring in the encoder. During joint SFT, NSE continues to decrease along our training trajectory, indicating that end-to-end optimization further drives the encoder toward lower-entropy representa-tions and progressively relieves downstream capacity pres-sure on the LLM. Furthermore, a key pattern emerges in our trajectory: PAI recovers notably while CSAI remains flat or slightly declines — consistent with our design expec-tations. Since joint optimization begins from an already-narrowed modality gap and a well-aligned interface, it miti-gates representation drift and instead promotes a desirable cross-modal division of labor. Specifically, LLM gradients incentivize the encoder to refine phonetic-acoustic repre-sentations rather than exploit linguistic shortcuts, while the encoder refrains from absorbing semantic functions better delegated to the LLM. This emergent modular separation re-flects efficient parameter utilization across the architecture. To quantify the contribution of IA-SFT, we present an ab-lation in which this stage is removed (green curves in Fig-ure 3). Without IA-SFT, NSE decays more slowly relative to our full training trajectory, while both PAI and CSAI con-verge to lower final values — confirming degraded linear accessibility along both acoustic and semantic dimensions, or equivalently, a reduction in the effective signal-to-noise ratio of encoder representations. These results underscore the critical role of IA-SFT as a representational buffer: by progressively deepening the alignment between the LLM’s embedding manifold and encoder representations, it both preserves the acoustic grounding established during pretrain-ing and shields against representation drift in the subsequent joint optimization phase. 6Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+Table 1. Comparison with advanced baselines on public benchmarks. “-” denotes unsupported dialects.                                                                                                                                                                                                                                                         
+
+> Fun-ASR-nano GLM-ASR-nano Qwen3-ASR-1.7B FireRedASR-LLM Step-Audio2-mini Qwen3-Omni-Inst Ours
+> Model Size 0.8B ( ↓)1.5B ( ↓)2.0B ( ↓)8B+ ( ↑)8B+ ( ↑)30B-A3B ( ↑)2.3B
+> Mandarin
+> AISHELL-1 dev |test 1.59 |1.81 2.40 |2.41 1.40 |1.51 0.71 |0.73 0.76 |0.81 0.86 |0.92 0.45 |0.59
+> AISHELL-2-ios dev |test 2.62 |2.73 3.21 |3.45 2.41 |2.60 2.08 |2.12 2.24 |2.29 2.11 |2.31 2.32 |2.45 AISHELL-2021-Eval A |C|D4.75 |4.29 |2.33 7.25 |9.48 |3.40 4.22 |3.51 |1.82 12.61 |4.06 |7.38 4.54 |3.69 |2.34 5.19 |3.34 |1.66 3.45 |1.71 |2.53
+> Chinese Dialect
+> WeNetSpeech-Chuan easy |hard 12.69 |23.76 20.95 |33.61 11.40 |20.35 12.14 |24.76 13.99 |25.35 14.13 |25.16 10.94 |21.93 WeNetSpeech-Yue short |long 7.31 |10.02 16.78 |13.97 5.79 |8.00 -|-7.78 |8.44 6.97 |8.60 5.22 |9.45 KeSpeech 7.18 9.59 4.98 3.53 3.98 6.00 4.56
+> English
+> LibriSpeech-dev clean |other 1.63 |4.06 1.82 |3.93 1.54 |3.14 1.25 |2.92 1.06 |2.48 1.08 |2.10 1.11 |2.57 LibriSpeech-test clean |other 1.63 |4.35 1.96 |4.29 1.56 |3.49 1.37 |3.36 1.22 |2.61 1.15 |2.38 1.23 |2.63 VoxPopuli dev |test 7.86 |7.70 8.78 |8.52 7.58 |7.42 10.65 |10.26 8.86 |8.37 6.86 |6.75 6.25 |6.22
+> Chinese–English Code-switch
+> CS-Dialogue 5.37 6.15 5.44 5.10 9.46 8.51 4.99
+> ASCEND 11.91 12.29 10.87 11.25 13.50 18.68 11.79
+> Avg. CER/WER 6.28 8.71 5.45 6.46 6.19 6.24 5.12
+
+## 4. Experiments 
+
+4.1. Evaluation setting 
+
+We evaluate on public ASR benchmarks covering Man-darin (Bu et al., 2017; Du et al., 2018), Chinese di-alects (Tang et al., 2021; Dai et al., 2025; Li et al., 2026), English (Panayotov et al., 2015; Wang et al., 2021), and Chinese–English code-switching (Lovenia et al., 2022; Zhou et al., 2025a) scenarios. We report Character Error Rate (CER) for Chinese and Word Error Rate (WER) for English. Beyond LLM-ASR baselines, we include two large-scale LALMs (Xu et al., 2025a; Wu et al., 2025) as references. De-spite their significantly higher inference cost and overhead, they help assess our model’s competitiveness beyond the lightweight setting. All results are evaluated with the unified 
+
+WeTextProcessing text-normalization toolkit. All models are evaluated in offline decoding mode, and our model uses beam search with a beam size of 3. 
+
+4.2. Main Recognition Results 
+
+Table 1 compares our model with advanced ASR base-lines (An et al., 2025; Shi et al., 2026; Xu et al., 2025b; Wu et al., 2025; Xu et al., 2025a). With only 2.3B parame-ters, our model achieves competitive results across multilin-gual benchmarks, surpassing several industrial-scale models with over 8B parameters on multiple scenarios. Beyond classic benchmarks such as AISHELL and LibriSpeech, our model attains SOTA performance on entity-dense sets like AISHELL-2021-Eval (in-car, telephony), suggesting that aligning the LLM to low-entropy speech representa-tions does not cause catastrophic forgetting of world knowl-edge. Furthermore, our model achieves leading results on di-alect benchmarks, indicating strong robustness to phoneme shifts induced by acoustic variations. This behavior is sup-ported by the elevated PAI values in Fig. 3, validating our acoustic-grounded design principle. Our model also per-forms well on code-switching benchmarks, owing in part 
+
+Table 2. Hallucination rate on different scenario benchmarks. 
+
+Model Mandarin Dialect English Code-switch Fun-ASR-nano 0.018% 0.217% 0.014% 0.397% GLM-ASR-nano 0.030% 0.201% 0.014% 0.315% Qwen3-ASR-1.7B 0.018% 0.120% 0.014% 0.345% FireRedASR-LLM 0.053% 0.228% 0.014% 0.324% Step-Audio2-mini 0.020% 0.194% 0.014% 1.255% Qwen3-Omni-Inst 0.013% 0.370% 0.007% 1.778% Ours (w/o IA-SFT) 0.005% 0.198% 0.014% 0.356% Ours 0.003% 0.122% 0.007% 0.261% 
+
+to the phoneme-level pre-training strategy, which leverages language-agnostic phonetic representations shared across languages, thereby enabling more robust modeling under code-switching conditions. 
+
+4.3. Hallucination Mitigation 
+
+A core contribution of our method is its principled approach to hallucination mitigation. To validate this, we use the same models and benchmarks from Table 1 and report the aver-age hallucination rate per scenario, defined as the ratio of hallucinated samples to total samples across all benchmarks within each scenario. Specifically, a sample is classified as hallucinated if its transcription both exceeds the ground-truth length by more than 50% and is entirely unrelated to it. As shown in Table 2, our model achieves substantially lower hallucination rates than all baselines. This suggests that our design mitigates hallucination at a fundamental level, owing to the explicit constraint during training that en-forces the encoder to remain acoustically grounded, thereby suppressing representation drift. We further ablate the IA-SFT module and identify it as a major contributor to our low hallucination rate. Without IA-SFT, even low-entropy representations are susceptible to being dominated by the LLM’s overwhelming gradients, causing the model to fall back on linguistic shortcuts and produce hallucinations–a failure mode that IA-SFT can help prevent. 7Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 Adap. 
+
+> Encoder Layer Index
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Linear CKA Score
+> Encoder
+> Top layers
+> Embedding
+> space
+> Ours (before joint SFT, after IA-SFT)
+> Ours (after joint SFT)
+> FireRedASR-LLM
+
+Figure 4. Linear CKA scores between layer-wise representations and ground-truth text embeddings, averaged over 1,000 utterances from AISHELL and LibriSpeech. Indices 1–16 denote encoder layers; “Adap.” denotes the post-adaptor embedding. 
+
+4.4. Layer-wise Alignment: From Encoder to Adaptor 
+
+While the preceding analysis focuses on encoder represen-tations, we further examine post-adaptor embeddings. Fig-ure 4 visualizes the progression of semantic alignment by computing linear CKA scores between ground-truth text embeddings and representations at each encoder layer as well as the post-adaptor embedding. Linear CKA is the spe-cial case of the general CKA defined in Eq. (12) , measuring alignment across features of different dimensionalities via centered Gram matrices that capture inter-sample similarity structures. To handle sequence length mismatches, we apply temporal mean pooling to obtain utterance-level represen-tations Xl ∈ RB×de or Z ∈ RB×dm from the l-th layer ( B
+
+denotes the number of utterances), with the same pooling applied to ground-truth text embeddings Y ∈ RB×dm :
+
+CKA linear (Xl, Y ) = ∥X⊤ 
+
+> l
+
+Y ∥2
+
+> F
+
+∥X⊤ 
+
+> l
+
+Xl∥F ∥Y ⊤Y ∥F
+
+, (10) where ∥ · ∥ F denotes the Frobenius norm. In addition to our model’s trajectories before and after end-to-end SFT, we include FireRedASR-LLM as a reference, since our encoder and adaptor share identical architectures, ensur-ing a fair comparison. As shown in Figure 4, our model and FireRedASR-LLM exhibit markedly different behav-iors at the adaptor interface. For FireRedASR-LLM, the CKA score decreases after adaptor projection, indicating that the high-entropy encoder representations are difficult to map cleanly into the text embedding space—the adap-tor has to simultaneously perform dimensional projection and compensate for an unstable interface and reconcile mis-aligned semantic geometry, a dual burden that exceeds its limited capacity. In contrast, our model consistently shows a pronounced CKA increase at this interface, regardless of whether joint SFT has been applied. Since our encoder already produces low-entropy representations roughly syn-chronized with text tokens, and IA-SFT further familiarizes the LLM with these representations, the adaptor is largely relieved of compensatory duties. It needs only to perform a straightforward dimensional mapping while correcting resid-
+
+Table 3. Ablation study on post-training strategies. “– Encoder iter. in IA-SFT” denotes removing encoder hot-swapping and asyn-chronous parallel during IA-SFT, reducing it to a standard encoder-frozen stage with only the adaptor and LLM trained.                     
+
+> Configuration Mandarin Dialect English Code-switch
+> Our full pipeline 1.93 10.42 3.35 8.39
+> – Joint SFT 2.18 12.84 4.22 10.15 – IA-SFT 2.08 11.47 3.79 9.11 – Encoder iter. in IA-SFT 1.95 10.87 3.40 8.57
+
+ual geometric misalignment, yielding embeddings struc-turally better matched to the text manifold. 
+
+4.5. Ablation Study 
+
+We conduct ablation studies on post-training strategies un-der controlled conditions, using identical training data and configurations across all experiments, each trained until validation loss plateaus for three consecutive checkpoints (10k-step intervals). As shown in Table 3, ablating joint SFT yields the largest degradation, confirming that end-to-end optimization is essential for refining the representation space. Moreover, ablating IA-SFT also causes substan-tial performance drops, consistent with the analysis in Sec-tion 3.5 and Table 2: without the drift constraint imposed by IA-SFT, speech representations tend to shift toward the semantic subspace, undermining phoneme discrimination and amplifying hallucination. We further ablate the encoder hot-swapping mechanism within IA-SFT, reducing it to a standard encoder-frozen stage where only the adaptor and LLM are trained using the final encoder checkpoint. This variant still underperforms our full IA-SFT, since static rep-resentations from a frozen encoder offer limited diversity needed for robust adaptation, which may make the LLM more prone to suboptimal patterns within a narrow phonetic subspace. In contrast, encoder hot-swapping mitigates this by acting as implicit regularization: exposing the LLM to progressively evolving encoder states encourages learning of robust patterns shared across encoders, rather than those specific to any single encoder. 
+
+## 5. Conclusion and Future Work 
+
+In this work, we revisit LLM-based ASR from an entropy-allocation perspective and propose a capability-boundary-aware framework that explicitly decouples the encoder and LLM to resolve acoustic uncertainty and semantic ambigu-ity, respectively. By implementing a phoneme-prioritized encoder pretraining and an IA-SFT paradigm, we improve the entropy reduction dynamics across modules. Experi-ments on Mandarin and English benchmarks show that our approach can achieve competitive performance with lower hallucination rates using only 2.3B parameters, highlighting the effectiveness of our design. Future work will extend this analysis to large-scale LALMs and investigate how re-inforcement learning further reshapes entropy allocation. 8Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+## References 
+
+Aghajanyan, A., Yu, L., Conneau, A., Hsu, W.-N., Ham-bardzumyan, K., Zhang, S., Roller, S., Goyal, N., Levy, O., and Zettlemoyer, L. Scaling laws for generative mixed-modal language models. In International Confer-ence on Machine Learning , pp. 265–279. PMLR, 2023. An, K., Chen, Y., Deng, C., Gao, C., Gao, Z., Gong, B., Li, X., Li, Y., Lv, X., Ji, Y., et al. Funaudio-asr technical report. arXiv preprint arXiv:2509.12508 , 2025. Ardila, R., Branson, M., Davis, K., Kohler, M., Meyer, J., Henretty, M., Morais, R., Saunders, L., Tyers, F., and We-ber, G. Common voice: A massively-multilingual speech corpus. In Proceedings of the twelfth language resources and evaluation conference , pp. 4218–4222, 2020. Bai, Y., Chen, J., Chen, J., Chen, W., Chen, Z., Ding, C., Dong, L., Dong, Q., Du, Y., Gao, K., et al. Seed-asr: Un-derstanding diverse speech and contexts with llm-based speech recognition. arXiv preprint arXiv:2407.04675 ,2024a. Bai, Z., Wang, P., Xiao, T., He, T., Han, Z., Zhang, Z., and Shou, M. Z. Hallucination of multimodal large language models: A survey. arXiv preprint arXiv:2404.18930 ,2024b. Bu, H., Du, J., Na, X., Wu, B., and Zheng, H. Aishell-1: An open-source mandarin speech corpus and a speech recog-nition baseline. In 2017 20th conference of the oriental chapter of the international coordinating committee on speech databases and speech I/O systems and assessment (O-COCOSDA) , pp. 1–5. IEEE, 2017. Chan, W., Jaitly, N., Le, Q., and Vinyals, O. Listen, attend and spell: A neural network for large vocabulary conver-sational speech recognition. In 2016 IEEE international conference on acoustics, speech and signal processing (ICASSP) , pp. 4960–4964. IEEE, 2016. Chen, G., Chai, S., Wang, G., Du, J., Zhang, W.-Q., Weng, C., Su, D., Povey, D., Trmal, J., Zhang, J., et al. Gigaspeech: An evolving, multi-domain asr corpus with 10,000 hours of transcribed audio. arXiv preprint arXiv:2106.06909 , 2021. Chiu, C.-C., Qin, J., Zhang, Y., Yu, J., and Wu, Y. Self-supervised learning with random-projection quantizer for speech recognition. In International Conference on Machine Learning , pp. 3915–3924. PMLR, 2022. Chorowski, J. K., Bahdanau, D., Serdyuk, D., Cho, K., and Bengio, Y. Attention-based models for speech recogni-tion. Advances in neural information processing systems ,28, 2015. Chu, Y., Xu, J., Yang, Q., Wei, H., Wei, X., Guo, Z., Leng, Y., Lv, Y., He, J., Lin, J., et al. Qwen2-audio technical report. arXiv preprint arXiv:2407.10759 , 2024. Conneau, A., Ma, M., Khanuja, S., Zhang, Y., Axelrod, V., Dalmia, S., Riesa, J., Rivera, C., and Bapna, A. Fleurs: Few-shot learning evaluation of universal representations of speech. In 2022 IEEE Spoken Language Technology Workshop (SLT) , pp. 798–805. IEEE, 2023. Dai, Y., Zhang, Z., Wang, S., Li, L., Guo, Z., Zuo, T., Wang, S., Xue, H., Wang, C., Wang, Q., et al. Wenetspeech-chuan: A large-scale sichuanese corpus with rich anno-tation for dialectal speech processing. arXiv preprint arXiv:2509.18004 , 2025. Dao, T. Flashattention-2: Faster attention with bet-ter parallelism and work partitioning. arXiv preprint arXiv:2307.08691 , 2023. Ding, D., Ju, Z., Leng, Y., Liu, S., Liu, T., Shang, Z., Shen, K., Song, W., Tan, X., Tang, H., et al. Kimi-audio techni-cal report. arXiv preprint arXiv:2504.18425 , 2025. Du, J., Na, X., Liu, X., and Bu, H. Aishell-2: Transforming mandarin asr research into industrial scale. arXiv preprint arXiv:1808.10583 , 2018. Endo, M. and Yeung-Levy, S. Downscaling intelligence: Exploring perception and reasoning bottlenecks in small multimodal models. arXiv preprint arXiv:2511.17487 ,2025. Galvez, D., Diamos, G., Ciro, J., Cer ´on, J. F., Achorn, K., Gopi, A., Kanter, D., Lam, M., Mazumder, M., and Reddi, V. J. The people’s speech: A large-scale diverse english speech recognition dataset for commercial usage. arXiv preprint arXiv:2111.09344 , 2021. Goel, A., Ghosh, S., Kim, J., Kumar, S., Kong, Z., Lee, S.-g., Yang, C.-H. H., Duraiswami, R., Manocha, D., Valle, R., et al. Audio flamingo 3: Advancing audio intelligence with fully open large audio language models. 
+
+arXiv preprint arXiv:2507.08128 , 2025. Graves, A. Sequence transduction with recurrent neural networks. arXiv preprint arXiv:1211.3711 , 2012. Graves, A., Fern ´andez, S., Gomez, F., and Schmidhuber, J. Connectionist temporal classification: labelling un-segmented sequence data with recurrent neural networks. In Proceedings of the 23rd international conference on Machine learning , pp. 369–376, 2006. Gulati, A., Qin, J., Chiu, C.-C., Parmar, N., Zhang, Y., Yu, J., Han, W., Wang, S., Zhang, Z., Wu, Y., et al. Con-former: Convolution-augmented transformer for speech recognition. arXiv preprint arXiv:2005.08100 , 2020. 9Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+He, H., Shang, Z., Wang, C., Li, X., Gu, Y., Hua, H., Liu, L., Yang, C., Li, J., Shi, P., et al. Emilia: An extensive, multi-lingual, and diverse speech dataset for large-scale speech generation. In 2024 IEEE Spoken Language Technology Workshop (SLT) , pp. 885–890. IEEE, 2024. Hernandez, F., Nguyen, V., Ghannay, S., Tomashenko, N., and Esteve, Y. Ted-lium 3: Twice as much data and corpus repartition for experiments on speaker adaptation. In International conference on speech and computer , pp. 198–208. Springer, 2018. Kang, W., Yang, X., Yao, Z., Kuang, F., Yang, Y., Guo, L., Lin, L., and Povey, D. Libriheavy: A 50,000 hours asr corpus with punctuation casing and context. In ICASSP 2024-2024 IEEE International Conference on Acous-tics, Speech and Signal Processing (ICASSP) , pp. 10991– 10995. IEEE, 2024. Kingma, D. P. Adam: A method for stochastic optimization. 
+
+arXiv preprint arXiv:1412.6980 , 2014. Koluguri, N. R., Sekoyan, M., Zelenfroynd, G., Meister, S., Ding, S., Kostandian, S., Huang, H., Karpov, N., Balam, J., Lavrukhin, V., et al. Granary: Speech recognition and translation dataset in 25 european languages. arXiv preprint arXiv:2505.13404 , 2025. Kornblith, S., Norouzi, M., Lee, H., and Hinton, G. Sim-ilarity of neural network representations revisited. In 
+
+International conference on machine learning , pp. 3519– 3529. PMlR, 2019. Li, L., Guo, Z., Chen, H., Dai, Y., Zhang, Z., Xue, H., Zuo, T., Wang, C., Wang, S., Xu, X., et al. Wenetspeech-yue: A large-scale cantonese speech corpus with multi-dimensional annotation. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 40, pp. 31627– 31635, 2026. Li, S., You, Y., Wang, X., Tian, Z., Ding, K., and Wan, G. Msr-86k: An evolving, multilingual corpus with 86,300 hours of transcribed audio for speech recognition research. 
+
+arXiv preprint arXiv:2406.18301 , 2024. Liu, A. H., Ehrenberg, A., Lo, A., Denoix, C., Barreau, C., Lample, G., Delignon, J.-M., Chandu, K. R., von Platen, P., Muddireddy, P. R., et al. Voxtral. arXiv preprint arXiv:2507.13264 , 2025. Lovenia, H., Cahyawijaya, S., Winata, G. I., Xu, P., Xu, Y., Liu, Z., Frieske, R., Yu, T., Dai, W., Barezi, E. J., et al. Ascend: A spontaneous chinese-english dataset for code-switching in multi-turn conversation. In Proceedings of the Thirteenth Language Resources and Evaluation Conference , pp. 7259–7268, 2022. O’Neill, P. K., Lavrukhin, V., Majumdar, S., Noroozi, V., Zhang, Y., Kuchaiev, O., Balam, J., Dovzhenko, Y., Frey-berg, K., Shulman, M. D., et al. Spgispeech: 5,000 hours of transcribed financial audio for fully formatted end-to-end speech recognition. arXiv preprint arXiv:2104.02014 ,2021. Panayotov, V., Chen, G., Povey, D., and Khudanpur, S. Librispeech: an asr corpus based on public domain au-dio books. In 2015 IEEE international conference on acoustics, speech and signal processing (ICASSP) , pp. 5206–5210. IEEE, 2015. Peng, J., Wang, Y., Li, B., Guo, Y., Wang, H., Fang, Y., Xi, Y., Li, H., Li, X., Zhang, K., et al. A survey on speech large language models for understanding. arXiv preprint arXiv:2410.18908 , 2024. Pratap, V., Xu, Q., Sriram, A., Synnaeve, G., and Collobert, R. Mls: A large-scale multilingual dataset for speech research. arXiv preprint arXiv:2012.03411 , 2020. Radford, A., Kim, J. W., Xu, T., Brockman, G., McLeavey, C., and Sutskever, I. Whisper: Robust speech recogni-tion via large-scale weak supervision. arXiv preprint arXiv:2212.01234 , 2022. Rajbhandari, S., Rasley, J., Ruwase, O., and He, Y. Zero: Memory optimizations toward training trillion parameter models. In SC20: International Conference for High Per-formance Computing, Networking, Storage and Analysis ,pp. 1–16. IEEE, 2020. Roy, O. and Vetterli, M. The effective rank: A measure of effective dimensionality. In 2007 15th European signal processing conference , pp. 606–610. IEEE, 2007. Shi, X., Wang, X., Guo, Z., Wang, Y., Zhang, P., Zhang, X., Guo, Z., Hao, H., Xi, Y., Yang, B., et al. Qwen3-asr technical report. arXiv preprint arXiv:2601.21337 , 2026. Tang, Z., Wang, D., Xu, Y., Sun, J., Lei, X., Zhao, S., Wen, C., Tan, X., Xie, C., Zhou, S., et al. Kespeech: An open source speech dataset of mandarin and its eight subdialects. In Thirty-fifth Conference on Neural Informa-tion Processing Systems Datasets and Benchmarks Track (Round 2) , 2021. Wang, C., Riviere, M., Lee, A., Wu, A., Talnikar, C., Haziza, D., Williamson, M., Pino, J., and Dupoux, E. Voxpopuli: A large-scale multilingual speech corpus for representa-tion learning, semi-supervised learning and interpretation. In Proceedings of the 59th Annual Meeting of the Associ-ation for Computational Linguistics and the 11th Interna-tional Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pp. 993–1003, 2021. 10 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+Wu, B., Yan, C., Hu, C., Yi, C., Feng, C., Tian, F., Shen, F., Yu, G., Zhang, H., Li, J., et al. Step-audio 2 technical report. arXiv preprint arXiv:2507.16632 , 2025. Xia, Y., Tang, J., Hou, J., Xu, G., and Yao, H. Uni-asr: Unified llm-based architecture for non-streaming and streaming automatic speech recognition. arXiv preprint arXiv:2603.11123 , 2026. Xu, J., Guo, Z., Hu, H., Chu, Y., Wang, X., He, J., Wang, Y., Shi, X., He, T., Zhu, X., et al. Qwen3-omni technical report. arXiv preprint arXiv:2509.17765 , 2025a. Xu, K.-T., Xie, F.-L., Tang, X., and Hu, Y. Fireredasr: Open-source industrial-grade mandarin speech recogni-tion models from encoder-decoder to llm integration. 
+
+arXiv preprint arXiv:2501.14350 , 2025b. Yamagishi, J., Veaux, C., and MacDonald, K. Cstr vctk corpus: English multi-speaker corpus for cstr voice cloning toolkit (version 0.92). The Rainbow Passage which the speakers read out can be found in the Interna-tional Dialects of English Archive:(http://web. ku. edu/˜ idea/readings/rainbow. htm). , 2019. Yang, A., Li, A., Yang, B., Zhang, B., Hui, B., Zheng, B., Yu, B., Gao, C., Huang, C., Lv, C., et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. Yang, W., Gibson, J. D., and He, T. Coefficient rate and lossy source coding. IEEE Transactions on Information Theory , 51(1):381–386, 2005. Yao, Z., Kang, W., Yang, X., Kuang, F., Guo, L., Zhu, H., Jin, Z., Li, Z., Lin, L., and Povey, D. Cr-ctc: Consistency regularization on ctc for improved speech recognition. 
+
+arXiv preprint arXiv:2410.05101 , 2024. Yusuyin, S., Ma, T., Huang, H., Zhao, W., and Ou, Z. Whis-tle: Data-efficient multilingual and crosslingual speech recognition via weakly phonetic supervision. IEEE Trans-actions on Audio, Speech and Language Processing ,2025. Zeng, A., Du, Z., Liu, M., Wang, K., Jiang, S., Zhao, L., Dong, Y., and Tang, J. Glm-4-voice: Towards intelli-gent and human-like end-to-end spoken chatbot. arXiv preprint arXiv:2412.02612 , 2024. Zeyer, A., Schl ¨uter, R., and Ney, H. Why does ctc result in peaky behavior? arXiv preprint arXiv:2105.14849 , 2021. Zhang, B., Lv, H., Guo, P., Shao, Q., Yang, C., Xie, L., Xu, X., Bu, H., Chen, X., Zeng, C., et al. Wenetspeech: A 10000+ hours multi-domain mandarin corpus for speech recognition. In ICASSP 2022-2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pp. 6182–6186. IEEE, 2022. Zhang, Y., Xu, M., Bai, X., Zhang, P., Xiang, Y., Zhang, M., et al. Instruction anchors: Dissecting the causal dynamics of modality arbitration. arXiv preprint arXiv:2602.03677 ,2026. Zhou, G., Yan, Y., Zou, X., Wang, K., Liu, A., and Hu, X. Mitigating modality prior-induced hallucinations in mul-timodal large language models via deciphering attention causality. arXiv preprint arXiv:2410.04780 , 2024. Zhou, J., Guo, Y., Zhao, S., Sun, H., Wang, H., He, J., Kong, A., Wang, S., Yang, X., Wang, Y., et al. Cs-dialogue: A 104-hour dataset of spontaneous mandarin-english code-switching dialogues for speech recognition. 
+
+arXiv preprint arXiv:2502.18913 , 2025a. Zhou, W., Jia, J., Sari, L., Mahadeokar, J., and Kalinli, O. Cjst: Ctc compressor based joint speech and text training for decoder-only asr. In ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pp. 1–5. IEEE, 2025b. 11 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+## A. Training Details 
+
+A.1. Training Data Statistics 
+
+Across the pretraining, alignment, and SFT stages, we use the same speech corpora, with only the training steps and objectives varying at each stage. Table 4 summarizes detailed statistics of the training data, including language coverage, domain diversity, and overall scale. Our training corpora consist of annotated speech-text pairs totaling approximately 560K hours.  
+
+> Table 4. An overview of the Mandarin and English speech corpora used across all training stages.
+
+Dataset Language(s) Domain Hours 
+
+YODAS-Granary (Koluguri et al., 2025) English Variety 120K Emilia (He et al., 2024) English / Mandarin Variety 189K MLS (Pratap et al., 2020) English Audiobook 45K VoxPopuli (Wang et al., 2021) English Parliament 550 MSR-86K (Li et al., 2024) English YouTube 10K Common-Voice-v15 (Ardila et al., 2020) English / Mandarin Read 3K GigaSpeech (Chen et al., 2021) English Variety 10K LibriHeavy (Kang et al., 2024) English Audiobook 50K LibriSpeech (Panayotov et al., 2015) English Audiobook 960 SPGISpeech (O’Neill et al., 2021) English Finance 5K PeopleSpeech (Galvez et al., 2021) English Variety 30K VCTK (Yamagishi et al., 2019) English Read 25 TEDLIUM3 (Hernandez et al., 2018) English Talk 500 WenetSpeech-Yue (Li et al., 2026) Chinese dialects Variety 22K WenetSpeech-Chuan (Dai et al., 2025) Chinese dialects Variety 10K WenetSpeech (Zhang et al., 2022) Mandarin Variety 11K FLEURS (Conneau et al., 2023) English / Mandarin News 100 AISHELL-1 (Bu et al., 2017) Mandarin Read 150 AISHELL-2 (Du et al., 2018) Mandarin Read 1K KeSpeech (Tang et al., 2021) Mandarin and 8 Subdialects Conversation 1.6K CS-Dialogue (Zhou et al., 2025a) Mandarin English Code Switch Variety 104 ASCEND (Lovenia et al., 2022) Mandarin English Code Switch Conversation 10 In-house data English / Mandarin Conversation ∼50K Total English / Mandarin All ∼560K 
+
+A.2. Our LLM-based ASR Architecture Feature extraction. We extract 80-dimensional log-Mel spectrograms using a 25ms window and a 10ms frame shift, followed by global mean and variance normalization. 
+
+Speech encoder. The backbone of our encoder is inherited from FireRedASR-AED (Xu et al., 2025b), consisting of a 4x downsampling convolutional module followed by a stack of Conformer blocks (Gulati et al., 2020), with a total of approximately 600 M parameters. The encoder converts speech into continuous representations at a frame rate of 25 Hz (40 ms temporal resolution). 
+
+CTC head. For encoder pretraining, we attach a three-layer MLP as a CTC head after the speech encoder, which maps its hidden representations to the target vocabulary and is optimized with the connectionist temporal classification loss (Graves et al., 2006; Yao et al., 2024). The CTC head is used exclusively during pretraining. 
+
+Speech adaptor. A lightweight speech adaptor, composed of an MLP with two linear layers, is responsible for mapping the encoder’s speech representations into the text embedding space of the LLM. Prior to the projection, a 4× downsampling is applied by concatenating 4 consecutive frames along the feature dimension to reduce the sequence length. Following this downsampling process, the frame rate is reduced to 6.25 Hz, corresponding to a temporal resolution of 160 ms per token. 12 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+LLM decoder. The decoder is initialized from Qwen3-1.7B (Yang et al., 2025) and generates the final transcription conditioned on both text prompts (“Transcribe the speech into text.”) and speech tokens. 
+
+A.3. Training Setups 
+
+In this study, we adopt stage-specific training configurations described as follows: 
+
+Pretraining: A dynamic batch strategy based on speech frames is employed, with a maximum of 20k frames per batch to efficiently handle variable-length utterances. The learning rate follows a schedule with a linear warm-up to 5.0e-4 over the first 8k steps, followed by exponential decay for the remainder of training. 
+
+Alignment: The batch size is set to 10k frames. The learning rate follows the same schedule as in pretraining, with a linear warm-up to a maximum of 1.0e-3. 
+
+IA-SFT and joint SFT: The batch size is further reduced to 7k frames. The learning rate also follows the same warm-up and exponential decay schedule, with a maximum learning rate of 1.0e-5. In pilot experiments, we also explored lower learning rates during joint SFT to reduce representation drift. Empirically, after IA-SFT has sufficiently narrowed the modality gap, a learning rate of 1.0e-5 maintained the interface stability established in prior stages and performed better than the more conservative alternatives. The Adam optimizer (Kingma, 2014) is used across all training stages. Experiments are conducted on NVIDIA A100 80GB GPUs using DeepSpeed ZeRO Stage-2 (Rajbhandari et al., 2020), with gradient accumulation over 4 steps, bfloat16 precision, and FlashAttention-2 (Dao, 2023). 
+
+A.4. Training Details of IA-SFT 
+
+Here, we provide additional details on the implementation of IA-SFT. 
+
+CKA-guided encoder update schedule. During IA-SFT, we perform several rounds of encoder hot-swapping to ensure diversity in the representations exposed to the LLM. Meanwhile, we aim to limit representation drift, as measured by CKA, so that the adaptor–LLM interface does not need to spend excessive effort adapting to each newly swapped encoder. To this end, we monitor changes in the representation distribution on a fixed validation set using CKA scores, as described in Section 3.4. Given the current encoder checkpoint Ecur and a reference checkpoint Eref , we compute the CKA score between their representations and trigger an update once the score falls below a predefined threshold τ :
+
+CKA( Ecur , Eref ) < τ, (11) Given two sets of encoder representations E(a), E (b) ∈ RL×de extracted from the same evaluation set, CKA is defined as CKA (E(a), E (b)) = ⟨ ˜K(a), ˜K(b)⟩F
+
+q
+
+⟨ ˜K(a), ˜K(a)⟩F · ⟨ ˜K(b), ˜K(b)⟩F
+
+, (12) where ˜K(a) and ˜K(b) are centered Gram matrices calculated as ˜K(x) = CE (x)E(x)⊤C. The centering matrix is defined as 
+
+C = IL − 1 
+
+> L
+
+JL, where IL is the identity matrix and JL is the all-ones matrix. CKA measures the geometric similarity of representation spaces, invariant to orthogonal transformations and isotropic scaling. 
+
+Iterative schedule and hot-swapping. Whenever an update is triggered, the current pretraining encoder Ecur is used to simultaneously update both (i) the frozen encoder ESFT in the IA-SFT pipeline, and (ii) the reference checkpoint Eref used for subsequent CKA monitoring during pretraining: 
+
+ESFT ← E cur , Eref ← E cur . (13) We begin monitoring CKA scores every 10k steps once pretraining reaches 500k steps, at which point the model starts to exhibit convergence trends. The encoder at 500k steps serves as the initial reference checkpoint Eref . Since pretraining focuses solely on the ASR task, the optimization direction remains largely consistent, causing CKA scores to generally 13 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 500k 540k 580k 620k 660k 700k 740k 780k 820k 860k 900k 940k 980k 1020k Training steps  
+
+> 0.970
+> 0.975
+> 0.980
+> 0.985
+> 0.990
+> 0.995
+> 1.000 Average CKA Update threshold
+
+(a) CKA scores between encoders (0.50 M-1.01 M) and reference checkpoint (0.50 M) 1010k 1050k 1090k 1130k 1170k 1210k 1250k 1290k 1320k Training steps  
+
+> 0.970
+> 0.975
+> 0.980
+> 0.985
+> 0.990
+> 0.995
+> 1.000 Average CKA Update threshold
+
+(b) CKA scores between encoders (1.01 M-1.32 M) and reference checkpoint (1.01 M) 1320k 1360k 1400k 1440k 1480k 1520k 1560k 1600k 1640k 1680k 1720k 1760k 1800k 1840k 1880k 1920k 1960k 2000k Training steps  
+
+> 0.970
+> 0.975
+> 0.980
+> 0.985
+> 0.990
+> 0.995
+> 1.000 Average CKA Update threshold
+
+(c) CKA scores between encoders (1.32 M-2.00 M) and reference checkpoint (1.32 M) 
+
+Figure 5. Trajectory of CKA scores during pretraining. It reports the average CKA between the encoders and the corresponding reference checkpoint. 
+
+decrease, with occasional rebounds throughout encoder evolution—this partly explains why direct encoder hot-swapping during IA-SFT works effectively without requiring realignment. Based on our experience, we set the CKA threshold 
+
+τ = 0 .975 , which we find to be a moderate choice: a higher threshold triggers more frequent updates, incurring unnecessary overhead; a lower threshold leads to less frequent updates, permitting greater representation drift between swaps, which may reduce the LLM’s ability to capture robust patterns shared across encoder states. When pretraining reaches 1.01M steps, the CKA score first drops below this threshold (see Figure 5a). At this point, the corresponding encoder is used to initialize the encoder in our encoder–adaptor-LLM model, and the alignment stage begins. After 1.3M alignment steps, we proceed to the IA-SFT stage, where the adaptor and LLM are jointly optimized. From then on, IA-SFT and pretraining are executed asynchronously in parallel. When pretraining reaches 1.32M steps, the CKA score again drops below 0.975 (see Figure 5b). We then directly update both ESFT and Eref , and continue asynchronous training. Finally, when pretraining reaches the maximum step of 2M (see Figure 5c), we perform the last encoder hot-swapping for IA-SFT. As summarized in Table 5, the SFT-stage encoder is initialized once and updated twice throughout the process. 
+
+Table 5. Detailed training procedures, including the encoder update schedule, CKA thresholds, and stage-wise training steps. Here, the step counts for pretraining, alignment, and IA-SFT are measured independently in their respective training processes. 
+
+Pretrain Step Trigger Action Details 
+
+0–0.5M – 1. Pretraining begins ; with the reference checkpoint initialized at step 0.5 M. 0.5M–1.01M CKA < 0.975 2. Pretraining continues ; at step 1.01 M, the encoder snapshot updates the reference checkpoint and initializes the encoder for post-training. The alignment stage then begins (total 1.3 M steps). After alignment ends, IA-SFT then begins (total 1.0 M steps) while pretraining continues asynchronously. 1.01M–1.32M CKA < 0.975 3. Pretraining continues ; at step 1.32 M, the encoder snapshot updates the reference checkpoint and the encoder for IA-SFT (total 1.0 M steps). 1.32M–2.00M (end) – 4. Pretraining ends ; the encoder snapshot updates the encoder for IA-SFT (2.00M steps). – – 5. IA-SFT ends ; followed by joint-SFT (2.00M steps). 14 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+Why Encoder Updates without Realignment Work? First, in our design, pretraining and SFT target the same supervised ASR task, differing only in the supervision signals and loss functions, which helps maintain consistency in the overall optimization direction. Moreover, as shown in Figure 5, CKA scores between encoders remain consistently high throughout pretraining, suggesting substantial similarity in the dominant encoder subspace across checkpoints. In this regime, subsequent pretraining appears to mainly reduce acoustic redundancy and refine acoustic preferences, rather than reshape the global manifold. Whenever the updated encoder is applied to the SFT model, downstream components receive representations with lower entropy while remaining broadly distributionally consistent. The adaptor and LLM can therefore continue adapting to these inputs with limited additional alignment cost, which may help explain why explicit realignment was not necessary in our experiments. In general, compared to the traditional pipeline, IA-SFT provides the following main advantages: • Maintaining functional decoupling. In contrast to sequential SFT with trainable encoders, IA-SFT helps limit the tendency of the encoder to drift toward the LLM’s semantic manifold. The encoder can therefore continue optimizing primarily for acoustic uncertainty reduction, which is more consistent with preserving fine-grained acoustic discrimination and limiting semantic dependence. • Regularization from multiple encoder perspectives. Beyond the reduction in entropy, the iteratively updated encoders exhibit distinct preference patterns for acoustic cues. IA-SFT exposes the LLM to representations with different signal-to-noise levels in a curriculum-like manner. This process can also act as a form of regularization, encouraging the LLM to focus on acoustic features that remain consistent across encoder states rather than overfitting to idiosyncratic biases of any single checkpoint. • Parallelization and efficiency. Converting sequential pretraining and SFT into asynchronous parallel processes substan-tially reduces the total training time. • Flexibility and transferability. Benefiting from functional decoupling, our encoder remains compatible with both the CTC head and the LLM decoder in our setup. This may improve deployment flexibility by enabling scalable configurations tailored to different computational constraints based on a shared encoder. It also creates a cleaner interface for iterating on individual components, which may reduce the cost of integrating newer LLM backbones in future system updates. 
+
+## B. Formalization of Encoder Representation Dynamics 
+
+This section provides a geometric perspective on encoder representation dynamics in LLM-based ASR systems with an encoder–adaptor–LLM architecture. Our goal is to characterize how different pretraining and post-training paradigms shape the spectral structure and functional composition of encoder representations, thereby inducing distinct operating regimes at the encoder–LLM interface. 
+
+B.1. Problem Setup and Spectral Decomposition 
+
+Let X be a random variable representing input speech, and let Eϕ denote a speech encoder. For a realization x, the encoder produces 
+
+E = Eϕ(x) = [ e1, . . . , e L]⊤ ∈ RL×de , (14) where L is the sequence length and de is the hidden dimension. Consider the singular value decomposition: 
+
+E = U ΣV ⊤, (15) where Σ = diag( σ1, . . . , σ d) with d = min( L, d e).The singular values {σi} characterize how variance is distributed across principal directions. By normalizing the singular values and treating them as a discrete spectrum, we can further quantify their concentration using an entropy measure, leading to the normalized spectral entropy (NSE). Moreover, a concentrated spectrum corresponds to a lower-entropy and more compact representation, whereas a flatter spectrum indicates higher residual uncertainty distributed across multiple directions. Since E serves as the interface to the adaptor–LLM stack, its spectral structure reflects how much uncertainty has already been reduced by the encoder. 15 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+B.2. Functional Subspaces of Speech Representations 
+
+We view the encoder feature space as composed of multiple overlapping functional subspaces: 
+
+Rde ⊃ S linguistic ⊕ S paralinguistic ⊕ S non-linguistic , (16) where • Slinguistic captures transcription-relevant structure (e.g., phonetic and lexical information); • Sparalinguistic includes speaker prosody and emotion; • Snon-linguistic corresponds to environmental noise and nuisance variability. These subspaces are not strictly orthogonal, but this decomposition provides a useful abstraction for analyzing how training redistributes variance. An effective ASR encoder should concentrate variance within Slinguistic while suppressing irrelevant variability, thereby forming a compact and acoustically grounded interface. 
+
+B.3. Accessible-Information Proxies under a Gaussian Approximation 
+
+Beyond spectral concentration, we also wish to characterize how much transcription-relevant information remains accessible from the encoder representation. Let u denote an utterance-level summary of the encoder representation, P a phonetic target variable, and C a semantic target variable. To quantify their statistical dependence in a tractable form, we adopt a joint Gaussian approximation on (u, P, C ) and use mutual-information-inspired log-determinant quantities as accessible-information proxies. For a Gaussian random vector Z ∈ Rk with covariance ΣZ , its differential entropy is given by 
+
+h(Z) = 12 log  (2 πe )k det Σ Z
+
+. (17) This shows that, under a Gaussian assumption, entropy is fully determined by the covariance structure through its log-determinant. 
+
+Proposition B.1 (Gaussian mutual information in log-det form) . Let A ∈ RdA and B ∈ RdB be jointly Gaussian random variables with joint covariance 
+
+Σ[A,B ] =
+
+ΣAA ΣAB 
+
+ΣBA ΣBB 
+
+
+
+. (18) 
+
+Then their mutual information admits the closed-form expression 
+
+I(A; B) = 12 log det Σ AA det Σ BB 
+
+det Σ [A,B ]
+
+. (19) 
+
+Proof. By definition, 
+
+I(A; B) = h(A) + h(B) − h(A, B ). (20) Since (A, B ) is jointly Gaussian, its marginals are also Gaussian. Therefore, 
+
+h(A) = 12 log  (2 πe )dA det Σ AA 
+
+, (21) 
+
+h(B) = 12 log  (2 πe )dB det Σ BB 
+
+, (22) 
+
+h(A, B ) = 12 log  (2 πe )dA+dB det Σ [A,B ]
+
+. (23) Substituting these expressions into the mutual information identity gives 
+
+I(A; B) = 12 log  (2 πe )dA det Σ AA 
+
+ + 12 log  (2 πe )dB det Σ BB 
+
+
+
+− 12 log  (2 πe )dA+dB det Σ [A,B ]
+
+. (24) 16 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+Using logarithm rules, the constant terms cancel, yielding 
+
+I(A; B) = 12 log det Σ AA det Σ BB 
+
+det Σ [A,B ]
+
+. (25) Applying this result to (u, P ) yields a Gaussian proxy for phonetic accessible information: 
+
+PAI( E′) ∝ I(u; P ) = 12 log det Σ uu det Σ P P 
+
+det Σ [u,P ]
+
+. (26) 
+
+Proposition B.2 (Gaussian conditional mutual information in log-det form) . Let A ∈ RdA , B ∈ RdB , and C ∈ RdC be jointly Gaussian. Then 
+
+I(A; B | C) = 12 log det Σ AA |C det Σ BB |C
+
+det Σ [A,B ]|C
+
+, (27) 
+
+where the conditional covariance matrices are defined via the Schur complement, e.g. 
+
+ΣAA |C = Σ AA − ΣAC Σ−1 
+
+> CC
+
+ΣCA , (28) 
+
+and analogously for ΣBB |C and Σ[A,B ]|C . Here, ΣAA |C captures the residual variability of A after removing the components that can be linearly explained by C.Proof. By definition, 
+
+I(A; B | C) = h(A | C) + h(B | C) − h(A, B | C). (29) For jointly Gaussian variables, conditional distributions remain Gaussian, and their conditional entropies are determined by conditional covariance matrices: 
+
+h(A | C) = 12 log  (2 πe )dA det Σ AA |C
+
+, (30) 
+
+h(B | C) = 12 log  (2 πe )dB det Σ BB |C
+
+, (31) 
+
+h(A, B | C) = 12 log  (2 πe )dA+dB det Σ [A,B ]|C
+
+. (32) Substituting into the definition of conditional mutual information yields 
+
+I(A; B | C) = 12 log  (2 πe )dA det Σ AA |C
+
+ + 12 log  (2 πe )dB det Σ BB |C
+
+
+
+− 12 log  (2 πe )dA+dB det Σ [A,B ]|C
+
+. (33) Again, the constant terms cancel, giving 
+
+I(A; B | C) = 12 log det Σ AA |C det Σ BB |C
+
+det Σ [A,B ]|C
+
+. (34) By setting (A, B, C ) = ( u, C, P ), we obtain the conditional semantic accessible information: 
+
+CSAI( E′) ∝ I(u; C | P ) = 12 log det Σ uu |P det Σ CC |P
+
+det Σ [u,C ]|P
+
+. (35) In practice, we estimate covariance matrices empirically with ridge regularization and convert the logarithm to base 2, leading to the regularized forms in Eqs. (8) and (9) . These quantities should be interpreted as linear-Gaussian accessible-information proxies for relative comparison, rather than exact mutual information estimates. 17 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+B.4. Encoder Pretraining and Spectral Bias 
+
+Different pretraining objectives induce distinct spectral biases, shaping how acoustic uncertainty is distributed across the encoder–LLM interface. 
+
+Character-level CTC. Character-level CTC enforces monotonic alignment between speech frames and transcription labels: 
+
+LCTC-char = − log X
+
+> π∈B −1(ychar )
+> L
+
+Y
+
+> i=1
+
+pθ (πi | ei). (36) where ychar denotes the target character sequence, π is a frame-level alignment path, and B is the collapse operator. This objective encourages compact, transcription-aligned representations, but introduces early coupling to language-specific semantic units. 
+
+Phoneme-level CTC. Phoneme-level supervision mitigates premature semantic coupling: 
+
+LCTC-phoneme = − log X
+
+> π∈B −1(yphoneme )
+> L
+
+Y
+
+> i=1
+
+pθ (πi | ei). (37) where yphoneme denotes the phoneme sequence. As phonemes are more directly tied to acoustic structure, this objective yields more language-agnostic and acoustically grounded representations, forming a more stable encoder–LLM interface. 
+
+AED-based pretraining. The AED objective formulates speech modeling as sequence-to-sequence prediction: 
+
+LAED = −
+
+> N
+
+X
+
+> n=1
+
+log pθ (yn | y<n , E ) (38) where the decoder attends to the encoder representation sequence. Compared with CTC, AED does not impose an explicit frame-level alignment constraint. Instead, it allows the encoder to retain broader contextual cues that can assist the autoregressive decoder. Moreover, the sequence-to-sequence formulation can be naturally extended beyond pure transcription to other speech-conditioned tasks. Consequently, although AED-pretrained encoders can support ASR, their representations tend to preserve a broader range of variability and exhibit less concentrated spectra than those optimized under strongly alignment-driven objectives. This broader representational capacity makes AED-pretrained encoders well suited for initializing large audio-language models (LALM), where the encoder is expected to support diverse audio–language tasks beyond transcription. 
+
+Hybrid supervised objectives. Some approaches combine alignment-driven and sequence-level objectives (e.g., CTC + AED): 
+
+Lhybrid = λLCTC + (1 − λ)LAED . (39) Such hybrid training balances strong alignment constraints with sequence-level modeling, yielding intermediate spectral characteristics and uncertainty allocation. 
+
+Self-supervised pretraining (SSL). Self-supervised objectives such as Best-RQ (Chiu et al., 2022) learn acoustic representations by predicting discrete pseudo-targets derived from the input signal: 
+
+LSSL = − X
+
+> t∈M
+
+log pθ (zt | ˜E), (40) where zt denotes discrete targets obtained via a quantization process, ˜E represents masked or corrupted acoustic features, and M denotes the set of masked positions, and the model predicts a categorical distribution over codebook entries at masked positions. In this framework, continuous speech is first mapped to discrete codebook indices, which serve as prediction targets, and the model is trained to infer these targets at masked positions from surrounding context. Unlike supervised objectives, SSL does not enforce alignment to linguistic units, resulting in higher-entropy representations and deferring more uncertainty to downstream modules such as the LLM. 18 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+B.5. Instruction-Based Post-training and Divergent Encoder Regimes 
+
+After encoder pretraining, both LLM-ASR and LALM systems are typically further optimized under instruction-conditioned language modeling objectives. Let E = {ei}Li=1 denote the encoder representations, t the text instruction prompt, and 
+
+y = ( y1, . . . , y N ) the target response sequence. A generic post-training objective can be written as 
+
+Linst = −
+
+> N
+
+X
+
+> n=1
+
+log pθ (yn | y<n , E, t ). (41) Once the encoder is connected to the adaptor–LLM stack under such supervision, the downstream language modeling objective further reshapes the representation geometry at the encoder–LLM interface. In LLM-ASR, the encoder is usually initialized from an ASR-oriented model trained with transcription objectives such as CTC or AED, so its representations are already biased toward transcription-relevant acoustic structure and may provide a relatively compact interface before LLM integration. Moreover, the subsequent instruction-based supervision is still centered on transcription, which further encourages the encoder–LLM interface to remain specialized for ASR. Importantly, when a well-formed interface has been established prior to full end-to-end coupling, subsequent joint optimization primarily induces local refinements on the existing representation manifold, rather than causing large distribution shifts toward text-dominated regimes. This allows the model to improve cross-module alignment while preserving the capability boundary between acoustic grounding and semantic modeling. By contrast, LALMs are typically trained to support a broader range of audio–language tasks beyond transcription. Their encoders therefore tend to preserve a wider range of information and exhibit a flatter, higher-entropy representation space. Moreover, the diverse instructions further encourage representations to remain compatible with more general audio understanding. Consequently, although both LLM-ASR and LALMs may adopt the same encoder–adaptor–LLM architecture, differences in both encoder initialization and post-training supervision lead them to evolve under distinct representational regimes. 
+
+## C. Entropy Allocation and Functional Decoupling in LLM-ASR 
+
+In this section, we provide an information-theoretic perspective on entropy allocation in LLM-based ASR. Our goal is to clarify how a well-formed encoder–LLM interface enables a capability-aligned division of uncertainty reduction between acoustic grounding and semantic disambiguation. 
+
+C.1. Entropy Decomposition at the Encoder–LLM Interface 
+
+Let X and Y denote the input speech and target transcription, respectively. The speech encoder and adaptor define a deterministic transformation chain 
+
+X Eϕ
+
+−−→ E Aψ
+
+−−−→ Z, (42) where E is the encoder representation and Z is the projected speech embedding consumed by the LLM. At the interface level, the uncertainty of the target transcription can be decomposed as 
+
+H(Y ) = I(Y ; Z) + H(Y | Z), (43) where I(Y ; Z) measures the amount of task-relevant information exposed through the interface, and H(Y | Z) represents the residual uncertainty to be resolved by the LLM. This decomposition naturally reflects a division of labor across modules. A more informative and structured interface increases I(Y ; Z) and reduces the burden on the LLM, whereas a weaker interface shifts more uncertainty to downstream language modeling. Importantly, the effectiveness of the interface depends not only on the quantity of retained information, but also on whether that information is aligned with the functional roles of each module. 
+
+C.2. Capability Boundary and Functional Decoupling 
+
+In LLM-based ASR, the encoder and the LLM exhibit complementary inductive biases. The encoder is well suited for resolving local acoustic ambiguity, such as phonetic distinctions and temporal structure, while the LLM is more effective at resolving higher-level ambiguity through linguistic priors and contextual reasoning. Accordingly, a well-formed 19 Rethinking Entropy Allocation in LLM-based ASR: Understanding the Dynamics between Speech Encoders and LLMs 
+
+encoder–LLM interface should satisfy two properties. First, it should provide a sufficiently compact representation to avoid unnecessary burden on the LLM. Second, the retained structure should remain acoustically grounded, preserving evidence derived from the speech signal rather than replacing it with text-correlated shortcuts. Under this perspective, the encoder and LLM operate under functional decoupling: the encoder primarily reduces acoustic uncertainty, while the LLM resolves the remaining semantic ambiguity conditioned on the interface representation. 
+
+C.3. Hallucination as Misallocated Uncertainty Reduction 
+
+From this viewpoint, hallucination in LLM-based ASR can be interpreted as a consequence of misallocated uncertainty reduction across the encoder–LLM interface. Two representative failure modes are particularly relevant. 
+
+Semantic-contaminated encoder representations. One failure mode arises when joint optimization progressively aligns encoder representations with text-correlated regularities. In this regime, part of the uncertainty reduction is achieved through patterns that are not strictly grounded in acoustic evidence. As a result, the interface may become more predictive of the transcription while losing robustness to acoustic variation, increasing the likelihood of fluent but weakly grounded outputs under ambiguous or degraded conditions. 
+
+LLM-dominant uncertainty reduction. Another failure mode occurs when the encoder provides a weak or insufficiently structured interface. In this case, a larger portion of uncertainty is deferred to the LLM, making the decoding process more dependent on language priors. This behavior can be further understood through the Bayesian factorization 
+
+p(Y | Z) ∝ p(Z | Y ) p(Y ). (44) When Z provides limited discrimination among candidate transcriptions, the likelihood term p(Z | Y ) becomes less informative, and the posterior is increasingly shaped by the prior p(Y ). Consequently, the model may generate outputs that are linguistically plausible but not fully supported by the speech signal. 
+
+C.4. Rationale of the Decoupled Training Paradigm 
+
+The above analysis motivates a training strategy that aligns uncertainty allocation with module capabilities. Phoneme-level pretraining encourages the encoder to form a compact and acoustically grounded interface by emphasizing pronunciation-level structure. Subsequent adaptation stages allow the adaptor and LLM to operate on this interface before full end-to-end coupling. After the interface has been sufficiently established, joint optimization can be introduced to refine the overall system. At this stage, interactions between modules primarily induce local adjustments in the representation manifold, improving alignment at the encoder–LLM interface without substantially altering the underlying representation structure. From this perspective, hallucination can be understood as a consequence of how uncertainty reduction is distributed across modules. Maintaining an interface that is both compact and acoustically grounded preserves the intended division of labor between acoustic grounding and downstream language modeling. As a result, the encoder can absorb a larger portion of acoustically grounded uncertainty reduction, while leaving higher-level semantic disambiguation to the LLM. This capability-aligned allocation not only mitigates hallucination by reducing reliance on text-side priors, but also improves parameter efficiency by alleviating the burden on the LLM, enabling strong performance with a smaller model scale. 20

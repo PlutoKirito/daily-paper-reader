@@ -1,0 +1,576 @@
+Title: InsEdit: Towards Instruction-based Visual Editing via Data-Efficient Video Diffusion Models Adaptation
+
+URL Source: https://arxiv.org/pdf/2604.08646v1
+
+Published Time: Mon, 13 Apr 2026 00:10:12 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# InsEdit: Towards Instruction-based Visual Editing via Data-Efficient Video Diffusion Models Adaptation 
+
+## Zhefan Rao 1* , Bin Zou 2* , Haoxuan Che 2†‡ , Xuanhua He 1, Chong Hou Choi 2, Yanheng Li 3,Rui Liu 2†, Qifeng Chen 1†
+
+1 The Hong Kong University of Science and Technology 
+
+2 Celia Research HK 
+
+3 City University of Hong Kong 
+
+Figure 1: Representative visual editing results of InsEdit. 
+
+Abstract 
+
+Instruction-based video editing is a natural way to control video content with text, but adapting a video generation model into an editor usually appears data-hungry. At the same time, high-quality video editing data remains scarce. In this paper, we show that a video generation backbone can become a strong video editor without large scale video editing data. We present InsEdit , an instruction-based editing model built on HunyuanVideo-1.5. InsEdit combines a visual editing architecture with a video data pipeline based on 
+
+Mutual Context Attention (MCA) , which creates aligned video pairs where edits can begin in the middle of a clip rather than only from the first frame. With only 𝑂 (100 )K video editing data, InsEdit achieves state-of-the-art results among open-source methods on our video instruction editing benchmarks. In addition, because our training recipe also includes image editing data, the final model supports image editing without any modification. 
+
+CCS Concepts 
+
+• Computing methodologies → Computer vision problems ;
+
+Machine learning approaches ; Image manipulation. 
+
+Keywords 
+
+instruction-based editing, Mutual Context Attention, video dataset, diffusion transformer 
+
+> ∗These authors contributed equally to this work.
+> †Corresponding author.
+> ‡Project leader.
+> 1
+> arXiv:2604.08646v1 [cs.CV] 9 Apr 2026
+
+1 Introduction 
+
+Instruction-based video editing allows users to modify a video with natural language rather than masks, trajectories, or hand-crafted control signals. It is an attractive interface for content creation because it combines the flexibility of text with the visual quality required in modern video production. Recent progress in video generation models suggests a promising path toward this goal: a strong video generator already captures appearance, motion, and consistency over time, so it should be a good starting point for video editing. In practice, however, turning a video generation model into a reliable instruction-based editor is still difficult [1, 20, 22, 39]. An important open question is what an efficient training path for this adaptation should look like. Recent methods often rely on large-scale video editing data, sometimes at the million-sample scale [ 10 , 39 ], yet it remains unclear how to turn a pre-trained video generator into a strong editor with a relatively modest amount of editing data. One major obstacle lies in the training data setup itself: many video editing datasets are still built by editing the first frame and propagating the result to the rest of the clip [ 39 ]. This recipe works for edits that stay active throughout the video, but it strongly biases training toward edits that start from frame one and continue to the end. This kind of supervision does not match many real video editing requests. In practice, an edit may need to appear only after an object enters the scene, after an action starts, or during only part of a clip. These partial edits are hard to create well under the common first-frame editing-and-propagation pipeline, so current models see too few examples of one of the most important behaviors in video editing. As a result, efficient adaptation is not only a matter of model design; it also depends on whether each training sample provides enough useful editing signal. Our key observation is that making each training sample more informative is critical for efficient adaptation. We present InsEdit ,an instruction-based video editing model built on HunyuanVideo-1.5, with a design that targets both sides. Prior works have shown that attention manipulation is effective for controllable generation and editing [ 4, 11 , 41 , 47 ]. Inspired by this line of research, we develop a video data pipeline based on Mutual Context Attention (MCA) that jointly generates aligned source-target video pairs where the edit can begin from arbitrary points in a clip. Unlike the common first-frame-editing-and-propagation recipe, our pipeline creates more informative training pairs with naturally varying edit onset times. On the model side, we adapt the dual-stream architecture of HunyuanVideo-1.5 into an editor guided by source content, so the model can understand the editing instruction while preserving source appearance and temporal structure. Together with a simple two-stage training recipe, this gives a practical path from a video generator to a strong video editor using only 𝑂 (100 )Kvideo editing data. As shown in Fig. 2, this adaptation path reaches strong video editing performance with a relatively modest amount of video editing data (InsEdit corresponds to the main model in Table 1; InsEdit-light is the lighter variant “+ Gen Data w/ SigLIP-1” in Table 2). Although InsEdit is designed from a video-first view, our train-ing recipe also includes image editing data to improve training efficiency. Because the model treats an image as a single-frame 100K 1M 10M 100M      
+
+> Training Data Volume
+> 2.5
+> 3.0
+> 3.5
+> 4.0
+> 4.5
+> 5.0
+> VLM Evaluation Score
+> High Efficiency Zone
+> Training Efficiency Comparison
+> OmniVideo 4.13
+> InsViE 2.76
+> ICVE 3.54
+> Ditto 3.58
+> UniVideo 4.26
+
+Figure 2: Training efficiency of adapting video generation models into editors. InsEdit reaches strong video editing performance with only 𝑂 (100 )K video editing data. 
+
+video, it naturally acquires image editing ability as well. This is not the main goal of our design, but a useful side benefit of the video-first training path. Beyond the main model, we study which training decisions mat-ter most for this adaptation path. We conduct systematic experi-ments on Stage-2 modeling choices, initialization, image-video data ratio, and prompt format, and we also construct InsEdit-Bench to evaluate diverse and challenging video editing scenarios across 13 editing categories. Experiments show that InsEdit achieves state-of-the-art results among open-source video instruction editing models on our evaluation benchmarks and gives especially strong gains on the scenarios emphasized in this paper. Our contributions are summarized as follows: 
+
+• We present InsEdit , which adapts HunyuanVideo-1.5 into a strong instruction-based video editor with only 𝑂 (100 )Kvideo editing data and achieves state-of-the-art results among open-source methods on our evaluation benchmarks. Since the training recipe also incorporates image editing data, the resulting model naturally extends to image editing by treat-ing each image as a single-frame video. 
+
+• We propose a video data pipeline based on Mutual Context Attention (MCA) that creates aligned video pairs where edits can begin from any point in a clip, making limited training data more informative than first-frame-propagation recipes. 
+
+• We construct InsEdit-Bench covering 13 editing categories and conduct systematic ablations on initialization, data ra-tio, and prompt format, offering practical guidance for data-efficient adaptation of video generation models to editing tasks. 
+
+2 Related Work 2.1 Instruction-based Video Editing 
+
+Instruction-based video editing is the line of work most closely re-lated to ours. Early diffusion-based methods, such as FateZero [ 27 ], TokenFlow [ 9 ], FLATTEN [ 6], RAVE [ 15 ], and AnyV2V [ 17 ], mainly focus on text-guided or prompt-guided editing with handcrafted temporal constraints or tuning-free feature propagation. As video generation backbones become stronger [ 12 , 16 , 33 , 37 ], recent works 
+
+> 2
+
+move toward direct instruction-based video editing, such as InsViE-1M [ 39 ], ICVE [ 20 ], Ditto [ 1], Kiwi-Edit [ 22 ], OpenVE-3M [ 10 ], Reco [ 46 ], InstructVid2Vid [ 28 ], VideoGrain [ 42 ], VEGGIE [ 45 ], Lucy-Edit [ 30 ], and OmniVideo [ 29 ]. These methods clearly im-prove edit quality and control, but most of them are still trained with supervision in which the edit is propagated from the beginning of the clip, so edits that start later in a video are less covered. 
+
+2.2 Instruction-based Image Editing and Unified Visual Editing 
+
+Instruction-based image editing establishes the basic source and instruction setup for language-guided visual manipulation. A rep-resentative milestone is InstructPix2Pix [ 3 ], and more recent works further improve data quality, editing ability, reward modeling, in-struction diversity, and benchmark coverage [ 18 , 23 , 25 , 34 , 43 ]. These studies provide a useful foundation for instruction follow-ing, but they work on static images and therefore do not address consistency over time or edits that happen only in part of a video. An emerging line of work tries to unify visual understanding, generation, and editing across different modalities. Representative examples include UniWorld [ 21 ], DreamVE [ 40 ], InstructX [ 26 ], Uni-Video [ 35 ], OmniV2V [ 19 ], VACE [ 13 ], UNIC [ 44 ], EditVerse [ 14 ], UniVid [ 24 ], and Kling-Omni [ 31 ]. These studies suggest that image and video editing can benefit from shared backbones and shared instruction-following ability. However, existing unified frameworks focus mainly on sharing the architecture, whereas our focus is to adapt a video generation backbone and redesign the video training data itself. In our setting, image editing is an additional capabil-ity that comes from treating images as single-frame videos during training, rather than the main design target. 
+
+2.3 Video Editing Dataset Construction 
+
+Dataset construction is a central issue in instruction-based video editing, not just an implementation detail. Recent datasets such as Senorita-2M [ 48 ], InsViE-1M [ 39 ], Ditto’s synthetic data [ 1 ], and OpenVE-3M [ 10 ] greatly expand the scale and diversity of available training data. Nevertheless, a common recipe is to edit one anchor frame, usually the first frame, and then generate the remaining frames conditionally so that the full clip stays consistent over time. In our use of Ditto and OpenVE data, we also observe that some samples built in this way show clear degradation or flickering in the first few frames, suggesting that anchor-frame editing followed by propagation can introduce instability near the beginning of a clip. While effective for producing large-scale training pairs, this recipe therefore not only covers too few edits that begin in the middle of a sequence or affect only part of it, but can also produce artifacts near the edited start of the video. Our work is closest to this line of research, but differs in directly redesigning the data construction process through an MCA-based pipeline. 
+
+3 Method 3.1 Editing Architecture 
+
+InsEdit adapts HunyuanVideo-1.5 [ 32 ], a strong video generation model, to instruction-based editing. Each training sample contains a source image or video together with an editing instruction, and MMDiT Blocks ×𝑵    
+
+> <system -prompt> +
+> Change the color of
+> flowers from red to pink.
+
+## … … 
+
+> Reference Feature
+> Noisy Featur e
+> Multi -task Mask
+> +
+> c
+
+VAE Encoder 
+
+> Patchify
+
+VLM SigLip       
+
+> Glyph
+> ByT 5
+> ………
+> cVision Module Semantic Module
+> Editing Instruction
+> Input Video Target Video
+> +Ad d
+> cConcatenation
+> Noise
+
+Figure 3: Overview of the InsEdit architecture. The semantic module converts the source input and editing instruction into edit-aware tokens, while the vision module denoises the target conditioned on both source features and semantic tokens. 
+
+the model should apply the requested change while preserving source content and, for videos, consistency over time. We keep the dual-stream design of HunyuanVideo-1.5, but make the semantic branch use the source input in addition to the in-struction. As shown in Fig. 3, the semantic module converts the instruction and the source input into edit-aware tokens, while the vision module reuses the original denoising stream to generate the edited target. The same design also works for images by treating an image as a single-frame video. 
+
+Semantic Module. The semantic module converts the instruction and the source input into edit-aware tokens. Following HunyuanVideo-1.5, we use three frozen encoders: Qwen2.5-VL, SigLIP, and Glyph-ByT5. The source image or video is fed into Qwen2.5-VL and SigLIP, and the resulting visual features are combined with text features from Glyph-ByT5. These features are concatenated and projected into a shared token sequence, which is injected into the MMDiT blocks. 
+
+Vision Module. The vision module reuses the denoising stream of HunyuanVideo-1.5 and is initialized from its pre-trained back-bone [ 32 ]. We encode the source image or video with a frozen VAE, while the target branch starts from noisy latents. During denoising, the MMDiT blocks combine source visual features with semantic 
+
+> 3
+
+Animal 
+
+Plant 
+
+Tool 
+
+Daily 
+
+Science 
+
+Keyword List 
+
+…
+
+…
+
+Qwen    
+
+> Step1: Get a Pair Prompt
+> Caption1
+> A cat is resting on
+> the windowsill, and
+> outside the window
+> is a beach
+> Caption2
+> A cat is resting on
+> the windowsill, and
+> outside the window
+> is a forest
+
+Wan2.2  Copy Attn  
+
+> Source Target
+
+✓ Background changes in response 
+
+> Instruction ：Transform the forest outside the
+> window into a beach
+> Reverse Instruction ：Turn the beach
+> outside the window into a forest
+> Instruction Long ：Transform the entire forest
+> outside the window into a pure beach, where there are
+> no people on the beach, the sky is blue …
+> Qwen-vl
+> 1. Has the window turned
+> into a beach?
+> 2.Is the cat in front of the
+> window unchanged?
+> 3.Has the overall color
+> tone changed?
+> Gemini
+
+✓
+
+✓
+
+✓     
+
+> Step2: Pair Video Gen
+> Step3: Response Filter
+> Step4: Instruction Gen Step5: Align filter
+> VQA
+
+Figure 4: Automatic pipeline for video editing data construction. Starting from keyword prompts, the pipeline synthesizes aligned source-target video pairs, converts them into multiple instruction forms, and filters them with VQA-based alignment checking. Noise Emb                                          
+
+> Noise Emb
+> Q(l,s)
+> tar Q(l,s)
+> src
+> Concat KV
+> K(l,s)
+> src
+> V(l,s)
+> src K(l,s)
+> tar
+> V(l,s)
+> tar
+> Q
+> K
+> KVVQ
+> K
+> KVV
+> Q(l,s)
+> tar Q(l,s)
+> src
+> Concat K
+> K(l,s)
+> src
+> V(l,s)
+> src K(l,s)
+> tar
+> V(l,s)
+> tar
+> Q
+> K
+> KVVQ
+> K
+> KVV
+> Q(l,s)
+> tar K(l,s)
+> tar V(l,s)
+> tar Q(l,s)
+> src K(l,s)
+> src V(l,s)
+> src
+> Swap K
+> QKVQKV
+> Q(l,s)
+> tar K(l,s)
+> tar V(l,s)
+> tar Q(l,s)
+> src K(l,s)
+> src V(l,s)
+> src
+> Swap KV
+> QKVQKV
+> Caption1
+> A cat is resting on
+> the windowsill, and
+> outside the window
+> is a beach
+> Caption2
+> A cat is resting on
+> the windowsill, and
+> outside the window
+> is a forest
+> DiT Block DiT Block
+> DiT Block DiT Block
+> ……
+> FFN  FFN Q
+> K
+> V
+> Q
+> K
+> V
+> QK
+> K
+> VV✖）
+> Softmax
+> （
+> Q
+> K
+> K
+> Softmax
+> ✖（）VV
+> ✖ N Denoise
+> Optional Attention Setting
+
+Figure 5: Mutual Context Attention (MCA) for paired video generation. Two denoising branches interact within a shared DiT backbone and exchange attention context so that the source and target videos remain aligned while still supporting diverse editing operations. 
+
+tokens to predict the edited target latent. Only the MMDiT blocks are trainable; the semantic encoders and the VAE stay frozen. 
+
+3.2 MCA-based Video Data Construction 
+
+Existing video editing datasets are often constructed by editing the first frame and propagating the result to the remaining frames. Although this recipe maintains temporal consistency, it biases train-ing toward always-on edits and underrepresents cases where the change appears only in part of a video. To reduce this mismatch, we build a video data pipeline based on 
+
+Mutual Context Attention (MCA) that produces paired source-target videos together with matched editing instructions. The source and target branches are denoised jointly within the same DiT back-bone, and at selected layers and steps MCA replaces independent self-attention with controlled cross-branch interaction, so the two branches share scene context while keeping enough freedom for the target to realize the requested change. As shown in Fig. 4, the pipeline has five stages: (1) caption gener-ation from sampled keywords via an LLM (Qwen3), (2) paired video synthesis with MCA via a DiT generator (Wan2.2), (3) response filtering, (4) instruction generation via a VLM (Qwen3-VL), and (5) multi-round VQA-based verification via a multimodal verifier (Gemini). The paired video generation stage is the core of this pipeline because it determines whether the source and target videos stay aligned while differing only in the desired edit. MCA denoises the two branches in parallel within the same backbone and, at selected layers and denoising steps, replaces independent self-attention with controlled cross-branch interaction. In this way, MCA provides a shared scene prior while keeping branch-specific queries, which helps preserve layout, identity, and motion alignment without col-lapsing the intended edit difference. This design supports diverse editing operations, including object insertion and removal, local attribute modification, background replacement, motion transfor-mation, and viewpoint change. We formalize MCA as a branch-interaction policy over attention states. For branch 𝑏 ∈ { src , tar }, let ¬𝑏 denote the opposite branch. At DiT layer 𝑙 and denoising step 𝑠 , the attention output of branch 
+
+𝑏 is defined as 
+
+Attn (𝑙,𝑠 )
+
+𝑏 = softmax ©«
+
+𝑄 (𝑙,𝑠 )
+
+𝑏 
+
+ ¯𝐾 (𝑙,𝑠 )
+
+𝑏 
+
+⊤
+
+√𝑑 
+
+ª®®¬
+
+¯𝑉 (𝑙,𝑠 )
+
+𝑏 , (1) where 𝑄 (𝑙,𝑠 )
+
+𝑏 remains branch-specific, while ¯𝐾 (𝑙,𝑠 )
+
+𝑏 and ¯𝑉 (𝑙,𝑠 )
+
+𝑏 are determined by an MCA policy. We define four interaction variants plus the standard self-attention fallback: 
+
+ΨSelf : ¯ 𝐾 𝑏 = 𝐾 𝑏 , ¯𝑉 𝑏 = 𝑉 𝑏 ,
+
+ΨConcat K : ¯ 𝐾 𝑏 = [𝐾 𝑏 ; 𝐾 ¬𝑏 ], ¯𝑉 𝑏 = 𝑉 𝑏 ,
+
+ΨConcat KV : ¯ 𝐾 𝑏 = [𝐾 𝑏 ; 𝐾 ¬𝑏 ], ¯𝑉 𝑏 = [𝑉 𝑏 ;𝑉 ¬𝑏 ],
+
+ΨSwap K : ¯ 𝐾 𝑏 = 𝐾 ¬𝑏 , ¯𝑉 𝑏 = 𝑉 𝑏 ,
+
+ΨSwap KV : ¯ 𝐾 𝑏 = 𝐾 ¬𝑏 , ¯𝑉 𝑏 = 𝑉 ¬𝑏 ,
+
+(2) 
+
+where [· ; ·] denotes token-wise concatenation. As illustrated in Fig. 5, concat-based variants softly augment each branch’s context, while swap-based variants directly replace it, providing stronger coupling at the cost of reduced branch independence. In practice, MCA is instantiated as a task-aware schedule rather than a single fixed policy. The key insight is that early denois-ing mainly determines global layout and camera motion, where stronger alignment (e.g., Swap KV ) is beneficial, while middle de-noising suits softer interaction (e.g., Concat KV ) to balance shared structure and branch-specific edits. Strong cross-branch coupling 
+
+4Video  1Video  2   
+
+> Frame 0N
+> Caption 1
+> A muddy puddle with green grass
+> and small flowers on a rainy day.
+> Caption 2
+> A muddy puddle with green grass
+> and small flowers on a rainy day,
+> and a dog runs from right to left.
+> Forward Instruction
+> Add a dog running from right to left.
+> Reverse Instruction
+> Remove the running dog.
+
+Figure 6: Examples from the MCA-based data construction pipeline. Representative video pairs illustrate temporally localized edits synthesized by our automatic pipeline, where the edited content can emerge only in intermediate video segments instead of being propagated from the first frame. 
+
+is typically disabled in late denoising to avoid texture artifacts. De-tailed task-specific schedules are provided in the supplementary material. 
+
+3.3 Details of InsEdit Data 
+
+Using the pipeline above, we construct about 300K paired source-target samples, where each sample consists of a source clip, a target clip, and a matched editing instruction. All video pairs are standard-ized to 480p resolution, 16 fps, and a duration of 3 seconds. Unlike propagation-based datasets where every edit starts from the first frame, InsEdit Data includes pairs with naturally varying edit onset times. Because the source and target videos are jointly generated with MCA, the resulting pairs can preserve an unedited prefix or suffix, so the first or last frame may remain unchanged when the edit happens only in the middle of the clip. This temporal diversity is difficult to realize with first-frame editing followed by propagation. Fig. 6 shows representative examples from this pipeline. Another advantage of this construction is that the visual qual-ity of the data mainly depends on the strength of the underlying video generation backbone itself. In contrast, propagation-based pipelines are constrained by both the image editor used on the an-chor frame and the propagation model used to spread the edit over time. Our construction therefore provides not only richer temporal edit patterns, but also a cleaner path to improving dataset quality as stronger text-to-video generators become available. 
+
+4 Experiments 4.1 Implementation Details 
+
+InsEdit is built on HunyuanVideo-1.5 and trained in two stages. Stage 1 obtains a stable initialization using three objectives—generation, VLM reconstruction, and consistency preservation—with a mixture ratio of 7 :2 :1. It enables VLM visual input, uses one-frame SigLIP features, and is trained with 100K generation data. Stage 2 adapts the model to instruction-based editing. Unless otherwise specified, all results use the following Stage-2 setting: the model is initialized from the Stage 1 checkpoint and trained with 𝑂 (1)M generation data together with 𝑂 (1)M editing data. The generation samples are used only for the generation objective to preserve the back-bone’s generation ability. The default image-to-video ratio for all stages is 4:1, and training prompts are randomly sampled from short instructions, long instructions, and long instructions with dense descriptions. Although the target task is video instruction editing, our training data includes both video and image editing data. The image part is used as extra data, filtered from open-source datasets and further augmented with samples generated by Qwen-Image-Edit [ 36 ]. The video part is mainly collected and filtered from OpenVE and Ditto, and is further expanded with samples generated by our MCA-based pipeline. In total, the image editing data is at the scale of 𝑂 (1)M, while the video editing data is at the scale of 𝑂 (100 )K. For all mainline experiments, we use AdamW with a learning rate of 2 × 10 −5 and train with DeepSpeed ZeRO-2. Training resolution is 480p for videos and 720p for images. During inference, we use 50 sampling steps and do not apply classifier-free guidance. 
+
+4.2 Evaluation Setup 
+
+Our main quantitative evaluation focuses on video instruction edit-ing. We adopt OpenVE-Bench [ 10 ] as the primary benchmark. In addition, to better evaluate the diverse editing scenarios empha-sized in this paper, we construct InsEdit-Bench, a benchmark of 82 samples covering 13 editing categories (addition, removal, replace-ment, recoloring, retexturing, relocation, rescaling, background switch, weather switch, time switch, season switch, stylization, and relighting) over 80 source videos. The samples span short, long, and multi-step instructions, as well as both static and animated scenes. For OpenVE-Bench, we follow the original benchmark protocol and report Overall together with five representative edit categories shown in the main paper: Local Add, Local Remove, Local Change, Subtitle Edit, and Creative Edit. The complete OpenVE-Bench table is provided in the supplementary material. For InsEdit-Bench, we report four summary metrics: Overall, Instruction Compliance (IC), Temporal Visual Quality (TVQ), and Unedited Region Preserva-tion (URP). Overall measures overall editing quality, IC evaluates whether the model follows the editing instruction correctly, TVQ measures visual quality and consistency over time in the edited re-sult, and URP measures how well non-edited regions are preserved. Following the same VLM-as-judge protocol as OpenVE-Bench, all InsEdit-Bench metrics are scored on a 1–5 scale by Qwen3-VL-32B-Instruct. In addition to editing quality, we also report inference latency measured on the same single GPU with FlashAttention-2 [7], generating 81 frames at 480p for all compared methods. 
+
+4.3 Main Results on Instruction-based Video Editing 
+
+Table 1 summarizes the main comparison against recent baselines, including VACE-14B, OmniVideo, InsViE, Lucy-Edit, ICVE, Ditto, VINO, and UniVideo. Overall, InsEdit achieves state-of-the-art per-formance among open-source methods on both benchmarks, show-ing that a video generation backbone can be effectively adapted to instruction-based video editing through a relatively modest amount of editing data when paired with the right training path. 
+
+> 5
+
+Table 1: Quantitative comparison on video instruction editing. For OpenVE-Bench [ 10 ], we report a subset of the original benchmark metrics due to space limitations; the complete table is provided in the supplementary material. For InsEdit-Bench, we report Overall, Instruction Compliance (IC), Temporal Visual Quality (TVQ), and Unedited Region Preservation (URP), together with inference latency.                                                                                                                      
+
+> Method OpenVE-Bench InsEdit-Bench Latency (min) ↓
+> Overall ↑Local Add Local Remove Local Change Subtitle Edit Creative Edit Overall ↑IC ↑TVQ ↑URP ↑
+> VACE-14B [13] 3.01 1.76 3.99 2.47 4.41 2.17 3.08 2.39 2.64 4.21 9.08 OmniVideo [29] 3.66 2.80 4.52 3.75 4.95 1.13 4.13 4.04 4.04 4.32 20.58 InsViE [39] 3.25 2.25 3.56 2.82 4.77 3.36 2.76 2.19 2.29 3.80 1.06 Lucy-Edit [30] 3.77 3.92 3.95 3.93 4.23 4.19 3.64 3.24 3.38 4.30 0.6
+> ICVE [20] 3.76 3.77 4.50 3.87 4.68 3.54 3.54 2.91 2.94 4.79 20.60 Ditto [1] 3.44 2.48 3.53 2.89 3.69 4.14 3.58 3.45 3.52 3.77 7.33 UniVideo [35] 4.21 4.41 4.46 4.33 4.56 4.33 4.26 4.11 4.07 4.59 21.5 VINO [5] 4.34 4.43 4.45 4.41 3.39 4.60 4.42 4.31 4.31 4.62 6.5 InsEdit (ours) 4.43 4.78 4.64 4.71 4.73 4.66 4.61 4.50 4.54 4.80 1.95
+
+Change the bowl to glass bowl . Change the current lighting to a single warm spotlight 
+
+coming from diagonally above and behind the boy .
+
+Add dynamic flame visual effects to the woman’s 
+
+boxing gloves. Remove the right flowers and the bottle .
+
+Figure 7: Qualitative results on video instruction editing. Representative examples show that InsEdit follows diverse editing instructions while preserving scene fidelity and temporal coherence. 
+
+On OpenVE-Bench, InsEdit obtains the best overall result and outperforms prior methods on most reported edit categories. The gain is especially clear on local editing metrics, where InsEdit con-sistently surpasses strong recent baselines such as VINO and Lucy-Edit on local addition, local removal, and local change. InsEdit also achieves the best result on creative edit while remaining compet-itive on subtitle edit. These results show that InsEdit improves precise control without sacrificing overall video quality. The advantage becomes even clearer on InsEdit-Bench, which covers 13 diverse editing categories with both short and long in-structions. On this benchmark, InsEdit achieves the best result on all four metrics, including overall quality, instruction compli-ance, temporal visual quality, and unedited-region preservation. In particular, InsEdit consistently outperforms the strongest earlier baselines, including VINO and UniVideo, indicating that the pro-posed training path remains effective across a wide range of video editing scenarios. In addition, among the methods with reported runtime, InsEdit also shows much lower inference latency than Ditto, suggesting that the quality gain does not come at the cost of slower inference. Fig. 7 provides representative qualitative results across diverse video editing scenarios, and Fig. 8 further compares InsEdit with UniVideo and VINO on challenging cases. Both figures are consis-tent with the quantitative results: InsEdit better follows the editing instruction while preserving scene quality and consistency over time.           
+
+> 6Input  UniVideo  VINO  Ours
+> Change the background to snow mountain background.
+> Input  UniVideo  VINO  Ours
+> Replace the patty in the hamburger with fried chicken ,
+> and replace the potato chips with French fries .
+
+Figure 8: Qualitative comparison with some baselines on video instruction editing. Compared with UniVideo and VINO, InsEdit better follows editing instructions while pre-serving scene fidelity and temporal coherence. 
+
+4.4 Ablation Study 
+
+We conduct all ablations on InsEdit-Bench, since it covers diverse editing categories and includes unedited-region preservation. Our goal is to understand why this adaptation path works with rela-tively limited video editing data. We organize the ablations around two questions: whether Stage 2 should retain a small amount of additional generation training, and which edit-only Stage-2 recipe is most effective. 
+
+Part I: Stage-2 modeling variants. Table 2 studies whether Stage 2 should retain a small amount of additional generation training and how the semantic module should be designed in this setting. 
+
+Edit-only Baseline is trained on 100K editing samples only. We then add 10K generation samples in Stage 2 while using them only for the generation objective, yielding + Gen Data w/ SigLIP-1 . Starting from this setting, we further vary the semantic design. + Gen Data w/ SigLIP-3 replaces the default single-frame SigLIP input with 
+
+Table 2: Ablation of Stage-2 modeling variants on InsEdit-Bench, including added generation data, VLM-vision input, and SigLIP temporal modeling. 
+
+Variant Overall ↑ IC ↑ TVQ ↑ URP ↑
+
+Edit-only Baseline 4.41 4.24 4.30 4.70 + Gen Data w/ SigLIP-1 4.46 4.32 4.33 4.72 
+
++ Gen Data w/ SigLIP-3 4.30 4.09 4.17 4.63 + Gen Data w/ SigLIP-3 Avg 4.32 4.11 4.21 4.65 + Gen Data w/o VLM Vision 4.10 3.83 3.80 4.52 
+
+Table 3: Ablation of the edit-only Stage-2 recipe on InsEdit-Bench, including Stage-1 initialization, image-video training ratio, and prompt-format mixture.                                                
+
+> Group Variant Overall ↑IC ↑TVQ ↑URP ↑
+> Baseline Edit-only Baseline 4.41 4.24 4.30 4.70
+> Initialization
+> w/o Stage 1 Init 4.15 3.94 3.95 4.57 w/o Stage 1 Consistency Init 4.26 3.99 4.04 4.74 w/o Stage 1 VLM-Recon Init 4.29 4.09 4.15 4.63
+> Data Ratio Image:Video = 1:1 4.34 4.15 4.16 4.71 Image:Video = 1:4 4.27 4.07 4.12 4.62
+> Prompt Format
+> Short Instruction only 4.14 3.87 4.00 4.55 Long Instruction only 4.19 3.90 3.99 4.67 Short/Long Mix 4.21 3.88 4.02 4.72
+
+three-frame features, + Gen Data w/ SigLIP-3 Avg averages these three-frame features before injection, and + Gen Data w/o VLM Vision removes visual input from the VLM semantic module and keeps only the text instruction. The results show that the simplest setting with added generation data is the most effective. Compared with Edit-only Baseline , + Gen Data w/ SigLIP-1 gives the best overall balance across all four met-rics, indicating that retaining a small amount of generation training in Stage 2 is beneficial for instruction editing, likely because it helps preserve the backbone’s generation prior during adaptation. In contrast, replacing the default single-frame SigLIP input with three-frame features leads to a clear performance drop, and averag-ing the three-frame features only partly reduces this drop. Finally, removing VLM vision causes the largest decline among all variants, showing that visual input in the semantic module remains crucial even when generation training is retained. 
+
+Part II: edit-only Stage 2. Table 3 focuses on the pure edit-only Stage-2 branch, i.e., without added generation data. The purpose of this part is to answer three practical questions for the default edit-only recipe: whether Stage-1 initialization is necessary and, if so, which initialization is most useful; what image-to-video ratio should be used during Stage 2; and what prompt mixture should be adopted for training. We use Edit-only Baseline as the anchor setting throughout. Unless otherwise specified, this baseline uses the full Stage-1 initialization, an image-to-video ratio of 4 :1, and a mixed prompt recipe consisting of short instructions, long instructions, and long instructions with dense descriptions. The Initialization group shows that Stage-1 transfer remains im-portant even for a purely edit-only Stage 2. Training Stage 2 from scratch leads to a clear drop across all four metrics, confirming 
+
+> 7
+
+that edit-only adaptation still relies on a strong generation starting point. Among partial initializations, removing VLM reconstruction is consistently better than removing consistency preservation on Overall, IC, and TVQ, whereas removing consistency preservation yields the strongest URP. Overall, the full Stage-1 initialization re-mains the strongest default, and the results suggest that pretraining for consistency is especially important for later editing quality. The Data Ratio group indicates that image training data should be kept at a relatively high proportion during Stage 2. The de-fault 4:1 image-to-video ratio remains the strongest overall setting, while reducing the ratio to 1:1 gives the closest alternative and even slightly improves preservation. In contrast, moving to the video-heavy 1:4 setting causes a consistent drop across all main metrics. We interpret this pattern as follows: image data mainly strengthens spatial editing abilities, such as appearance control, lo-cal structure preservation, and instruction following, whereas video data mainly supplies the temporal supervision needed for motion and consistency over time. Under this view, a higher image ratio is not only effective but also practical, because image editing data is much cheaper to collect than video editing data. The result there-fore points to a favorable training recipe: use abundant image data to build strong spatial editing ability, and use a smaller amount of video data to provide the temporal component that images cannot offer. The Prompt Format group compares three reduced prompt recipes against the baseline’s default mixture of short instructions, long instructions, and long instructions with dense descriptions. Using only short instructions or only long instructions both lead to clear drops, confirming that prompt diversity matters. Short/Long Mix 
+
+recovers part of the gap but still falls behind the full three-way mixture, showing that long instructions with dense descriptions provide additional training signal that benefits editing quality, par-ticularly for unedited-region preservation. 
+
+4.5 Image Editing as an Additional Capability 
+
+Image editing is not treated here as a separate generalization setting. Instead, it is an additional capability that comes from the training recipe itself. To improve training efficiency in Stage 2, we already include large-scale image editing data together with video editing data, and the model handles images by treating them as single-frame videos. We therefore also evaluate the final model on image instruc-tion editing. Table 4 reports results on GEdit [ 23 ]. We compare InsEdit with strong proprietary systems and recent open-source baselines, including UniWorld-V1 [ 21 ], OmniGen2 [ 38 ], FLUX.1 Kontext [dev] [ 2 ], BAGEL [ 8], Step1X-EditV1.1 [ 23 ], and VINO [ 5 ]. The results show that InsEdit, despite not being designed as an image-first editing model, achieves the best perceptual quality (G_PQ) among open-source methods while remaining competitive on semantic consistency (G_SC) and overall score (G_O). InsEdit still trails dedicated image editing models such as Step1X-Edit and VINO on G_SC, which is expected given that our method is opti-mized primarily for video editing rather than image-specific editing objectives. Nevertheless, the results show that adding image data for efficient training also leaves the final video-first model with a practically useful image editing capability. 
+
+Table 4: Quantitative comparison on GEdit [ 23 ]. We report the three average metrics used by the benchmark. 
+
+Method G_SC ↑ G_PQ ↑ G_O ↑
+
+Gemini2.5 7.48 8.30 7.17 GPT4o 8.06 7.80 7.48 Seedream4 8.33 8.00 7.72 UniWorld-V1 [21] 5.04 7.56 4.98 OmniGen2 [38] 6.79 6.68 6.18 Flux-Kontext-Dev [2] 7.23 7.28 6.53 Bagel [8] 7.52 6.69 6.54 Step1x-EditV1.1 [23] 7.60 7.29 6.87 VINO [5] 7.26 7.71 6.88 
+
+InsEdit (ours) 6.98 7.77 6.72 
+
+5 Conclusion 
+
+In this paper, we presented InsEdit as an efficient training path for turning a video generation backbone into an instruction-based editor. The key idea is to adapt HunyuanVideo-1.5 with a source-guided editing architecture while making the training data more informative through a video data pipeline based on Mutual Context Attention (MCA). This combination lets the model learn video edit-ing from a relatively modest amount of editing data while staying better matched to real video editing scenarios. Experiments validate the effectiveness of this design. With only 
+
+𝑂 (100 )K video editing data, InsEdit establishes state-of-the-art per-formance among open-source methods on video instruction editing benchmarks, including strong results on InsEdit-Bench across 13 diverse editing categories. Because our training recipe also uses image data, the final model additionally supports image instruction editing by treating images as single-frame videos. Our ablation study reveals several practical findings for effi-cient video-to-editor adaptation: (1) retaining a small amount of generation data in Stage 2 helps preserve the backbone’s gener-ation prior; (2) a high image-to-video ratio (4:1) is both effective and cost-efficient, as image data strengthens spatial editing ability while video data supplies the temporal component; (3) prompt di-versity during training, particularly long instructions with dense descriptions, meaningfully improves editing quality; and (4) Stage-1 pretraining for consistency is especially important for downstream editing performance. A current limitation is that InsEdit still focuses on short-clip, language-driven 2D editing. We observe failure cases on edits re-quiring precise spatial control, multi-object relational reasoning, and long-video temporal consistency; representative examples are provided in the supplementary material. Promising future direc-tions include extending to longer videos with multi-scene structure, incorporating spatial control signals such as masks or keypoints alongside language instructions, and scaling the MCA-based data pipeline with stronger video generation backbones to further im-prove data quality. We hope InsEdit can serve as a useful starting point for future work on video-first instruction-based visual edit-ing. 
+
+> 8
+
+References 
+
+[1] Qingyan Bai, Qiuyu Wang, Hao Ouyang, Yue Yu, Hanlin Wang, Wen Wang, Ka Leong Cheng, Shuailei Ma, Yanhong Zeng, Zichen Liu, Yinghao Xu, Yujun Shen, and Qifeng Chen. 2025. Scaling Instruction-Based Video Editing with a High-Quality Synthetic Dataset. CoRR abs/2510.15742 (2025). doi:10.48550/arXiv. 2510.15742 [2] Stephen Batifol, Alexander Lorenz, Ajay Jain, Sander Becker, Tom Bos, Simon Buchholz, Itai Caspi, Eyal Cohen, Shuyang Ge, Xuan Li, et al . 2025. FLUX.1 Kontext: Flow Matching for In-Context Image Generation and Editing in Latent Space. arXiv preprint arXiv:2506.15742 (2025). [3] Tim Brooks, Aleksander Holynski, and Alexei A. Efros. 2023. InstructPix2Pix: Learning to Follow Image Editing Instructions. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 18392–18402. doi:10.1109/ CVPR52729.2023.01764 [4] Mingdeng Cao, Xintao Wang, Zhongang Qi, Ying Shan, Xiaohu Qie, and Yinqiang Zheng. 2023. MasaCtrl: Tuning-Free Mutual Self-Attention Control for Consistent Image Synthesis and Editing. arXiv:2304.08465 [cs.CV] https://arxiv.org/abs/ 2304.08465 [5] Junyi Chen, Tong He, Zhoujie Fu, Pengfei Wan, Kun Gai, and Weicai Ye. 2026. VINO: A Unified Visual Generator with Interleaved Omnimodal Context. arXiv preprint arXiv:2601.02358 (2026). [6] Yuren Cong, Mengmeng Xu, Christian Simon, Shoufa Chen, Jiawei Ren, Yanping Xie, Juan-Manuel Perez-Rua, Bodo Rosenhahn, Tao Xiang, and Sen He. 2023. Flatten: optical flow-guided attention for consistent text-to-video editing. arXiv preprint arXiv:2310.05922 (2023). [7] Tri Dao. 2023. FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning. arXiv:2307.08691 [cs.LG] [8] Chaorui Deng, Deyao Zhu, Kunchang Li, Chenhui Gou, Feng Li, Zeyu Wang, Shu Zhong, Weihao Yu, Xiaonan Nie, Ziang Song, and Haoqi Fan. 2025. Emerging Properties in Unified Multimodal Pretraining. arXiv preprint arXiv:2505.14683 
+
+(2025). [9] Michal Geyer, Omer Bar-Tal, Shai Bagon, and Tali Dekel. 2023. Tokenflow: Consis-tent diffusion features for consistent video editing. arXiv preprint arXiv:2307.10373 
+
+(2023). [10] Haoyang He, Jie Wang, Jiangning Zhang, Zhucun Xue, Xingyuan Bu, Qiangpeng Yang, Shilei Wen, and Lei Xie. 2025. OpenVE-3M: A Large-Scale High-Quality Dataset for Instruction-Guided Video Editing. arXiv preprint arXiv:2512.07826 
+
+(2025). [11] Amir Hertz, Ron Mokady, Jay Tenenbaum, Kfir Aberman, Yael Pritch, and Daniel Cohen-Or. 2022. Prompt-to-Prompt Image Editing with Cross Attention Control. arXiv:2208.01626 [cs.CV] https://arxiv.org/abs/2208.01626 [12] Wenyi Hong, Ming Ding, Wendi Zheng, Xinghan Liu, and Jie Tang. 2022. Cogvideo: Large-scale pretraining for text-to-video generation via transformers. 
+
+arXiv preprint arXiv:2205.15868 (2022). [13] Zeyinzi Jiang, Zhen Han, Chaojie Mao, Jingfeng Zhang, Yulin Pan, and Yu Liu. 2025. Vace: All-in-one video creation and editing. arXiv preprint arXiv:2503.07598 
+
+(2025). [14] Xuan Ju, Tianyu Wang, Yuqian Zhou, He Zhang, Qing Liu, Nanxuan Zhao, Zhifei Zhang, Yijun Li, Yuanhao Cai, Shaoteng Liu, Daniil Pakhomov, Zhe Lin, Soo Ye Kim, and Qiang Xu. 2025. EditVerse: Unifying Image and Video Editing and Generation with In-Context Learning. arXiv preprint arXiv:2509.20360 (2025). [15] Ozgur Kara, Bariscan Kurtkaya, Hidir Yesiltepe, James M Rehg, and Pinar Ya-nardag. 2024. Rave: Randomized noise shuffling for fast and consistent video editing with diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 6507–6516. [16] Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al . 2024. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 
+
+(2024). [17] Max Ku, Cong Wei, Weiming Ren, Harry Yang, and Wenhu Chen. 2024. Anyv2v: A tuning-free framework for any video-to-video editing tasks. arXiv preprint arXiv:2403.14468 (2024). [18] Maksim Kuprashevich, Grigorii Alekseenko, Irina Tolstykh, Georgii Fedorov, Bulat Suleimanov, Vladimir Dokholyan, and Aleksandr Gordeev. 2025. Nohu-mansrequired: Autonomous high-quality image editing triplet mining. arXiv preprint arXiv:2507.14119 (2025). [19] Sen Liang, Zhentao Yu, Zhengguang Zhou, Teng Hu, Hongmei Wang, Yi Chen, Qin Lin, Yuan Zhou, Xin Li, Qinglin Lu, et al . 2025. OmniV2V: Versatile Video Generation and Editing via Dynamic Content Manipulation. arXiv preprint arXiv:2506.01801 (2025). [20] Xinyao Liao, Xianfang Zeng, Ziye Song, Zhoujie Fu, Gang Yu, and Guosheng Lin. 2025. In-Context Learning with Unpaired Clips for Instruction-based Video Editing. CoRR abs/2510.14648 (2025). doi:10.48550/arXiv.2510.14648 [21] Bin Lin, Zongjian Li, Xinhua Cheng, Yuwei Niu, Yang Ye, Xianyi He, Shenghai Yuan, Wangbo Yu, Shaodong Wang, Yunyang Ge, et al . 2025. UniWorld: High-Resolution Semantic Encoders for Unified Visual Understanding and Generation. 
+
+arXiv preprint arXiv:2506.03147 (2025). [22] Yiqi Lin, Guoqiang Liang, Ziyun Zeng, Zechen Bai, Yanzhe Chen, and Mike Zheng Shou. 2026. Kiwi-Edit: Versatile Video Editing via Instruction and Reference Guidance. CoRR abs/2603.02175 (2026). doi:10.48550/arXiv.2603.02175 [23] Shiyu Liu, Yucheng Han, Peng Xing, Fukun Yin, Rui Wang, Wei Cheng, Jiaqi Liao, Yingming Wang, Honghao Fu, Chunrui Han, Guopeng Li, Yuang Peng, Quan Sun, Jingwei Wu, Yan Cai, Zheng Ge, Ranchen Ming, Lei Xia, Xianfang Zeng, Yibo Zhu, Binxing Jiao, Xiangyu Zhang, Gang Yu, and Daxin Jiang. 2025. Step1X-Edit: A Practical Framework for General Image Editing. arXiv preprint arXiv:2504.17761 (2025). [24] Jiabin Luo, Junhui Lin, Zeyu Zhang, Biao Wu, Meng Fang, Ling Chen, and Hao Tang. 2025. Univid: The open-source unified video model. arXiv preprint arXiv:2509.24200 (2025). [25] Xin Luo, Jiahao Wang, Chenyuan Wu, Shitao Xiao, Xiyan Jiang, Defu Lian, Jiajun Zhang, Dong Liu, et al . 2025. Editscore: Unlocking online rl for image editing via high-fidelity reward modeling. arXiv preprint arXiv:2509.23909 (2025). [26] Chong Mou, Qichao Sun, Yanze Wu, Pengze Zhang, Xinghui Li, Fulong Ye, Song-tao Zhao, and Qian He. 2025. Instructx: Towards unified visual editing with mllm guidance. arXiv preprint arXiv:2510.08485 (2025). [27] Chenyang Qi, Xiaodong Cun, Yong Zhang, Chenyang Lei, Xintao Wang, Ying Shan, and Qifeng Chen. 2023. Fatezero: Fusing attentions for zero-shot text-based video editing. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 15932–15942. [28] Bosheng Qin, Juncheng Li, Siliang Tang, Tat-Seng Chua, and Yueting Zhuang. 2024. Instructvid2vid: Controllable video editing with natural language instruc-tions. In ICME .[29] Zhiyu Tan, Hao Yang, Luozheng Qin, Jia Gong, Mengping Yang, and Hao Li. 2025. Omni-Video: Democratizing Unified Video Understanding and Generation. arXiv preprint arXiv:2507.06119 (2025). [30] DecartAI Team. 2025. Lucy Edit: Open-Weight Text-Guided Video Edit-ing. https://d2drjpuinn46lb.cloudfront.net/Lucy_Edit__High_Fidelity_Text_ Guided_Video_Editing.pdf [31] Kling Team. 2025. Kling-Omni Technical Report. arXiv:2512.16776 [cs.CV] [32] Tencent Hunyuan Foundation Model Team. 2025. HunyuanVideo 1.5 Technical Report. arXiv:2511.18870 [cs.CV] https://arxiv.org/abs/2511.18870 [33] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, et al . 2025. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 (2025). [34] Yuhan Wang, Siwei Yang, Bingchen Zhao, Letian Zhang, Qing Liu, Yuyin Zhou, and Cihang Xie. 2025. Gpt-image-edit-1.5 m: A million-scale, gpt-generated image dataset. arXiv preprint arXiv:2507.21033 (2025). [35] Cong Wei, Quande Liu, Zixuan Ye, Qiulin Wang, Xintao Wang, Pengfei Wan, Kun Gai, and Wenhu Chen. 2025. Univideo: Unified understanding, generation, and editing for videos. arXiv preprint arXiv:2510.08377 (2025). [36] Chenfei Wu, Jiahao Li, Jingren Zhou, Junyang Lin, Kaiyuan Gao, Kun Yan, Sheng ming Yin, Shuai Bai, Xiao Xu, Yilei Chen, Yuxiang Chen, Zecheng Tang, Zekai Zhang, Zhengyi Wang, An Yang, Bowen Yu, Chen Cheng, Dayiheng Liu, Deqing Li, Hang Zhang, Hao Meng, Hu Wei, Jingyuan Ni, Kai Chen, Kuan Cao, Liang Peng, Lin Qu, Minggang Wu, Peng Wang, Shuting Yu, Tingkun Wen, Wensen Feng, Xiaoxiao Xu, Yi Wang, Yichang Zhang, Yongqiang Zhu, Yujia Wu, Yuxuan Cai, and Zenan Liu. 2025. Qwen-Image Technical Report. arXiv:2508.02324 [cs.CV] https://arxiv.org/abs/2508.02324 [37] Jay Zhangjie Wu, Yixiao Ge, Xintao Wang, Stan Weixian Lei, Yuchao Gu, Yufei Shi, Wynne Hsu, Ying Shan, Xiaohu Qie, and Mike Zheng Shou. 2023. Tune-a-video: One-shot tuning of image diffusion models for text-to-video generation. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 7623– 7633. [38] Xiaoshi Wu, Yixuan Jiao, Wen Wang, Zhiyu Tan, Xialei Lyu, Hanyu Li, Shijie Guo, Zijian Zhang, Xin Zhang, Ji Zhu, et al . 2025. OmniGen2: Exploration to Advanced Multimodal Generation. arXiv preprint arXiv:2506.18871 (2025). [39] Yuhui Wu, Liyi Chen, Ruibin Li, Shihao Wang, Chenxi Xie, and Lei Zhang. 2025. InsViE-1M: Effective Instruction-based Video Editing with Elaborate Dataset Construction. CoRR abs/2503.20287 (2025). doi:10.48550/arXiv.2503.20287 [40] Bin Xia, Jiyang Liu, Yuechen Zhang, Bohao Peng, Ruihang Chu, Yitong Wang, Xinglong Wu, Bei Yu, and Jiaya Jia. 2025. DreamVE: Unified Instruction-based Image and Video Editing. CoRR abs/2508.06080 (2025). doi:10.48550/arXiv.2508. 06080 [41] Bin Xia, Bohao Peng, Yuechen Zhang, Junjia Huang, Jiyang Liu, Jingyao Li, Haoru Tan, Sitong Wu, Chengyao Wang, Yitong Wang, Xinglong Wu, Bei Yu, and Jiaya Jia. 2025. DreamOmni2: Multimodal Instruction-based Editing and Generation. arXiv:2510.06679 [cs.CV] https://arxiv.org/abs/2510.06679 [42] Xiangpeng Yang, Linchao Zhu, Hehe Fan, and Yi Yang. 2025. VideoGrain: Modu-lating space-time attention for multi-grained video editing. In ICLR .[43] Yang Ye, Xianyi He, Zongjian Li, Bin Lin, Shenghai Yuan, Zhiyuan Yan, Bohan Hou, and Li Yuan. 2025. Imgedit: A unified image editing dataset and benchmark. 
+
+arXiv preprint arXiv:2505.20275 (2025). [44] Zixuan Ye, Xuanhua He, Quande Liu, Qiulin Wang, Xintao Wang, Pengfei Wan, Di Zhang, Kun Gai, Qifeng Chen, and Wenhan Luo. 2025. UNIC: Unified In-Context Video Editing. arXiv:2506.04216 [cs.CV] 
+
+> 9
+
+[45] Shoubin Yu, Difan Liu, Ziqiao Ma, Yicong Hong, Yang Zhou, Hao Tan, Joyce Chai, and Mohit Bansal. 2025. VEGGIE: Instructional Editing and Reasoning Video Concepts with Grounded Generation. arXiv preprint arXiv:2503.14350 (2025). [46] Zhongwei Zhang, Fuchen Long, Wei Li, Zhaofan Qiu, Wu Liu, Ting Yao, and Tao Mei. 2025. Region-Constraint In-Context Generation for Instructional Video Editing. arXiv preprint arXiv:2512.17650 (2025). [47] Hanshen Zhu, Zhen Zhu, Kaile Zhang, Yiming Gong, Yuliang Liu, and Xi-ang Bai. 2025. Training-free Geometric Image Editing on Diffusion Models. arXiv:2507.23300 [cs.CV] https://arxiv.org/abs/2507.23300 [48] Bojia Zi, Penghui Ruan, Marco Chen, Xianbiao Qi, Shaozhe Hao, Shihao Zhao, Youze Huang, Bin Liang, Rong Xiao, and Kam-Fai Wong. 2025. Se \˜ norita-2M: A High-Quality Instruction-based Dataset for General Video Editing by Video Specialists. arXiv preprint arXiv:2502.06734 (2025). 
+
+> 10
+
+A MCA Schedule Details 
+
+In the main paper, we describe MCA as a general framework with four atomic interaction variants: Concat K , Concat KV , Swap K, and Swap KV . In practice, our data construction pipeline in-stantiates this framework using task-specific schedules, because different editing categories require different trade-offs between pair alignment and target editability. These variants provide different levels of coupling between the two branches and can be viewed as a general design space for bal-ancing alignment and editability. Concat KV is a soft sharing policy that encourages semantically corresponding elements in the two videos to remain similar even when they appear in different states. In practice, it is useful for edits such as motion or viewpoint change, where the same subject should preserve identity consistency while allowing state differences. Concat K also promotes correspondence between the two branches, but in a more state-consistent manner, making it suitable for appearance-oriented edits such as color or material modification, where object geometry should stay stable while visual content changes. In contrast, Swap KV is the strongest interaction: it effectively forces one branch to decode under the other branch’s context, which is particularly useful in early denois-ing for tightly locking camera motion and coarse scene structure. However, our pilot study and qualitative inspection show that using 
+
+Swap KV in late denoising often introduces ghosting and texture artifacts. Swap K provides a milder structural anchor and is of-ten effective for aligning the non-edited context in local-object or background-related edits. MCA should not be activated uniformly across the whole de-noising process. Let Learly and Lmid denote the shallow and middle DiT layer groups, and let Searly , Smid , and Slate denote the early, middle, and late denoising stages, respectively. In our current im-plementation, MCA is instantiated as a task-aware schedule rather than a single fixed policy. The underlying intuition is that early denoising mainly determines global layout, camera trajectory, and coarse motion, where stronger alignment is beneficial, whereas middle denoising is more suitable for balancing shared structure and branch-specific edits. Late denoising primarily refines texture and local appearance, so overly strong cross-branch coupling at this stage tends to hurt visual quality. 
+
+A.0.1 Task-Specific MCA Schedules. 
+
+• Object insertion and removal. We use an asymmetric schedule: one branch keeps standard self-attention to pre-serve natural video generation, while the other branch uses 
+
+Swap KV in the early denoising stage, then switches to Con-cat KV in the middle stage, and finally returns to Self in the late stage. This design is motivated by the fact that insertion and removal often involve relatively large semantic changes. Strong early alignment helps preserve unchanged content, while releasing the constraint later allows the edited object to appear or disappear naturally. 
+
+• Local object modification. We apply Swap KV to both branches in the early stage and switch to Concat KV in the middle stage. This combination first aligns the non-edited context and coarse structure, and then allows the edited local region to deviate smoothly without breaking overall scene coherence. 
+
+• Background replacement. We use Swap K more heavily, mainly in shallow-to-middle layers during the early and middle denoising stages. This policy is effective when the scene background should stay structurally aligned while the foreground subject remains editable. 
+
+• Color and material modification. We first use Swap KV 
+
+and Concat KV in the early stage to lock geometry and instance identity, and then rely primarily on Concat K in the middle stage. This schedule keeps the object shape and spatial extent stable while allowing its appearance attributes, such as color or texture, to change. 
+
+• Motion and viewpoint transformation. We use Concat KV throughout the selected layers and denoising steps. This soft sharing policy is particularly suitable when semantically corresponding subjects should remain consistent in identity while their motion state or camera relation changes over time. Overall, these task-specific schedules are different instantiations of the same MCA framework. A practically effective default pattern is to use stronger swap-based interaction in early denoising to secure coarse alignment, followed by concat-based interaction in the middle stage to preserve editability, and to reduce strong cross-branch coupling in late denoising to avoid artifacts. 
+
+B More Comprehensive Results on OpenVE-Bench 
+
+Table 5 reports a more comprehensive category-level breakdown on OpenVE-Bench [ 10 ]. Compared with the main paper, we include all edit categories defined by the benchmark and list the corresponding baseline results together with InsEdit. 
+
+C More Qualitative Results of Image Editing on GEdit 
+
+Figure 9 presents additional qualitative image editing results on GEdit. The showcased examples cover a diverse set of editing in-structions, including appearance transformation, object-level ma-nipulation, and compositional modification. These cases further demonstrate that InsEdit can follow user instructions faithfully while preserving the overall scene structure and visual consistency of the original image. 
+
+D More Qualitative Results of Video Editing on InsEdit-Bench 
+
+Figure 10 presents more qualitative results on InsEdit-Bench beyond the representative cases shown in the main paper. The examples span diverse editing categories and scene dynamics, illustrating that InsEdit can follow challenging video editing instructions while maintaining temporal coherence and preserving unedited content whenever possible. 
+
+> 11
+
+Table 5: More comprehensive category-level results on OpenVE-Bench [10]. 
+
+Method Overall ↑ Local Add Local Remove Local Change Background Change Global Style Subtitle Edit Creative Edit Camera Edit VACE-14B [13] 3.01 1.76 3.99 2.47 2.81 3.46 4.41 2.17 3.09 OmniVideo [29] 3.66 2.80 4.52 3.75 4.11 3.41 4.95 1.13 3.62 InsViE [39] 3.25 2.25 3.56 2.82 2.68 3.63 4.77 3.36 3.61 Lucy-Edit [30] 3.77 3.92 3.95 3.93 3.25 3.64 4.23 4.19 3.54 ICVE [20] 3.76 3.77 4.50 3.87 3.51 3.87 4.68 3.54 2.84 Ditto [1] 3.44 2.48 3.53 2.89 3.52 4.48 3.69 4.14 3.33 OpenVE-Edit [10] 3.89 3.41 3.50 3.80 4.10 4.24 3.98 3.71 3.25 VINO [5] 4.34 4.43 4.45 4.41 4.46 4.78 3.39 4.60 4.08 InsEdit (ours) 4.43 4.78 4.64 4.71 3.99 4.20 4.73 4.66 3.62 Input Output 
+
+Change the background to 
+
+the forest. 
+
+Change the background 
+
+to the green grasslands .
+
+Change the 
+
+background to 
+
+the garden .
+
+Change the background 
+
+to the mountains .
+
+> Input Output
+
+turn the color of dog 
+
+to pink 
+
+Change the 
+
+tie to black. 
+
+Change the man's action 
+
+to raising his hands. 
+
+Make the woman burst out 
+
+laughing. 
+
+Figure 9: Additional qualitative results on GEdit. Supplementary examples illustrate the image editing performance of InsEdit on the GEdit benchmark. 
+
+> 12 Input Output
+
+Remove the black lamp. 
+
+> Input Output
+
+Replace all the strawberries with bananas. 
+
+> Input Output
+
+Change the seaside background to mountain top view background. 
+
+> Input Output
+
+Change to sunset time, with a big setting sun, orange sky outside the window. 
+
+> Input Output
+
+Change the style to Van Goph style. Figure 10: Additional qualitative video editing results. More supplementary examples illustrate the editing performance of InsEdit across diverse instructions and scenes.
