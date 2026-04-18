@@ -1,0 +1,675 @@
+Title: U$^{2}$Flow: Uncertainty-Aware Unsupervised Optical Flow Estimation
+
+URL Source: https://arxiv.org/pdf/2604.10056v1
+
+Published Time: Tue, 14 Apr 2026 00:33:48 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# U2Flow: Uncertainty-Aware Unsupervised Optical Flow Estimation 
+
+## Xunpei Sun 1, Wenwei Lin 1, Yi Chang 2, Gang Chen 1*
+
+> 1
+
+## Sun Yat-sen University, Guangzhou, China 
+
+> 2
+
+## Huazhong University of Science and Technology, Wuhan, China 
+
+sunxp7@mail2.sysu.edu.cn , linww28@mail.sysu.edu.cn , yichang@hust.edu.cn ,
+
+cheng83@mail.sysu.edu.cn 
+
+## Abstract 
+
+Unsupervised optical flow methods typically lack reliable uncertainty estimation, limiting their robustness and inter-pretability. We propose U 2Flow, the first recurrent unsu-pervised framework that jointly estimates optical flow and per-pixel uncertainty. The core innovation is a decou-pled learning strategy that derives uncertainty supervision from augmentation consistency via a Laplace-based max-imum likelihood objective, enabling stable training with-out ground truth. The predicted uncertainty is further in-tegrated into the network to guide adaptive flow refinement and dynamically modulate the regional smoothness loss. Furthermore, we introduce an uncertainty-guided bidirec-tional flow fusion mechanism that enhances robustness in challenging regions. Extensive experiments on KITTI and Sintel demonstrate that U 2Flow achieves state-of-the-art performance among unsupervised methods while producing highly reliable uncertainty maps, validating the effective-ness of our joint estimation paradigm. The code is available at https://github.com/sunzunyi/U2FLOW .
+
+## 1. Introduction 
+
+Optical flow estimation [6, 45, 46] is a fundamental vision task with broad applications [18, 23, 39, 62]. Recently, deep recurrent models based on all-pairs correlation, such as RAFT [5, 11, 29, 41, 42, 48, 50], have achieved state-of-the-art performance in fully supervised settings. However, obtaining large-scale, pixel-accurate ground-truth optical flow is costly and often impractical [4, 10, 47, 57], motivating research on unsupervised and self-supervised optical flow estimation [25–27]. Nevertheless, due to the absence of reliable supervision, self-supervised models often produce inaccurate estimates, especially when facing intrinsic challenges such as occlusions [30, 34, 53], textureless regions [16, 32], and large motion displace-ments [49]. These estimation errors can be detrimental to    
+
+> *Corresponding author. Network
+> Optical Flow Uncertainty Map Optical Flow
+> Target Frame
+> Reference Frame
+> Target Frame
+> Reference Frame
+> U2Flow
+
+Figure 1. Comparison between previous optical flow estimation methods and our approach. (Left) Previous methods estimate only optical flow. (Right) Our proposed U2Flow framework jointly es-timates optical flow and its uncertainty, and further leverages the predicted uncertainty to refine the flow estimation. 
+
+downstream tasks. In point tracking [22] and multi-view re-construction [36], even small local optical flow errors can accumulate and lead to failure. Moreover, erroneous flow estimates often cause artifacts in depth recovery [28, 63] or motion-based segmentation [60]. Consequently, it is not enough for a model to predict what the motion is; it must also quantify how confident it is in that prediction [54]. Despite its importance, uncertainty estimation in the self-supervised setting remains largely underexplored, pri-marily due to two core challenges: 1) The Absence of Direct Supervision: Unlike supervised methods [12, 13, 17, 40], which can be trained with ground-truth variance or likeli-hood information, self-supervised models lack any explicit “correct answer” for uncertainty. A fundamental difficulty lies in teaching a model to assess its own reliability without access to ground truth. 2) The Effective Integration of Un-certainty: Even if uncertainty can be estimated, it is unclear how to leverage it effectively during training to improve flow accuracy, rather than treating it as a mere byproduct. To address these challenges, we present U2Flow , the first recurrent framework for the self-supervised joint estimation of dense optical flow and its per-pixel uncertainty, as illus-trated in Fig. 1. First, to overcome the lack of direct un-certainty supervision, we derive a supervisory signal from the model’s own predictive inconsistencies under data aug-mentation. When the model yields inconsistent predictions 1
+
+> arXiv:2604.10056v1 [cs.CV] 11 Apr 2026
+
+under diverse spatial and appearance perturbations, it ex-poses its own regions of low confidence, thereby providing a powerful self-supervisory signal for uncertainty learning. By enforcing consistency between flows predicted under various perturbations, we derive a Laplace-based maximum likelihood objective [8, 12] that learns uncertainty distribu-tions, decoupled from the main flow loss. Second, to effectively leverage the predicted uncertainty during training, we design an uncertainty-aware recurrent architecture. The predicted uncertainty is fed back into the recurrent update block to guide adaptive refinement. Concurrently, uncertainty is used to modulate the self-supervision objectives, enabling the model to intelligently down-weight unreliable signals. Experiments show that U 2Flow achieves state-of-the-art performance among unsupervised methods on the KITTI and Sintel benchmarks. Crucially, it also produces highly reliable uncertainty maps, demonstrating the efficacy of our joint estimation framework. Our main contributions are summarized as follows: • To the best of our knowledge, we propose the first re-current unsupervised framework for jointly estimating optical flow and uncertainty, which integrates an uncer-tainty prediction head and an uncertainty-aware refine-ment mechanism within the recurrent update block. • We devise a decoupled uncertainty learning strategy based on augmentation consistency for stable estimation. Furthermore, we design an uncertainty-guided regional smoothness mechanism that leverages confidence to im-prove flow coherence. • We propose an uncertainty-guided bidirectional flow fu-sion mechanism that utilizes uncertainty from both for-ward and backward flows to correct unreliable regions, outperforming traditional occlusion-based strategies. 
+
+## 2. Related Work 
+
+Unsupervised Optical Flow: Unsupervised optical flow estimation typically relies on photometric consistency losses combined with spatial smoothness regularization [16, 30, 34, 37]. However, the photometric signal often becomes unreliable in the presence of occlusions, motion blur, illu-mination changes, or textureless regions [26, 27, 32, 49, 53]. Early works [34, 53] explicitly handled occlusions by de-riving binary masks to remove geometrically inconsistent pixels from the photometric loss. Subsequent approaches, such as ARFlow [25] and SelF-low [27], improved robustness through knowledge distilla-tion and extensive data augmentation [26, 58, 59]. More recent efforts, including SemARFlow [58] and UnSAM-Flow [59], incorporated semantic cues to enhance motion boundary preservation. Other methods [14, 44, 49] lever-age multi-frame training to provide richer temporal context and complementary motion evidence. However, most models focus solely on point estimation and ignore prediction uncertainty, limiting their ability to differentiate between ambiguous and reliable regions. 
+
+Uncertainty Estimation: Quantifying model confidence is crucial for building robust computer vision systems [1, 24, 52, 61]. Early optical flow approaches typically treated uncertainty as a post-processing step [2, 20, 21, 31], esti-mating confidence heuristically from image gradients [2] or local flow energy [3] rather than integrating it into the learning process. Subsequent works introduced probabilis-tic formulations for joint estimation of optical flow and un-certainty [7, 8, 12, 54, 56]. ProbFlow [54] uses variational inference within a probabilistic framework to jointly esti-mate flow and uncertainty. PDC-Net+ [51] jointly learns dense correspondences and their associated uncertainties under supervised synthetic data, while ProbDiffFlow [64] outputs multiple flow hypotheses instead of a single result. Abdein et al. [1] map the flow smoothness error to a proba-bility distribution to model uncertainty. Crucially, most existing optical flow uncertainty meth-ods depend on full supervision [12, 13, 17, 40], tightly cou-pling uncertainty learning with flow regression. This depen-dency makes them incompatible with the self-supervised paradigm where no such ground truth is available. More-over, uncertainty is rarely leveraged to improve the flow es-timation process itself during inference. 
+
+## 3. Method 
+
+Given two consecutive RGB frames I1, I2 ∈ RH×W ×3, our goal is to estimate the dense optical flow field F1→2 ∈
+
+RH×W ×2 along with its corresponding uncertainty map 
+
+σ21→2 ∈ RH×W .
+
+3.1. Network Overview 
+
+U2Flow inherits the core design of RAFT [50], as illustrated in Fig. 2a. Given two consecutive frames I1, I2, we first ex-tract deep feature representations f1, f2 ∈ RH′×W ′×D and construct a 4D correlation volume C ∈ RH′×W ′×H′×W ′
+
+,which encodes pairwise similarities between all feature lo-cations. This correlation volume is iteratively queried by a recurrent update block that refines the optical flow estimate 
+
+F(k)1→2 through multiple iterations k = 1 , 2, . . . , K .Following SMURF [44], we replace all batch normaliza-tion layers with instance normalization to enhance training stability and convergence under small-batch, unsupervised settings. Furthermore, U 2Flow introduces an additional un-certainty head to estimate the flow uncertainty σ2 ( k)1→2 at each iteration. This naturally raises an important question: can the estimated uncertainty be utilized within the network it-self to further refine the optical flow? To address this, we reformulate the original flow head into an uncertainty-aware refinement module that leverages 2Optical Flow              
+
+> Uncertainty Map
+> Feature
+> Encoder
+> Context
+> Encoder
+> 4D Correlation
+> Volume
+> Feature
+> Encoder
+> Recurrent
+> Update Block
+> NTarget Frame 2I
+> Reference Frame 1I(a) Overall network structure Concatenated
+> Flow Feature
+> Decoder
+> Flow
+> Head
+> Exponential
+> Uncertainty
+> -Scaled
+> ()k
+> h
+> ()k
+> α
+> ()k
+> f
+> Uncertainty
+> Head
+> Uncertainty Map 2 ( )
+> 12
+> k
+> σ
+> Residual Flow ()
+> 12
+> k
+> F(b) Flow refinement module and uncertainty estimation head
+
+Figure 2. Overview of U2Flow architecture. (a) The overall recurrent structure follows RAFT [50]. (b) The uncertainty-aware refinement module and the uncertainty estimation head respectively predict optical flow and per-pixel uncertainty in the recurrent update block. 
+
+the predicted uncertainty to guide the iterative flow refine-ment process (see Sec. 3.2). Meanwhile, during training, the refined flow supervises the uncertainty branch, progres-sively enhancing its estimation accuracy (see Sec. 3.3). In this way, U 2Flow jointly learns optical flow and uncertainty within a unified optimization framework. 
+
+3.2. Uncertainty Estimation and Flow Refinement 
+
+As depicted in Fig. 2b, after obtaining the hidden represen-tation from the RAFT recurrent unit, U 2Flow first applies an uncertainty estimation head and then feeds its output into our refinement module. Given the hidden feature represen-tation h(k) at iteration k, we first decode an intermediate flow feature and estimate its corresponding uncertainty as 
+
+f (k) = Cflow (h(k)), α(k) = Cunc (h(k)), (1) where Cflow (·) and Cunc (·) denote convolutional layers for flow feature extraction and uncertainty estimation, respec-tively. To ensure strictly positive uncertainty values, the un-certainty head predicts the logarithm of the flow variance: 
+
+α(k) = log 
+
+
+
+σ2 ( k)1→2
+
+
+
+, (2) which improves numerical stability during training. During inference, the actual flow uncertainty (i.e., the variance) is recovered as σ2 ( k)1→2 = exp( α(k)).To modulate the influence of uncertain regions, an uncer-tainty weight map is obtained via a sigmoid transformation: 
+
+s(k) = ϕ(−α(k)), (3) which acts as a reliability indicator for each flow vector. The uncertainty-scaled flow feature is defined as 
+
+˜f (k) = f (k) ⊙ s(k)∗, (4) where ⊙ denotes element-wise multiplication, and (·)∗ rep-resents a stop-gradient operation that prevents backpropa-gation through the uncertainty branch. Finally, the refined optical flow residual is obtained by fusing the original feature, the scaled feature, and the un-certainty map: 
+
+∆F(k)1→2 = C′
+
+> flow
+
+
+
+concat 
+
+
+
+f (k), ˜f (k), α(k)∗ 
+
+, (5) where C′
+
+> flow
+
+(·) denotes the convolutional head that outputs the flow residual ∆F(k)1→2 ∈ RH′×W ′×2.This uncertainty-aware refinement mechanism enables the model to dynamically use predicted uncertainty to mod-ulate flow features, effectively suppressing the influence of unreliable regions during refinement. 
+
+3.3. Uncertainty-Aware Unsupervised Loss 
+
+Unlike standard unsupervised optical flow methods, our loss explicitly integrates predicted uncertainty to modulate the training signal, enabling joint flow and uncertainty esti-mation within a purely self-supervised framework. 
+
+Photometric Loss: During each refinement iteration k, the input frames are warped by F(k)1→2 and F(k)2→1 to synthesize a new view of the source frame. Similar to ARFlow [25], the photometric loss ℓ(k)ph between each original image and its warped counterpart is computed as a weighted combina-tion of three terms: the pixel-wise ℓ1 distance, SSIM, and the census loss [34]. The occlusion mask O(k) 
+
+> i→j
+
+is com-puted using a forward–backward consistency check [34] to exclude regions without valid correspondences: 
+
+O(k) 
+
+> i→j
+
+(p) = ⊮
+
+
+
+F(k) 
+
+> i→j
+
+(p) + F(k)
+
+> j→i
+
+(p + F(k) 
+
+> i→j
+
+(p)) 2 > δ 
+
+
+
+,
+
+(6) where δ represents an adaptive threshold, ⊮(·) is the indi-cator function, (i, j ) ∈ { (1 , 2) , (2 , 1) } refers to the flow direction, and p indicates the pixel coordinates. 
+
+Smoothness Loss: To encourage locally coherent flow while preserving motion boundaries, we apply an edge-aware smoothness regularization to the predicted flow F(k)
+
+> i→j
+
+at each iteration k, denoted as ℓ(k)sm . Building on the work of UnSAMFlow [59], we also incorporate a regional smooth-ness constraint based on homography estimation. For each object region, a homography is estimated via RANSAC from reliable correspondences derived from the current flow prediction. The resulting homographies are then used to generate regionally refined flow fields. A key distinction of our approach lies in how reliable correspondences are identified. While the original formula-tion employs occlusion masks to exclude unreliable pixels, 3(c) F orward –backward consistency mask (d) Proposed reliability mask     
+
+> (a) Reference frame (b) Error map
+
+Figure 3. Comparison of different masks for indicating flow er-rors. The masks are visualized as translucent green overlays on the optical flow error maps, where correct estimations are shown in blue, incorrect ones in red, and black pixels denote regions with-out ground truth. As shown in (c), some high-error regions remain unmasked, while certain low-error regions are incorrectly masked. In contrast, our method (d) accurately identifies high-error regions, providing more reliable cues for subsequent homography smooth-ness (Sec. 3.3), flow fusion (Sec. 3.4), and other downstream tasks. 
+
+we introduce a more principled uncertainty-based reliability mask. This mechanism leverages the model’s predicted un-certainty, excluding pixels with uncertainty above a thresh-old τhg (see Fig. 3). It ensures that only high-confidence regions contribute to homography estimation and optimiza-tion. Consequently, the smoothness regularization becomes adaptive, directly guided by the model’s learned confidence. It is worth noting that due to the stringent planarity assump-tion of homography, this uncertainty-enhanced component is applied exclusively to the KITTI [9, 35] dataset, which contains predominantly planar rigid motions. The effective-ness of this uncertainty-guided strategy is further validated in our ablation studies (Sec. 4.5). The homography smoothness loss is defined as the 
+
+ℓ1 distance between the predicted flow Fi→j and the homography-refined flow FH 
+
+> i→j
+
+:
+
+ℓhg = 1
+
+H′ × W ′
+
+X 
+
+> p
+
+Fi→j (p) − FH 
+
+> i→j
+
+(p) 1 . (7) 
+
+Augmentation and Uncertainty Supervision: In the ab-sence of ground-truth, we generate a supervisory signal for the uncertainty head through the principle of augmentation consistency. The process begins by computing an initial flow estimate, F1→2, for an image pair (I1, I2) in an ini-tial forward pass. We then apply a set of strong appear-ance and spatial augmentations to both the images and the flow field, producing an augmented pair (ˆI1, ˆI2) and a trans-formed pseudo-ground-truth flow ˆF1→2. The network then re-estimates the flow on the augmented pair, yielding a new prediction ˆF′
+
+> 1→2
+
+. The ℓ1 distance between these flows, 
+
+ˆD(k)(p) = ∥ ˆF1→2(p) − ˆF′(k)1→2(p)∥1, serves as the self-supervised target, as it captures the model’s predictive in-consistency under perturbation. This augmentation consistency introduces diverse ap-pearance perturbations (e.g., color jitter, contrast adjust-ment, Gaussian noise, random erasing) and spatial trans-formations (e.g., translation, random rotation, rescaling), thereby exposing the network to a wide range of uncertainty conditions. To capture this uncertainty, we adopt a Maxi-mum Likelihood Estimation (MLE) formulation. For each augmentation iteration k, the objective is to minimize the negative log-likelihood (NLL) of observing the target flow 
+
+ˆF1→2 given the predicted distribution: 
+
+L(k) 
+
+> unc
+
+= −Ep
+
+h
+
+log p
+
+ ˆF1→2(p) | ˆF′(k)1→2(p), σ2( k)(p)
+
+i 
+
+.
+
+(8) Following [12], we assume a Laplace likelihood, which aligns naturally with the ℓ1-based residual ˆD(k). Under the independence assumption across flow dimensions, this leads to the numerically stable MLE objective: 
+
+
+
+˜ℓ(k)unc (p) = √2 exp  − 12 α(k)(p) ˆD(k)(p) + 12 α(k)(p),ℓ(k)unc =
+
+P
+
+> p
+
+(1 − ˆO1→2(p)) ˜ℓ(k)unc (p)
+
+P
+
+> p
+
+(1 − ˆO1→2(p)) .
+
+(9) Here, α(k) = log σ2( k) denotes the predicted log-variance, and ˆO1→2 is the transformed occlusion map [25]. Unlike prior works [12, 13, 17, 40] that tightly couple flow regres-sion and uncertainty estimation via a single MLE objective, our framework adopts a decoupled design, separating the flow loss from the uncertainty loss. Consequently, we de-tach ˆD(k) from the MLE objective to prevent gradient leak-age into the main flow estimation branch, which improves the robustness and stability of self-supervised learning (see Sec. 4.5 for ablations). To ensure the flow estimation branch continues to ben-efit from augmentation regularization, we retain the stan-dard augmentation loss ℓ(k)ar , which operates on the same residual ˆD(k) with gradient flow enabled, and further in-corporate semantic augmentations [59]. The augmentation regularization loss is defined as the ℓ1 distance between the transformed and predicted flows: 
+
+ℓ(k)ar =
+
+P
+
+> p
+
+(1 − ˆO1→2(p)) ˆD(k)(p)
+
+P
+
+> p
+
+(1 − ˆO1→2(p)) . (10) A similar formulation applies for semantic augmenta-tions, denoted as ℓ(k)sem [59]. 
+
+Final Loss: The overall training objective integrates all loss components as follows: 
+
+ℓTotal = λhg ℓhg +
+
+> K
+
+X
+
+> k=1
+
+ζK−k 
+
+ℓ(k)ph + λsm ℓ(k)sm + λar ℓ(k)ar 
+
++ λsem ℓ(k)sem + λunc ℓ(k)unc 
+
+
+
+,
+
+(11) 
+
+where ζ is an exponential decay factor that assigns smaller weights to earlier iterations. The homography smoothness term ℓhg is applied only to the final iteration output. 4Method Sintel Clean Sintel Final KITTI 2012 KITTI 2015 train test train test train test train test EPE EPE EPE EPE EPE Fl-all Fl-noc EPE EPE Fl-all Fl-noc Supervised  PWC-Net+ [46] (1.71) 3.45 (2.34) 4.60 (0.99) 6.72 3.36 1.4 (1.47) 7.72 4.91 RAFT [50] (0.77) 1.61 (1.27) 2.86 – – – – (0.63) 5.10 3.07 FlowFormer [11] (0.48) 1.16 (0.74) 2.09 – – – – (0.53) 4.68 2.69 VideoFlow [41] M F (0.46) 0.99 (0.66) 1.62 – – – – (0.56) 3.65 –FlowDiffuser [29] – 1.02 – 2.03 – – – – – 4.17 2.82 Unsupervised UnFlow-CSS [34] – 9.38 (7.91) 10.22 3.29 – – – 8.10 23.27 –SelFlow [27] M F (2.88) 6.56 (3.87) 6.57 1.69 7.68 4.31 2.2 4.84 14.19 9.65 UFlow [16] (2.50) 5.21 (3.39) 6.50 1.68 7.91 4.26 1.9 2.71 11.13 8.41 ARFlow [25] (2.79) 4.78 (3.73) 5.89 1.44 – – 1.8 2.85 11.80 –UPFlow [30] (2.33) 4.68 (2.67) 5.32 1.27 – – 1.4 2.45 9.38 –SMURF [44] M F (1.71) 3.15 (2.58) 4.18 – 6.19 3.13 1.4 2.00 6.83 5.26 SemARFlow [58] † – – – – 1.28 7.35 3.90 1.5 2.18 8.38 5.43 UnSAMFlow [59] † (2.21) 3.93 (3.07) 5.20 1.26 7.05 3.79 1.4 2.01 7.83 5.67 M2Flow [49] M F (2.01) 3.38 (3.12) 5.01 1.09 6.24 3.95 1.2 1.95 7.37 5.73 U2Flow (Ours) (1.42) 2.83 (2.32) 4.16 1.19 6.37 3.48 1.4 1.83 6.13 4.56 U2Flow (Ours +FF) M F (1.36 ) 2.83 (2.29 ) 4.10 1.12 6.26 3.47 1.3 1.74 6.00 4.52 
+
+Table 1. Quantitative results on Sintel and KITTI online benchmarks. Metrics evaluated at “all” (all pixels), “noc” (non-occlusions). MF 
+
+denotes methods trained using multi-frame data. † denotes models with semantic inputs. “+FF” denotes our bidirectional flow fusion module. Missing entries (–) denote unreported results. Parentheses indicate that training and testing are conducted on the same dataset. 
+
+3.4. Uncertainty-Guided Bidirectional Flow Fusion 
+
+We leverage the predicted uncertainty to guide a bidirec-tional flow fusion process, enhancing the reliability of the final estimate. Inspired by SMURF [44], we employ a lightweight convolutional network to learn a mapping from the backward flow Ft→t−1 to the forward flow Ft→t+1 .However, our approach fundamentally departs from prior work in its supervisory signal. Instead of relying on heuris-tic occlusion masks, we train the fusion network exclusively in high-confidence regions identified by our learned uncer-tainty. Specifically, a region is deemed high-confidence only if both its forward and backward uncertainty estimates are below a given threshold θ:
+
+Mf = ⊮(σ2 
+
+> t→t+1
+
+< θ ), Mb = ⊮(σ2 
+
+> t→t−1
+
+< θ ), (12) where Mf and Mb are the resulting reliability masks. Dur-ing inference, this trained network corrects the initial for-ward flow. The final fused flow Ffused  
+
+> t→t+1
+
+is computed by adaptively fusing the original estimate with the prediction 
+
+¯Ft→t+1 , which is derived from Ft→t−1 via the lightweight convolutional network: 
+
+
+
+Ffused  
+
+> t→t+1
+
+= Ft→t+1 ⊙ (1 − Mfused ) + ¯Ft→t+1 ⊙ Mfused ,
+
+Mfused = (1 − Mf) ⊙ Mb.
+
+(13) The fusion mask Mfused activates this correction pre-cisely where the forward flow is uncertain ( Mf = 0 ) but the backward flow is confident ( Mb = 1 ). This uncertainty-based fusion strategy fundamentally differentiates our approach from methods like SMURF, which primarily focus on correcting flow within occluded regions (often identified by forward-backward consistency checks [34]). However, true occlusion does not always equate to poor flow estimation, and conversely, non-occluded regions can still yield highly unreliable flow pre-dictions, as illustrated in Fig. 3. By leveraging the reliability masks Mf and Mb, our method’s correction mechanism ex-tends beyond strict occlusion handling. Furthermore, this fusion operates as a lightweight refinement on U 2Flow out-puts, achieving multi-frame benefits without the extensive retraining on large-scale datasets required by methods like SMURF [44]. (See fusion ablation results in Sec. 4.5.) 
+
+## 4. Experiments 
+
+4.1. Implementation Details 
+
+Dataset: To ensure a fair comparison, we evaluate our method on the KITTI [9, 35] and Sintel [4] datasets, follow-ing the training data schedule of prior works [27, 49, 59]. 
+
+Training: Our model is trained using Adam [19] ( β1 = 0 .9,
+
+β2 = 0.999 ) with a batch size of 4. The training first runs for 100k iterations on raw data with a fixed learn-ing rate of 2 × 10 −4, followed by fine-tuning on the orig-inal dataset using the OneCycleLR scheduler [43] with a maximum learning rate of 2.5 × 10 −4 (100k iterations for KITTI and 50k for Sintel). Augmentation regular-5Method Sintel KITTI AUSE ↓ CC ↑ AUSE ↓ CC ↑
+
+FB Check [34] 0.19 0.57 0.21 0.53 PDC-Net+ [51] 0.18 0.45 0.16 0.50 Smoothness [1] 0.26 0.43 0.23 0.45 U2Flow (Ours) 0.11 0.66 0.12 0.64 
+
+Table 2. Comparison of uncertainty estimation performance on the Sintel (final, clean) and KITTI (2012, 2015) training sets. 
+
+ization (appearance and spatial transformations) is intro-duced after 50k iterations, while the edge-aware smooth-ness term ℓsm is deactivated. The homography smoothness loss ℓhg and semantic augmentation loss ℓsem are activated after 50% of the fine-tuning iterations. The hyperparame-ters are set to K = 12 , [λhg , λ sm , λ ar , λ sem , λ unc , τ hg ] = [0 .1, 55 , 0.02 , 0.05 , 0.005 , 2] , and θ = 45 for Sintel and 35 
+
+for KITTI. For data augmentation, we follow ARFlow [25], apply-ing appearance transformations (brightness, contrast, satu-ration, hue, Gaussian blur, etc. ), as well as random flipping and swapping. All input images are resized to 256 × 832 for KITTI and 448 × 1024 for Sintel. 
+
+4.2. Benchmark Testing 
+
+We evaluate our method using standard optical flow metrics, including the average endpoint error (EPE) and the percent-age of erroneous pixels (Fl). Comparisons are conducted against both supervised and unsupervised approaches on the KITTI and Sintel benchmarks. As summarized in Tab. 1, our methods, U 2Flow and U 2Flow (+FF), achieve highly competitive results, surpassing all existing unsuper-vised methods on both KITTI-2015 and Sintel benchmarks. Specifically, on KITTI-2015, U 2Flow attains Fl-all=6.13%, significantly outperforming the previous state-of-the-art un-supervised two-frame method UPFlow [30] (9.38%). On KITTI-2012, our method achieves a comparable EPE of 1.4. Furthermore, U 2Flow even surpasses approaches that exploit additional information on KITTI-2015, including the multi-frame methods M2Flow [49] (Fl-all=7.37%) and SMURF [44] (Fl-all=6.83%), as well as the semantics-guided methods SemARFlow [58] (Fl-all=8.38%) and Un-SAMFlow [59] (Fl-all=7.83%). The enhanced variant, U 2Flow (+FF), further improves performance to an Fl-all=6.00% on KITTI-2015, validating the effectiveness of our bidirectional flow fusion module. Similarly, on the Sintel benchmark, both U 2Flow and U2Flow (+FF) achieve strong results, consistently outper-forming prior unsupervised methods across both the clean and final passes. 0.0 0.2 0.4 0.6 0.8 1.0      
+
+> Removed x Fraction (Sintel)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Normalized Mean EPE  FB Check (0.19)
+> PDC-Net+ (0.18)
+> Smoothness (0.26)
+> U²Flow (0.11)
+> Oracle 0.0 0.2 0.4 0.6 0.8 1.0
+> Removed x Fraction (KITTI)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Normalized Mean EPE  FB Check (0.21)
+> PDC-Net+ (0.16)
+> Smoothness (0.23)
+> U²Flow (0.12)
+> Oracle
+
+Figure 4. Sparsification curves for uncertainty evaluation. Lower AUSE (shown in parentheses) is better. 
+
+4.3. Uncertainty Evaluation 
+
+We evaluate the reliability of our uncertainty estimates by measuring their correlation with the ground-truth flow er-ror (EPE) [12, 54]. A high-quality uncertainty prediction should correspond strongly to a large estimation error. To this end, we employ two standard quantitative metrics: the Area Under the Sparsification Error curve (AUSE) [12] and Spearman’s Rank Correlation Coefficient (CC) [54]. The AUSE evaluates how well predicted uncertainty serves as a proxy for true error. It is derived from a sparsi-fication process that compares the error curve when remov-ing pixels by predicted uncertainty versus by ground-truth error. Consequently, a lower AUSE indicates a better un-certainty estimation. Spearman’s CC directly measures the monotonic relationship between predicted uncertainty and true error, with higher values denoting stronger correlation. Tab. 2 reports uncertainty estimation on the Sintel and KITTI training sets. U2Flow consistently achieves lower AUSE and higher CC than all baselines, outperforming heuristic methods [1, 34] as well as the model-based PDC-Net+ [51], despite the latter being trained on dense synthetic ground-truth data and fine-tuned on real-world sequences. The sparsification curves in Fig. 4 provide further in-sight. They show that U 2Flow produces a more robust and 6Figure 5. Qualitative results on the KITTI test set (sample frames #5 and #9) and the Sintel (final pass) test set (samples: ambush 3 , frame 23; cave 3 , frame 16), compared with SMURF [44]. Additional examples can be found on the official benchmark website. 
+
+globally consistent ranking of flow errors on both Sintel and KITTI. While PDC-Net+ slightly outperforms us in the ini-tial portion on KITTI due to real-data fine-tuning, U 2Flow’s curve remains closer to the oracle across a wider range of removed fractions, resulting in lower final errors and con-firming that our predicted uncertainty reliably reflects over-all flow quality. These results demonstrate that U 2Flow, guided by aug-mentation consistency in self-supervised training, effec-tively captures diverse uncertainty patterns arising from ap-pearance variations and geometric ambiguities. 
+
+4.4. Qualitative Results 
+
+Qualitative samples from the Sintel and KITTI datasets are presented in Fig. 5. Compared with the state-of-the-art competitor [44], our method generally achieves supe-rior performance, particularly around motion boundaries. Moreover, the predicted uncertainty maps effectively cap-ture and reflect the magnitude of estimation errors. 
+
+4.5. Ablation Study 
+
+Ablation experiments were performed to assess the contri-bution of each proposed module, with all models trained un-der identical conditions except for the ablated components. 
+
+Main Components: The effectiveness of our key compo-nents is validated through the ablation study summarized in Tab. 3. Introducing only the Uncertainty Estimation (UE) module without a decoupling strategy (row 2) degrades per-formance across all metrics. This highlights the challenge of joint optimization, where the uncertainty learning objec-tive can interfere with the primary task of flow estimation. This issue is resolved by incorporating our Decoupling (Dec.) strategy (row 3). By separating the learning objec-tives for flow and uncertainty, we observe consistent im-provements on both Sintel and KITTI. This confirms that decoupling is crucial for preserving the stability of self-supervised learning while still benefiting from the regular-izing effect of uncertainty supervision. Further adding the Flow Refinement (FR) module (row 4) continues this trend, demonstrating the benefit of using uncertainty to guide the network’s inference process.                                                                        
+
+> UE Dec. FR ℓhg FF Sintel KITTI 2015 Final Clean EPE Fl-all -----2.46 1.56 1.98 6.82
+> ✓----2.57 1.65 2.18 7.72
+> ✓✓---2.41 1.44 1.98 6.87
+> ✓✓✓--2.32 1.42 1.95 6.85
+> ✓✓-✓-2.52 1.48 1.87 6.69
+> ✓✓✓⃝-2.32 1.42 1.83 6.59
+> ✓✓✓⃝✓2.29 1.36 1.74 6.30
+> Table 3. Ablation study on key components. We evaluate the impact of Uncertainty Estimation (UE), Decoupling of flow and uncertainty learning (Dec.), Flow Refinement (FR), uncertainty-enhanced ℓhg , and Flow Fusion (FF). The ⃝symbol indicates that
+> ℓhg is applied only on the KITTI dataset.
+
+The uncertainty-enhanced homography loss ( ℓhg ) offers dataset-specific benefits (rows 5 and 6). On KITTI, where scenes frequently involve substantial planar rigid motion, this provides a significant boost in performance. However, on Sintel, which features complex, non-rigid motion, high uncertainty often correlates with dynamic objects where the homography assumption is fragile. Applying this loss can therefore be detrimental. Consequently, we only apply uncertainty-enhanced ℓhg to the KITTI dataset, as indicated by the ⃝ symbol in the table. Finally, our full model (last row) integrates all compo-nents including Flow Fusion (FF). It achieves the best over-all performance, reaching 2.29/1.36 on Sintel and 1.74/6.30 7Model Variant Sintel KITTI 2015 Final Clean EPE Fl-all w/o Refinement 2.41 1.44 1.87 6.69 Refinement w/o Uncertainty 2.42 1.51 1.93 6.81 Refinement w/ Uncertainty 2.32 1.42 1.83 6.59                      
+
+> Table 4. Ablation study on the flow refinement module. Method Sintel KITTI 2015 Final Clean Fl-all Fl-noc Fl-occ w/o Fusion 2.32 1.42 6.59 5.10 16.01 Occ Mask 2.34 1.42 8.17 5.07 27.73 Unc Mask (Ours) 2.29 1.36 6.30 5.05 14.17
+> Table 5. Ablation study on the bidirectional flow fusion module.
+
+on KITTI. This result confirms that our complete design can provide uncertainty estimates while delivering optical flow that surpasses the baseline in accuracy. 
+
+Flow Refinement Module: We conduct an ablation study to evaluate the proposed uncertainty-aware flow refinement mechanism, which integrates estimated uncertainty to dy-namically scale flow features and refine flow estimates (Sec. 3.2). Three variants are defined for comparison: (1) Refinement w/ Uncertainty. (2) w/o Refinement: The model removes the refinement mechanism entirely. The residual is estimated only from the hidden feature, equivalent to stan-dard RAFT-style update: ∆F(k) = C′
+
+> flow
+
+(h(k)). (3) Re-finement w/o Uncertainty: The model retains the refine-ment structure but excludes the uncertainty branch. The flow residual is refined using only the unscaled flow fea-ture and a dummy zero-map instead of the uncertainty map: 
+
+∆F(k) = C′
+
+> flow
+
+(concat (f (k), f (k), 0)) . This variant isolates the benefit of feature concatenation alone, removing the dy-namic influence of uncertainty. The ablation results are presented in Tab. 4. Performance metrics on the Sintel and KITTI-2015 training sets clearly demonstrate that the refinement architecture, incorporating dynamic scaling based on uncertainty, is crucial for achiev-ing optimal performance. 
+
+Effectiveness of Uncertainty-Guided Fusion: The core innovation of our bidirectional flow fusion module is the use of an uncertainty-driven mask, Mfused , to intelligently merge forward and backward flows. To rigorously validate this approach, we compare our full model against two alter-natives: one using a traditional occlusion mask for fusion, and another disabling the fusion module entirely. As shown in Tab. 5, a particularly notable finding is that guiding fusion with a conventional occlusion mask yields results even worse than the baseline without any fusion. This seemingly counterintuitive outcome arises from a fun-damental limitation of binary occlusion flags: they fail to              
+
+> Method KITTI →Sintel Sintel →KITTI Final Clean EPE Fl-all Ours (w/o Fusion) 5.80 4.67 5.10 17.05 Ours (w/ Fusion) 5.49 4.23 4.77 16.58
+> Table 6. Generalization ability. Training on one dataset and testing directly on the other dataset.
+
+differentiate between high- and low-quality flow estimates within the occluded regions. As a result, valid forward flows are often indiscriminately discarded and replaced with backward-warped counterparts of inferior quality, thereby degrading the overall flow field. In contrast, our uncertainty-based strategy effectively resolves this ambiguity. By assigning fine-grained, per-pixel confidence scores, it enables more informed fusion decisions that preserve reliable flow estimates and improve the handling of high-uncertainty flow in occluded regions. These results demonstrate that the proposed uncertainty mechanism effectively guides downstream flow fusion and validates the reliability of uncertainty estimates. 
+
+4.6. Generalization Ability 
+
+To evaluate the generalization ability of uncertainty estima-tion, we test whether the uncertainty predicted by a model trained on one domain can still reliably guide the bidirec-tional flow fusion task when tested directly on another do-main without fine-tuning. As shown in Tab. 6, the model with our uncertainty-guided fusion module exhibits signif-icantly stronger domain generalization. This indicates that the reliability signal captured by our uncertainty estimation is fundamental and transferable. 
+
+## 5. Conclusion 
+
+We propose U 2Flow, a recurrent unsupervised framework for jointly estimating optical flow and per-pixel uncertainty. Our method leverages augmentation consistency and a de-coupled learning strategy to achieve stable training of both flow and uncertainty in unsupervised settings. We demon-strate that the learned uncertainty is not merely a byprod-uct, but a valuable signal that can effectively guide adaptive flow refinement, modulate smoothness constraints, and en-able robust bidirectional flow fusion. U 2Flow establishes a state-of-the-art for unsupervised optical flow while produc-ing highly reliable uncertainty estimates. 
+
+Limitations Our uncertainty supervision relies on the model’s predictive variance under a predefined set of aug-mentations, which may not fully capture all real-world sources of error, such as severe non-Gaussian motion blur or atmospheric distortions. In future work, we plan to enrich the augmentation space using generative models to synthe-size more realistic and diverse image degradations. 8Acknowledgments 
+
+This research was supported by the Guangzhou Ba-sic and Applied Basic Research Foundation under Grant SL2024A04J0183, the Guangxi Key Research and Devel-opment Project under Grant GuikeAB25069495, the Na-tional Natural Science Foundation of China under Grant 92470202, and the Fund of National Key Laboratory of Multispectral Information Intelligent Processing Technol-ogy (No. 202410487201). 
+
+## References 
+
+[1] Rokia Abdein, Wei Li, Chenghao Li, Xiangping Zheng, and Rahul Yadav. Self-supervised uncertainty-guided refinement for robust joint optical flow and depth estimation. In Pro-ceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pages 1–5, 2025. 2, 6[2] John L. Barron, David J. Fleet, and Steven S. Beauchemin. Performance of optical flow techniques. International Jour-nal of Computer Vision (IJCV) , 12(1):43–77, 1994. 2 [3] Andr´ es Bruhn and Joachim Weickert. A confidence measure for variational optic flow methods. Computational Imaging and Vision , page 283, 2006. 2 [4] Daniel J. Butler, Jonas Wulff, Garrett B. Stanley, and Michael J. Black. A naturalistic open source movie for opti-cal flow evaluation. In Proceedings of the European Confer-ence on Computer Vision (ECCV) , pages 611–625, 2012. 1, 5, 3, 4 [5] Qiaole Dong and Yanwei Fu. Memflow: Optical flow es-timation and prediction with memory. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 19068–19078, 2024. 1 [6] Alexey Dosovitskiy, Philipp Fischer, Eddy Ilg, Philip Hausser, Caner Hazirbas, Vladimir Golkov, Patrick Van Der Smagt, Daniel Cremers, and Thomas Brox. Flownet: Learning optical flow with convolutional networks. In Pro-ceedings of the IEEE International Conference on Computer Vision (ICCV) , pages 2758–2766, 2015. 1 [7] Yarin Gal and Zoubin Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In Proceedings of the 33rd International Con-ference on Machine Learning (ICML) , pages 1050–1059. JMLR.org, 2016. 2 [8] Jochen Gast and Stefan Roth. Lightweight probabilistic deep networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 3369–3378, 2018. 2 [9] Andreas Geiger, Philip Lenz, Christoph Stiller, and Raquel Urtasun. Vision meets robotics: The kitti dataset. The Inter-national Journal of Robotics Research (IJRR) , 32(11):1231– 1237, 2013. 4, 5, 3 [10] Hsin-Ping Huang, Charles Herrmann, Junhwa Hur, Erika Lu, Kyle Sargent, Austin Stone, Ming-Hsuan Yang, and Deqing Sun. Self-supervised autoflow. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11412–11421, 2023. 1 [11] Zhaoyang Huang, Xiaoyu Shi, Chao Zhang, Qiang Wang, Ka Chun Cheung, Hongwei Qin, Jifeng Dai, and Hongsheng Li. Flowformer: A transformer architecture for optical flow. In Proceedings of the European Conference on Computer Vi-sion (ECCV) , pages 668–685, 2022. 1, 5 [12] Eddy Ilg, ¨ Ozg¨ un C ¸ ic ¸ek, Silvio Galesso, Aaron Klein, Osama Makansi, Frank Hutter, and Thomas Brox. Uncertainty es-timates and multi-hypotheses networks for optical flow. In 
+
+Proceedings of the European Conference on Computer Vi-sion (ECCV) , pages 677–693. Springer, 2018. 1, 2, 4, 6 [13] Andrei Iosif and Mihai Negru. Optical flow with seman-tic guidance and uncertainty estimation for robust video per-ception. In Proceedings of the IEEE International Confer-ence on Intelligent Computer Communication and Process-ing (ICCP) , pages 49–56, 2023. 1, 2, 4 [14] Joel Janai, Fatma Guney, Anurag Ranjan, Michael Black, and Andreas Geiger. Unsupervised learning of multi-frame optical flow with occlusions. In Proceedings of the Euro-pean Conference on Computer Vision (ECCV) , pages 690– 706, 2018. 2 [15] Shihao Jiang, Dylan Campbell, Yao Lu, Hongdong Li, and Richard Hartley. Learning to estimate hidden motions with global motion aggregation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 9772–9781, 2021. 5 [16] Rico Jonschkowski, Austin Stone, Jonathan T Barron, Ariel Gordon, Kurt Konolige, and Anelia Angelova. What matters in unsupervised optical flow. In Proceedings of the Euro-pean Conference on Computer Vision (ECCV) , pages 557– 572, 2020. 1, 2, 5 [17] Jun-Gu Kang, Si-Dong Roh, and Ki-Seok Chung. Flownetu: Accurate uncertainty estimation of optical flow for video object detection. In Proceedings of the International Con-ference on Artificial Intelligence and Pattern Recognition (AIPR) , pages 36–41, 2022. 1, 2, 4 [18] Hannah Halin Kim, Shuzhi Yu, Shuai Yuan, and Carlo Tomasi. Cross-attention transformer for video interpola-tion. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 320– 337, 2022. 1 [19] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. 5 [20] Claudia Kondermann, Rudolf Mester, and Christoph Garbe. A statistical confidence measure for optical flows. In Pro-ceedings of the European Conference on Computer Vision (ECCV) , pages 290–301. Springer, 2008. 2 [21] Jan Kybic and Claudia Nieuwenhuis. Bootstrap optical flow and uncertainty measure. Computer Vision and Image Un-derstanding (CVIU) , 115(10):1449–1462, 2011. 2 [22] Guillaume Le Moing, Jean Ponce, and Cordelia Schmid. Dense optical tracking: Connecting the dots. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 19187–19197, 2024. 1 [23] Wenbin Lin, Chengwei Zheng, Jun-Hai Yong, and Feng Xu. Occlusionfusion: Occlusion-aware motion estimation for real-time dynamic 3d reconstruction. In Proceedings of 
+
+9the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1736–1745, 2022. 1 [24] Jiuming Liu, Guangming Wang, Weicai Ye, Chaokang Jiang, Jinru Han, Zhe Liu, Guofeng Zhang, Dalong Du, and Hes-heng Wang. Difflow3d: Toward robust uncertainty-aware scene flow estimation with iterative diffusion-based refine-ment. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 15109– 15119, 2024. 2 [25] Liang Liu, Jiangning Zhang, Ruifei He, Yong Liu, Yabiao Wang, Ying Tai, Donghao Luo, Chengjie Wang, Jilin Li, and Feiyue Huang. Learning by analogy: Reliable supervision from transformations for unsupervised optical flow estima-tion. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 6488– 6497, 2020. 1, 2, 3, 4, 5, 6 [26] Pengpeng Liu, Irwin King, Michael R. Lyu, and Jia Xu. Ddflow: Learning optical flow with unlabeled data distilla-tion. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , pages 8770–8777, 2019. 2 [27] Pengpeng Liu, Michael Lyu, Irwin King, and Jia Xu. Self-low: Self-supervised learning of optical flow. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pat-tern Recognition (CVPR) , pages 4571–4580, 2019. 1, 2, 5 [28] Pengpeng Liu, Irwin King, Michael R Lyu, and Jia Xu. Flow2stereo: Effective self-supervised learning of optical flow and stereo matching. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 6648–6657, 2020. 1 [29] Ao Luo, Xin Li, Fan Yang, Jiangyu Liu, Haoqiang Fan, and Shuaicheng Liu. Flowdiffuser: Advancing optical flow estimation with diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 19167–19176, 2024. 1, 5 [30] Kunming Luo, Chuan Wang, Shuaicheng Liu, Haoqiang Fan, Jue Wang, and Jian Sun. Upflow: Upsampling pyramid for unsupervised optical flow learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1045–1054, 2021. 1, 2, 5, 6, 4 [31] Oisin Mac Aodha, Ahmad Humayun, Marc Pollefeys, and Gabriel J Brostow. Learning a confidence measure for optical flow. IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI) , 35(5):1107–1120, 2012. 2 [32] R´ emi Marsal, Florian Chabot, Ang´ elique Loesch, and Hichem Sahbi. Brightflow: Brightness-change-aware un-supervised learning of optical flow. In Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , pages 2061–2070, 2023. 1, 2 [33] Lukas Mehl, Jenny Schmalfuss, Azin Jahedi, Yaroslava Nali-vayko, and Andr´ es Bruhn. Spring: A high-resolution high-detail dataset and benchmark for scene flow, optical flow and stereo. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 4981– 4991, 2023. 4, 5 [34] Simon Meister, Junhwa Hur, and Stefan Roth. Unflow: Un-supervised learning of optical flow with a bidirectional cen-sus loss. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , 2018. 1, 2, 3, 5, 6, 4 [35] Moritz Menze and Andreas Geiger. Object scene flow for au-tonomous vehicles. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,pages 3061–3070, 2015. 4, 5, 3 [36] Matteo Poggi, Filippo Aleotti, Fabio Tosi, and Stefano Mat-toccia. On the uncertainty of self-supervised monocular depth estimation. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,pages 3227–3237, 2020. 1 [37] Zhe Ren, Junchi Yan, Bingbing Ni, Bin Liu, Xiaokang Yang, and Hongyuan Zha. Unsupervised deep learning for optical flow estimation. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , 2017. 2 [38] Stephan R Richter, Zeeshan Hayder, and Vladlen Koltun. Playing for benchmarks. In Proceedings of the IEEE In-ternational Conference on Computer Vision (ICCV) , pages 2213–2222, 2017. 5 [39] Shihao Shen, Louis Kerofsky, and Senthil Yogamani. Optical flow for autonomous driving: Applications, challenges and improvements. arXiv preprint arXiv:2301.04422 , 2023. 1 [40] Yichen Shen, Zhilu Zhang, Mert R. Sabuncu, and Lin Sun. Real-time uncertainty estimation in computer vision via uncertainty-aware distribution distillation. In Proceedings of the IEEE/CVF Winter Conference on Applications of Com-puter Vision (WACV) , pages 707–716, 2021. 1, 2, 4 [41] Xiaoyu Shi, Zhaoyang Huang, Weikang Bian, Dasong Li, Manyuan Zhang, Ka Chun Cheung, Simon See, Hongwei Qin, Jifeng Dai, and Hongsheng Li. Videoflow: Exploiting temporal cues for multi-frame optical flow estimation. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 12435–12446, 2023. 1, 5 [42] Xiaoyu Shi, Zhaoyang Huang, Dasong Li, Manyuan Zhang, Ka Chun Cheung, Simon See, Hongwei Qin, Jifeng Dai, and Hongsheng Li. Flowformer++: Masked cost volume autoen-coding for pretraining optical flow estimation. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1599–1610, 2023. 1 [43] Leslie N Smith and Nicholay Topin. Super-convergence: Very fast training of neural networks using large learn-ing rates. In Artificial Intelligence and Machine Learning for Multi-Domain Operations Applications , pages 369–386, 2019. 5 [44] Austin Stone, Daniel Maurer, Alper Ayvaci, Anelia An-gelova, and Rico Jonschkowski. Smurf: Self-teaching multi-frame unsupervised raft with full-image warping. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 3887–3896, 2021. 2, 5, 6, 7, 4 [45] Deqing Sun, Xiaodong Yang, Ming-Yu Liu, and Jan Kautz. Pwc-net: Cnns for optical flow using pyramid, warping, and cost volume. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 8934–8943, 2018. 1 [46] Deqing Sun, Xiaodong Yang, Ming-Yu Liu, and Jan Kautz. Models matter, so does training: An empirical study of cnns for optical flow estimation. IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI) , 42(6):1408– 1423, 2019. 1, 5 
+
+10 [47] Deqing Sun, Daniel Vlasic, Charles Herrmann, Varun Jampani, Michael Krainin, Huiwen Chang, Ramin Zabih, William T Freeman, and Ce Liu. Autoflow: Learning a better training set for optical flow. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 10093–10102, 2021. 1 [48] Deqing Sun, Charles Herrmann, Fitsum Reda, Michael Ru-binstein, David J. Fleet, and William T. Freeman. Disen-tangling architecture and training for optical flow. In Pro-ceedings of the European Conference on Computer Vision (ECCV) , pages 165–182, 2022. 1 [49] Xunpei Sun, Gang Chen, and Zuoxun Hou. M2flow: Amotion information fusion framework for enhanced unsuper-vised optical flow estimation in autonomous driving. In Pro-ceedings of the AAAI Conference on Artificial Intelligence (AAAI) , pages 7140–7148, 2025. 1, 2, 5, 6 [50] Zachary Teed and Jia Deng. Raft: Recurrent all-pairs field transforms for optical flow. In Proceedings of the European Conference on Computer Vision (ECCV) , pages 402–419, 2020. 1, 2, 3, 5, 4 [51] Prune Truong, Martin Danelljan, Radu Timofte, and Luc Van Gool. Pdc-net+: Enhanced probabilistic dense corre-spondence network. IEEE Transactions on Pattern Analy-sis and Machine Intelligence (TPAMI) , 45(8):10247–10266, 2023. 2, 6 [52] Fangjinhua Wang, Silvano Galliani, Christoph Vogel, and Marc Pollefeys. Itermvs: Iterative probability estimation for efficient multi-view stereo. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 8606–8615, 2022. 2 [53] Yang Wang, Yi Yang, Zhenheng Yang, Liang Zhao, Peng Wang, and Wei Xu. Occlusion aware unsupervised learning of optical flow. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 4884–4893, 2018. 1, 2 [54] Anne S Wannenwetsch, Margret Keuper, and Stefan Roth. Probflow: Joint optical flow and uncertainty estimation. In 
+
+Proceedings of the IEEE International Conference on Com-puter Vision (ICCV) , pages 1173–1182, 2017. 1, 2, 6 [55] Haofei Xu, Jing Zhang, Jianfei Cai, Hamid Rezatofighi, and Dacheng Tao. Gmflow: Learning optical flow via global matching. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 8121–8130, 2022. 5 [56] Zhichao Yin, Trevor Darrell, and Fisher Yu. Hierarchical dis-crete distribution decomposition for match density estima-tion. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 6037– 6046, 2019. 2 [57] Shuai Yuan, Xian Sun, Hannah Kim, Shuzhi Yu, and Carlo Tomasi. Optical flow training under limited label budget via active learning. In Proceedings of the European Conference on Computer Vision (ECCV) , pages 410–427, 2022. 1 [58] Shuai Yuan, Shuzhi Yu, Hannah Kim, and Carlo Tomasi. Semarflow: Injecting semantics into unsupervised optical flow estimation for autonomous driving. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 9566–9577, 2023. 2, 5, 6 [59] Shuai Yuan, Lei Luo, Zhuo Hui, Can Pu, Xiaoyu Xiang, Rakesh Ranjan, and Denis Demandolx. Unsamflow: Unsu-pervised optical flow guided by segment anything model. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition (CVPR) , pages 19027–19037, 2024. 2, 3, 4, 5, 6, 1 [60] Xinyu Zhang and Abdeslam Boularias. Optical flow boosts unsupervised localization and segmentation. In Proceed-ings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 7635–7642, 2023. 1 [61] Yushan Zhang, Bastian Wandt, Maria Magnusson, and Michael Felsberg. Diffsf: Diffusion models for scene flow estimation. Advances in Neural Information Processing Sys-tems (NeurIPS) , 37:11227–11247, 2024. 2 [62] Zhihang Zhong, Gurunandan Krishnan, Xiao Sun, Yu Qiao, Sizhuo Ma, and Jian Wang. Clearer frames, anytime: Re-solving velocity ambiguity in video frame interpolation. In 
+
+Proceedings of the European Conference on Computer Vi-sion (ECCV) , pages 346–363, 2024. 1 [63] Kaichen Zhou, Jia-Wang Bian, Jian-Qing Zheng, Jiaxing Zhong, Qian Xie, Niki Trigoni, and Andrew Markham. Manydepth2: Motion-aware self-supervised monocular depth estimation in dynamic scenes. IEEE Robotics and Au-tomation Letters , 2025. 1 [64] Mo Zhou, Jingwei Wang, Xinyu Zhang, Dylan Camp-bell, Kaixuan Wang, Li Yuan, and Xiao Lin. Probdiff-flow: An efficient learning-free framework for probabilis-tic single-image optical flow estimation. arXiv preprint arXiv:2503.12348 , 2025. 2 
+
+11 U2Flow: Uncertainty-Aware Unsupervised Optical Flow Estimation 
+
+# Supplementary Material 
+
+## A. Method details 
+
+A.1. Recurrent update block 
+
+Fig. 6 provides a detailed illustration of our recurrent up-date block, highlighting the processing flow within a single iteration k.At each iteration, the block takes three inputs: the pre-vious optical flow estimate F(k−1) 1→2 , the context feature ex-tracted from the reference image, and the correlation feature retrieved from the 4D correlation volume using the previ-ous flow estimate. The flow estimate and correlation feature are fused into a motion feature, which is then concatenated with the context feature. This combined tensor is fed into a Gated Recurrent Unit (GRU), which updates its hidden state to h(k), with the initial state h(0) initialized from the context feature. From the updated hidden state, our prediction heads gen-erate two outputs: a residual flow update ∆F(k)1→2 and a corresponding per-pixel uncertainty map σ2 ( k)1→2. Finally, a learned upsampling module upsamples the refined flow and uncertainty to the full resolution of the input image. 
+
+A.2. Augmentation and uncertainty supervision 
+
+Fig. 7 provides a schematic overview of our self-supervision strategy, which generates the signals for both the augmen-tation loss ( ℓar ) and the uncertainty supervision loss ( ℓunc ). Specifically, the process begins by computing an initial flow estimate, F1→2, for an image pair (I1, I2) in a forward pass. Subsequently, we apply a set of strong appearance augmentations (e.g., color jitter, contrast adjustment, Gaus-sian noise, random erase) and spatial transformations (e.g., translation, rotation, rescaling) to both the images and the flow field. This produces an augmented pair (ˆI1, ˆI2) and a transformed pseudo-ground-truth flow ˆF1→2. The network then re-estimates the flow for the augmented pair, yielding a new prediction ˆF′(k)1→2 at iteration k.The per-pixel ℓ1 distance between these two flow fields, denoted as ˆD(k)(p) = ∥ ˆF1→2(p) − ˆF′(k)1→2(p)∥1, serves as the self-supervised target, as it directly captures the model’s predictive inconsistency under perturbation. This target in-consistency, ˆD(k), is then leveraged in two distinct ways, as detailed in Eq. 9 and Eq. 10 in the main paper: • For the uncertainty loss ( ℓunc ): The inconsistency serves as the supervisory signal within our maximum likelihood objective to train the uncertainty head. • For the augmentation loss ( ℓar ): We directly minimize this inconsistency to enforce model robustness against perturbations. In addition to these augmentations, and as described in the main paper, we also incorporate a semantic augmen-tation loss, ℓsem [59]. This loss follows a similar formu-lation to ℓar but is computed on semantically augmented data, where object regions are randomly copied and pasted between image pairs. This process introduces more realistic occlusions and compositional variations, further enhancing model robustness. 
+
+## B. Result details 
+
+B.1. Implementation details 
+
+Our model is tested on Ubuntu 18.04 with Python 3.7.16, PyTorch 1.13.1, Torchvision 0.14.1, and CUDA 11.3. We use 2 NVIDIA RTX 3090 GPUs with 24 GB of memory each. More details can be found in the code appendix. 
+
+B.2. Efficiency analysis 
+
+We evaluate the computational efficiency of our network. For each RGB sample of resolution 376 × 1242 , our model achieves an average inference time of 0.0663 sec-onds ( ∼15FPS) on an NVIDIA RTX 3090 GPU. In terms of model size, our network contains 5.22M parameters, mak-ing it marginally more compact than the original RAFT [50] architecture (5.26M). This parameter efficiency is attributed to the lightweight design of our proposed flow refinement module and uncertainty estimation head. 
+
+B.3. Ablation study on the number of recurrent iterations 
+
+To analyze the impact of the recurrent refinement process, we performed an ablation study on the number of iterations (K) using the Sintel (final pass) and KITTI-2015 training sets. The results are summarized in Table 7. As expected, the accuracy of the optical flow estimates generally improves with an increasing number of iterations across both datasets. The performance gains exhibit di-minishing returns and begin to saturate at approximately 
+
+K = 12 iterations. This trend confirms the effectiveness of the iterative refinement process while justifying our choice of K = 12 for the final model to balance performance and efficiency. Interestingly, the quality of our uncertainty estimation, measured by AUSE, remains stable across different values of K. This suggests that the uncertainty head relies on intrinsic feature properties rather than the final converged flow, demonstrating the robustness of our uncertainty learn-ing mechanism. 1Residual Flow ( ) 
+
+> 12
+> k
+> 
+
+F  
+
+> Concatenated
+> Flow Feature
+> Decoder Flow Head
+> Exponential
+> Uncertainty
+> -Scaled
+> ()k
+
+h 
+
+> ()k
+
+α 
+
+> ()k
+
+f   
+
+> Uncertainty
+> Head
+> Uncertainty Map 2 ( )
+> 12
+> k
+> 
+
+σ( 1) k 
+
+hContext Feature     
+
+> Optical Flow (1)
+> 12
+> k
+> 
+
+F 
+
+> Correlation Feature
+> Gated Recurrent
+> Unit (GRU)
+> Concatenated
+> Motion Feature
+> Encoder
+> Learned
+> Upsampler
+
+Figure 6. Detailed illustration of the recurrent update block. The diagram depicts the process flow for the k-th iteration. Components to the left of the dashed line represent the original RAFT [50] architecture, while components to the right constitute our proposed flow refinement module and uncertainty estimation head. Augmented Pair  21 ˆ,ˆ II 
+
+> Initial Image Pair
+
+#  21 , II  
+
+> Transformed Flow 12
+
+ˆ FInitial Flow 1 2F  
+
+> New Prediction 12
+
+ˆ 
+
+F  
+
+> Uncertainty Map 2
+> 12
+
+σ
+
+> unc
+
+
+
+> ar
+
+
+
+U2Flow 
+
+> gradient
+> detachment
+
+U2Flow 
+
+Figure 7. Schematic diagram of the self-supervision process. (1) An initial flow F1→2 is predicted from the original image pair. (2) Strong augmentations are applied to both the images and the flow, creating an augmented image pair and a transformed pseudo-ground-truth flow 
+
+ˆF1→2. (3) A new flow prediction ˆF′ 
+
+> 1→2
+
+is generated from the augmented images. (4) The inconsistency ˆD between the pseudo-ground-truth and the new prediction serves as the target signal for both the augmentation loss ( ℓar ) and the uncertainty supervision loss ( ℓunc ). 
+
+B.4. Ablation study on augmentation sensitivity 
+
+To further analyze the impact of different data augmenta-tion strategies on our method, we provide an ablation study on augmentation types in Tab. 8. We observe that spatial augmentation is the dominant factor for reliable uncertainty learning: using Spatial Only achieves performance compa-rable to Full (e.g., AUSE 0.12 vs. 0.11 on Sintel), while 
+
+Appearance Only degrades significantly (AUSE 0.46). Ap-pearance augmentation offers negligible gain on KITTI and a minor improvement on Sintel, likely due to its synthetic lighting. This is consistent with optical flow being primarily a ge-ometric correspondence task, where spatial perturbations provide stronger uncertainty supervision than photometric variations. 
+
+B.5. Ablation study on uncertainty scaling 
+
+In Eq. 4 of the main paper, we introduce an uncertainty-scaled flow feature ˜f (k) = f (k) ⊙s(k)∗ to modulate flow rep-resentations according to the predicted reliability. This op-eration suppresses unreliable features before propagation, enabling the refinement module to focus on more reliable regions. To evaluate the effectiveness of this design, we compare two variants in Eq. 5: • w/o Uncertainty-Scaled : directly concatenate the flow feature f (k) with the uncertainty prediction α(k), leaving the network to implicitly learn how to utilize the uncer-tainty information. • With Uncertainty-Scaled (ours) : use the uncertainty-scaled feature ˜f (k) = f (k) ⊙ s(k)∗ to explicitly modulate the flow representation before feature fusion. As shown in Tab. 9, the proposed uncertainty scaling consistently improves performance, indicating that explic-itly modulating flow features with predicted uncertainty is more effective than relying on implicit feature fusion. 
+
+B.6. Analysis of the uncertainty-enhanced homog-raphy smoothness loss 
+
+The homography smoothness loss [59] regularizes flow es-timation by enforcing consistency with a planar motion model. In our framework, we employ an uncertainty-based reliability mask to select the regions where this loss is ap-2Iter. Num. Sintel Final KITTI 2015 EPE ↓ AUSE ↓ CC ↑ EPE ↓ Fl-all ↓ AUSE ↓ CC ↑ Runtime 2 3.52 0.11 0.69 3.71 12.31 0.20 0.53 18 ms 4 2.75 0.10 0.69 2.32 8.23 0.21 0.50 35 ms 8 2.41 0.11 0.68 1.90 6.75 0.22 0.48 52 ms 12 2.32 0.11 0.67 1.83 6.59 0.22 0.48 66 ms 16 2.30 0.11 0.67 1.82 6.53 0.22 0.47 97 ms Table 7. Ablation study on the number of recurrent iterations ( K). Flow accuracy improves and saturates with more iterations, while uncertainty estimation (AUSE) remains robustly stable. Runtime is measured on KITTI-2015. 
+
+Figure 8. Detailed test results of our model on Sintel [4]. Method Sintel KITTI AUSE ↓ CC ↑ AUSE ↓ CC ↑
+
+Appearance Aug. Only 0.46 0.25 0.25 0.51 Spatial Aug. Only 0.12 0.65 0.12 0.64 Full (Ours) 0.11 0.66 0.12 0.64 
+
+Table 8. Ablation study of augmentation strategies for uncertainty.  
+
+> (a) KITTI-2015 results (b) KITTI-2012 results
+
+Figure 9. Detailed test results of our final model on KITTI [9, 35]. 
+
+plied. In this section, we further elaborate on the dataset-dependent performance of this uncertainty-enhanced ho-mography smoothness loss ( ℓhg ), which, as shown in the 
+
+Model Variant Sintel KITTI 2015 Final Clean EPE Fl-all w/o Uncertainty-Scaled 2.40 1.52 2.04 7.24 w/ Uncertainty-Scaled (Ours) 2.32 1.42 1.83 6.59 
+
+Table 9. Ablation study on the uncertainty scaling mechanism. Explicitly modulating flow representations with the scaled feature 
+
+˜f (k) yields better performance than implicit direct concatenation. 
+
+main paper, improves results on KITTI but degrades them on Sintel. Our investigation reveals that the core issue is not the quality of the uncertainty mask itself, but rather the na-ture of the high-uncertainty regions within each dataset. As illustrated in Fig. 10, the uncertainty-based reliability mask effectively identifies regions with high estimation er-ror on Sintel. However, in the Sintel dataset, these high-uncertainty regions frequently correspond to characters and creatures undergoing complex, non-rigid, and non-planar motion (e.g., walking, running, or fighting). Applying the homography smoothness loss to these areas forces the net-work to regularize the flow field based on a planar motion assumption, which is geometrically invalid for such move-ments. This fundamental mismatch introduces erroneous constraints, ultimately degrading the overall flow estimation quality rather than refining it. 3(a) Reference frame (d) Proposed reliability mask (b) Uncertainty map (c) Error map (e) F orward –backward consistency mask 
+
+> al ley _2 #15 am bush_ 5 #40 #0 #167
+
+Figure 10. Visualization of selected regions for homography smoothness on Sintel and KITTI. The top two rows show samples from the Sintel dataset, while the bottom two rows are from KITTI. The uncertainty-based reliability mask successfully identifies regions with high flow error in both datasets. However, for Sintel, these high-error regions are typically non-rigid characters for which the planar homography assumption does not hold. In contrast, for KITTI, high-error regions often correspond to rigid vehicles and planar road surfaces, which are well-suited for homography regularization. This illustrates why the uncertainty-enhanced ℓhg is effective on KITTI but not on Sintel. 
+
+In contrast, the forward–backward consistency check [34], which is mainly used as an occlusion de-tector, tends to highlight static or slow-moving background regions that become occluded. As shown in Fig. 10, these background areas (e.g., walls, ground) are typically planar and thus suitable for homography regularization. The situation in the KITTI dataset is markedly differ-ent. The scenes are dominated by rigid objects (vehicles) and large planar surfaces (roads, buildings). Even the pri-mary moving objects like cars are composed of multiple planar surfaces. Consequently, the planar motion assump-tion holds true for many high-uncertainty regions, making the uncertainty-enhanced ℓhg a highly effective regularizer that provides a significant performance boost. 
+
+B.7. Benchmark test screenshots 
+
+The results of U 2Flow and U 2Flow (+FF) have been sub-mitted to the KITTI and Sintel online benchmarks and can be found on the leaderboards by searching for “U 2Flow”. Screenshots of the detailed evaluation metrics from the of-ficial websites are provided in Fig. 8 and Fig. 9. 
+
+B.8. Results on the Spring Dataset 
+
+To further demonstrate the generalization capability of our approach, we evaluate our model on the Spring [33] test set without fine-tuning. As shown in Tab. 10, our U2Flow, as an unsupervised method, consistently outper-forms SMURF [44] across most metrics (below the dashed line). Moreover, compared with supervised approaches (above the dashed line), which are trained in a multi-stage manner on multiple datasets, our model—trained exclu-sively on Sintel [4]—still demonstrates strong generaliza-tion ability and surpasses them on several key metrics. We also provide qualitative results on the Spring dataset in Fig. 11. As illustrated, the predicted flow fields are spa-tially coherent and preserve sharp motion boundaries. In addition, the predicted uncertainty maps show a reasonable correlation with the estimation errors, suggesting that the model can capture the reliability of its predictions. 
+
+B.9. More qualitative examples 
+
+We present additional qualitative results from the KITTI-2015 test set (Fig. 12) and the Sintel test set (Fig. 13). We compare our method with the state-of-the-art unsu-pervised two-frame approach UPFlow [30] and the multi-frame trained model SMURF [44], which is also based on RAFT [50]. 4Figure 11. Qualitative results on the Spring benchmark [33] without fine-tuning. Model 1px EPE Fl WAUC total low-det. high-det. matched unmat. rigid non-rig. not sky sky s0-10 s10-40 s40+ RAFT [50] 6.79 6.43 64.09 6.00 39.48 4.11 27.09 5.25 30.18 3.13 5.30 41.40 1.476 3.20 90.92 GMA [15] 7.07 6.70 66.20 6.28 39.89 4.28 28.25 5.61 29.26 3.65 5.39 40.33 0.914 3.08 90.72 GMFlow [55] 10.36 9.93 76.61 9.06 63.95 6.80 37.26 8.95 31.68 5.41 9.90 52.94 0.945 2.95 82.34 FlowFormer [11] 6.51 6.14 64.22 5.77 37.29 3.53 29.08 5.50 21.86 3.38 5.53 35.34 0.723 2.38 91.68 
+
+SMURF [44] 6.43 6.04 66.52 5.49 45.12 3.58 27.95 5.53 20.07 3.44 6.59 30.99 0.659 2.10 90.45 
+
+U2Flow (Ours) 6.32 5.94 66.02 5.38 45.31 3.56 27.26 5.46 19.38 3.41 6.54 30.13 0.608 1.88 89.32 Table 10. Optical flow generalization results on the Spring benchmark [33] without fine-tuning. We report the 1px outlier rate across low/high-detail, (un)matched, (non-)rigid, and (non-)sky regions, along with the EPE, Fl error, and WAUC [38] metrics. The best and second-best results are highlighted in bold and underline, respectively, while key metrics are emphasized in blue. 
+
+5UP Flow Ours SMURF Reference frame 
+
+> #0
+> #21
+> #58
+> #78
+> #105
+> #112
+> #134
+> #158
+> #195
+
+Uncertainty map 
+
+> #16
+
+Figure 12. Additional qualitative results on the KITTI-2015 test set. 
+
+6Market Shaman Ambush Bamboo Market Market Mountain Temple Tiger Wall 
+
+UP Flow Ours SMURF Reference frame Uncertainty map Figure 13. Additional qualitative results on the Sintel (final pass) test set. 
+
+7
