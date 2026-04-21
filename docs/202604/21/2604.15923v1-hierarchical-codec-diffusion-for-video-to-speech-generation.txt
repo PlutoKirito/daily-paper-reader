@@ -1,0 +1,738 @@
+Title: Hierarchical Codec Diffusion for Video-to-Speech Generation
+
+URL Source: https://arxiv.org/pdf/2604.15923v1
+
+Published Time: Mon, 20 Apr 2026 00:46:02 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+Hierarchical Codec Diffusion for Video-to-Speech Generation 
+
+Jiaxin Ye 1, Gaoxiang Cong 2,3, Chenhui Wang 1,Xin-Cheng Wen 4, Zhaoyang Li 1, Boyuan Cao 1, Hongming Shan 1†
+
+> 1
+
+Fudan University, 2Institute of Computing Technology, Chinese Academy of Sciences 
+
+> 3
+
+University of Chinese Academy of Sciences, 4Harbin Institute of Technology (Shenzhen)  
+
+> jxye22@m.fudan.edu.cn, hmshan@fudan.edu.cn
+
+Abstract 
+
+Video-to-Speech (VTS) generation aims to synthesize speech from a silent video without auditory signals. How-ever, existing VTS methods disregard the hierarchical na-ture of speech, which spans coarse speaker-aware se-mantics to fine-grained prosodic details. This oversight hinders direct alignment between visual and speech fea-tures at specific hierarchical levels during property match-ing. In this paper, leveraging the hierarchical structure of Residual Vector Quantization (RVQ)-based codec, we propose HiCoDiT , a novel Hi erarchical Co dec Di ffusion 
+
+Transformer that exploits the inherent hierarchy of dis-crete speech tokens to achieve strong audio-visual align-ment. Specifically, since lower-level tokens encode coarse speaker-aware semantics and higher-level tokens capture fine-grained prosody, HiCoDiT employs low-level and high-level blocks to generate tokens at different levels. The low-level blocks condition on lip-synchronized motion and fa-cial identity to capture speaker-aware content, while the high-level blocks use facial expression to modulate prosodic dynamics. Finally, to enable more effective coarse-to-fine conditioning, we propose a dual-scale adaptive instance layer normalization that jointly captures global vocal style through channel-wise normalization and local prosody dy-namics through temporal-wise normalization. Extensive ex-periments demonstrate that HiCoDiT outperforms baselines in fidelity and expressiveness, highlighting the potential of discrete modelling for VTS. The code and speech demo are both available at https://github.com/Jiaxin-Ye/HiCoDiT. 
+
+1. Introduction 
+
+Video-to-Speech (VTS) [9, 10, 63] generation aims to infer and synthesize speech from visual cues alone. This capabil-ity enables transformative applications, including silent film dubbing and assistive communication for aphonic individu-
+
+> †Corresponding author.
+
+als, to seamless interaction in noise-sensitive [13], privacy-critical [41] or embodied [18] environments. The fundamental challenge in VTS lies in addressing the inherent information asymmetry between visual and acous-tic modalities when generating natural and lip-synchronized speech from visual without acoustic input guidance. Specif-ically, although facial video and speech share consistent content [43], identity [44], and emotional prosody [58, 61, 62], visual features are inherently sparse and insufficient to capture the dense representations of speech, making it diffi-cult to build accurate cross-modal alignment. Existing approaches predominantly focus on representa-tion alignment for guiding generative models [4, 5, 20, 22], spanning semantic content, vocal identity, and emotional prosody from vision to speech: (i) for semantic con-tent alignment, NaturalL2S [29] leverages multimodal self-supervised representations to enhance the alignment be-tween visual semantics and speech content; ( ii ) for vocal identity alignment, Face2Speech [20] aligns features from a face recognition encoder and a speaker recognition encoder to map facial identity to timbre information, while Face-StyleSpeech [23] further incorporates contrastive learning to improve face-to-speech alignment; ( iii ) for emotional prosody alignment, FTV [26] aligns facial emotion em-beddings with pitch and energy to enhance prosody ex-pressiveness. However, existing VTS methods typically inject visual features into holistic speech representations while overlooking the hierarchical structure of speech, from coarse speaker-aware semantics to fine-grained prosodic de-tails, which ultimately exacerbates the inherent informa-tion asymmetry between visual and acoustic modalities. Therefore, the principal bottleneck in high-quality video-to-speech generation lies in visual conditioning, and how to exploit the speech hierarchy as a prior to improve genera-tion quality remains unresolved. In this paper, we propose HiCoDiT , a novel Hi erarchical 
+
+Co dec Di ffusion Transformer that fully leverages the inher-ent hierarchy of discrete speech tokens to enable more ef-fective vision-speech alignment. To the best of our knowl-1
+
+> arXiv:2604.15923v1 [cs.SD] 17 Apr 2026
+
+edge, HiCoDiT is the first to introduce an explicit speech hi-erarchy prior into a discrete diffusion framework for video-to-speech generation. Specifically, leveraging the hierar-chical structure of the Residual Vector Quantization (RVQ) codec in Figure 2, the low-level tokens primarily capture rich speaker-aware semantic content, whereas the high-level tokens encode more abstract prosodic details. Therefore, the hierarchy prior dictates that visual features such as lip motion and facial identity should primarily refine low-level speech tokens, while facial emotion features should modu-late high-level tokens. Motivated by this prior, we design a hierarchical codec diffusion transformer composed of low-level and high-level blocks, progressively conditioning on speech tokens across different levels. The low-level blocks generate tokens conditioned on synchronized lip-motion representations and facial identity features for semantic and timbre alignment, while the high-level blocks produce to-kens guided by facial emotion sequences for prosody align-ment. To achieve more effective conditioning in the high-level block, we introduce a dual-scale Adaptive Instance Layer Normalization (AdaLN) that employs channel-wise normalization to model global vocal style, and temporal-wise normalization to capture local prosody dynamics. Ex-tensive experiments demonstrate that HiCoDiT surpasses state-of-the-art baselines in semantic alignment and expres-sive prosody. Our contributions are summarized as follows. • To our knowledge, HiCoDiT is the first discrete diffusion framework for VTS to explicitly integrate speech hierar-chy prior, bridging the gap between video and speech. • We propose a novel hierarchical diffusion transformer that models the speech hierarchy while disentangling visual conditioning, and a dual-scale AdaLN to inject global vocal style and local prosody into speech genera-tion, enhancing expressiveness and fidelity. • Extensive experiments demonstrate superior perfor-mance in semantic consistency and speech diversity, highlighting the potential of discrete speech tokens mod-elling for efficient VTS generation. 
+
+2. Related Work 
+
+Video-to-Speech (VTS) generation. Video-to-speech (VTS) seeks to generate speech that accurately reflects both linguistic content and speaker identity from visual cues alone [5, 27, 64]. Current approaches typically enforce alignment through auxiliary objectives: some predict text or mel-spectrograms jointly with visual input [27], others con-dition speaker embeddings on lip motion [5] or minimize cross-modal embedding distances [20]. While effective in isolation, these methods treat speech as a flat sequence with-out hierarchy and impose multiple supervision signals, lead-ing to suboptimal alignment. Recent advances have explored more sophisticated gen-erative frameworks. For example, FTV [26] employs flow matching with a hierarchical visual encoder to gradually in-ject visual features into continuous mel-spectrogram space, while VoiceCraft-Dub [50] adapts pretrained autoregres-sive discrete text-to-speech models [39] to incorporate vi-sual context. However, both obscure the inherent hierar-chical structure of speech representation, in which coarse linguistic content emerges at early token levels and fine prosodic detail is resolved later. In contrast, HiCoDiT in-troduces the first discrete diffusion model for VTS trained from scratch, which explicitly integrates the speech hierar-chy prior, bridging the gap between video and speech. 
+
+Hierarchical speech generation. Given the intrinsic hi-erarchy of speech, extensive research has focused on hi-erarchical representation modelling to achieve high-quality speech generation. In text-to-speech (TTS), Lee et al . [28] propose a hierarchical conditional variational autoencoder (VAE) that leverages self-supervised speech representations to bridge the information gap between text and speech, and Hsu et al . [21] likewise propose a conditional VAE with two levels of hierarchical latent variables, which captures coarse acoustic information and refines specific attribute config-urations. Similarly, in video-to-speech, Kim et al . [26] develop a hierarchical visual encoder that learns a condi-tional representation by progressively aligning content, tim-bre, and prosody for a flow-matching decoder. In contrast to prior works that design entangled conditioning for hier-archical speech attributes, we exploit the inherent hierar-chy of speech tokens themselves, modelling speech tokens from coarse semantics at lower levels to fine-grained acous-tic details at higher levels, enabling disentangled condition-ing and improving the fidelity of speech generation. 
+
+3. Preliminary: Discrete Diffusion Models 
+
+Recently, continuous diffusion models (CDM) [5, 16, 32, 54, 65] have achieved state-of-the-art results in multime-dia generation [3, 53, 57, 69, 70], while they are limited by computational inefficiency, frustrating practical appli-cation. An intuitive solution is to utilize discrete speech tokens [14, 56, 68] to build discrete diffusion models (DDMs), which have shown potential in language model-ing [2, 31, 36] and speech generation [59, 60]. In this pa-per, we introduce a masked-based DDM to generate speech tokens under cross-modal guidance and outline below the forward and reverse processes of the DDM, along with its training objective. 
+
+Forward diffusion process. Given a token sequence 
+
+x = [ x1, . . . , x d] with length d, where each token belongs to a discrete state sapce X = {1, . . . , n }. The diffusion pro-cess can be modelled as a continuous-time discrete Markov chain, parameterized by the diffusion matrix Qt ∈ Rnd×nd
+
+,also known as the transition rate matrix at time t, as follows: 
+
+p(xit+∆ t|xit) = δxit+∆ txit + Qt(xit+∆ t, x it)∆ t + o(∆ t), (1) 2where δ is Kronecker delta, xit denotes i-th element of xt,and Qt(xit+∆ t, x it) is the (xit+∆ t, x it) element of Qt, which represents the transition rate from state xit to state xit+∆ t
+
+at time t. To further achieve efficient computation, exist-ing methods [31, 37] adopt the assumption of dimensional independence, conducting a one-dimensional diffusion pro-cess for each dimension with the same token-level diffusion matrix Qtok  
+
+> t
+
+= σ(t)Qtok ∈ Rn×n, where σ(t) is the noise schedule and Qtok is designed to diffuse towards an masked state [MASK] . Now, the forward equation can be formu-lated as P (xit, x i
+
+> 0
+
+) = exp  ¯σ(t)Qtok (xit, x i
+
+> 0
+
+), where transi-tion probability matrix P (xit, x i
+
+> 0
+
+) := p(xit|x0), and cumu-lative noise ¯σ(t) = R t 
+
+> 0
+
+σ(s)ds . There are two probabilities in the Pt|0: 1 − e−¯σ(t) for replacing the current tokens with 
+
+[MASK] , e−¯σ(t) for remaining unchanged. Finally, the cor-rupted sequence xt can be sampled from x0 in one step. 
+
+Reverse unmasking process. Given the diffusion matrix Qtok  
+
+> t
+
+, we need a reverse transition rate ma-trix ¯Qt [24, 49] to formulate reverse process, where 
+
+¯Qt(xit−∆t, x it) = p(xit−∆t) 
+
+> p(xit)
+
+Qtok  
+
+> t
+
+(xit, x it−∆t) and xit−∆t̸ =
+
+xit, or ¯Qt(xit−∆t, x it) = − P 
+
+> z̸=xt
+
+¯Qt(z, x it). The reverse equation is formulated as follows: 
+
+p(xit−∆t|xit) = δxit−∆txit + ¯Qt(xit−∆t, x it)∆ t + o(∆ t). (2) The core of the reverse unmasking process is to estimate the concrete score cxit−∆txit = p(xit−∆t) 
+
+> p(xit)
+
+of ¯Qt, representing to measure the transition probability or closeness from a state 
+
+xi at time t to a state ˆxi at time t − ∆t. We can intro-duce a score network sθ (xit, t )xit−∆t ≈ [ p(xit−∆t) 
+
+> p(xit)
+
+]xit̸ =xit−∆t
+
+to learn the score, so that the reverse matrix is parameterized to model the reverse process qθ (xit−∆t|xit) (i.e ., parameter-ize the concrete score). 
+
+Training objective. Denoising score entropy (DSE) [31] is introduced to train the score network sθ :
+
+Z T
+
+> 0
+
+Ext∼p(xt|x0)
+
+X 
+
+> ˆxt̸=xt
+
+Qt
+
+ ˆxit, x it
+
+ h
+
+sθ
+
+ xit, t 
+
+> ˆxit
+
+−cˆxitxit log sθ
+
+ xit, t 
+
+> ˆxit
+
++ N(cˆxitxit )
+
+i
+
+dt, 
+
+(3) where the concrete score cˆxitxit = p(ˆxit|xi
+
+> 0
+
+)
+
+> p
+
+(xit|xi
+
+> 0
+
+) and a normal-izing constant function N (c) := c log c − c that ensures loss non-negative. During sampling, we start from xT filled with masked token [MASK] , and iteratively sample new set of tokens xt−1 from pθ (xt−1|xt) by replacing the concrete score with the trained score network on Eq. (2). 
+
+4. Methodology 
+
+4.1. Overview of HiCoDiT 
+
+Given a silent video V, the goal of VTS system is to synthe-size high-fidelity speech that aligns with the extracted vi-sual features from the input video, including lip motion clip ,identity cid , and emotional expression cemo . To explicitly in-tegrate speech hierarchy prior, we formulate VTS as a hier-archical masked token prediction task, employing an RVQ codec to tokenize speech for high-fidelity generation [14] and a discrete diffusion model to decode masked tokens for strong in-context perception [31]. Specifically, as shown in Figure. 1, HiCoDiT takes masked speech token sequence 
+
+xt as input and decomposes it into low-level component 
+
+xlow  
+
+> t
+
+= xr1:r2 
+
+> t
+
+and high-level component xhigh  
+
+> t
+
+= xr3:r12  
+
+> t
+
+.Then, according to the inherent hierarchy of speech tokens, we disentangle the visual features extraction from the in-put video V and inject them into HiCoDiT. The lip mo-tion features clip and identity features cid are embedded into the low-level blocks to refine the generation of content- and timbre-centric tokens, while the emotional expression fea-tures cemo are injected into the high-level blocks for enhanc-ing prosody-related tokens generation. Finally, HiCoDiT outputs concrete scores for the reverse diffusion process to recover the masked tokens, which are decoded by the codec to synthesize high-fidelity speech. 
+
+4.2. Disentangled Visual Conditioning 
+
+Lip adapter for content modelling. Due to the strong temporal alignment between lip motion and speech content [12], we extract visual features using AV-HuBERT [47], taking the last-layer hidden states as they en-code the most discriminative audio-visual semantics. These features are projected via a Multilayer Perceptron (MLP) to obtain clip ∈ RL×C , where L and C denote the sequence length and channel dimension, respectively, matching those of the masked low-level speech tokens mlow  
+
+> t
+
+.
+
+Identity adapter for timbre modelling. Since both speech timbre and facial appearance encode speaker iden-tity—despite lacking direct correspondence, we align their representation through cross-modal identity modelling. Specifically, visual identity features are extracted from fa-cial images using ArcFace [15] and projected via an MLP into cid ∈ RL×Cge2e , where Cge2e matches the channel di-mension of acoustic identity features extracted by the GE2E model [52]. The two modalities are aligned by minimizing the ℓ1 distance between their embeddings. The cid is then fed into an MLP to generate modulation parameters for our dual-level AdaLN for timbre conditioning. 
+
+Emotion adapter for prosody modelling. Prosody refers to the non-lexical acoustic properties that convey the emotion of the speaker [19]. We leverage facial expres-sion as a proxy signal by employing Poster2 [35], which is a strong video facial expression recognition model. To suppress identity-biased fluctuations, we only predict emo-tional class over all frames and apply temporal smoothing over 0.5-second windows, reducing the sequence to length 
+
+Lemo . A learnable embedding layer then maps the smoothed 3…
+
+MLP 
+
+> …
+
+<latexit sha1_base64="1wlKAQceLaLSjwzSWC9+isHwLm4=">AAACAnicbVBNS8NAEN34WetX1JPoIVgETyWRoh4LXjxWsB/QlrDZTNulm2zYnYglFC/+FS8eFPHqr/Dmv3HT9qCtD5Z9vDfDzLwgEVyj635bS8srq2vrhY3i5tb2zq69t9/QMlUM6kwKqVoB1SB4DHXkKKCVKKBRIKAZDK9zv3kPSnMZ3+EogW5E+zHvcUbRSL592AmkCPUoMl/Gxn4H4QEziOTYt0tu2Z3AWSTejJTIDDXf/uqEkqURxMgE1brtuQl2M6qQMwHjYifVkFA2pH1oGxrTCHQ3m5wwdk6NEjo9qcyL0ZmovzsyGul8S1MZURzoeS8X//PaKfauuhmPkxQhZtNBvVQ4KJ08DyfkChiKkSGUKW52ddiAKsrQpFY0IXjzJy+SxnnZuyhXbiul6vEsjgI5IifkjHjkklTJDamROmHkkTyTV/JmPVkv1rv1MS1dsmY9B+QPrM8fvBiYLw==</latexit> 
+
+cemo 
+
+Lip 
+
+Motion 
+
+Facial Emotion 
+
+<latexit sha1_base64="4kM29U3q7NrHS02MAxyREizj770=">AAACAXicbVDLSsNAFJ34rPUVdSPoYrAIrkoiRV0W3LisYB/QhDCZTNqhkwczN2IJceOvuHGhiFv/wp1/46TtQlsPDHM4517uvcdPBVdgWd/G0vLK6tp6ZaO6ubW9s2vu7XdUkknK2jQRiez5RDHBY9YGDoL1UslI5AvW9UfXpd+9Z1LxJL6DccrciAxiHnJKQEueeej4iQjUONJfTgvPAfYAOQ8Kz6xZdWsCvEjsGamhGVqe+eUECc0iFgMVRKm+baXg5kQCp4IVVSdTLCV0RAasr2lMIqbcfHJBgU+1EuAwkfrFgCfq746cRKpcUldGBIZq3ivF/7x+BuGVm/M4zYDFdDoozASGBJdx4IBLRkGMNSFUcr0rpkMiCQUdWlWHYM+fvEg653X7ot64bdSax7M4KugInaAzZKNL1EQ3qIXaiKJH9Ixe0ZvxZLwY78bHtHTJmPUcoD8wPn8A3N2XsQ==</latexit> 
+
+cid 
+
+Face ID 
+
+Embed 
+
+c c
+
+Embed Avg Embed 
+
+……
+
+<latexit sha1_base64="DL7CG3VLpi5CVRLzB0XWvi5yuyY=">AAACA3icbVC7TsMwFHV4lvIKsMESUZCYqqSqgLESC2OR6ENqQ+Q4TmvVsSPbQVRWJBZ+hYUBhFj5CTb+BqftAC1Hsnx0zr26954wpUQq1/22lpZXVtfWSxvlza3tnV17b78teSYQbiFOueiGUGJKGG4poijupgLDJKS4E46uCr9zj4UknN2qcYr9BA4YiQmCykiBfdgPOY3kODGffsgDrfI7LQJdy/PArrhVdwJnkXgzUgEzNAP7qx9xlCWYKUShlD3PTZWvoVAEUZyX+5nEKUQjOMA9QxlMsPT15IbcOTVK5MRcmMeUM1F/d2iYyGJNU5lANZTzXiH+5/UyFV/6mrA0U5ih6aA4o47iThGIExGBkaJjQyASxOzqoCEUECkTW9mE4M2fvEjatap3Xq3f1CuNk1kcJXAEjsEZ8MAFaIBr0AQtgMAjeAav4M16sl6sd+tjWrpkzXoOwB9Ynz+mL5i5</latexit> 
+
+xr2
+
+t
+
+<latexit sha1_base64="ISY10VrtktEbfuMMJyjMLbexOC4=">AAACA3icbVC7TsMwFHXKq5RXgA2WiILEVCWoAsZKLIxFog+pDZHjOK1Vx45sB1FZkVj4FRYGEGLlJ9j4G5y2A7QcyfLROffq3nvClBKpXPfbKi0tr6yuldcrG5tb2zv27l5b8kwg3EKcctENocSUMNxSRFHcTQWGSUhxJxxdFX7nHgtJOLtV4xT7CRwwEhMElZEC+6AfchrJcWI+/ZAHWuV3WgTay/PArro1dwJnkXgzUgUzNAP7qx9xlCWYKUShlD3PTZWvoVAEUZxX+pnEKUQjOMA9QxlMsPT15IbcOTFK5MRcmMeUM1F/d2iYyGJNU5lANZTzXiH+5/UyFV/6mrA0U5ih6aA4o47iThGIExGBkaJjQyASxOzqoCEUECkTW8WE4M2fvEjaZzXvvFa/qVcbx7M4yuAQHIFT4IEL0ADXoAlaAIFH8AxewZv1ZL1Y79bHtLRkzXr2wR9Ynz+kqZi4</latexit> 
+
+xr1
+
+t 3 M M…
+
+M 1 M…
+
+Low -level 
+
+Tokens 
+
+M M M…
+
+M 1 9…
+
+<latexit sha1_base64="7HRYjRl2tIn5tL1Fuj9dj0QZ1DY=">AAACA3icbVC7TsMwFHXKq5RXgA0WiwqJqUqgAsZKLIxFog+pDZHjOK1VJ45sB1FZkVj4FRYGEGLlJ9j4G5y2A7QcyfLROffq3nuClFGpHOfbKi0tr6yuldcrG5tb2zv27l5b8kxg0sKccdENkCSMJqSlqGKkmwqC4oCRTjC6KvzOPRGS8uRWjVPixWiQ0IhipIzk2wf9gLNQjmPz6Yfc1yq/08LXZ3nu21Wn5kwAF4k7I1UwQ9O3v/ohx1lMEoUZkrLnOqnyNBKKYkbySj+TJEV4hAakZ2iCYiI9Pbkhh8dGCWHEhXmJghP1d4dGsSzWNJUxUkM57xXif14vU9Glp2mSZookeDooyhhUHBaBwJAKghUbG4KwoGZXiIdIIKxMbBUTgjt/8iJpn9bc81r9pl5twFkcZXAIjsAJcMEFaIBr0AQtgMEjeAav4M16sl6sd+tjWlqyZj374A+szx+mgZi2</latexit> 
+
+xr3
+
+t
+
+<latexit sha1_base64="OTH71H337bPop2xJc8u/X1I5lIw=">AAACBHicbVC7TsMwFHXKq5RXgLGLRYXEVCVVBYyVWBiLRB9SWyLHcVqrjh3ZDqKKMrDwKywMIMTKR7DxNzhtBmg5kuWjc+7Vvff4MaNKO863VVpb39jcKm9Xdnb39g/sw6OuEonEpIMFE7LvI0UY5aSjqWakH0uCIp+Rnj+9yv3ePZGKCn6rZzEZRWjMaUgx0kby7OrQFyxQs8h86UPmpTq7S6WXuo0s8+yaU3fmgKvELUgNFGh79tcwEDiJCNeYIaUGrhPrUYqkppiRrDJMFIkRnqIxGRjKUUTUKJ0fkcFTowQwFNI8ruFc/d2Rokjle5rKCOmJWvZy8T9vkOjwcpRSHieacLwYFCYMagHzRGBAJcGazQxBWFKzK8QTJBHWJreKCcFdPnmVdBt197zevGnWWrCIowyq4AScARdcgBa4Bm3QARg8gmfwCt6sJ+vFerc+FqUlq+g5Bn9gff4AHwmY8A==</latexit> 
+
+xr12 
+
+t …
+
+High -level 
+
+Tokens 
+
+Embed Embed Avg Embed 
+
+> …
+
+Low -level 
+
+Block ×N
+
+…
+
+<latexit sha1_base64="uFMcUkNxRg0b2YZaq0hJEcyBQDs=">AAACAnicbVDLSsNAFJ34rPUVdSVuglVwVRIp6rLgxmUF+4A2hMlk0g6dTMLMjVhCcOOvuHGhiFu/wp1/46TNQlsPDHM4517uvcdPOFNg29/G0vLK6tp6ZaO6ubW9s2vu7XdUnEpC2yTmsez5WFHOBG0DA057iaQ48jnt+uPrwu/eU6lYLO5gklA3wkPBQkYwaMkzDwd+zAM1ifSXkdwbAH2AjLMk98yaXbensBaJU5IaKtHyzK9BEJM0ogIIx0r1HTsBN8MSGOE0rw5SRRNMxnhI+5oKHFHlZtMTcutUK4EVxlI/AdZU/d2R4UgVW+rKCMNIzXuF+J/XTyG8cjMmkhSoILNBYcotiK0iDytgkhLgE00wkUzvapERlpiATq2qQ3DmT14knfO6c1Fv3DZqzZMyjgo6QsfoDDnoEjXRDWqhNiLoET2jV/RmPBkvxrvxMStdMsqeA/QHxucPxJ6YOw==</latexit> 
+
+clip 
+
+> Linear
+> …
+> Linear
+
+Concrete Scores 
+
+Euler Sampling 
+
+> …
+
+Score 
+
+Heads 
+
+…
+
+3 1 9…
+
+3 4 6…
+
+2 1 9…
+
+<latexit sha1_base64="iyzGU6d7vWjgQOax4mhR9JAhIKw=">AAACCHicbVC7TsMwFHV4lvIKMDIQtUJiqpKqAsZKLIxFog+pCZHjOK1Vx45sB1FFGVn4FRYGEGLlE9j4G5w2A7QcyfLROffq3nuChBKpbPvbWFldW9/YrGxVt3d29/bNg8Oe5KlAuIs45WIQQIkpYbiriKJ4kAgM44DifjC5Kvz+PRaScHarpgn2YjhiJCIIKi355ok7hipzA05DOY31lz3kuW/fZcLPnKamZt1u2DNYy8QpSR2U6PjmlxtylMaYKUShlEPHTpSXQaEIojivuqnECUQTOMJDTRmMsfSy2SG5daqV0Iq40I8pa6b+7shgLIs1dWUM1VgueoX4nzdMVXTpZYQlqcIMzQdFKbUUt4pUrJAIjBSdagKRIHpXC42hgEjp7Ko6BGfx5GXSazac80brplVv18o4KuAY1MAZcMAFaINr0AFdgMAjeAav4M14Ml6Md+NjXrpilD1H4A+Mzx/le5pv</latexit> 
+
+ˆxr12 
+
+0<latexit sha1_base64="MKaFobIW7budjw7kpkN/+YSiP9s=">AAACB3icbVDLSsNAFJ34rPUVdSlIaBFclaQUdVlw47KCfUATw2QyaYdOZsLMRCwhOzf+ihsXirj1F9z5N07aLLT1wDCHc+7l3nuChBKpbPvbWFldW9/YrGxVt3d29/bNg8Oe5KlAuIs45WIQQIkpYbiriKJ4kAgM44DifjC5Kvz+PRaScHarpgn2YjhiJCIIKi355ok7hipzA05DOY31lz3kuW/fZcLPmpqZdbthz2AtE6ckdVCi45tfbshRGmOmEIVSDh07UV4GhSKI4rzqphInEE3gCA81ZTDG0stmd+TWqVZCK+JCP6asmfq7I4OxLLbUlTFUY7noFeJ/3jBV0aWXEZakCjM0HxSl1FLcKkKxQiIwUnSqCUSC6F0tNIYCIqWjq+oQnMWTl0mv2XDOG62bVr1dK+OogGNQA2fAARegDa5BB3QBAo/gGbyCN+PJeDHejY956YpR9hyBPzA+fwBqH5o0</latexit> 
+
+ˆxr2
+
+0<latexit sha1_base64="jN5D7KWADMuqKQC1R1bxevMDgV8=">AAACB3icbVDLSsNAFJ3UV62vqEtBQovgqiRS1GXBjcsK9gFNDJPJpB06mYSZiViG7Nz4K25cKOLWX3Dn3zhps9DWA8MczrmXe+8JUkqEtO1vo7Kyura+Ud2sbW3v7O6Z+wc9kWQc4S5KaMIHARSYEoa7kkiKBynHMA4o7geTq8Lv32MuSMJu5TTFXgxHjEQEQakl3zx2x1AqN0hoKKax/tRDnvv2neK+cjQzG3bTnsFaJk5JGqBExze/3DBBWYyZRBQKMXTsVHoKckkQxXnNzQROIZrAER5qymCMhadmd+TWiVZCK0q4fkxaM/V3h4KxKLbUlTGUY7HoFeJ/3jCT0aWnCEsziRmaD4oyasnEKkKxQsIxknSqCUSc6F0tNIYcIqmjq+kQnMWTl0nvrOmcN1s3rUa7XsZRBUegDk6BAy5AG1yDDugCBB7BM3gFb8aT8WK8Gx/z0opR9hyCPzA+fwBomZoz</latexit> 
+
+ˆxr1
+
+0
+
+Unmasked Tokens 
+
+Channel Concatenation c Masked Speech Token Avg Embed Frozen M 1 Unmasked Speech Token Average Embedding 
+
+MLP 
+
+<latexit sha1_base64="ouQ+ps183rv3jQb4DM+Uyt9Zg58=">AAACBnicbVDLSsNAFJ34rPVVdSnCYBFclUSKuiy4cVnBPqCNZTKZtEMnmTBzoy0hKzf+ihsXirj1G9z5N07bLLT1wDCHc+7l3nu8WHANtv1tLS2vrK6tFzaKm1vbO7ulvf2mlomirEGlkKrtEc0Ej1gDOAjWjhUjoSdYyxteTfzWPVOay+gWxjFzQ9KPeMApASP1SkddTwpfj0PzpaOsB3dpF9gIUiEfsqxXKtsVewq8SJyclFGOeq/01fUlTUIWARVE645jx+CmRAGngmXFbqJZTOiQ9FnH0IiETLvp9IwMnxjFx4FU5kWAp+rvjpSEerKpqQwJDPS8NxH/8zoJBJduyqM4ARbR2aAgERgknmSCfa4YBTE2hFDFza6YDogiFExyRROCM3/yImmeVZzzSvWmWq7hPI4COkTH6BQ56ALV0DWqowai6BE9o1f0Zj1ZL9a79TErXbLyngP0B9bnD3DFmks=</latexit> 
+
+xlow 
+
+t
+
+<latexit sha1_base64="m2GVrPCXBHSfajwcfNDfVOF3i7w=">AAACB3icbVDLSsNAFJ3UV62vqEtBBovgqiRS1GXBjcsK9gFNDZPJpB06eTBzIy0hOzf+ihsXirj1F9z5N07aLrT1wDCHc+7l3nu8RHAFlvVtlFZW19Y3ypuVre2d3T1z/6Ct4lRS1qKxiGXXI4oJHrEWcBCsm0hGQk+wjje6LvzOA5OKx9EdTBLWD8kg4gGnBLTkmseOFwtfTUL9ZePchfvMATaGbMgHwzx3zapVs6bAy8Sekyqao+maX44f0zRkEVBBlOrZVgL9jEjgVLC84qSKJYSOyID1NI1IyFQ/m96R41Ot+DiIpX4R4Kn6uyMjoSpW1ZUhgaFa9ArxP6+XQnDVz3iUpMAiOhsUpAJDjItQsM8loyAmmhAqud4V0yGRhIKOrqJDsBdPXibt85p9Uavf1qsNPI+jjI7QCTpDNrpEDXSDmqiFKHpEz+gVvRlPxovxbnzMSkvGvOcQ/YHx+QMYWJqj</latexit> 
+
+xhigh 
+
+t
+
+<latexit sha1_base64="Pl7KQKrO2gueBvC8pZQY1WXay1E=">AAACB3icbVDLSsNAFJ34rPUVdSnIYBFclUSKuiy4cVnBPqCtYTKdNkNnkjBzI5aQnRt/xY0LRdz6C+78GydtFtp6YJjDOfdy7z1+LLgGx/m2lpZXVtfWSxvlza3tnV17b7+lo0RR1qSRiFTHJ5oJHrImcBCsEytGpC9Y2x9f5X77ninNo/AWJjHrSzIK+ZBTAkby7KOeH4mBnkjzpTLz4C7tAXuANOCjIMs8u+JUnSnwInELUkEFGp791RtENJEsBCqI1l3XiaGfEgWcCpaVe4lmMaFjMmJdQ0Mime6n0zsyfGKUAR5GyrwQ8FT93ZESqfNVTaUkEOh5Lxf/87oJDC/7KQ/jBFhIZ4OGicAQ4TwUPOCKURATQwhV3OyKaUAUoWCiK5sQ3PmTF0nrrOqeV2s3tUodF3GU0CE6RqfIRReojq5RAzURRY/oGb2iN+vJerHerY9Z6ZJV9BygP7A+fwAG8ZqY</latexit> 
+
+mhigh 
+
+t <latexit sha1_base64="6/S6WBAkg0oGdFVEpx1q5S7TOEc=">AAACB3icbVDLSsNAFJ34rPUVdSnIYBFclUSKuiy4cVnBPqCpYTKZNEMnD2ZuxBKyc+OvuHGhiFt/wZ1/46TtQlsPDHM4517uvcdLBVdgWd/G0vLK6tp6ZaO6ubW9s2vu7XdUkknK2jQRiex5RDHBY9YGDoL1UslI5AnW9UZXpd+9Z1LxJL6FccoGERnGPOCUgJZc88jxEuGrcaS/PCxcuMsdYA+Qh3wYFoVr1qy6NQFeJPaM1NAMLdf8cvyEZhGLgQqiVN+2UhjkRAKnghVVJ1MsJXREhqyvaUwipgb55I4Cn2jFx0Ei9YsBT9TfHTmJVLmqrowIhGreK8X/vH4GweUg53GaAYvpdFCQCQwJLkPBPpeMghhrQqjkeldMQyIJBR1dVYdgz5+8SDpndfu83rhp1Jp4FkcFHaJjdIpsdIGa6Bq1UBtR9Iie0St6M56MF+Pd+JiWLhmzngP0B8bnD/75mpM=</latexit> 
+
+hhigh 
+
+t
+
+<latexit sha1_base64="FcQguUBPK8Hb8e1lyFcKVY7Djo8=">AAACBnicbVDLSsNAFJ3UV62vqksRBovgqiRS1GXBjcsK9gFNDJPptB06yYSZG7WErNz4K25cKOLWb3Dn3zhts9DWA8MczrmXe+8JYsE12Pa3VVhaXlldK66XNja3tnfKu3stLRNFWZNKIVUnIJoJHrEmcBCsEytGwkCwdjC6nPjtO6Y0l9ENjGPmhWQQ8T6nBIzklw/dQIqeHofmS8PMh9vUBfYAqZD3WeaXK3bVngIvEicnFZSj4Ze/3J6kScgioIJo3XXsGLyUKOBUsKzkJprFhI7IgHUNjUjItJdOz8jwsVF6uC+VeRHgqfq7IyWhnmxqKkMCQz3vTcT/vG4C/Qsv5VGcAIvobFA/ERgknmSCe1wxCmJsCKGKm10xHRJFKJjkSiYEZ/7kRdI6rTpn1dp1rVLHeRxFdICO0Aly0DmqoyvUQE1E0SN6Rq/ozXqyXqx362NWWrDynn30B9bnD19pmkA=</latexit> 
+
+mlow 
+
+t
+
+<latexit sha1_base64="5ya4kMvuhU+3s2snMPLIjTGtjDc=">AAACIHicbZA9SwNBEIb3/DZ+RS1tFoNgIeFOgrEUbCwVjAq5GOY2k2TJ7t2xOyeGIz/Fxr9iY6GIdvpr3MQUmvjCwsszM8zOG6VKWvL9T29mdm5+YXFpubCyura+UdzcurJJZgTWRKIScxOBRSVjrJEkhTepQdCRwuuodzqsX9+hsTKJL6mfYkNDJ5ZtKYAcaharIai0C82Q8J5y2RrcBgdhB7SeQBHSH9IslvyyPxKfNsHYlNhY583iR9hKRKYxJqHA2nrgp9TIwZAUCgeFMLOYguhBB+vOxqDRNvLRgQO+50iLtxPjXkx8RH9P5KCt7evIdWqgrp2sDeF/tXpG7eNGLuM0I4zFz6J2pjglfJgWb0mDglTfGRBGur9y0QUDglymBRdCMHnytLk6LAdH5cpFpXTCx3EssR22y/ZZwKrshJ2xc1Zjgj2wJ/bCXr1H79l7895/Wme88cw2+yPv6xttL6RF</latexit> 
+
+↵1
+
+id ,  1
+
+id ,  1
+
+id 
+
+<latexit sha1_base64="Q/DLmWd/RuoJ1D2Sx4Q21qcGK1E=">AAACIHicbZA9SwNBEIb3/IzxK2ppsxgECwl3ImoZsLFUMBrIxTC3mSSLu3fH7pwYjvwUG/+KjYUi2umvcRNTmOgLCy/PzDA7b5Qqacn3P72Z2bn5hcXCUnF5ZXVtvbSxeWWTzAisiUQlph6BRSVjrJEkhfXUIOhI4XV0ezqsX9+hsTKJL6mfYlNDN5YdKYAcapWOQ1BpD1oh4T3lsj24OdgPu6D1FIqQJkirVPYr/kj8rwnGpszGOm+VPsJ2IjKNMQkF1jYCP6VmDoakUDgohpnFFMQtdLHhbAwabTMfHTjgu460eScx7sXER/T3RA7a2r6OXKcG6tnp2hD+V2tk1Dlp5jJOM8JY/CzqZIpTwodp8bY0KEj1nQFhpPsrFz0wIMhlWnQhBNMn/zVXB5XgqHJ4cViu8nEcBbbNdtgeC9gxq7Izds5qTLAH9sRe2Kv36D17b977T+uMN57ZYhPyvr4BcfKkSA==</latexit> 
+
+↵2
+
+id ,  2
+
+id ,  2
+
+id <latexit sha1_base64="RvW9JjDwZ5nrkkv76lG1qlOI0Go=">AAAB6HicbVBNS8NAEJ34WetX1aOXxSJ4kJJIUY8FLx5bsB/QhrLZTtq1m03Y3Qgl9Bd48aCIV3+SN/+N2zYHbX0w8Hhvhpl5QSK4Nq777aytb2xubRd2irt7+weHpaPjlo5TxbDJYhGrTkA1Ci6xabgR2EkU0igQ2A7GdzO//YRK81g+mEmCfkSHkoecUWOlxmW/VHYr7hxklXg5KUOOer/01RvELI1QGiao1l3PTYyfUWU4Ezgt9lKNCWVjOsSupZJGqP1sfuiUnFtlQMJY2ZKGzNXfExmNtJ5Ege2MqBnpZW8m/ud1UxPe+hmXSWpQssWiMBXExGT2NRlwhcyIiSWUKW5vJWxEFWXGZlO0IXjLL6+S1lXFu65UG9VyjeRxFOAUzuACPLiBGtxDHZrAAOEZXuHNeXRenHfnY9G65uQzJ/AHzucPa72Mlw==</latexit> 
+
+,
+
+<latexit sha1_base64="lNzDYJZyFv6ECTSgq5ys52OJFpk=">AAAB8nicbVDLSsNAFL2pr1pfVZduBovgqiRS1GXBjcsK9gFtKJPppB06mYSZG6GEfoYbF4q49Wvc+TdO2iy09cDA4Zx7mXNPkEhh0HW/ndLG5tb2Tnm3srd/cHhUPT7pmDjVjLdZLGPdC6jhUijeRoGS9xLNaRRI3g2md7nffeLaiFg94izhfkTHSoSCUbRSfxBRnDAqs858WK25dXcBsk68gtSgQGtY/RqMYpZGXCGT1Ji+5yboZ1SjYJLPK4PU8ISyKR3zvqWKRtz42SLynFxYZUTCWNunkCzU3xsZjYyZRYGdzCOaVS8X//P6KYa3fiZUkiJXbPlRmEqCMcnvJyOhOUM5s4QyLWxWwiZUU4a2pYotwVs9eZ10ruredb3x0Kg1SVFHGc7gHC7Bgxtowj20oA0MYniGV3hz0Hlx3p2P5WjJKXZO4Q+czx+I65FT</latexit> 
+
+VVideo 
+
+High -level 
+
+Block ×N
+
+<latexit sha1_base64="7xwlA3sSOZATfT+AqKYkc5NE/8s=">AAACAHicbVA9SwNBEN3zM8avUwsLm8UgWEi4k6CWARvLCOYDkhj2NpNkye7dsTsnhuMa/4qNhSK2/gw7/42bj0ITHww83pthZl4QS2HQ876dpeWV1bX13EZ+c2t7Z9fd26+ZKNEcqjySkW4EzIAUIVRRoIRGrIGpQEI9GF6P/foDaCOi8A5HMbQV64eiJzhDK3Xcw1afKcU6LYRHTEFFZ5jdp37WcQte0ZuALhJ/RgpkhkrH/Wp1I54oCJFLZkzT92Jsp0yj4BKyfCsxEDM+ZH1oWhoyBaadTh7I6IlVurQXaVsh0on6eyJlypiRCmynYjgw895Y/M9rJti7aqcijBOEkE8X9RJJMaLjNGhXaOAoR5YwroW9lfIB04yjzSxvQ/DnX14ktfOif1Es3ZYKZTqLI0eOyDE5JT65JGVyQyqkSjjJyDN5JW/Ok/PivDsf09YlZzZzQP7A+fwBOYGWtw==</latexit> 
+
+ 1
+
+emo,t 
+
+<latexit sha1_base64="pAQg2cKmJGDDOqKInCEsKcNTI6U=">AAACAHicbVA9SwNBEN2LXzF+RS0sbBaDYCHhLgS1DNhYRjAfkMSwt5kkS3bvjt05MRzX+FdsLBSx9WfY+W/cfBSa+GDg8d4MM/P8SAqDrvvtZFZW19Y3spu5re2d3b38/kHdhLHmUOOhDHXTZwakCKCGAiU0Iw1M+RIa/uh64jceQBsRBnc4jqCj2CAQfcEZWqmbP2oPmFKs20Z4xARUeI7pfVJKu/mCW3SnoMvEm5MCmaPazX+1eyGPFQTIJTOm5bkRdhKmUXAJaa4dG4gYH7EBtCwNmALTSaYPpPTUKj3aD7WtAOlU/T2RMGXMWPm2UzEcmkVvIv7ntWLsX3USEUQxQsBni/qxpBjSSRq0JzRwlGNLGNfC3kr5kGnG0WaWsyF4iy8vk3qp6F0Uy7flQoXO48iSY3JCzohHLkmF3JAqqRFOUvJMXsmb8+S8OO/Ox6w148xnDskfOJ8/OwaWuA==</latexit> 
+
+ 2
+
+emo,t 
+
+<latexit sha1_base64="GjuOhQ6xCB69POT4itfZkOizaZk=">AAACAHicbVA9SwNBEN2LXzF+RS0sbBaDYCHhLgS1DNhYRjAfkMSwt5kkS3bvjt05MRzX+FdsLBSx9WfY+W/cfBSa+GDg8d4MM/P8SAqDrvvtZFZW19Y3spu5re2d3b38/kHdhLHmUOOhDHXTZwakCKCGAiU0Iw1M+RIa/uh64jceQBsRBnc4jqCj2CAQfcEZWqmbP2oPmFKs20Z4xARUeM7T+6SUdvMFt+hOQZeJNycFMke1m/9q90IeKwiQS2ZMy3Mj7CRMo+AS0lw7NhAxPmIDaFkaMAWmk0wfSOmpVXq0H2pbAdKp+nsiYcqYsfJtp2I4NIveRPzPa8XYv+okIohihIDPFvVjSTGkkzRoT2jgKMeWMK6FvZXyIdOMo80sZ0PwFl9eJvVS0bsolm/LhQqdx5Elx+SEnBGPXJIKuSFVUiOcpOSZvJI358l5cd6dj1lrxpnPHJI/cD5/ACDtlqc=</latexit> 
+
+ 2
+
+emo,c 
+
+<latexit sha1_base64="PNBgOeUUvigo5P3CMQEkT3z1ows=">AAACAHicbVA9SwNBEN3zM8avUwsLm8UgWEi4k6CWARvLCOYDkhj2NpNkye7dsTsnhuMa/4qNhSK2/gw7/42bj0ITHww83pthZl4QS2HQ876dpeWV1bX13EZ+c2t7Z9fd26+ZKNEcqjySkW4EzIAUIVRRoIRGrIGpQEI9GF6P/foDaCOi8A5HMbQV64eiJzhDK3Xcw1afKcU6LYRHTEFFZzy7T/2s4xa8ojcBXST+jBTIDJWO+9XqRjxRECKXzJim78XYTplGwSVk+VZiIGZ8yPrQtDRkCkw7nTyQ0ROrdGkv0rZCpBP190TKlDEjFdhOxXBg5r2x+J/XTLB31U5FGCcIIZ8u6iWSYkTHadCu0MBRjixhXAt7K+UDphlHm1nehuDPv7xIaudF/6JYui0VynQWR44ckWNySnxyScrkhlRIlXCSkWfySt6cJ+fFeXc+pq1LzmzmgPyB8/kDH2iWpg==</latexit> 
+
+ 1
+
+emo,c 
+
+<latexit sha1_base64="VCgoHpBd3BmWcu0831REEVKkEqY=">AAACAHicbVDJSgNBEO1xjXEb9eDBS2MQPEiYkaAeA148RjALZGLo6dQkTXoWumvEMMzFX/HiQRGvfoY3/8bOctDEBwWP96qoqucnUmh0nG9raXlldW29sFHc3Nre2bX39hs6ThWHOo9lrFo+0yBFBHUUKKGVKGChL6HpD6/HfvMBlBZxdIejBDoh60ciEJyhkbr2ocdkMmBdD+ERMwjjM57fZ27etUtO2ZmALhJ3RkpkhlrX/vJ6MU9DiJBLpnXbdRLsZEyh4BLyopdqSBgfsj60DY1YCLqTTR7I6YlRejSIlakI6UT9PZGxUOtR6JvOkOFAz3tj8T+vnWJw1clElKQIEZ8uClJJMabjNGhPKOAoR4YwroS5lfIBU4yjyaxoQnDnX14kjfOye1Gu3FZKVTqLo0COyDE5JS65JFVyQ2qkTjjJyTN5JW/Wk/VivVsf09YlazZzQP7A+vwBJDGWqQ==</latexit> 
+
+↵1
+
+emo,c 
+
+<latexit sha1_base64="CyNhGt04Mkwh36CqjbxcV+GdkAk=">AAACAHicbVA9SwNBEN2LXzF+RS0sbBaDYCHhLgS1DNhYRjAfkIthbzNJlux9sDsnhuMa/4qNhSK2/gw7/42b5ApNfDDweG+GmXleJIVG2/62ciura+sb+c3C1vbO7l5x/6Cpw1hxaPBQhqrtMQ1SBNBAgRLakQLmexJa3vh66rceQGkRBnc4iaDrs2EgBoIzNFKveOQyGY1Yz0V4xAT88Jyn90kl7RVLdtmegS4TJyMlkqHeK365/ZDHPgTIJdO649gRdhOmUHAJacGNNUSMj9kQOoYGzAfdTWYPpPTUKH06CJWpAOlM/T2RMF/rie+ZTp/hSC96U/E/rxPj4KqbiCCKEQI+XzSIJcWQTtOgfaGAo5wYwrgS5lbKR0wxjiazggnBWXx5mTQrZeeiXL2tlmo0iyNPjskJOSMOuSQ1ckPqpEE4SckzeSVv1pP1Yr1bH/PWnJXNHJI/sD5/ACW2lqo=</latexit> 
+
+↵2
+
+emo,c 
+
+<latexit sha1_base64="5ffTYkb8682y/Fej6Y3S72/k5XQ=">AAAB/3icbVDJSgNBEO1xjXEbFbx4aQyCBwkzIajHgBePEcwCmTH0dCpJk56F7hoxjDn4K148KOLV3/Dm39hZDpr4oODxXhVV9YJECo2O820tLa+srq3nNvKbW9s7u/befl3HqeJQ47GMVTNgGqSIoIYCJTQTBSwMJDSCwdXYb9yD0iKObnGYgB+yXiS6gjM0Uts+9AJA1vYQHjCDMD7jo7usNGrbBafoTEAXiTsjBTJDtW1/eZ2YpyFEyCXTuuU6CfoZUyi4hFHeSzUkjA9YD1qGRiwE7WeT+0f0xCgd2o2VqQjpRP09kbFQ62EYmM6QYV/Pe2PxP6+VYvfSz0SUpAgRny7qppJiTMdh0I5QwFEODWFcCXMr5X2mGEcTWd6E4M6/vEjqpaJ7XizflAsVOosjR47IMTklLrkgFXJNqqRGOHkkz+SVvFlP1ov1bn1MW5es2cwB+QPr8wdWwJY2</latexit> 
+
+ 2
+
+emo,c 
+
+<latexit sha1_base64="4m5gA2gCdwpbOXX6OpdLAF9kllM=">AAAB/3icbVDLSgNBEJyNrxhfUcGLl8EgeJCwK0E9Brx4jGAekI1hdtJJhsw+mOkVw7oHf8WLB0W8+hve/BsnyR40saChqOqmu8uLpNBo299Wbml5ZXUtv17Y2Nza3inu7jV0GCsOdR7KULU8pkGKAOooUEIrUsB8T0LTG11N/OY9KC3C4BbHEXR8NghEX3CGRuoWD1wPkHVdhAdMwA9PeXqXOGm3WLLL9hR0kTgZKZEMtW7xy+2FPPYhQC6Z1m3HjrCTMIWCS0gLbqwhYnzEBtA2NGA+6E4yvT+lx0bp0X6oTAVIp+rviYT5Wo99z3T6DId63puI/3ntGPuXnUQEUYwQ8NmifiwphnQSBu0JBRzl2BDGlTC3Uj5kinE0kRVMCM78y4ukcVZ2zsuVm0qpSrM48uSQHJET4pALUiXXpEbqhJNH8kxeyZv1ZL1Y79bHrDVnZTP75A+szx9VO5Y1</latexit> 
+
+ 1
+
+emo,c 
+
+> …
+
+<latexit sha1_base64="oTMp02kM3grLVCfSVVTZB1+oOhA=">AAACBnicbVDLSsNAFJ3UV62vqEsRBovgqiRS1GXBjcsK9gFtLZPJpB06yYSZG7WErNz4K25cKOLWb3Dn3zhpu9DWA8MczrmXe+/xYsE1OM63VVhaXlldK66XNja3tnfs3b2mlomirEGlkKrtEc0Ej1gDOAjWjhUjoSdYyxtd5n7rjinNZXQD45j1QjKIeMApASP17cOuJ4Wvx6H50mHWh9u0C+wBUiHvs6xvl52KMwFeJO6MlNEM9b791fUlTUIWARVE647rxNBLiQJOBctK3USzmNARGbCOoREJme6lkzMyfGwUHwdSmRcBnqi/O1IS6nxTUxkSGOp5Lxf/8zoJBBe9lEdxAiyi00FBIjBInGeCfa4YBTE2hFDFza6YDokiFExyJROCO3/yImmeVtyzSvW6Wq7hWRxFdICO0Aly0TmqoStURw1E0SN6Rq/ozXqyXqx362NaWrBmPfvoD6zPH1eFmjs=</latexit> 
+
+hlow 
+
+t
+
+> …
+
+<latexit sha1_base64="oTMp02kM3grLVCfSVVTZB1+oOhA=">AAACBnicbVDLSsNAFJ3UV62vqEsRBovgqiRS1GXBjcsK9gFtLZPJpB06yYSZG7WErNz4K25cKOLWb3Dn3zhpu9DWA8MczrmXe+/xYsE1OM63VVhaXlldK66XNja3tnfs3b2mlomirEGlkKrtEc0Ej1gDOAjWjhUjoSdYyxtd5n7rjinNZXQD45j1QjKIeMApASP17cOuJ4Wvx6H50mHWh9u0C+wBUiHvs6xvl52KMwFeJO6MlNEM9b791fUlTUIWARVE647rxNBLiQJOBctK3USzmNARGbCOoREJme6lkzMyfGwUHwdSmRcBnqi/O1IS6nxTUxkSGOp5Lxf/8zoJBBe9lEdxAiyi00FBIjBInGeCfa4YBTE2hFDFza6YDokiFExyJROCO3/yImmeVtyzSvW6Wq7hWRxFdICO0Aly0TmqoStURw1E0SN6Rq/ozXqyXqx362NaWrBmPfvoD6zPH1eFmjs=</latexit> 
+
+hlow 
+
+t
+
+Codec 
+
+Decoder 
+
+Generated Speech Figure 1. Overall framework of HiCoDiT . We formulate video-to-speech generation as a hierarchical masked token prediction task. Speech is tokenized using an RVQ codec and split into low-level components xr1:r2
+
+t and high-level components xr3:r12 
+
+t , reflecting the intrinsic hierarchy of speech tokens. Guided by this structure, we disentangle visual features from the input video V into lip motion clip ,identity cid , and emotion cemo , and inject them into the corresponding diffusion blocks. Finally, score heads take output features hlow 
+
+t and 
+
+hhigh 
+
+t from both blocks to predict concrete scores of all level tokens for unmasking. 
+
+class sequence to emotional features cemo ∈ RLemo ×C , con-ditioning high-level speech tokens to modulate prosody. 
+
+4.3. Hierarchical Masked Token Prediction 
+
+Hierarchical speech tokenization and diffusion. Given a single-channel speech signal, we utilize the RVQ-based codec [56] to compresses it into tokens represented as 
+
+xr1:r12 = {1, . . . , C code }12 ×L, where ri is the i-th level of token, L is the length of the token sequence, respec-tively. The number of RVQ layers is 12 with a codebook size Ccode = 1 , 024 in each level. We partition RVQ tokens into low-level xlow 
+
+t = xr1:r2
+
+t and high-level xhigh 
+
+t = xr3:r12 
+
+t ,reflecting the hierarchical structure of speech and consistent with the hierarchy analysis in Figure 2. The tokens are then masked via the discrete diffusion process of SEDD [31], as formalized in Eq. (1), yielding xlow 
+
+t and xhigh 
+
+t at step t.
+
+Hierarchical codec diffusion transformer. The pro-posed HiCoDiT serves as the score network in Eq. (3), predicting concrete scores for masked speech tokens that parametrize the transition rate from the masked state to each valid token. To align visual cues with the hierarchical struc-ture of speech, we employ two complementary condition-ing mechanisms: (i) direct concatenation for fine-grained and frame-synchronized signals such as lip motion, and (ii) dual-scale AdaLN for class-like attributes like speaker iden-tity and emotion. For the content conditioning, the masked features mlow 
+
+t ∈ RL×C are first concatenated with lip mo-tion features clip along the channel dimension, followed by a linear layer to enhance temporally synchronized fusion. For the timbre conditioning, we utilize a MLP predicts channel-level scale and shift parameters α1
+
+id , γ 1
+
+id , β 1
+
+id , α 2
+
+id , γ 2
+
+id , β 2
+
+id ∈
+
+RC based on both identity features cid and time t features. We can formulate the identity conditioning of the single-scale AdaLN as: 
+
+(1 + γi
+
+id ) · ht − μ(ht)
+
+σ(ht) + βi
+
+id , (4) where i = {1, 2} for multi-head attention and feed-forward network, and ht ∈ RL×C is the hidden embedding after layer normalization in low-level blocs. μ(·) and σ(·) are the mean and standard deviation for ht across the chan-nel dimension. Furthermore, for the prosody condition-ing, we introduce a temporal MLP to predict temporal-level scale parameters γ1
+
+emo,t , γ 2
+
+emo,t ∈ RLemo 
+
+using emo-tion features cemo and time t features, and a channel MLP to predict channel-level scale and shift parameters 
+
+α1
+
+emo,c , γ 1
+
+emo,c , β 1
+
+emo,c , α 2
+
+emo,c , γ 2
+
+emo,c , β 2
+
+emo,c ∈ RC using pool-ing emotion features and time features. We can formulate the prosody conditioning of the dual-scale AdaLN as: 
+
+γi
+
+emo,t ⊗ 125 
+
+| {z }
+
+Temporal-level 
+
+·
+
+
+
+(1 + γi
+
+emo,c ) · ht − μ(ht)
+
+σ(ht) + βi
+
+emo,c 
+
+| {z }
+
+Channel-level 
+
+, (5) where i = {1, 2}, ⊗ denotes Kronecker product, and 125 ∈
+
+R25 is an all-ones vector to up-sample γi
+
+te with Lemo = L
+
+25 
+
+parameters to align with the hidden embedding with 50 Hz sampling rate. Finally, for the output, we incorporate 12 linear score heads to predict concrete scores for each level. 4(a) Residual Vector Quantization (RVQ) Codec    
+
+> Speech
+> Codec
+> Encoder
+> 146…
+
+-VQ 1   
+
+> 219…
+
+- Residual 2 VQ 2                 
+
+> Residual 1
+> ...
+> 314…VQ 12
+> Codec
+> Decoder
+> Residual 11
+> Reconstructed Speech
+> (b) Hierarchy Analysis
+> Content Score
+> Timbre Score
+> Prosody Score
+> VQ 1-2layers
+> Focus on Content
+> 30.35%
+> VQ 2-12 layers
+> Enrich Prosody
+> 10.85%
+> VQ 1-2layers
+> Refine Timbre
+> 20.10%
+
+Figure 2. Hierarchy analysis of speech token. (a) RVQ codec encodes and decodes speech through multiple VQ layers. (b) The x-axis denotes cumulative decoding across token levels, and the y-axis reports scores for semantic fidelity, timbre similarity, and prosody quality. It can be observed that speaker-aware semantics improvements concentrate in lower layers, while prosody gains emerge in higher layers. 
+
+These conditioning mechanisms enable HiCoDiT to faith-fully modulate speech generation according to the cross-modal prior, bridging the gap between video and speech. 
+
+4.4. Training and Inference 
+
+Training. HiCoDiT is optimized by multi-level DSE loss based on Eq. (3) with the sum across all 12 RVQ levels as 
+
+Lscore = P12  
+
+> i=1
+
+LDSE (xri , t, c). For conducting predictor-free guidance, we randomly set ∅ with 10% probability for each condition and enforce all conditions set to ∅ for 10% samples. An additional loss Lid = ℓ1(cid , cGE2E ) aligns the visual identity embedding cid with the GE2E speech embed-ding cGE2E to reinforce speaker consistency. To summarize, the total loss function Ltotal is defined as follows: 
+
+Ltotal = Lscore + λLid , (6) where λ is set to 100.0 in our experiments. 
+
+Inference. Following Eq. (2), the reverse process is exe-cuted with Euler sampling [31] and enhanced predictor-free guidance [63] with 64 sampling steps. Notably, to ensure training stability, we utilize ground truth acoustic features to replace cid and cemo during training, whereas only visual features are used during inference. 
+
+5. Experimental Results 
+
+5.1. Experimental Setups 
+
+Datasets. Our HiCoDiT is trained on the VoxCeleb2 [8] dataset, which provides large-scale speaker-diverse audio-visual recordings. To ensure well-aligned data, we per-form a multi-stage data preprocessing pipeline. We first re-sample all audio to 16 kHz and employ a speech language identification model [44, 51] to filter out non-English ut-terances. We then apply a speaker diarization model [40] to remove multi-speaker segments, followed by the Clear-erVoice speech separation model [66] to enhance signal-noise ratio. Finally, we leverage [43] to discard misaligned text–speech pairs. Finally, the pre-processing dataset com-prises 261.5 hours of audio recordings with 169k utterances across 7 basic emotions and 3,438 speakers. For evaluation, we test our models on two in-the-wild datasets without any specific training, LRS2 [48] and LRS3 [1]. 
+
+Evaluation metrics. The generation performance is evaluated using both subjective and objective metrics. For subjective assessment, we conduct a Mean Opinion Score (MOS) and A/B testing. For objective assessment, we first quantify spectral differences with Mel Cepstral Distortion (MCD) [4], DNSMOS [45], and UTMOS [46], which are widely used networks to estimate perceptual audio quality. We also calculate the Word Error Rate (WER) [43, 55] to gauge intelligibility. For the synchronization, we report the distance and confidence scores of lip sync errors (LSE-C and LSE-D) between speech and video using the pre-trained SyncNet [7]. For the expressiveness, we calculate cosine similarity metrics based on ECAPA-TDNN [17] to obtain speaker identity similarity (SpkSim). Additionally, we eval-uate emotion accuracy (EmoAcc) using a strong speech emotion recognition model [33, 34]. 
+
+Implementation details. For the speech tokeniza-tion, we employ a pre-trained RVQ-based codec from MaskGCT [56], and adopt a log-linear noise schedule 
+
+σ(t) [31] for the diffusion process, where the expectation of the number of masked tokens is linear with time t. For the disentangled visual conditioning, AV-HuBERT-Large, ArcFace, and Poster2 are used for lip, identity, and emo-tion feature extraction, respectively. For the transformer, the numbers of low- and high-level blocks are 8 and 8, re-spectively. The channel dimension C is set to 768 with 12 attention heads. During training, we use the AdamW opti-mizer [30] with a learning rate of 1e-4, batch size 32. The total number of iterations is 200k. During inference, we 5Methods Venue A V Naturalness Synchronization Expressiveness                                                                                                                       
+
+> WER ↓DNSMOS ↑UTMOS ↑MCD ↓LSE-C ↑LSE-D ↓EmoAcc ↑SpkSim ↑
+> Ground Truth ---2.29 3.29 3.57 0.00 6.66 6.89 100.00 1.0000 Lip2Wav †[42] CVPR’20 ✓✓98.68 2.47 1.29 13.43 3.37 9.85 63.11 0.4785 MTL [27] ICASSP’23 ✓✓76.61 2.42 1.28 9.84 5.87 7.51 61.24 0.3347 EmoDubber †[11] CVPR’25 ✓✓41.52 2.95 2.83 9.25 6.88 6.85 72.01 0.6052 DiffV2S [5] ICCV’23 ✗✓41.07 2.56 3.06 -----LTBS †[25] AAAI’24 ✗✓84.00 2.36 2.42 -----AlignDiT [6] ACM MM’25 ✗✓31.37 3.24 3.76 10.02 6.95 6.82 76.11 0.5597 FTV [26] CVPR’25 ✗✓30.37 3.22 3.99 10.54 7.08 6.66 73.19 0.5981
+> HiCoDiT †(ours )-✗✓29.41 3.50 3.84 9.62 7.15 6.58 79.41 0.5678
+> ✓✓28.98 3.44 3.80 8.69 7.10 6.61 77.08 0.6715
+
+Table 1. Quantitative results on LRS3. A/V indicate use of audio/video guidance ( ✓/✗). The superscript † indicates that the model is not trained on LRS3. ↑ (↓) indicates that higher (lower) is better. Best results are highlighted in deeper blue , second-best in lighter blue .                                                                                                                             
+
+> Methods Venue AVNaturalness Synchronization Expressiveness
+> WER ↓DNSMOS ↑UTMOS ↑MCD ↓LSE-C ↑LSE-D ↓EmoAcc ↑SpkSim ↑
+> Ground Truth ---8.93 3.14 3.05 0.00 7.20 6.67 100.00 1.0000 Lip2Wav †[42] CVPR’20 ✓✓100.05 2.47 1.31 14.09 3.83 9.80 54.38 0.4438 MTL [27] ICASSP’23 ✓✓58.03 2.42 1.30 10.71 6.58 7.16 63.89 0.3556 EmoDubber [11] CVPR’25 ✓✓47.60 2.84 2.77 7.02 7.42 6.60 66.76 0.5252 DiffV2S [5] ICCV’23 ✗✓54.86 2.36 2.95 -----LTBS †[25] AAAI’24 ✗✓94.30 2.17 2.29 -----AlignDiT †[6] ACM MM’25 ✗✓42.26 3.13 3.65 8.46 7.50 6.58 67.01 0.5187 FTV [26] CVPR’25 ✗✓38.09 3.11 3.88 12.91 7.71 6.35 67.84 0.5368
+> HiCoDiT †(ours )-✗✓39.99 3.35 3.68 8.74 7.95 6.17 68.21 0.5222
+> ✓✓40.75 3.27 3.38 8.36 7.83 6.24 65.65 0.5954
+
+Table 2. Quantitative results on LRS2. A/V indicate use of audio/video guidance ( ✓/✗). The superscript † indicates that the model is not trained on LRS2. ↑ (↓) indicates that higher (lower) is better. Best results are highlighted in deeper blue , second-best in lighter blue . 
+
+employ an Euler sampler to perform the reverse process in 64 steps. For multi-conditional guidance, we adopt the en-hanced predictor-free guidance [63], setting the joint guid-ance scale to wall = 2 .5/2.25 and the compositional scales to wid = 1 .25 /1.25 , wid = 1 .5/1.5, and wlip = 2 .0 for the LRS3 and LRS2 datasets, respectively. 
+
+Baseline models. Our method is compared with sev-eral state-of-the-art approaches: FTV [26], AlignDiT [6], EmoDubber [11], MTL [27], Lip2Wav [42], LTBS [25], and DiffV2S [5]. For FTV, the test samples on both LRS2 and LRS3 are provided by the authors. For AlignDiT, MTL, and Lip2Wav, we use the publicly released models for in-ference. For EmoDubber, we reproduce results using the official training code. Since no public models or test sam-ples are available, we report results as cited in their original publications for both LTBS and DiffV2S. 
+
+5.2. Quantitative Evaluation 
+
+Objective evaluation. Tables 1 and 2 summarize the ob-jective evaluation results on the LRS3 and LRS2 datasets, respectively. Although our HiCoDiT is not trained on ei-ther LRS3 or LRS2, it achieves leading performance on key metrics, including overall speech quality (UTMOS, DNS-MOS), intelligibility (WER), and lip synchronization (LSE-C). While EmoDubber achieves the best spectral clarity on MCD by directly optimizing spectrograms, our method, which focuses on discrete speech token generation, achieves the second-best performance. Furthermore, our method ex-hibits a degradation in speaker similarity relative to FTV, re-flecting the limited diversity of our training data. However, when a speech signal is introduced as identity guidance, our method achieves the highest score on this metric, showing great voice cloning ability. Similar trends are observed on LRS2. Overall, these results demonstrate the effectiveness of our hierarchical masked token prediction for VTS. 
+
+Subjective evaluation. We further conduct the sub-jective evaluation with 20 participants, to compare our HiCoDiT with SOTA methods. Specifically, we introduce five MOS with rating scores from 1 to 5 in 0.5 incre-ments, including MOS nat , MOS exp , MOS syn for speech nat-uralness, expressiveness, and lip-synchronization. We ran-domly generate 30 samples from the test set. The scoring results of the user study are presented in Table 3, demon-strating that HiCoDiT outperforms SOTA methods across nearly all metrics, particularly surpassing 2.94%in MOS syn 
+
+with the ground truth. Tables 1 and 2 summarize the ob-6Ground Truth 
+
+> HiCoDiT (Ours) FTV AlignDiT MTL Lip2Wav EmoDubber
+> Input Video
+
+Figure 3. The visualization of the mel-spectrograms of ground truth (GT) and synthesized speech obtained by different models. As highlighted in the red boxes, the spectrograms generated by our method exhibit higher clarity with improved signal-to-noise ratio. 
+
+jective evaluation results on the LRS3 and LRS2 datasets, respectively. Although our HiCoDiT is not trained on ei-ther LRS3 or LRS2, it achieves leading performance on key metrics, including overall speech quality (UTMOS, DNS-MOS), intelligibility (WER), and lip synchronization (LSE-C). While EmoDubber achieves the best spectral clarity on MCD by directly optimizing spectrograms, our method, which focuses on discrete speech token generation, achieves the second-best performance. Furthermore, our method ex-hibits a degradation in speaker similarity relative to FTV, re-flecting the limited diversity of our training data. However, when a speech signal is introduced as identity guidance, our method achieves the highest score on this metric, showing great voice cloning ability. Similar trends are observed on LRS2. Overall, these results demonstrate the effectiveness of our hierarchical masked token prediction for VTS. Fur-thermore, the proposed model HiCoDiT achieves the high-est MOS nat (3.17) and MOS sync (3.50), indicating superior naturalness and synchronization compared to existing meth-ods like AlignDiT and FTV. Although the expressiveness is slightly lower than FTV, indicating that a more diverse speaker dataset can enhance expressiveness. In addition, the Table 4 compares A/B test preferences for synthesized speech. Our method demonstrates clear su-periority over AlignDiT, achieving a 57.0% preference, and also outperforms FTV with 52.1% preference. Addition-ally, ground-truth speech is preferred over FTV (51.5%) and is outperformed by our method with a 53.9% prefer-ence, showing the strength of our model in generating high-
+
+Methods MOS nat ↑ MOS exp ↑ MOS syn ↑
+
+Ground Truth 3.07 ±1.02 3.30 ±1.19 3.40 ±0.93 AlignDiT [6] 2.47 ±1.19 2.63 ±1.30 3.13 ±0.75 FTV [26] 2.80 ±1.03 2.90 ±1.45 3.48 ±1.02 HiCoDiT ( ours ) 3.17 ±1.31 2.88 ±1.53 3.50 ±0.86 
+
+Table 3. Subjective evaluation on speech naturalness, expressive-ness, and synchronization, compared with other SOTA methods.                
+
+> A vs. B A wins (%) Neutral B wins (%)
+> Ours vs. AlignDiT [6] 57.0 4.9 38.1 Ours vs. FTV [26] 52.1 6.1 41.8 GT vs. FTV [26] 51.5 14.0 34.5 GT vs. Ours 45.5 0.6 53.9
+
+Table 4. A/B testing results. We report the preferences (%) be-tween A and B across various aspects of synthesized speech. 
+
+quality speech nearly indistinguishable from real speech. 
+
+5.3. Qualitative Results 
+
+Qualitative spectrogram comparisons. As shown in Figure 3, we compare generated mel-spectrograms with other methods. For Lip2Wav and MTL, we observe se-vere over-smoothing or acoustic artifacts, resulting in sig-nificant degradation of speech quality and limiting their practical utility, which may be attributed to the insufficient probabilistic modeling capacity of the generative models 7Datasets Ablations WER ↓ DNSMOS ↑ UTMOS ↑ MCD ↓ LSE-C ↑ LSE-D ↓ EmoAcc ↑ SpkSim ↑                                                
+
+> LRS3 w/o Hierarchical Modeling 30.65 3.36 3.73 10.07 7.02 6.75 76.98 0.5652 w/o Dual Scale AdaLN 29.60 3.45 3.92 9.75 7.12 6.60 78.55 0.5621
+> HiCoDiT (full) 29.41 3.50 3.84 9.62 7.15 6.58 79.41 0.5678
+> LRS2 w/o Hierarchical Modeling 44.57 3.18 3.48 9.43 7.66 6.47 64.69 0.4946 w/o Dual Scale AdaLN 41.01 3.30 3.75 9.33 7.88 6.22 68.61 0.5155
+> HiCoDiT (full) 39.99 3.35 3.68 8.74 7.95 6.17 68.21 0.5222
+
+Table 5. Ablation study on LRS3 and LRS2. Best results are highlighted in Bold .Input Film Clip Ground Truth HiCoDiT (Ours) AlignDiT EmoDubber 
+
+Figure 4. Comparison of generated Mels on real-world film data.                         
+
+> Method WER ↓MCD ↓DNSMOS ↑Emo ↑Spk ↑LSE-D ↓
+> EmoDubber 88.3 9.9 2.8 76.5 45.1 7.72 AlignDiT 80.8 11.4 3.2 75.2 58.5 8.23
+> HiCoDiT 58.7 9.8 3.5 82.0 50.1 7.60
+
+Table 6. Quantitative comparison of real-world OOD film data. 
+
+used. Methods based on powerful diffusion models, pro-duce high-quality speech. However, their mel-spectrograms still exhibit noise in the silent clip. In contrast, our method generates clarity mel-spectrograms with richer acoustic de-tails and precise lip-synchronization, benefiting from the strong speech reconstruction capability of Codec. 
+
+5.4. Ablation Studies 
+
+Ablation on hierarchical modeling. We explore the impact of hierarchical modeling on video-to-speech gen-eration in Table 5. The removal of hierarchical modeling collapses the multi-level speech representation into a sin-gle uniform module, while simultaneously forcing visual conditioning to be injected across all tokens. Experimen-tal results demonstrate that performance degrades signifi-cantly across all metrics, underscoring the validity of our proposed speech hierarchy prior. This further indicates that visual features corresponding to specific attributes should align with speech tokens carrying matching content. 
+
+Ablation on dual scale AdaLN. To demonstrate the ef-fectiveness of the proposed Dual-scale AdaLN, we utilize the vanilla adaLN of DiT [38] and replace the temporal embedding with utterance-level emotional embedding com-bined with global style as an acoustic guidance. As shown in Table 5, pooling dynamic emotions struggles to model prosody dynamics, with a negligible decrease in terms of EmoAcc, while other metrics gain a lot. The results high-light the effectiveness of our dual-scale AdaLN mechanism. 
+
+Ablation on out-of-domain data. To assess generaliza-tion in complex, real-world environments, we curate an au-thentic film benchmark comprising 160 utterances across                          
+
+> Ablations WER ↓MCD ↓DNSMOS ↑Emo ↑Spk ↑LSE-D ↓
+> (a) wo GE2E Lid 29.38 10.18 3.41 74.47 34.10 6.71 (b) wo Poster2 29.41 9.68 3.50 76.29 55.28 6.67
+> HiCoDiT 29.41 9.62 3.50 79.41 56.78 6.58
+
+Table 7. Ablation study of visual conditioning on LRS3 test set. 
+
+56 speakers from CinePile to ensure realistic audio-visual complexity. We compared HiCoDiT against primary open-source SOTA methods EmoDubber and AlignDiT. Table 6 and Figure 4 demonstrate that our method achieves robust intelligibility and lip-synchronization on this challenging OOD data, underscoring HiCoDiT’s robustness and adapt-ability to authentic scenarios. 
+
+Ablation on visual conditioning. To further explore our visual conditioning, we conduct ablation studies on the LRS3 benchmark in Table 7. We evaluate the impact of the GE2E loss Lid by removing it from the training objective. The results reveal a substantial decline in speaker similar-ity from 56.78% to 34.10%, while WER remain unaffected. This confirms that the GE2E loss is indispensable for iden-tity preservation, effectively guiding the model to extract implicit vocal timbre from facial cues. Second, we assess the Poster2 [35] encoder by replacing it with Poster [67]. This substitution leads to a noticeable drop in emotion ac-curacy from 79.41% to 76.29%, validating the superiority of Poster2 in capturing fine-grained affective information. 
+
+6. Conclusion 
+
+We present HiCoDiT, a Hierarchical Codec Diffusion Transformer that redefines how visual features and speech tokens are aligned in VTS generation. By leveraging the hierarchy of discrete speech tokens, HiCoDiT enables pre-cise synchronization of lip motion and identity at lower levels, while capturing expressive emotional and prosodic dynamics at higher levels. We also design a dual-scale AdaLN, which effectively captures global vocal style and local prosody dynamics. Extensive experiments conducted on benchmark datasets, including LRS2 and LRS3, demon-strate the superiority of HiCoDiT over state-of-the-art meth-ods in terms of naturalness, expressiveness, and synchro-nization fidelity, establishing HiCoDiT as a promising solu-tion for real-world VTS applications. 8References 
+
+[1] Triantafyllos Afouras, Joon Son Chung, and Andrew Zisser-man. LRS3-TED: A large-scale dataset for visual speech recognition. arXiv preprint:1809.00496 , 2018. 5 [2] Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tar-low, and Rianne van den Berg. Structured denoising diffu-sion models in discrete state-spaces. In Adv. Neural Inform. Process. Syst. , pages 17981–17993, 2021. 2 [3] Boyuan Cao, Jiaxin Ye, Yujie Wei, and Hongming Shan. Re-pLDM: Reprogramming pretrained latent diffusion models for high-quality, high-efficiency, high-resolution image gen-eration. In Adv. Neural Inform. Process. Syst. 2[4] Qi Chen, Mingkui Tan, Yuankai Qi, Jiaqiu Zhou, Yuanqing Li, and Qi Wu. V2C: Visual voice cloning. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 21210–21219, 2022. 1, 5[5] Jeongsoo Choi, Joanna Hong, and Yong Man Ro. DiffV2S: Diffusion-based video-to-speech synthesis with vision-guided speaker embedding. In Int. Conf. Comput. Vis. , pages 7778–7787, 2023. 1, 2, 6 [6] Jeongsoo Choi, Ji-Hoon Kim, Kim Sung-Bin, Tae-Hyun Oh, and Joon Son Chung. AlignDiT: Multimodal aligned dif-fusion transformer for synchronized speech generation. In 
+
+ACM Int. Conf. Multimedia , 2025. 6, 7 [7] Joon Son Chung and Andrew Zisserman. Out of time: Au-tomated lip sync in the wild. In ACCV. Int. Worksh. , pages 251–263, 2016. 5 [8] Joon Son Chung, Arsha Nagrani, and Andrew Zisser-man. Voxceleb2: Deep speaker recognition. arXiv preprint:1806.05622 , 2018. 5 [9] Gaoxiang Cong, Liang Li, Yuankai Qi, Zheng-Jun Zha, Qi Wu, Wenyu Wang, Bin Jiang, Ming-Hsuan Yang, and Qingming Huang. Learning to dub movies via hierarchical prosody models. In IEEE Conf. Comput. Vis. Pattern Recog. ,pages 14687–14697, 2023. 1 [10] Gaoxiang Cong, Liang Li, Jiadong Pan, Zhedong Zhang, Amin Beheshti, Anton van den Hengel, Yuankai Qi, and Qingming Huang. FlowDubber: Movie dubbing with llm-based semantic-aware learning and flow matching based voice enhancing. In ACM Int. Conf. Multimedia , pages 905– 914, 2025. 1 [11] Gaoxiang Cong, Jiadong Pan, Liang Li, Yuankai Qi, Yuxin Peng, Anton van den Hengel, Jian Yang, and Qingming Huang. EmoDubber: Towards high quality and emotion con-trollable movie dubbing. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 15863–15873, 2025. 6 [12] Yusheng Dai, Hang Chen, Jun Du, Ruoyu Wang, Shihao Chen, Haotian Wang, and Chin-Hui Lee. A study of dropout-induced modality bias on robustness to missing video frames for audio-visual speech recognition. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 27435–27445, 2024. 3 [13] Balaji Darur and Karan Singla. Visual-aware speech recog-nition for noisy scenarios. In Proc. Conf. Empir. Methods Natural Lang. Process. , pages 16709–16717, 2025. 1 [14] Alexandre D´ efossez, Jade Copet, Gabriel Synnaeve, and Yossi Adi. High fidelity neural audio compression. Trans. Mach. Learn. Res. , 2023, 2023. 2, 3 [15] Jiankang Deng, Jia Guo, Jing Yang, Niannan Xue, Irene Kot-sia, and Stefanos Zafeiriou. Arcface: Additive angular mar-gin loss for deep face recognition. IEEE Trans. Pattern Anal. Mach. Intell. , 44(10):5962–5979, 2022. 3 [16] Yan Deng, Ning Wu, Chengjun Qiu, Yangyang Luo, and Yan Chen. MixGAN-TTS: Efficient and stable speech synthesis based on diffusion model. IEEE Access , 11:57674–57682, 2023. 2 [17] Brecht Desplanques, Jenthe Thienpondt, and Kris De-muynck. ECAPA-TDNN: Emphasized channel attention, propagation and aggregation in TDNN based speaker veri-fication. In Annu. Conf. Int. Speech Commun. Assoc. , pages 3830–3834, 2020. 5 [18] Tongtong Feng, Xin Wang, and Wenwu Zhu. Self-evolving embodied ai. arXiv preprint:2602.04411 , 2026. 1 [19] Robert W Frick. Communicating emotion: The role of prosodic features. Psychological bulletin , 97(3):412, 1985. 3[20] Shunsuke Goto, Kotaro Onishi, Yuki Saito, Kentaro Tachibana, and Koichiro Mori. Face2Speech: Towards multi-speaker text-to-speech synthesis using an embedding vector predicted from a face image. In Annu. Conf. Int. Speech Commun. Assoc. , pages 1321–1325, 2020. 1, 2 [21] Wei-Ning Hsu, Yu Zhang, Ron J. Weiss, Heiga Zen, Yonghui Wu, Yuxuan Wang, Yuan Cao, Ye Jia, Zhifeng Chen, Jonathan Shen, Patrick Nguyen, and Ruoming Pang. Hierar-chical generative modeling for controllable speech synthesis. In Int. Conf. Learn. Represent. , 2019. 2 [22] Youngjoon Jang, Ji-Hoon Kim, Junseok Ahn, Doyeop Kwak, et al. Faces that speak: Jointly synthesising talking face and speech from text. In IEEE Conf. Comput. Vis. Pattern Recog. ,pages 8818–8828, 2024. 1 [23] Minki Kang, Wooseok Han, and Eunho Yang. Face-StyleSpeech: Improved face-to-voice latent mapping for nat-ural zero-shot speech synthesis from a face image. arXiv preprint:2311.05844 , 2023. 1 [24] Frank P Kelly. Reversibility and stochastic networks . Cam-bridge University Press, 2011. 3 [25] Ji-Hoon Kim, Jaehun Kim, and Joon Son Chung. Let there be sound: Reconstructing high quality speech from silent videos. In AAAI Conf. Artif. Intell. , pages 2759–2767, 2024. 6[26] Ji-Hoon Kim, Jeongsoo Choi, Jaehun Kim, Chaeyoung Jung, and Joon Son Chung. From faces to voices: Learning hi-erarchical representations for high-quality video-to-speech. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 15874– 15884, 2025. 1, 2, 6, 7 [27] Minsu Kim, Joanna Hong, and Yong Man Ro. Lip-to-speech synthesis in the wild with multi-task learning. In IEEE Conf. Acoust. Speech Signal Process. , pages 1–5, 2023. 2, 6 [28] Sang-Hoon Lee, Seung-Bin Kim, Ji-Hyun Lee, et al. Hier-Speech: Bridging the gap between text and speech by hierar-chical variational inference using self-supervised representa-tions for speech synthesis. In Adv. Neural Inform. Process. Syst. , 2022. 2 [29] Yifan Liang, Fangkun Liu, Andong Li, Xiaodong Li, Chengyou Lei, and Chengshi Zheng. NaturalL2S: End-to-end high-quality multispeaker lip-to-speech synthesis with 
+
+9differential digital signal processing. Neural Networks , 194: 108163, 2026. 1 [30] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In Int. Conf. Learn. Represent. , 2019. 5 [31] Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distri-bution. In Int. Conf. on Mach. Learn. , 2024. 2, 3, 4, 5 [32] Cheng Lu, Yuhao Zhou, Fan Bao, Jianfei Chen, Chongxuan Li, and Jun Zhu. DPM-Solver++: Fast solver for guided sam-pling of diffusion probabilistic models. Mach. Intell. Res. , 22 (4):730–751, 2025. 2 [33] Ziyang Ma, Mingjie Chen, Hezhao Zhang, Zhisheng Zheng, Wenxi Chen, Xiquan Li, Jiaxin Ye, Xie Chen, and Thomas Hain. EmoBox: Multilingual multi-corpus speech emo-tion recognition toolkit and benchmark. In Annu. Conf. Int. Speech Commun. Assoc. , 2024. 5 [34] Ziyang Ma, Zhisheng Zheng, Jiaxin Ye, Jinchao Li, Zhifu Gao, Shiliang Zhang, and Xie Chen. emotion2vec: Self-supervised pre-training for speech emotion representation. In 
+
+Findings Proc. Annu. Meeting Assoc. Comput. Linguistics ,pages 15747–15760, 2024. 5 [35] Jiawei Mao, Rui Xu, Xuesong Yin, Yuanqi Chang, Bin-ling Nie, and Aibin Huang. POSTER V2: A simpler and stronger facial expression recognition network. arXiv preprint:2301.12149 , 2023. 3, 8 [36] Chenlin Meng, Kristy Choi, Jiaming Song, and Stefano Er-mon. Concrete score matching: Generalized score matching for discrete data. In Adv. Neural Inform. Process. Syst. , 2022. 2[37] Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Jiacheng Sun, Zhenguo Li, and Chongxuan Li. Your absorbing dis-crete diffusion secretly models the conditional distributions of clean data. CoRR , abs/2406.03736, 2024. 3 [38] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Int. Conf. Comput. Vis. , pages 4172– 4182, 2023. 8 [39] Puyuan Peng, Po-Yao Huang, Shang-Wen Li, Abdelrah-man Mohamed, and David Harwath. VoiceCraft: Zero-shot speech editing and text-to-speech in the wild. In Proc. Annu. Meeting Assoc. Comput. Linguistics , pages 12442–12462, 2024. 2 [40] Alexis Plaquet and Herv´ e Bredin. Powerset multi-class cross entropy loss for neural speaker diarization. In Annu. Conf. Int. Speech Commun. Assoc. , 2023. 5 [41] Gerasimos Potamianos, Chalapathy Neti, Juergen Luettin, Iain Matthews, et al. Audio-visual automatic speech recogni-tion: An overview. Issues in visual and audio-visual speech processing , 22:23, 2004. 1 [42] K. R. Prajwal, Rudrabha Mukhopadhyay, Vinay P. Nam-boodiri, and C. V. Jawahar. Learning individual speaking styles for accurate lip to speech synthesis. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 13793–13802, 2020. 6 [43] Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine McLeavey, and Ilya Sutskever. Robust speech recognition via large-scale weak supervision. In Int. Conf. on Mach. Learn. , pages 28492–28518, 2023. 1, 5 [44] Mirco Ravanelli, Titouan Parcollet, Peter Plantinga, Aku Rouhe, et al. SpeechBrain: A general-purpose speech toolkit. arXiv preprint:2106.04624 , 2021. 1, 5 [45] Chandan K. A. Reddy, Vishak Gopal, and Ross Cutler. Dns-mos: A non-intrusive perceptual objective speech quality metric to evaluate noise suppressors. In IEEE Conf. Acoust. Speech Signal Process. , pages 6493–6497, 2021. 5 [46] Takaaki Saeki, Detai Xin, Wataru Nakata, Tomoki Ko-riyama, Shinnosuke Takamichi, and Hiroshi Saruwatari. Ut-mos: Utokyo-sarulab system for voicemos challenge 2022. 
+
+arXiv preprint:2204.02152 , 2022. 5 [47] Bowen Shi, Wei-Ning Hsu, Kushal Lakhotia, and Abdelrah-man Mohamed. Learning audio-visual speech representa-tion by masked multimodal cluster prediction. In Int. Conf. Learn. Represent. , 2022. 3 [48] Joon Son Chung, Andrew Senior, Oriol Vinyals, and Andrew Zisserman. Lip reading sentences in the wild. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 6447–6456, 2017. 5 [49] Haoran Sun, Lijun Yu, Bo Dai, Dale Schuurmans, and Han-jun Dai. Score-based continuous-time discrete diffusion models. In Int. Conf. Learn. Represent. , 2023. 3 [50] Kim Sung-Bin, Jeongsoo Choi, Puyuan Peng, Joon Son Chung, Tae-Hyun Oh, and David Harwath. VoiceCraft-Dub: Automated video dubbing with neural codec language mod-els. In Int. Conf. Comput. Vis. , 2025. 2 [51] J¨ orgen Valk and Tanel Alum¨ ae. VoxLingua107: A dataset for spoken language recognition. In Proc. IEEE SLT Workshop ,2021. 5 [52] Li Wan, Quan Wang, Alan Papir, and Ignacio L´ opez-Moreno. Generalized end-to-end loss for speaker verifica-tion. In IEEE Conf. Acoust. Speech Signal Process. , pages 4879–4883, 2018. 3 [53] Chenhui Wang, Tao Chen, Zhihao Chen, Zhizhong Huang, Taoran Jiang, Qi Wang, and Hongming Shan. FLDM-VTON: Faithful latent diffusion model for virtual try-on. In 
+
+Proc. Int. Joint Conf. Artif. Intell. , pages 1362–1370, 2024. 2[54] Chenhui Wang, Boyun Zheng, Liuxin Bao, Zhihao Peng, Peter YM Woo, Hongming Shan, and Yixuan Yuan. Brain-WM: Brain glioblastoma world model. arXiv preprint:2603.07562 , 2026. 2 [55] Yuxuan Wang, Daisy Stanton, Yu Zhang, R. J. Skerry-Ryan, Eric Battenberg, Joel Shor, Ying Xiao, Ye Jia, Fei Ren, and Rif A. Saurous. Style tokens: Unsupervised style modeling, control and transfer in end-to-end speech synthesis. In Int. Conf. on Mach. Learn. , pages 5167–5176, 2018. 5 [56] Yuancheng Wang, Haoyue Zhan, Liwei Liu, Ruihong Zeng, Haotian Guo, Jiachen Zheng, Qiang Zhang, Shunsi Zhang, and Zhizheng Wu. MaskGCT: Zero-shot text-to-speech with masked generative codec transformer. arXiv preprint:2409.00750 , 2024. 2, 4, 5 [57] Yujie Wei, Shiwei Zhang, Hangjie Yuan, Xiang Wang, Hao-nan Qiu, Rui Zhao, Yutong Feng, Feng Liu, Zhizhong Huang, Jiaxin Ye, Yingya Zhang, and Hongming Shan. DreamVideo-2: Zero-shot subject-driven video customiza-tion with precise motion control. arXiv preprint:2410.13830 ,2024. 2 
+
+10 [58] Xin-Cheng Wen, Jiaxin Ye, Yan Luo, Yong Xu, Xuan-Ze Wang, Chang-Li Wu, and Kun-Hong Liu. CTL-MTNet: A novel capsnet and transfer learning-based mixed task net for single-corpus and cross-corpus speech emotion recogni-tion. In Proc. Int. Joint Conf. Artif. Intell. , pages 2305–2311, 2022. 1 [59] Zhichao Wu, Qiulin Li, Sixing Liu, and Qun Yang. DCTTS: Discrete diffusion model with contrastive learning for text-to-speech generation. In IEEE Conf. Acoust. Speech Signal Process. , pages 11336–11340. IEEE, 2024. 2 [60] Dongchao Yang, Jianwei Yu, Helin Wang, Wen Wang, Chao Weng, Yuexian Zou, and Dong Yu. Diffsound: Discrete dif-fusion model for text-to-sound generation. IEEE ACM Trans. Audio Speech Lang. Process. , 31:1720–1733, 2023. 2 [61] Jiaxin Ye, Yujie Wei, Xin-Cheng Wen, Chenglong Ma, Zhizhong Huang, Kunhong Liu, and Hongming Shan. Emo-DNA: Emotion decoupling and alignment learning for cross-corpus speech emotion recognition. In ACM Int. Conf. Mul-timedia , pages 5956–5965, 2023. 1 [62] Jiaxin Ye, Xin-Cheng Wen, Yujie Wei, Yong Xu, Kunhong Liu, and Hongming Shan. Temporal modeling matters: A novel temporal emotional modeling approach for speech emotion recognition. In IEEE Conf. Acoust. Speech Signal Process., , pages 1–5, 2023. 1 [63] Jiaxin Ye, Boyuan Cao, and Hongming Shan. Emotional face-to-speech. In Int. Conf. on Mach. Learn. , 2025. 1, 5, 6[64] Yochai Yemini, Aviv Shamsian, Lior Bracha, Sharon Gan-not, and Ethan Fetaya. LipVoicer: Generating speech from silent videos guided by lip reading. In Int. Conf. Learn. Rep-resent. , 2024. 2 [65] Xulu Zhang, Xiaoyong Wei, Wentao Hu, Jinlin Wu, Jiaxin Wu, Wengyu Zhang, Zhaoxiang Zhang, Zhen Lei, and Qing Li. A survey on personalized content synthesis with diffusion models. Mach. Intell. Res. , 22(5):817–848, 2025. 2 [66] Shengkui Zhao, Zexu Pan, and Bin Ma. Clearervoice-studio: Bridging advanced speech processing research and practical deployment. arXiv preprint:2506.19398 , 2025. 5 [67] Ce Zheng, Mat´ ıas Mendieta, and Chen Chen. POSTER: A pyramid cross-fusion transformer network for facial expres-sion recognition. In Int. Conf. Comput. Vis. Workshop , pages 3138–3147, 2023. 8 [68] Youqiang Zheng, Weiping Tu, Li Xiao, and Xinmeng Xu. Srcodec: Split-residual vector quantization for neural speech codec. In IEEE Conf. Acoust. Speech Signal Process. , pages 451–455, 2024. 2 [69] Sashuai Zhou, Qiang Zhou, Jijin Hu, Hanqing Yang, Yue Cao, Junpeng Ma, Yinchao Ma, Jun Song, Tiezheng Ge, Cheng Yu, Bo Zheng, and Zhou Zhao. Unified thinker: A general reasoning modular core for image generation, 2026. 2[70] Sashuai Zhou, Qiang Zhou, Junpeng Ma, Yue Cao, Ruofan Hu, Ziang Zhang, Xiaoda Yang, Zhibin Wang, Jun Song, Cheng Yu, Bo Zheng, and Zhou Zhao. Spatialreward: Verifi-able spatial reward modeling for fine-grained spatial consis-tency in text-to-image generation, 2026. 2 
+
+11
