@@ -6,86 +6,79 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-22
-- 运行时间：2026-04-22 20:23:31 UTC
+- 最新运行日期：2026-04-26
+- 运行时间：2026-04-26 20:25:59 UTC
 - 运行状态：成功
-- 本次总论文数：21
-- 精读区：8
+- 本次总论文数：19
+- 精读区：6
 - 速读区：13
 
 ### 今日简报（AI）
-- 今日共生成 21 篇推荐（精读 8 篇，速读 13 篇）
-- 精读：《Constructive Approaches to Perception-Aware Lossy Source Coding: Information-Theoretic Guidelines》（9.0/10）, 《Neural Dynamic GI: Random-Access Neural Compression for Temporal Lightmaps in Dynamic Lighting Environments》（8.5/10）
-- 速读：《Speculative Decoding for Autoregressive Video Generation》（8.0/10）, 《OSC: Hardware Efficient W4A4 Quantization via Outlier Separation in Channel Dimension》（7.5/10）, 《Generative Refinement Networks for Visual Synthesis》（7.5/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/22/README](/202604/22/README)
+今日深挖 19 篇前沿论文，聚焦反馈驱动的视频压缩与低信噪比下的自动驾驶语义通信。
+满分论文揭示了码率控制的新范式，同时轻量化通信方案显著提升了极端环境下的传输稳健性。
+建议优先研读视频压缩反馈机制，并关注 AI 生成视频质量评估中的参考感知建模。
+- 详情：[/202604/26/README](/202604/26/README)
 
 ### 精读区论文标签
-1. [Constructive Approaches to Perception-Aware Lossy Source Coding: Information-Theoretic Guidelines](/202604/22/2604.19515v1-constructive-approaches-to-perception-aware-lossy-source-coding-information-theoretic-guidelines)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：感知感知有损源编码与率失真感知
-2. [Neural Dynamic GI: Random-Access Neural Compression for Temporal Lightmaps in Dynamic Lighting Environments](/202604/22/2604.12625v1-neural-dynamic-gi-random-access-neural-compression-for-temporal-lightmaps-in-dynamic-lighting-environments)  
-   标签：评分：8.5/10、query:vcodec
-   evidence：动态环境下时间光照贴图集的神经压缩技术
-3. [A Comparative Study of CNN Optimization Methods for Edge AI: Exploring the Role of Early Exits](/202604/22/2604.14789v1-a-comparative-study-of-cnn-optimization-methods-for-edge-ai-exploring-the-role-of-early-exits)  
+1. [Feedback-Driven Rate Control for Learned Video Compression](/202604/26/2604.20104v1-feedback-driven-rate-control-for-learned-video-compression)  
+   标签：评分：10.0/10、query:entropy-coding
+   evidence：学习型视频压缩的反馈驱动速率控制与率失真优化
+2. [Lightweight Low-SNR-Robust Semantic Communication System for Autonomous Driving](/202604/26/2604.20278v1-lightweight-low-snr-robust-semantic-communication-system-for-autonomous-driving)  
    标签：评分：8.5/10、query:train-trick
-   evidence：静态压缩（剪枝、量化）与动态早期退出的比较
-4. [Polar Coded Quantization for Distributed Source Coding](/202604/22/2604.18335v1-polar-coded-quantization-for-distributed-source-coding)  
-   标签：评分：8.5/10、query:entropy-coding
-   evidence：具有率失真理论的分布式源编码的编码量化
-5. [TurboTalk: Progressive Distillation for One-Step Audio-Driven Talking Avatar Generation](/202604/22/2604.14580v1-turbotalk-progressive-distillation-for-one-step-audio-driven-talking-avatar-generation)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：单步视频扩散模型的渐进式蒸馏
-6. [Lossless Compression via Chained Lightweight Neural Predictors with Information Inheritance](/202604/22/2604.15472v1-lossless-compression-via-chained-lightweight-neural-predictors-with-information-inheritance)  
+   evidence：用于轻量化语义通信的结构化剪枝和联合信源信道编码
+3. [Optimally Bridging Semantics and Data: Generative Semantic Communication via Schrödinger Bridge](/202604/26/2604.17802v1-optimally-bridging-semantics-and-data-generative-semantic-communication-via-schrdinger-bridge)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：利用薛定谔桥进行生成式语义通信，实现直接生成式解码
+4. [Learning to Credit the Right Steps: Objective-aware Process Optimization for Visual Generation](/202604/26/2604.19234v1-learning-to-credit-the-right-steps-objective-aware-process-optimization-for-visual-generation)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：针对扩散模型视觉生成的任务感知过程优化
+5. [Secure Rate-Distortion-Perception: A Randomized Distributed Function Computation Approach for Realism](/202604/26/2604.20245v1-secure-rate-distortion-perception-a-randomized-distributed-function-computation-approach-for-realism)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：基于神经预测器链的概率估计架构
-7. [Efficient Video Diffusion Models: Advancements and Challenges](/202604/22/2604.15911v1-efficient-video-diffusion-models-advancements-and-challenges)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：高效视频扩散模型与模型压缩综述
-8. [Generative Semantic Communication via Alternating Dual-Domain Posterior Sampling](/202604/22/2604.16796v1-generative-semantic-communication-via-alternating-dual-domain-posterior-sampling)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：利用基于扩散的先验进行图像传输的生成式语义通信
+   evidence：神经图像压缩中的率失真感知权衡
+6. [Sparse Forcing: Native Trainable Sparse Attention for Real-time Autoregressive Diffusion Video Generation](/202604/26/2604.21221v1-sparse-forcing-native-trainable-sparse-attention-for-real-time-autoregressive-diffusion-video-generation)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：可训练的原生稀疏机制，用于压缩和更新视频生成中的持久块
 
 ### 速读区论文标签
-1. [Speculative Decoding for Autoregressive Video Generation](/202604/22/2604.17397v1-speculative-decoding-for-autoregressive-video-generation)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：用于自回归视频扩散加速的投机解码
-2. [OSC: Hardware Efficient W4A4 Quantization via Outlier Separation in Channel Dimension](/202604/22/2604.12782v1-osc-hardware-efficient-w4a4-quantization-via-outlier-separation-in-channel-dimension)  
-   标签：评分：7.5/10、query:train-trick
-   evidence：通过离群值分离实现硬件高效的W4A4量化
-3. [Generative Refinement Networks for Visual Synthesis](/202604/22/2604.13030v1-generative-refinement-networks-for-visual-synthesis)  
-   标签：评分：7.5/10、query:train-trick
-   evidence：视觉合成潜空间的分层二进制量化
-4. [LiveMoments: Reselected Key Photo Restoration in Live Photos via Reference-guided Diffusion](/202604/22/2604.12286v1-livemoments-reselected-key-photo-restoration-in-live-photos-via-reference-guided-diffusion)  
+1. [Dynamic Parameter Scheduling in Soft-Hard BPGD for Lossy Source Coding](/202604/26/2604.17124v1-dynamic-parameter-scheduling-in-soft-hard-bpgd-for-lossy-source-coding)  
+   标签：评分：7.5/10、query:entropy-coding
+   evidence：有损信源编码和率失真优化的动态参数调度
+2. [Comparison Drives Preference: Reference-Aware Modeling for AI-Generated Video Quality Assessment](/202604/26/2604.17074v1-comparison-drives-preference-reference-aware-modeling-for-ai-generated-video-quality-assessment)  
    标签：评分：7.0/10、query:vcodec
-   evidence：用于视频帧修复和质量增强的参考引导扩散模型
-5. [OFA-Diffusion Compression: Compressing Diffusion Model in One-Shot Manner](/202604/22/2604.12668v1-ofa-diffusion-compression-compressing-diffusion-model-in-one-shot-manner)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：扩散模型的一键式压缩框架，可生成具有不同计算量的子网络。
-6. [MOONSHOT : A Framework for Multi-Objective Pruning of Vision and Large Language Models](/202604/22/2604.13287v1-moonshot--a-framework-for-multi-objective-pruning-of-vision-and-large-language-models)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：视觉和大型语言模型的多目标剪枝
-7. [DiT as Real-Time Rerenderer: Streaming Video Stylization with Autoregressive Diffusion Transformer](/202604/22/2604.13509v1-dit-as-real-time-rerenderer-streaming-video-stylization-with-autoregressive-diffusion-transformer)  
+   evidence：符合人类感知的AI生成视频质量评估参考感知建模
+3. [FlowC2S: Flowing from Current to Succeeding Frames for Fast and Memory-Efficient Video Continuation](/202604/26/2604.17625v1-flowc2s-flowing-from-current-to-succeeding-frames-for-fast-and-memory-efficient-video-continuation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：用于流式视频生成和风格化的扩散Transformer
-8. [From Synchrony to Sequence: Exo-to-Ego Generation via Interpolation](/202604/22/2604.13793v1-from-synchrony-to-sequence-exo-to-ego-generation-via-interpolation)  
+   evidence：基于流的视频延续，利用潜空间扩散和时间耦合进行运动建模
+4. [Polar Coded Quantization for Distributed Source Coding](/202604/26/2604.18335v1-polar-coded-quantization-for-distributed-source-coding)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：用于分布式源编码和率失真性能的极化码量化
+5. [AdaCluster: Adaptive Query-Key Clustering for Sparse Attention in Video Generation](/202604/26/2604.18348v1-adacluster-adaptive-query-key-clustering-for-sparse-attention-in-video-generation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：用于视频生成和信号建模的基于扩散的序列模型
-9. [Robust Ultra Low-Bit Post-Training Quantization via Stable Diagonal Curvature Estimate](/202604/22/2604.13806v1-robust-ultra-low-bit-post-training-quantization-via-stable-diagonal-curvature-estimate)  
+   evidence：视频扩散Transformer中稀疏注意力的自适应聚类
+6. [ST-Prune: Training-Free Spatio-Temporal Token Pruning for Vision-Language Models in Autonomous Driving](/202604/26/2604.19145v1-st-prune-training-free-spatio-temporal-token-pruning-for-vision-language-models-in-autonomous-driving)  
    标签：评分：7.0/10、query:train-trick
-   evidence：超低比特训练后量化
-10. [BARD: Bridging AutoRegressive and Diffusion Vision-Language Models Via Highly Efficient Progressive Block Merging and Stage-Wise Distillation](/202604/22/2604.16514v1-bard-bridging-autoregressive-and-diffusion-vision-language-models-via-highly-efficient-progressive-block-merging-and-stage-wise-distillation)  
-   标签：评分：6.5/10、query:train-trick
-   evidence：用于高效扩散解码的分阶段蒸馏
-11. [BARD: Bridging AutoRegressive and Diffusion Vision-Language Models Via Highly Efficient Progressive Block Merging and Stage-Wise Distillation](/202604/22/2604.16514v2-bard-bridging-autoregressive-and-diffusion-vision-language-models-via-highly-efficient-progressive-block-merging-and-stage-wise-distillation)  
-   标签：评分：6.5/10、query:train-trick
-   evidence：用于高效扩散解码的分阶段蒸馏
-12. [Coevolving Representations in Joint Image-Feature Diffusion](/202604/22/2604.17492v1-coevolving-representations-in-joint-image-feature-diffusion)  
+   evidence：自动驾驶中多帧视频输入的时空令牌剪枝
+7. [Mask World Model: Predicting What Matters for Robust Robot Policy Learning](/202604/26/2604.19683v2-mask-world-model-predicting-what-matters-for-robust-robot-policy-learning)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：用于语义掩码预测和几何信息瓶颈的视频扩散架构
+8. [LLM-Codec: Neural Audio Codec Meets Language Model Objectives](/202604/26/2604.17852v1-llm-codec-neural-audio-codec-meets-language-model-objectives)  
+   标签：评分：6.5/10、query:entropy-coding
+   evidence：结合语言模型目标和语义对齐的神经音频编解码器训练
+9. [Generative Texture Filtering](/202604/26/2604.19039v1-generative-texture-filtering)  
    标签：评分：6.5/10、query:vcodec
-   evidence：结合VAE潜变量的图像特征联合扩散
-13. [Learning to Credit the Right Steps: Objective-aware Process Optimization for Visual Generation](/202604/22/2604.19234v1-learning-to-credit-the-right-steps-objective-aware-process-optimization-for-visual-generation)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：视觉生成和运动一致性的扩散轨迹优化
+   evidence：利用预训练图像先验和两阶段微调策略的生成式方法
+10. [Reducing Peak Memory Usage for Modern Multimodal Large Language Model Pipelines](/202604/26/2604.16734v1-reducing-peak-memory-usage-for-modern-multimodal-large-language-model-pipelines)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：压缩KV缓存中的视觉令牌以降低多模态大模型的峰值显存占用
+11. [EvoComp: Learning Visual Token Compression for Multimodal Large Language Models via Semantic-Guided Evolutionary Labeling](/202604/26/2604.17087v1-evocomp-learning-visual-token-compression-for-multimodal-large-language-models-via-semantic-guided-evolutionary-labeling)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：多模态大模型的视觉令牌压缩，减少冗余并提高效率
+12. [Towards Joint Quantization and Token Pruning of Vision-Language Models](/202604/26/2604.17320v1-towards-joint-quantization-and-token-pruning-of-vision-language-models)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：视觉语言模型的协同量化与剪枝框架
+13. [Leveraging Kernel Symmetry for Joint Compression and Error Mitigation in Edge Model Transfer](/202604/26/2604.17371v1-leveraging-kernel-symmetry-for-joint-compression-and-error-mitigation-in-edge-model-transfer)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：利用卷积核对称性进行联合压缩和误差缓解，实现高效模型传输
 
 
 <div class="dpr-home-promo-card">
