@@ -6,85 +6,86 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-30
-- 运行时间：2026-04-30 20:57:22 UTC
+- 最新运行日期：2026-05-01
+- 运行时间：2026-05-01 20:48:01 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日精选 21 篇前沿论文，深度聚焦反馈驱动的视频压缩与最优熵编码技术。
-重点关注获满分推荐的反馈驱动码率控制方案，以及证明拒绝采样在相对熵编码中具有最优性的理论突破。
-建议关注 INT8 量化超分与轻量化语义通信等部署友好型技术，以提升无线传输与自动驾驶场景的落地效率。
-- 详情：[/202604/30/README](/202604/30/README)
+- 今日共生成 21 篇推荐（精读 8 篇，速读 13 篇）
+- 精读：《Rejection Sampling is Optimal for Relative Entropy Coding》（9.0/10）, 《Efficient VQ-QAT and Mixed Vector/Linear quantized Neural Networks》（9.0/10）
+- 速读：《Image Compression with Bubble-Aware Frame Rate Adaptation for Energy-Efficient Video Capsule Endoscopy》（8.0/10）, 《Edge AI for Automotive Vulnerable Road User Safety: Deployable Detection via Knowledge Distillation》（8.0/10）, 《TAFA-GSGC: Group-wise Scalable Point Cloud Geometry Compression with Progressive Residual Refinement》（8.0/10）
+- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
+- 详情：[/202605/01/README](/202605/01/README)
 
 ### 精读区论文标签
-1. [Feedback-Driven Rate Control for Learned Video Compression](/202604/30/2604.20104v1-feedback-driven-rate-control-for-learned-video-compression)  
-   标签：评分：10.0/10、query:entropy-coding
-   evidence：基于PID控制器的学习型视频压缩反馈驱动速率控制
-2. [Rejection Sampling is Optimal for Relative Entropy Coding](/202604/30/2604.23076v1-rejection-sampling-is-optimal-for-relative-entropy-coding)  
+1. [Rejection Sampling is Optimal for Relative Entropy Coding](/202605/01/2604.23076v1-rejection-sampling-is-optimal-for-relative-entropy-coding)  
    标签：评分：9.0/10、query:entropy-coding
-   evidence：相对熵编码的最佳编码方法
-3. [Efficient VQ-QAT and Mixed Vector/Linear quantized Neural Networks](/202604/30/2604.23172v1-efficient-vq-qat-and-mixed-vectorlinear-quantized-neural-networks)  
+   evidence：相对熵编码的理论分析与编码方法
+2. [Efficient VQ-QAT and Mixed Vector/Linear quantized Neural Networks](/202605/01/2604.23172v1-efficient-vq-qat-and-mixed-vectorlinear-quantized-neural-networks)  
    标签：评分：9.0/10、query:train-trick
-   evidence：基于矢量量化的模型权重压缩与量化感知训练
-4. [Latent Inter-Frame Pruning: A Training-Free Method Bridging Traditional Video Compression and Modern Diffusion Transformers for Efficient Generation](/202604/30/2604.23858v1-latent-inter-frame-pruning-a-training-free-method-bridging-traditional-video-compression-and-modern-diffusion-transformers-for-efficient-generation)  
+   evidence：可微分矢量量化与量化感知训练
+3. [Latent Inter-Frame Pruning: A Training-Free Method Bridging Traditional Video Compression and Modern Diffusion Transformers for Efficient Generation](/202605/01/2604.23858v1-latent-inter-frame-pruning-a-training-free-method-bridging-traditional-video-compression-and-modern-diffusion-transformers-for-efficient-generation)  
    标签：评分：9.0/10、query:vcodec
-   evidence：通过潜变量帧间剪枝将传统视频压缩与现代扩散Transformer结合
-5. [Edge-Cloud Collaborative Reconstruction via Structure-Aware Latent Diffusion for Downstream Remote Sensing Perception](/202604/30/2604.25319v1-edge-cloud-collaborative-reconstruction-via-structure-aware-latent-diffusion-for-downstream-remote-sensing-perception)  
+   evidence：扩散Transformer的潜空间帧间剪枝
+4. [FDIM: A Feature-distance-based Generic Video Quality Metric for Versatile Codecs](/202605/01/2604.24123v1-fdim-a-feature-distance-based-generic-video-quality-metric-for-versatile-codecs)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：开发了一种专门针对神经视频编解码器 (NVC) 伪影的视频质量指标 (FDIM)。
+5. [Generalizable 3D Gaussian Splatting enabled Semantic Coding for Real-Time Immersive Video Communications](/202605/01/2604.25330v1-generalizable-3d-gaussian-splatting-enabled-semantic-coding-for-real-time-immersive-video-communications)  
    标签：评分：9.0/10、query:vcodec
-   evidence：用于高倍率压缩重建的结构感知潜扩散模型
-6. [Generalizable 3D Gaussian Splatting enabled Semantic Coding for Real-Time Immersive Video Communications](/202604/30/2604.25330v1-generalizable-3d-gaussian-splatting-enabled-semantic-coding-for-real-time-immersive-video-communications)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：集成3DGS重建与深度语义编码的统一端到端沉浸式视频框架
-7. [FDIM: A Feature-distance-based Generic Video Quality Metric for Versatile Codecs](/202604/30/2604.24123v1-fdim-a-feature-distance-based-generic-video-quality-metric-for-versatile-codecs)  
-   标签：评分：8.5/10、query:entropy-coding
-   evidence：针对神经视频编解码器(NVC)及其生成特性的视频质量评价指标
-8. [Adaptive Transform Coding for Semantic Compression](/202604/30/2604.26492v1-adaptive-transform-coding-for-semantic-compression)  
-   标签：评分：8.5/10、query:entropy-coding
-   evidence：用于语义压缩和神经压缩的自适应变换编码
+   evidence：沉浸式视频语义编码的端到端框架
+6. [Beyond Fidelity: Semantic Similarity Assessment in Low-Level Image Processing](/202605/01/2604.25408v1-beyond-fidelity-semantic-similarity-assessment-in-low-level-image-processing)  
+   标签：评分：8.5/10、query:vcodec
+   evidence：底层图像处理与生成模型中的语义相似性评估
+7. [Selective Depthwise Separable Convolution for Lightweight Joint Source-Channel Coding in Wireless Image Transmission](/202605/01/2604.22338v1-selective-depthwise-separable-convolution-for-lightweight-joint-source-channel-coding-in-wireless-image-transmission)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：使用深度可分离卷积的轻量级联合信源信道编码
+8. [Adaptive Transform Coding for Semantic Compression](/202605/01/2604.26492v1-adaptive-transform-coding-for-semantic-compression)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：基于率失真函数的语义特征压缩自适应变换编码
 
 ### 速读区论文标签
-1. [Efficient INT8 Single-Image Super-Resolution via Deployment-Aware Quantization and Teacher-Guided Training](/202604/30/2604.20291v1-efficient-int8-single-image-super-resolution-via-deployment-aware-quantization-and-teacher-guided-training)  
-   标签：评分：8.5/10、query:train-trick
-   evidence：部署感知量化和三阶段训练流水线
-2. [Selective Depthwise Separable Convolution for Lightweight Joint Source-Channel Coding in Wireless Image Transmission](/202604/30/2604.22338v1-selective-depthwise-separable-convolution-for-lightweight-joint-source-channel-coding-in-wireless-image-transmission)  
-   标签：评分：8.5/10、query:train-trick
-   evidence：使用选择性深度可分离卷积的轻量化联合源信道编码
-3. [Lightweight Low-SNR-Robust Semantic Communication System for Autonomous Driving](/202604/30/2604.20278v1-lightweight-low-snr-robust-semantic-communication-system-for-autonomous-driving)  
+1. [Image Compression with Bubble-Aware Frame Rate Adaptation for Energy-Efficient Video Capsule Endoscopy](/202605/01/2604.25464v1-image-compression-with-bubble-aware-frame-rate-adaptation-for-energy-efficient-video-capsule-endoscopy)  
    标签：评分：8.0/10、query:train-trick
-   evidence：轻量化语义通信系统的结构化剪枝
-4. [Bridging the Training-Deployment Gap: Gated Encoding and Multi-Scale Refinement for Efficient Quantization-Aware Image Enhancement](/202604/30/2604.21743v1-bridging-the-training-deployment-gap-gated-encoding-and-multi-scale-refinement-for-efficient-quantization-aware-image-enhancement)  
+   evidence：用于节能视频胶囊内窥镜的图像压缩流水线
+2. [Edge AI for Automotive Vulnerable Road User Safety: Deployable Detection via Knowledge Distillation](/202605/01/2604.26857v1-edge-ai-for-automotive-vulnerable-road-user-safety-deployable-detection-via-knowledge-distillation)  
    标签：评分：8.0/10、query:train-trick
-   evidence：针对移动设备高效图像增强的量化感知训练
-5. [DynamicRad: Content-Adaptive Sparse Attention for Long Video Diffusion](/202604/30/2604.20470v1-dynamicrad-content-adaptive-sparse-attention-for-long-video-diffusion)  
+   evidence：用于模型压缩和量化鲁棒性的知识蒸馏
+3. [TAFA-GSGC: Group-wise Scalable Point Cloud Geometry Compression with Progressive Residual Refinement](/202605/01/2604.28045v1-tafa-gsgc-group-wise-scalable-point-cloud-geometry-compression-with-progressive-residual-refinement)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：可扩展的深度学习点云几何编解码器
+4. [BurstGP: Enhancing Raw Burst Image Super Resolution with Generative Priors](/202605/01/2604.23508v1-burstgp-enhancing-raw-burst-image-super-resolution-with-generative-priors)  
    标签：评分：7.5/10、query:vcodec
-   evidence：用于长视频扩散的内容自适应稀疏注意力和语义运动路由
-6. [Hallo-Live: Real-Time Streaming Joint Audio-Video Avatar Generation with Asynchronous Dual-Stream and Human-Centric Preference Distillation](/202604/30/2604.23632v1-hallo-live-real-time-streaming-joint-audio-video-avatar-generation-with-asynchronous-dual-stream-and-human-centric-preference-distillation)  
+   evidence：利用生成式先验的扩散模型用于图像和视频超分辨率
+5. [Bridging Restoration and Generation Manifolds in One-Step Diffusion for Real-World Super-Resolution](/202605/01/2604.24136v1-bridging-restoration-and-generation-manifolds-in-one-step-diffusion-for-real-world-super-resolution)  
    标签：评分：7.5/10、query:vcodec
-   evidence：用于视频生成的视听扩散模型及偏好蒸馏
-7. [Geometry-Conditioned Diffusion for Occlusion-Robust In-Bed Pose Estimation](/202604/30/2604.23651v1-geometry-conditioned-diffusion-for-occlusion-robust-in-bed-pose-estimation)  
+   evidence：单步扩散框架连接修复与生成流形，涉及感知与失真权衡
+6. [Structural Pruning of Large Vision Language Models: A Comprehensive Study on Pruning Dynamics, Recovery, and Data Efficiency](/202605/01/2604.24380v1-structural-pruning-of-large-vision-language-models-a-comprehensive-study-on-pruning-dynamics-recovery-and-data-efficiency)  
+   标签：评分：7.5/10、query:train-trick
+   evidence：用于压缩大型视觉语言模型的结构化剪枝与知识蒸馏
+7. [VibeToken: Scaling 1D Image Tokenizers and Autoregressive Models for Dynamic Resolution Generations](/202605/01/2604.24885v1-vibetoken-scaling-1d-image-tokenizers-and-autoregressive-models-for-dynamic-resolution-generations)  
+   标签：评分：7.5/10、query:entropy-coding
+   evidence：高效的分辨率无关图像分词器与自回归生成器
+8. [MetaSR: Content-Adaptive Metadata Orchestration for Generative Super-Resolution](/202605/01/2604.26244v1-metasr-content-adaptive-metadata-orchestration-for-generative-super-resolution)  
    标签：评分：7.5/10、query:vcodec
-   evidence：提出了一种用于生成式图像合成的姿态条件潜扩散模型（Pose-LDM）。
-8. [ACPO: Anchor-Constrained Perceptual Optimization for Diffusion Models with No-Reference Quality Guidance](/202604/30/2604.26348v1-acpo-anchor-constrained-perceptual-optimization-for-diffusion-models-with-no-reference-quality-guidance)  
+   evidence：基于扩散Transformer的生成式超分辨率，结合元数据编排处理视频内容
+9. [Diffusion-OAMP for Joint Image Compression and Wireless Transmission](/202605/01/2604.27952v1-diffusion-oamp-for-joint-image-compression-and-wireless-transmission)  
    标签：评分：7.5/10、query:vcodec
-   evidence：扩散模型的感知优化与无参考质量引导
-9. [Gaussians on a Diet: High-Quality Memory-Bounded 3D Gaussian Splatting Training](/202604/30/2604.20046v1-gaussians-on-a-diet-high-quality-memory-bounded-3d-gaussian-splatting-training)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：具有迭代增长和剪枝的内存受限训练
-10. [Normalizing Flows with Iterative Denoising](/202604/30/2604.20041v1-normalizing-flows-with-iterative-denoising)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：作为扩散模型替代方案的归一化流，具有迭代去噪功能
-11. [GeoRect4D: Geometry-Compatible Generative Rectification for Dynamic Sparse-View 3D Reconstruction](/202604/30/2604.20784v1-georect4d-geometry-compatible-generative-rectification-for-dynamic-sparse-view-3d-reconstruction)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：用于动态视频重建和时间一致性的生成式先验
-12. [Learn&Drop: Fast Learning of CNNs based on Layer Dropping](/202604/30/2604.23403v1-learndrop-fast-learning-of-cnns-based-on-layer-dropping)  
+   evidence：用于联合图像压缩和无线传输的扩散模型
+10. [DocPrune:Efficient Document Question Answering via Background, Question, and Comprehension-aware Token Pruning](/202605/01/2604.22281v1-docpruneefficient-document-question-answering-via-background-question-and-comprehension-aware-token-pruning)  
    标签：评分：6.5/10、query:train-trick
-   evidence：通过层丢弃方法提高CNN训练效率
-13. [ZID-Net: Zero-Inference Diffusion Prior Decoupling Network for Single Image Dehazing](/202604/30/2604.23709v1-zid-net-zero-inference-diffusion-prior-decoupling-network-for-single-image-dehazing)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：扩散先验解耦用于高效推理
+   evidence：用于视频高效资源消耗的令牌剪枝框架
+11. [Distilling Vision Transformers for Distortion-Robust Representation Learning](/202605/01/2604.22529v1-distilling-vision-transformers-for-distortion-robust-representation-learning)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：用于失真鲁棒表示的非对称知识蒸馏框架
+12. [Self-Abstraction Learning for Effective and Stable Training of Deep Neural Networks](/202605/01/2604.24313v1-self-abstraction-learning-for-effective-and-stable-training-of-deep-neural-networks)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：自上而下顺序引导的层次化框架，用于稳定训练
+13. [S-SONDO: Self-Supervised Knowledge Distillation for General Audio Foundation Models](/202605/01/2604.24933v1-s-sondo-self-supervised-knowledge-distillation-for-general-audio-foundation-models)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：用于模型压缩和边缘设备部署的知识蒸馏
 
 
 <div class="dpr-home-promo-card">

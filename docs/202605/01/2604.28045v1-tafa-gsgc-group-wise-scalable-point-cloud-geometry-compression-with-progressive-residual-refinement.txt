@@ -1,0 +1,244 @@
+Title: TAFA-GSGC: Group-wise Scalable Point Cloud Geometry Compression with Progressive Residual Refinement
+
+URL Source: https://arxiv.org/pdf/2604.28045v1
+
+Published Time: Fri, 01 May 2026 01:11:01 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+> This work has been submitted to the IEEE for possible publication. Copyright may be transferred without notice, after which this version may no longer be accessible.
+
+# TAFA-GSGC: GROUP-WISE SCALABLE POINT CLOUD GEOMETRY COMPRESSION WITH PROGRESSIVE RESIDUAL REFINEMENT 
+
+# Xiumei Li, Alexander Kopte and Andr´ e Kaup 
+
+# Chair of Multimedia Communications and Signal Processing Friedrich-Alexander-Universit¨ at Erlangen-N¨ urnberg (FAU) Erlangen, Germany 
+
+ABSTRACT 
+
+Scalable compression is essential for bandwidth-adaptive trans-mission, yet most learned codecs are optimized for a fixed rate-distortion point, making rate adaptation costly due to re-encoding or maintaining multiple bitstreams. In this work, we propose TAFA-GSGC , a scalable learned point cloud geometry codec that enables multi-quality decoding from a single bitstream and a single trained model. TAFA-GSGC combines layered residual refinement with channel-group entropy coding, and introduces Target-Aligned Fea-ture Aggregation module to reduce cross-layer redundancy in en-hancement residuals. Our framework supports up to 9 decodable quality levels with monotonic quality improvement as more sub-bitstreams are received, while maintaining strong compression effi-ciency. Compared with the baseline PCGCv2, TAFA-GSGC attains comparable and slightly better RD performance, achieving average BD-Rate savings of -4.99% in D1 and -5.92% in D2. 
+
+Index Terms — Point cloud, Geometry coding, Sparse convolu-tion, Scalability 
+
+1. INTRODUCTION 
+
+Real-world point clouds often contain millions of sparsely and ir-regularly sampled 3D points, making raw storage and transmission expensive and compression inherently challenging [1, 2]. Given these characteristics, MPEG [3] has standardized point cloud coding solutions, including G-PCC for static point clouds and V-PCC for dynamic point clouds. G-PCC typically exploits 3D structural representations for geometry coding, whereas V-PCC projects point clouds onto 2D patches and leverages video coding tools for compression. Despite their wide adoption and standard compliance, these conventional approaches often have difficulty capturing sparse and irregular geometry, leading to noticeable loss of fine structures at low bitrates [4]. In recent years, learned compression has become increasingly competitive for both images and point clouds, typically adopting an end-to-end autoencoder with entropy modeling and rate–distortion (RD) optimization [5]. Although learned geometry codecs can significantly improve RD performance over conventional methods, most existing approaches are non-scalable: different bitrate-quality operating points often requires training multiple rate-specific mod-els and storing or re-encoding separate bitstreams, which increases deployment cost and limits flexibility. In practical systems, however,        
+
+> This work was funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under Grant SFB 1483 – Project-ID 442419336.
+
+available bandwidth, device compute, and target quality can vary over time, making dynamic rate and quality adaptation essential. To address these issues, we propose a learned scalable lossy point cloud geometry codec built upon PCGCv2 [6]. Our method produces a single embedded bitstream that can be progressively trun-cated to decode multiple quality levels, enabling flexible rate control without retraining or maintaining multiple models. To improve com-pression efficiency, we introduce a Target-Aligned Feature Aggrega-tion (TAFA) module that extracts target-aligned residual informa-tion for the enhancement layer. Moreover, we enable channel-wise scalability by partitioning latent channels into groups and entropy-coding them independently, which provides finer-grained rate adap-tation and wider bitrate coverage. 
+
+2. RELATED WORK 
+
+MPEG standardizes point cloud compression through G-PCC and V-PCC [7]. G-PCC uses octree-based occupancy signaling, with a Trisoup mode that approximates surfaces using triangle primitives, which can be advantageous at low bitrates. In contrast, V-PCC adopts a projection-based approach, packing point clouds into 2D patch atlases and compressing them with standard video codecs like HEVC or VVC [8]. Learned point cloud geometry compression has advanced rapidly in recent years. Among them, PCGCv2 [6] is a representative sparse-tensor autoencoder framework that employs multiscale pro-cessing with progressive down-/up-sampling, and integrates learned transforms with octree-based geometry coding in its pipeline. Build-ing on this line of work, SparsePCGC [2] improves compression efficiency by combining multiscale sparse-tensor representations with probabilistic occupancy modeling to better exploit point cloud sparsity and cross-scale dependencies. UniPCGC [9] further targets practical deployment via a unified and efficient design, aiming for robust performance across a wide range of operating points. Col-lectively, these methods demonstrate strong RD performance on standard benchmarks, but they typically do not provide scalability from a single bitstream, motivating the scalable designs reviewed next. Recent works have started exploring learned scalable point clouds codecs. DL-PCSC [10] is an early approach that enables quality scalability by splitting the latent representation of a dense 3D convolutional autoencoder into independently entropy-coded channel groups, forming a progressively decodable bitstream. While it improves RD performance over MPEG G-PCC on static geome-try, it relies on independent latent-group coding without exploiting inter-layer dependencies to reduce cross-layer redundancy. Mari et al. [11] proposed SQH, which adds a quality-conditioned                      
+
+> arXiv:2604.28045v1 [cs.CV] 30 Apr 2026 Xin DS0 DS1 DS2
+> SConv
+> Q
+> AE OE
+> OD AD
+> TAFA
+> Q
+> AE
+> AD
+> C
+> SConv
+> TAFA
+> Q
+> AE
+> AD
+> C
+> SConv
+> US2 US1 US0 CLS CLS CLS Xout
+> s=0
+> F2C2
+> s=1 E1s=2
+> s=2
+> ˆX1={ˆC1,ˆF1}
+> ˜X1={ˆC1,˜F1}
+> Layer 2 Layer 1 Base Layer
+> s=1 s=0
+> TAFA
+> Es
+> Target-Aligned SConv
+> RELU
+> C
+> SConv
+> y(s)enh
+> E′
+> s
+> ˆXs={ˆCs,ˆFs}
+> ˆCs
+> ˆFs
+
+Fig. 1 . Overview of our TAFA-GSGC ( left ) and TAFA module ( right ). DS/US, SConv, Q, AE/AD, OE/OD, CLS, and C represent down-sampling/upsampling blocks, sparse convolution, quantization, arithmetic encoder/decoder, octree encoder/decoder, occupancy classifier, and channel concatenation respectively. latent probability estimator QuLPE on top of JPEG PCC [12] to ex-ploit cross-quality latent correlation, using decoded low-quality latents as side information to entropy-code higher-quality enhance-ment latents more efficiently. SQH achieves quality scalability with minor RD overhead. However, it remains tied to multiple pre-trained JPEG PCC models to generate target-quality latents, and thus does not remove the multi-model deployment cost; moreover, scalability is restricted to these discrete operating points and depends on JPEG PCC-specific training-induced latent alignment. Pang et al. [13] propose GRASP-Net, a two-layer lossy point cloud geometry codec with a G-PCC octree base layer and a learned enhancement layer that encodes local geometric residuals via point-based feature extraction and sparse-convolutional analysis/synthesis transforms. While GRASP-Net improves RD performance over G-PCC on both dense and sparse point clouds, its scalability is limited to a binary base/enhancement switch rather than multi-level quality adaptation. Nguyen et al. [14] propose MNeT, an end-to-end multi-scale framework for lossless point cloud attribute compression with a scal-able mode. It uses a hierarchical probabilistic model for arithmetic coding, avoiding point-wise autoregressive prediction and achieving competitive lossless bitrates against G-PCC anchors. However, its scalability is mainly realized via reconstructions at different scales, rather than fine-grained truncation-based quality points from a sin-gle bitstream, which may limit rate-control precision; furthermore, scalable performance is not evaluated only to a limited extent. Hu et al. [15] applies scalable coding to 3D Gaussian splatting by leveraging an octree-based LoD hierarchy, where truncating the bitstream enables progressive decoding at different octree levels and the decoded features are used to predict Gaussian parameters for ren-dering. However, its scalability is largely limited to a few octree-level LoD points with relatively coarse granularity, rather than dense fine-grained rate adaptation. Different from these approaches, our work emphasize fine-grained scalability: by truncating a single bitstream, a single trained model can decode point clouds at up to 9 distinct quality levels, while maintaining strong compression efficiency. Moreover, our layered architecture and channel-group-wise design provide a natural path to supporting more decodable levels, thereby accommodating diverse application requirements. 
+
+3. SCALABLE FRAMEWORK 
+
+Motivated by PCGCv2, we propose TAFA-GSGC, a group-wise scalable point cloud geometry compression framework with progres-sive residual refinement (Fig. 1, left). The framework consists of a base layer, two residual enhancement layers, and channel-wise scal-ability mechanism. The base layer adopts the backbone of PCGCv2 to produce a coarse reconstruction together with multi-scale repre-sentations. Building on this reconstruction, each enhancement layer encodes the remaining geometric details as a residual representa-tion, enabling progressive coarse-to-fine refinement. Beyond the layer-wise residual refinement, we further increase the number of decodable levels by partitioning the latent channels at each layer into multiple channel groups. Each group is entropy-coded into an individual sub-bitstream, and all sub-bitstreams are concatenated in a deterministic order to form a single bitstream. This structure enables rate adaptation by truncating the bitstream at sub-bitstream boundaries: decoding only the first L sub-bitstreams yields a cor-responding reconstruction quality, while higher L progressively refines the reconstructed point cloud. In contrast to PCGCv2, which targets a fixed single-quality operating point, TAFA-GSGC supports bitrate-adaptive transmission and multi-quality decoding from the same bitstream without re-encoding. 
+
+3.1. Base layer 
+
+Our base layer follows the multiscale encoder–decoder backbone of PCGCv2. Given an input point cloud Xin , we voxelize it into a sparse tensor {CX , FX }, where CX contains the coordinates of positively occupied voxels and FX is initialized as an all-ones vector to indicate occupancy at these coordinates. On the encoder side, the input is processed by a cascade of three downsampling blocks ( DS0 –DS2 ). Each block first extracts local geometric patterns with sparse convolutions and then downsamples the spatial resolution by a factor of 2 in all three dimensions, yield-ing a compact bottleneck representation {C2, F2}. At the bottle-neck, the latent representation consists of (i) the set of occupied co-ordinates C2 and (ii) the associated latent features F2. C2 is loss-lessly coded using an octree-based geometry codec, while F2 is fur-ther encoded by our channel-wise scalable entropy coding scheme (Sec. 3.3). On the decoder side, a symmetric upsampling path ( US2 –US0 )reconstructs geometry in a coarse-to-fine manner. After each upsam-pling stage, an occupancy classification head ( CLS ) predicts voxel occupancy probabilities for each generated voxel; we retain only the top-K voxels ranked by occupancy probability, discarding low-probability voxels and keeping the sparse tensor compact to reduce subsequent computation. The multi-scale reconstructions produced by the base layer are further used as conditioning signals for the en-hancement layers (Sec. 3.2.1) to align and encode the missing resid-ual details. Specifically, the coarsest-scale reconstruction from the classification head after US2 is fed to the Layer 1 as its condition-ing input. We describe the enhancement layers and their conditional residual coding in Sec. 3.2. 
+
+3.2. Enhancement Layers 
+
+The enhancement layers aim to transmit only the geometric details missing from the current reconstruction with a small additional bit-rate, enabling noticeable quality gains on top of the base layer. A key challenge is to avoid re-encoding information that is already pre-dictable given the current reconstruction, i.e., to represent residual details with minimal cross-layer redundancy. Prior scalable approaches [13, 16] quantize the point cloud ge-ometry to form a base-layer reconstruction, which is encoded with an octree-based coder. The enhancement layer is then constructed by computing voxel-wise residuals between the input and the dequan-tized base reconstruction. However, this pipeline relies solely on fixed quantization and geometry coding, lacking learnable modules to strengthen the base layer. As a result, the base reconstruction has limited representational capacity and base-layer quality becomes a performance bottleneck. To address this limitation, we propose TAFA, which fuses domain-aware features with reconstruction-aligned information to model residual details conditioned on the current reconstruction, reducing redundancy and improving coding efficiency. In the fol-lowing, we present the architecture of TAFA and explain how it is integrated into the enhancement layers for residual coding. 
+
+3.2.1. Target-Aligned Feature Aggregation (TAFA) 
+
+The TAFA module is illustrated in Fig. 1 (right). Consider an en-hancement layer operating at scale s. Let Es denote the encoder-side sparse features at scale s (computed from the original input), and let ˆXs = { ˆCs, ˆFs} be the reconstructed sparse tensor at the same scale decoded from the previous layer. TAFA takes the re-constructed coordinates ˆCs as the alignment target and aggregates encoder features only on these voxels. Through target-aligned con-volution, TAFA computes E′ 
+
+> s
+
+on the target coordinate set ˆCs by aggregating local neighborhoods from Es. As a result, each feature at ˆCs can incorporate encoder-side information from nearby voxels that are absent in the current reconstruction, which helps capture the missing geometric details. We then concatenate the aligned encoder context E′ 
+
+> s
+
+with the current reconstruction features ˆFs along the channel dimension and project them to the enhancement latent space: 
+
+y(s)enh = g(s)proj 
+
+E′ 
+
+> s
+
+∥ ˆFs
+
+
+
+, (1) where g(s)proj (·) is implemented by a sparse convolution. The re-sulting latent y(s)enh is then encoded and transmitted using the pro-posed channel-wise scalable entropy coding scheme (discussed in Sec. 3.3). Since y(s)enh is generated conditioned on the current recon-struction, it tends to suppress predictable components and allocate bits to missing details. 
+
+3.2.2. Residual Fusion 
+
+At the decoder, the enhancement latent is decoded and fused with the previous-layer reconstruction ˆXs = { ˆCs, ˆFs} at the same scale via channel concatenation and a sparse convolution, yielding a refined sparse tensor ˜Xs = { ˆCs, ˜Fs}. The resulting tensor ˜Xs incorporates the decoded enhancement information on the reconstructed voxels and is fed into the subsequent upsampling blocks to further refine the reconstruction. In this work, we design two enhancement layers with identical architecture. They operate at scales s ∈ { 0, 1} to refine the inter-mediate and the finest resolutions, respectively. Concretely, Layer 1 encodes the residual details with respect to the base-layer reconstruc-tion after US2 (at scale s = 1 ), while Layer 2 encodes the residual details with respect to the reconstruction produced after Layer 1 fol-lowed by US1 (at scale s = 0 ). 
+
+3.3. Channel-Wise Scalability 
+
+Inspired by [10], to enable fine-grained rate adaptation, we intro-duce channel-wise scalability for the latent representation. We orga-nize scalability in two dimensions: (i) across layers (Base Layer →
+
+Layer 1 → Layer 2) and (ii) within each layer via channel groups. For each layer ℓ ∈ { Base Layer , Layer 1 , Layer 2 }, we partition the latent representation yℓ into Mℓ channel groups and entropy-code each group independently, producing one sub-bitstream per group. All sub-bitstreams are serialized in a fixed order, with Base-Layer groups followed by Layer 1 groups and then Layer 2 groups. 
+
+B = [ BBase , BL1 , BL2 ], Bℓ = [ b1,ℓ , . . . , bMℓ,ℓ ], (2) where each bm,ℓ forms a separate sub-bitstream segment. At the decoder, we select a decode level L and decode the first 
+
+L sub-bitstreams in the predefined order. This yields a partial set of decoded channel groups across the three layers, while all remaining (undecoded) channel groups are filled with zeros, so that the latent tensors in each layer keep a fixed shape and can be fed into the cor-responding synthesis modules without ambiguity. As L increases, more channel groups become available and the reconstruction is pro-gressively refined. When only Base Layer groups are decoded, the decoder re-constructs a coarse geometry from the Base Layer latent and di-rectly synthesizes the point cloud through the upsampling path (US2 →US1 →US0). Layer 1 transmits residual geometry informa-tion that is conditioned on the current reconstruction: the interme-diate output produced at US2 serves as the conditioning signal for TAFA of Layer 1 to extract residual features, which are then fused with the decoded Layer 1 residual latent before being propagated through the subsequent upsampling blocks to refine the reconstruc-tion. Layer 2 follows the same residual-refinement pipeline, but uses the refined reconstruction from Layer 1 as its conditioning input (e.g., the output after US1), enabling further correction of the remaining geometric details and producing the finest output. 3.4. Loss Function 
+
+We train the proposed scalable codec using a RD loss. Given a target decode level L, the loss is 
+
+L(L) = Rtotal (L) + λ(L)
+
+> S
+
+X
+
+> i=1
+
+Di(L), (3) where S denotes the number of scales, Rtotal (L) is the total rate of the latent groups decoded up to level L, and Di(L) is the distortion measured at scale i. λ(L) is a level-dependent Lagrange multiplier that controls the RD trade-off for the operating point selected by the decode level L. In our design, each sub-bitstream (i.e., each channel group) corresponds to one decodable level, and we assign a distinct multiplier to every level. Therefore, the number of Lagrange multipliers equals the total number of channel groups across the Base Layer, Layer 1, and Layer 2, i.e., Mbase + Mlayer1 + Mlayer2 .Let ˆz(L) denote the set of quantized latent symbols from the channel groups decoded up to level L. Given the likelihoods p(ˆ zk )
+
+predicted by the learned entropy model, the rate is estimated by 
+
+Rtotal (L) = 1
+
+Nin 
+
+X 
+
+> ˆzk∈ˆz(L)
+
+− log 2 p(ˆ zk ), (4) where Nin is the number of input points for normalization. For the distortion term, we adopt a multiscale occupancy classi-fication loss from PCGCV2. At scale i ∈ { 0, . . . , S }, the decoder predicts occupancy probabilities pv ∈ (0 , 1) for voxels v ∈ V i,where Vi denotes the generated voxel set at scale i. The ground-truth occupied voxel set at the same scale is denoted by Gi (from encoder), and the corresponding binary target is defined as yv = 1[ v ∈ G i].We then compute the average binary cross-entropy (BCE) over Vi at decode level L:
+
+Di(L) = 1
+
+|V i(L)|
+
+X
+
+> v∈V i(L)
+
+
+
+− yv log( pv (L)) 
+
+− (1 − yv ) log  1 − pv (L)
+
+.
+
+(5) 
+
+4. EXPERIMENTAL SETUP 
+
+Since our method builds upon PCGCv2 and augments it with a scal-able coding mechanism, we follow the same training data and pre-processing pipeline as PCGCv2 to enable a controlled and repro-ducible comparison. Specifically, the training set is constructed from dense point clouds sampled from ShapeNet [17] containing approx-imately 26,000 models. We split the data into 90% for training and 10% for validation. Following the standard setup, we apply random rotations for data augmentation and quantize 3D coordinates to 7-bit precision per axis. For evaluation, we use the standard dense point clouds that are widely employed in the MPEG Common Test Conditions (CTC) [3] and the JPEG Pleno CTC [18]. The test dataset comprises 12 point clouds from three datasets: 8iVFB (Longdress, Loot, Redand-black, Soldier) [19], Owlii (Basketball player, Dancer, Exercise, Model) [20], and MVUB (Andrew, David, Phil, Sarah) [21]. These sequences cover diverse spatial scales and geometric characteristics, providing a representative benchmark for assessing RD performance and generalization. Our model is implemented in PyTorch with MinkowskiEngine [22] for sparse 3D convolutions. For entropy coding, we adopt a 
+
+Table 1 . Average BD-Rate and BD-PSNR (D1/D2) of TAFA-GSGC relative to PCGCv2 and G-PCC anchors on standard dense point cloud datasets. Dataset Metric PCGCV2 G-PCC Octree G-PCC Trisoup D1 D2 D1 D2 D1 D2 8iVFB BD-Rate(%) −5.43 −5.33 – −76.22 −31.77 −30.88 BD-PSNR(dB) 0.25 0.32 9.08 7.90 1.60 1.46 MVUB BD-Rate(%) −0.87 −5.06 −82.76 −75.46 – –BD-PSNR(dB) 0.08 0.25 8.13 6.69 2.76 2.17 Owlii BD-Rate(%) −8.68 −7.37 – – – −30.86 BD-PSNR(dB) 0.33 0.40 10.08 8.68 2.83 2.31                  
+
+> Average BD-Rate(%) −4.99 −5.92 −82.76 −75.84 −31.77 −30.87 BD-PSNR(dB) 0.22 0.32 9.10 7.76 2.40 1.98 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+
+Rate (bpp) 
+
+> 55
+> 60
+> 65
+> 70
+> 75
+> 80
+> D1 PSNR (dB)
+
+longdress_vox10_1300 
+
+Baseline (PCGCv2) 
+
+G-PCC Octree 
+
+G-PCC Trisoup 
+
+Our Model 
+
+Fig. 2 . RD performance on Longdress comparing TAFA-GSGC with PCGCv2 and G-PCC anchors. fully factorized entropy model, using the reference implementation provided in CompressAI [23] across all layers and channel groups to estimate the likelihoods of quantized latent symbols. For training, we use Adam with weight decay and gradient clipping, and train for 50 epochs with a batch size of 32. The learning rate is scheduled from 8 × 10 −4 to 2 × 10 −5 using a cosine decay. During training, we randomly sample a decode level L at each iteration and optimize the RD loss conditioned on the selected level. 
+
+5. RESULTS 
+
+We compare against the learned anchor PCGCv2 and the standard-ized MPEG G-PCC anchors (Octree and Trisoup) using the refer-ence implementation TMC13-v23 [24] with CTC-compliant config-urations. For a fair and reproducible comparison, we use the same voxelized test assets as PCGCv2. Distortion is measured using both point-to-point distance (D1) and point-to-plane distance (D2) met-rics, reported as Peak Signal-to-Noise Ratio (PSNR) in dB. The bi-trate is reported in bits per input point (bpp). Figure 2 and Table 1 present the RD performance and BD-rate gains of our framework against PCGCv2 and G-PCC. A critical dis-tinction of our approach is that all rate-quality points are obtained from a single scalable model producing a single bitstream : each Table 2 . Progressive decoding behavior of the 9-level configuration on longdress .                                                                      
+
+> Level Bitrate (bpp) D1 PSNR (dB) D2 PSNR (dB) ∆Bitrate ↑∆D1 PSNR ↑∆D2 PSNR ↑
+> 10.096 67.491 71.113 –––20.150 71.300 74.775 0.054 3.81 3.66 30.207 72.328 75.810 0.057 1.03 1.04 40.428 75.739 79.982 0.221 3.41 4.17 50.509 76.251 80.596 0.081 0.51 0.61 60.556 76.389 80.747 0.047 0.14 0.15 70.934 79.197 83.839 0.378 2.81 3.09 81.092 80.325 85.045 0.158 1.13 1.21 91.233 80.729 85.456 0.141 0.40 0.41 0.2 0.4 0.6 0.8 1.0 1.2
+> Rate (bpp)
+> 55
+> 60
+> 65
+> 70
+> 75
+> 80
+> D1 PSNR (dB)
+> longdress_vox10_1300
+> Baseline (PCGCv2)
+> Our Model(9 level) 0.2 0.4 0.6 0.8 1.0 1.2
+> Rate (bpp)
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> D2 PSNR (dB)
+> longdress_vox10_1300
+> Baseline (PCGCv2)
+> Our Model(9 level)
+
+Fig. 3 . RD curves on Longdress (9-level configuration). Left: D1 (point-to-point) PSNR vs. bitrate. Right: D2 (point-to-plane) PSNR vs. bitrate. quality point corresponds to a different level of this bitstream, with-out retraining or switching models. For each bitrate-quality point, the decoder outputs a complete reconstructed point cloud at the orig-inal resolution (same point count as the input), rather than intermedi-ate predictions from the upsampling hierarchy. In our configuration, each layer uses an 8-channel latent representation. The channels are grouped as (4 , 4) for the Base Layer, (2 , 2, 4) for Layer 1, and (8) 
+
+for Layer 2, resulting in a total of 6 progressive sub-bitstreams. As shown in Fig. 2, our scalable codec matches the baseline PCGCv2 in the overlapping bitrate range, while extending the oper-ating range to higher bitrates through progressive decoding. In the medium-to-high bitrate regime, our method consistently achieves higher reconstruction quality than PCGCv2 at comparable rates. Compared with the non-learned anchors, our method substantially outperforms both G-PCC Octree and G-PCC Trisoup over their evaluated operating points, while providing a wide bitrate coverage enabled by progressive truncation. Table 1 further summarizes the average BD metrics over all sequences. Entries marked with “–” indicate non-overlapping RD curves over the tested range, making BD metrics undefined. In these cases, our RD curves lie above the anchor across all evaluated bi-trates, indicating clear gains. Against G-PCC Octree, our method achieves average BD-PSNR gains of 9.10 dB (D1) and 7.76 dB (D2), with corresponding BD-Rate savings of −82.76 % and −75.84 %, re-spectively. Compared to G-PCC Trisoup, we obtain BD-PSNR gains of 2.40 dB (D1) and 1.98 dB (D2), corresponding to BD-Rate sav-ings of −31.77 % and −30.87 %. Relative to the baseline PCGCv2, our method maintains essentially the same RD performance on aver-age, with BD-Rate savings of −4.99 % (D1) and −5.92 % (D2), and BD-PSNR gains of 0.22 dB and 0.32 dB. 
+
+5.1. Scalability Analysis 
+
+In addition to the main configuration, we report a 9-level configura-tion on longdress in D1 and D2 to explicitly illustrate the progressive decoding behavior of our scalable bitstream, as shown in Fig. 3 and Table 2. In this setting, each layer uses an 8-channel latent represen-tation and applies the same channel grouping (2 , 2, 4) , resulting in 9
+
+levels. Table 2 lists the resulting bitrate-quality points and the corre-sponding per-level bitrate and D1/D2 PSNR changes, as more sub-bitstreams are decoded in order, the reconstruction quality improves monotonically, demonstrating fine-grained rate adaptation with pre-dictable quality gains. 
+
+6. CONCLUSION 
+
+We propose TAFA-GSGC, a scalable learned point cloud geome-try codec built on the PCGCv2 backbone. A single trained model enables multi-level decoding by progressively truncating a single bitstream. Experiments on standard dense point cloud datasets show that TAFA-GSGC substantially outperforms G-PCC anchors and achieves comparable or slightly better RD performance than PCGCv2 under a fair comparison. To our knowledge, TAFA-GSGC is the first learned geometry codec to support up to 9 decodable levels within a single model while maintaining strong reconstruc-tion quality. The number of decodable levels is determined by the channel-group configuration, allowing straightforward extension to more levels without changing the overall architecture, and our modular scalability components can be integrated into other learned geometry backbones. Future work will incorporate our design into stronger codecs and extend it to joint geometry–attribute coding. 7. REFERENCES 
+
+[1] Maurice Quach, Jiahao Pang, Dong Tian, Giuseppe Valenzise, and Fr´ ed´ eric Dufaux, “Survey on deep learning-based point cloud compression,” Frontiers in Signal Processing , vol. 2, pp. 846972, 2022. [2] Jianqiang Wang, Dandan Ding, Zhu Li, Xiaoxing Feng, Chuntong Cao, and Zhan Ma, “Sparse tensor-based multi-scale representation for point cloud geometry compression,” 
+
+IEEE Transactions on Pattern Analysis and Machine Intelli-gence , vol. 45, no. 7, pp. 9055–9071, 2022. [3] Sebastian Schwarz, Marius Preda, Vittorio Baroncini, Mad-hukar Budagavi, Pablo Cesar, Philip A Chou, Robert A Cohen, Maja Krivoku´ ca, S´ ebastien Lasserre, Zhu Li, et al., “Emerging mpeg standards for point cloud compression,” IEEE Journal on Emerging and Selected Topics in Circuits and Systems , vol. 9, no. 1, pp. 133–148, 2018. [4] Chao Cao, Marius Preda, Vladyslav Zakharchenko, Euee S Jang, and Titus Zaharia, “Compression of sparse and dense dynamic point clouds—methods and standards,” Proceedings of the IEEE , vol. 109, no. 9, pp. 1537–1558, 2021. [5] Liang Xie and Wei Gao, “Learningpcc: A pytorch library for learning-based point cloud compression,” in Proceedings of the 32nd ACM International Conference on Multimedia , 2024, pp. 11234–11238. [6] Jianqiang Wang, Dandan Ding, Zhu Li, and Zhan Ma, “Multi-scale point cloud geometry compression,” in 2021 Data Com-pression Conference (DCC) . IEEE, 2021, pp. 73–82. [7] Danillo Graziosi, Ohji Nakagami, Satoru Kuma, Alexandre Za-ghetto, Teruhiko Suzuki, and Ali Tabatabai, “An overview of ongoing point cloud compression standardization activities: Video-based (v-pcc) and geometry-based (g-pcc),” APSIPA Transactions on Signal and Information Processing , vol. 9, pp. e13, 2020. [8] Ge Li, Wei Gao, and Wen Gao, “Mpeg video-based point cloud compression (v-pcc) standard,” in Point Cloud Com-pression: Technologies and Standardization , pp. 199–218. Springer, 2024. [9] Kangli Wang and Wei Gao, “Unipcgc: Towards practical point cloud geometry compression via an efficient unified approach,” in Proceedings of the AAAI Conference on Artificial Intelli-gence , 2025, vol. 39, pp. 12721–12729. [10] Andr´ e FR Guarda, Nuno MM Rodrigues, and Fernando Pereira, “Point cloud geometry scalable coding with a sin-gle end-to-end deep learning model,” in 2020 IEEE Interna-tional Conference on Image Processing (ICIP) . IEEE, 2020, pp. 3354–3358. [11] Daniele Mari, Andr´ e FR Guarda, Nuno MM Rodrigues, Si-mone Milani, and Fernando Pereira, “Point cloud geometry scalable coding with a quality-conditioned latents probability estimator,” in 2024 IEEE International Conference on Image Processing (ICIP) . IEEE, 2024, pp. 3410–3416. [12] Andr´ e FR Guarda, Nuno MM Rodrigues, Manuel Ruivo, Lu´ ıs Coelho, Abdelrahman Seleem, and Fernando Pereira, “It/ist/ipleiria response to the call for proposals on jpeg pleno point cloud coding,” arXiv preprint arXiv:2208.02716 , 2022. [13] Jiahao Pang, Muhammad Asad Lodhi, and Dong Tian, “Grasp-net: Geometric residual analysis and synthesis for point cloud compression,” in Proceedings of the 1st International Work-shop on Advances in Point Cloud Compression, Processing and Analysis , 2022, pp. 11–19. [14] Dat Thanh Nguyen, Kamal Gopikrishnan Nambiar, and Andr´ eKaup, “Deep probabilistic model for lossless scalable point cloud attribute compression,” in ICASSP 2023-2023 IEEE In-ternational Conference on Acoustics, Speech and Signal Pro-cessing (ICASSP) . IEEE, 2023, pp. 1–5. [15] Yueyu Hu, Ran Gong, and Yao Wang, “Bits-to-photon: End-to-end learned scalable point cloud compression for direct ren-dering,” in 2025 IEEE International Conference on Image Pro-cessing (ICIP) . IEEE, 2025, pp. 953–958. [16] Liang Xie, Wei Gao, Huiming Zheng, and Ge Li, “Roi-guided point cloud geometry compression towards human and ma-chine vision,” in Proceedings of the 32nd ACM International Conference on Multimedia , 2024, pp. 3741–3750. [17] Angel X Chang, Thomas Funkhouser, Leonidas Guibas, Pat Hanrahan, Qixing Huang, Zimo Li, Silvio Savarese, Manolis Savva, Shuran Song, Hao Su, et al., “Shapenet: An information-rich 3d model repository,” arXiv preprint arXiv:1512.03012 , 2015. [18] ISO/IEC JTC 1/SC 29/WG 1 (JPEG), “Jpeg pleno point cloud coding common test conditions v3.2,” JPEG document, 2020, Doc. N87037, 87th Meeting (Online), 25–30 Apr. 2020. Editor: Stuart Perry. [19] Eugene d’Eon, Bob Harrison, Taos Myers, and Philip A. Chou, “8i voxelized full bodies - a voxelized point cloud dataset,” ISO/IEC JTC1/SC29 Joint WG11/WG1 (MPEG/JPEG) input document, 2017, Doc. WG11m40059/WG1m74006, Geneva, January 2017. [20] Yi Xu, Yao Lu, and Ziyu Wen, “Owlii dynamic human mesh sequence dataset,” ISO/IEC JTC1/SC29/WG11 input docu-ment, 2017, Doc. m41658, 120th MPEG Meeting, Macau, October 2017. [21] Charles Loop, Qin Cai, Sergio Orts-Escolano, and Philip A. Chou, “Microsoft voxelized upper bodies - a voxelized point cloud dataset,” ISO/IEC JTC1/SC29 Joint WG11/WG1 (MPEG/JPEG) input document, 2016, Doc. m38673/M72012, Geneva, May 2016. [22] Christopher Choy, JunYoung Gwak, and Silvio Savarese, “4d spatio-temporal convnets: Minkowski convolutional neural networks,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2019, pp. 3075– 3084. [23] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja, “Compressai: a pytorch library and evaluation platform for end-to-end compression research,” arXiv preprint arXiv:2011.03029 , 2020. [24] MPEG, “mpeg-pcc-tmc13,” GitHub repository, G-PCC refer-ence software (TMC13), Version v23.0-rc2, accessed 2026-02-03.
