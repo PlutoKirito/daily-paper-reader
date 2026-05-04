@@ -1,0 +1,1195 @@
+Title: Budget Constraints as Riemannian Manifolds
+
+URL Source: https://arxiv.org/pdf/2605.00649v1
+
+Published Time: Mon, 04 May 2026 00:51:05 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# Budget Constraints as Riemannian Manifolds 
+
+Michael Helcig †
+
+ETH Zürich 
+
+Dan Alistarh 
+
+IST Austria 
+
+## Abstract 
+
+Assigning one of K options to each of N groups under a total cost budget is a recurring problem in ML, appearing in mixed-precision quantization, non-uniform pruning, and expert selection. The objective (model loss) depends on all assign-ments jointly and does not decompose across groups, which means combinatorial solvers can only optimize proxy objectives. Evolutionary search evaluates the actual loss but lacks gradients; penalty methods have gradients but enforce the budget only approximately and require sensitive hyperparameters. We observe that under softmax relaxation, the budget constraint defines a smooth Rieman-nian manifold in logit space with unusually clean geometry: the normal vector is available in closed form, shifting logits along the cost vector changes expected cost monotonically (so binary search suffices for retraction), and the vector trans-port reduces to a single inner product. Building on this, we propose Riemannian Constrained Optimization (RCO), which wraps tangent projection, binary-search retraction, and momentum transport around a standard Adam step. Combined with Gumbel straight-through estimation and budget-constrained dynamic programming for discrete feasibility, RCO provides first-order optimization of the actual loss under exact budget enforcement, with no constraint hyperparameters. On synthetic knapsack problems with known optima, the manifold constraint handling recovers optimal solutions where penalty methods plateau at 83% of optimal. On LLM compression (mixed-precision quantization and MoE expert pruning), it matches or exceeds evolutionary search methods at 3–16 × lower wall-clock cost on the configurations we evaluate. 
+
+## 1 Introduction 
+
+Constrained optimization over discrete choices is a pervasive problem in efficient machine learning. A common instance is budget-constrained discrete assignment : choose one of K options (e.g. degrees of compression) for each of N target groups (e.g., the layers of a neural network), minimizing an objective that depends on all assignments jointly (e.g., the model accuracy loss), subject to a total cost constraint (e.g., the total model size). The joint dependence between groups, e.g. the interactions between layers, makes the objective non-decomposable, so it cannot simply be written as a sum of per-group terms. Dynamic programming (DP), the standard tool for budget-constrained assignment, relies precisely on this additive structure, and can therefore only optimize proxy objectives. Concretely, variants of this problem have been used in model compression where each layer or Transformer block can be assigned a different compression degree while minimizing model loss, e.g., for mixed-precision quantization [Dong et al., 2019, 2020, Yao et al., 2021], non-uniform pruning [Frantar and Alistarh, 2022, Yin et al., 2024], MoE expert pruning [Lu et al., 2024, Lasby et al., 2025, Liu et al., 2026], and even MoE routing under load-balancing constraints [Fedus et al., 2021, Zhou et al., 2022]. The fundamental tension is that the objective does not decompose across the groups to which constraints are applied, but that exact budget enforcement requires solving a combinatorial problem over all groups jointly. Combinatorial solvers like DP handle the budget exactly, but can only optimize  
+
+> †Corresponding author: mhelcig@ethz.ch
+> Preprint.
+> arXiv:2605.00649v1 [cs.LG] 1 May 2026
+
+decomposable proxy objectives: in model compression, this means scoring groups independently– e.g., giving each layer a “sensitivity,” and finding a suitable sensitivity-aware allocation via dynamic programming [Dong et al., 2019, 2020, Yao et al., 2021, Yin et al., 2024, Frantar and Alistarh, 2022, Li et al., 2023, Malinovskii et al., 2025]. However, sensitivity-aware allocation was shown to fail at high compression rates by Sieberling et al. [2025]. Directly evaluating the actual model loss under compression combinations avoids this, but existing methods require hundreds of forward passes to converge [Sieberling et al., 2025, Liu et al., 2026]. Gradient-based search through continuous relaxation could be more efficient, but the standard approach [Cai et al., 2019, Wu et al., 2019, Huang et al., 2022] adds a penalty λ (C −B)2 that never satisfies the budget exactly and introduces a sensitive hyperparameter: too small and the budget is violated, too large and the constraint gradient dominates. On hard instances, as we show in Section 4.1, Lagrangian methods oscillate. Projection-free methods such as Frank-Wolfe can maintain feasibility by construction [Nayman et al., 2021], but restrict the optimizer to their own update rule and do not transport adaptive state across iterates. This paper starts from the following geometric observation. Assume that we parameterize each group’s compression assignment by the logits αi ∈ RK with softmax probabilities pi = softmax( αi), and let ck denote the cost of option k and wi the weight of group i. Under this parameterization, the total expected cost C(α) = P 
+
+> i
+
+wi⟨pi, c⟩ is a smooth function of the concatenated logits α ∈ RN K .Its gradient is everywhere nonzero when options have distinct costs. Therefore, by the regular value theorem, the level set M = {C(α) = B} is a smooth (N K −1) -dimensional Riemannian submanifold of RN K . We call this the budget manifold and show that one can optimize directly on it, projecting gradients onto its tangent plane (the subspace of budget-preserving directions) and retracting (projecting back) onto its surface after each step, enforcing the budget exactly at every step, with zero constraint hyperparameters. This approach is feasible because the softmax Jacobian interacting with linear cost gives the level set 
+
+M a “clean” geometry. Obtaining the gradient (∇C)ik = wi pik (ck − Epi [c]) (Eq. 2) requires no Hessian or matrix inversion, so projecting onto the tangent plane costs a single inner product. Shifting logits along the cost vector changes expected cost monotonically, with derivative P 
+
+> i
+
+wi Var pi [c] > 0
+
+(Proposition 3). Binary search therefore returns any iterate to M in O(log(1 /ε )) steps, reducing retraction to scalar root-finding on a provably monotone function. Since M has codimension one, vector transport (adjusting the optimizer’s momentum to the new tangent plane) after retraction is another inner product. In practice, the resulting algorithm consists of three relatively inexpensive operations around a standard Adam step: tangent projection, binary-search retraction, and momentum transport. This gives first-order optimization of the end-to-end loss under exact budget enforcement at every iterate, with no constraint hyperparameters and negligible overhead. 
+
+Contributions. In summary, we introduce the following main contributions: • The budget manifold (Section 2). We show that the level set {C(α) = B} of softmax expected cost is a smooth Riemannian submanifold with closed-form normals, monotonic binary-search retraction (Proposition 3), and cheap vector transport (a single inner product per step). To our knowledge, this manifold has not been previously identified. • Riemannian-Constrained-Optimization (RCO) (Section 3). We compose the tangent projection, retraction, and momentum transport around a standard Adam step, enforcing the budget exactly with zero constraint hyperparameters. Gumbel-Straight-Through-Estimator (Gumbel-STE) with budget-constrained DP handles discrete feasibility in the forward pass; the manifold handles continuous feasibility in the backward pass. • Inequality and multiple constraints (Section 2). A slack variable s with C(α) + s2 = B
+
+extends the manifold to inequality constraints, avoiding the failure mode where equality-constrained methods waste budget (Section 4.1). Multiple simultaneous constraints are handled by projecting out k normals. • Empirical validation (Section 4). We first show that on synthetic knapsack problems, the manifold recovers DP optima where Lagrangian methods reach only 83% of optimal. On LLM compression tasks, RCO matches or exceeds the accuracy of evolutionary search at 3–16 × lower wall-clock cost on the configurations we evaluate. 22 The Budget Manifold 
+
+We briefly review the relevant concepts from Riemannian geometry; for a textbook treatment, see Boumal [2023]. A manifold is a smooth surface that may be curved globally but locally resembles flat Euclidean space. A Riemannian manifold additionally carries an inner product on each tangent space, providing notions of length, angle, and gradient on the surface. At each point, the tangent plane is the subspace of directions tangent to the surface, and the normal vector points perpendicular to it. Optimizing on a manifold requires three operations: tangent projection (restricting gradients to the tangent plane), retraction (mapping an iterate that has drifted off the surface back onto it), and 
+
+vector transport (moving vectors such as optimizer momentum from one tangent plane to another as the iterate moves along the surface). Consider N groups, each to be assigned one of K discrete options. Group i carries weight wi > 0
+
+(e.g., the number of parameters in a network layer), and option k has cost ck > 0 (e.g., bits per parameter). We parameterize the assignment distribution for group i by logits αi ∈ RK with 
+
+pi = softmax( αi), and define the total expected cost as 
+
+C(α) = 
+
+> N
+
+X
+
+> i=1
+
+wiKX
+
+> k=1
+
+pik ck =
+
+> N
+
+X
+
+> i=1
+
+wi⟨pi, c⟩. (1) Given a budget B with min k ck < B/ P 
+
+> i
+
+wi < max k ck, the feasible set is M = {α ∈ RN K :
+
+C(α) = B}, and the goal is to minimize an objective L(α) on M.
+
+Proposition 1 (Manifold structure) . C is smooth. If the costs c1, . . . , c K are not all equal, then 
+
+∇C(α)̸ = 0 for all α, and M is a smooth (N K −1) -dimensional submanifold of RN K .
+
+The proof is in Appendix A.1. The gradient is nonzero because softmax produces strictly positive probabilities, so every group has positive cost variance. Concretely, M is a smooth surface in logit space: at every point it has a well-defined tangent plane (budget-preserving directions) and a normal direction (the budget-changing direction), which are the two ingredients needed for constrained optimization on the surface. 
+
+Proposition 2 (Normal vector) . The gradient of C with respect to α is 
+
+ ∇C(α) 
+
+> ik
+
+= wi pik 
+
+ ck − Epi [c], (2) 
+
+where Epi [c] = P 
+
+> k
+
+pik ck (Appendix A.1). This vector is normal to M at every point. 
+
+Each entry measures how much option k deviates from group i’s current expected cost, scaled by the probability and group weight. C( ) > B          
+
+> C() < B
+> Ln
+> gtan
+> t*c
+> ′
+> Project gradient Adam step Retract to 123shift t
+> B
+> t*
+> expected cost  C(t)
+> Retraction: binary search on monotone C (t)
+
+Figure 1: One optimization step on M: project gradient, Adam step, retract via binary search. We optimize L on M by wrapping three operations around a standard Adam step (Figure 1). First, we project the loss gradient g = ∇L(α) onto the tangent space of M by subtracting its component along the normal n = ∇C(α): gtan = g − (⟨g, n⟩/∥n∥2) n. This removes the budget-changing direction, so the optimizer sees only budget-preserving gradients. An Adam step along gtan may still drift off M due to manifold curvature and Adam’s per-coordinate scaling. To return, we shift all logits along the cost vector, setting α′ 
+
+> ik
+
+= αik + t c k, and binary-search for t such that C(α′) = B.This works because of the following structural property specific to softmax with linear cost: 3Proposition 3 (Monotonic retraction) . Let ˜cik = ck and pi(t) = softmax( αi + tc). Then C(α + t˜c)
+
+is strictly increasing in t:
+
+ddt C(α + t˜c) = 
+
+> N
+
+X
+
+> i=1
+
+wi Var pi(t)[c] > 0, (3) 
+
+whenever the costs are not all equal (Appendix A.2). 
+
+Shifting logits by tc adds t(ck − ck′ ) to the logit difference between options k and k′: higher-cost options gain probability monotonically, so expected cost increases. Binary search therefore converges in O(log(1 /ε )) steps; the constraint residual is limited only by floating-point rounding. The closed-form derivative (3) also enables Newton retraction in 2–3 iterations; we use binary search for simplicity, but the multi-constraint extension (Appendix A.8) builds on Newton root-finding using the same derivative. By comparison, retraction on the Stiefel manifold requires QR or polar decomposition, fixed-rank matrices require truncated SVD, doubly stochastic matrices require iterative Sinkhorn projections [Douik and Hassibi, 2019], and generic smooth constraints require solving a nonlinear system with no monotonicity guarantee [Boumal, 2023, Section 7.7]; our retraction reduces to a scalar binary search with closed-form monotonicity. After retraction to α′ ∈ M , the tangent plane has rotated, so we project Adam’s first moment onto the new tangent space (via vector transport by projection; Appendix A.5): m ← m−(⟨m, n′⟩/∥n′∥2) n′.Only the first moment (direction) needs transport; the second moment (per-coordinate magnitude) has no directional content. These three operations wrap around any first-order optimizer and add negligible cost: one inner product each for projection and transport, and ∼ 50 softmax evaluations for retraction. We verify in the appendix that the retraction satisfies standard axioms (Appendix A.3), the projected gradient recovers the Riemannian gradient (Appendix A.4), and vector transport preserves the tangent space (Appendix A.5); convergence of Riemannian gradient descent with exact gradients then follows from Boumal [2023, Chapter 4]. Section 3 combines these operations with Gumbel straight-through estimation and budget-constrained dynamic programming into the complete optimization algorithm. The manifold extends to m simultaneous equality constraints by projecting out all m normals via 
+
+g − N(N⊤N)−1N⊤g (Appendix A.8), and to inequality constraints C(α) ≤ B via a slack variable 
+
+s with C(α) + s2 = B, which converts the problem to equality on an augmented manifold that smoothly interpolates between the unconstrained ( s > 0) and equality-constrained ( s = 0 ) cases (Appendix A.7). 
+
+## 3 The Riemannian Constrained Optimization (RCO) Algorithm 
+
+The budget manifold (Section 2) provides three geometric operations for constrained optimization: tangent projection, monotonic retraction, and momentum transport. To produce discrete assignments from continuous logits, we combine these operations with Gumbel STE and DP into a complete algorithm we call Riemannian Constrained Optimization (RCO). 
+
+3.1 Algorithm 
+
+The central algorithmic idea is to enforce the budget constraint in two complementary spaces. In the forward pass, budget-constrained dynamic programming produces a feasible discrete assignment: every candidate configuration evaluated during training satisfies the (discretized) budget. In the backward pass, the manifold projection ensures that gradients preserve the budget in the continuous 
+
+logit space: the optimizer never sees a direction that would move expected cost away from B. These two mechanisms operate independently and compose: the DP handles combinatorial feasibility, and the manifold handles smooth feasibility of the distribution over assignments. Concretely, each forward pass draws Gumbel noise [Jang et al., 2017, Maddison et al., 2017] Gik ,forms perturbed logits ˆαik = αik /τ + Gik at temperature τ , and solves the constrained assignment 
+
+z∗ = arg max 
+
+> z∈{ 0,1}N K
+
+X
+
+> i,k
+
+zik ˆαik s.t. X
+
+> i
+
+wi
+
+X
+
+> k
+
+zik ck ≤ B, X
+
+> k
+
+zik = 1 ∀ i, (4) which is a multiple-choice knapsack problem solved exactly by DP in O(N KB ′) time, where B′
+
+is the discretized budget. In the backward pass, the STE [Bengio et al., 2013] replaces the non-4Input: Logits α0 ∈ M , loss L, costs c ∈ RK , weights w ∈ RN , budget B, steps T , temperature schedule                                                                                           
+
+> {τt}1: Initialize Adam state: m=0,v=0
+> 2: for t= 1 , . . . , T do
+> // Forward pass: Gumbel-STE + DP
+> 3: Sample Gik ∼Gumbel(0 ,1) ; set ˆαik =αik /τ t+Gik
+> 4: z∗←DP-solve ( ˆ α,c,w, B )Eq. (4) 5: ˆp←softmax( ˆ α);g← ∇ αL sg( z∗−ˆp) + ˆ pSTE at ˆα=α/τ t+G; contributes 1/τ t
+> // Tangent projection
+> 6: n← ∇ C(α)Eq. (2) 7: g←g−(⟨g,n⟩/∥n∥2)n
+> // Optimizer step + retraction
+> 8: α←ADAM (α,g,m,v)
+> 9: Binary search for t∗s.t. C(α+t∗˜c) = B; set αik ←αik +t∗ckProp. 3 // Momentum transport
+> 10: n′← ∇ C(α)
+> 11: m←m−(⟨m,n′⟩/∥n′∥2)n′
+> 12: end for
+> 13: return DP-solve (log p,c,w, B )Final discrete assignment
+
+Algorithm 1: Riemannian Constrained Optimization (RCO) differentiable arg max with soft probabilities: the forward value z∗ 
+
+> ik
+
+is kept, but gradients flow through ˆpik = softmax( ˆ αi)k, the softmax of the same perturbed logits that produced z∗. This ensures the surrogate concentrates on the sampled mode, so the STE bias vanishes as τ → 0 and independent Gumbel samples yield independent Jacobians; the unperturbed softmax( αi) would decouple the surrogate from the sampled assignment and suppress both effects. The tangent projection (Section 2) then removes the normal component from this gradient before it reaches the optimizer, so constraint signal never contaminates Adam’s moment estimates. This is particularly beneficial for the STE, whose gradients are biased: the projection eliminates the constraint-normal component of any gradient bias and prevents it from accumulating in the optimizer’s momentum (Proposition 6). After optimization, the final assignment is extracted by solving (4) with ˆαik = log pik (no noise, no temperature). Algorithm 1 gives the complete procedure. 
+
+Temperature and variance reduction. The temperature τ in Algorithm 1 (line 3) controls ex-ploration versus exploitation. We anneal exponentially τt = max  τmin , τ 0 · (τmin /τ 0)t/T , from 
+
+τ0 = 1 .0 to τmin = 0 .01 . High temperature produces diverse DP samples and diffuse soft distri-butions; low temperature concentrates probability on the emerging optimum, tightening the STE approximation. For variance reduction, we average gradients over multiple independent Gumbel samples per step (Appendix C ablates this choice). The manifold operations in Algorithm 1 satisfy the axioms verified in Section 2; Adam, Gumbel noise, and the STE are modular choices plugged into this geometric framework. We validate the full combination empirically in Section 4. 
+
+3.2 Application to non-uniform Large Language Model compression 
+
+We apply RCO to non-uniform LLM compression, where each network layer (or expert) is a group and the options are compression levels (bitwidths, sparsity rates, or keep/prune). 
+
+Objective. The loss L(z∗) in Algorithm 1 is the KL divergence between the full-precision model and the model under assignment z∗, evaluated on a calibration set D:
+
+L(z∗) = 1
+
+|D| 
+
+X
+
+> x∈D
+
+KL  pref (· | x) pz∗ (· | x), (5) where pref is the full-precision model’s next-token distribution and pz∗ is the distribution under configuration z∗. Reference log-probabilities are computed once and cached. Because L is non-decomposable (Section 1), minimizing it directly is what distinguishes this approach from sensitivity methods that optimize per-group proxy scores. 
+
+From assignments to weights. Each forward pass evaluates the model under the discrete assign-ment z∗ from Eq. (4) . For MoE expert pruning , the assignment is binary (keep or prune) and the 50 1000 2000 3000 4000 5000                  
+
+> Step
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Gap to optimal
+> Gap to DP optimal
+> 01000 2000 3000 4000 5000
+> Step
+> 10
+> 5
+> 0
+> 5
+> 10
+> E[cost] - budget
+> Constraint violation
+> 01000 2000 3000 4000 5000
+> Step
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> |Violation|
+> |Constraint violation| (log scale)
+> Lagrangian Aug. Lagrangian Budget manifold
+
+Figure 2: MCKP, huge scenario ( N =1000 , K=32 , three seeds). Left: gap to DP optimum. Center: raw constraint violation. Right: |violation | on log scale; manifold ( ∼ 10 −9) vs. Lagrangian ( ∼ 10 −1). Additional scenarios in Appendix E. budget fixes the total number of pruned experts across layers. Each expert’s output is scaled by its STE mask: kept experts pass through; pruned experts contribute zero. Router logits are unchanged, preserving the model’s routing decisions. Within each layer, pruning order is fixed by an importance criterion (we use router-weighted activation norms Lasby et al. [2025]); the manifold optimizes only the cross-layer budget allocation. The same framework handles mixed-precision quantization :we pre-quantize each layer at every candidate bitwidth via GPTQ [Frantar et al., 2023] and store weight residuals ∆ik = W(k) 
+
+> i
+
+− Wref  
+
+> i
+
+; the forward-pass weights are Wi = Wref  
+
+> i
+
++ P 
+
+> k
+
+z∗
+
+> ik
+
+∆ik ,reducing to the selected bitwidth because z∗ 
+
+> i
+
+is one-hot. In both cases, the STE replaces z∗ 
+
+> ik
+
+with 
+
+ˆpik = softmax( ˆ αi)k in the backward pass, so gradients flow through the softmax Jacobian at the perturbed logits. 
+
+## 4 Experiments 
+
+4.1 Controlled validation: multiple-choice knapsack 
+
+We first isolate the manifold constraint handling from the stochastic gradient estimation. The multiple-choice knapsack problem (MCKP) admits closed-form gradients and an exact DP solution, so we can compare four constraint handling methods (manifold equality, manifold with slack variable, Lagrangian, augmented Lagrangian) on the same gradient and optimizer, varying only how they enforce the budget. We generate 12 scenarios (20 instances each, 500 steps) spanning correlated costs, tight budgets, adversarial instances, and under-budget optima. Figure 2 shows convergence on the hardest scenario; Table 21 (Appendix E) reports gap and violation across all scenarios. Three patterns emerge. First, manifold projection satisfies the budget exactly ( |C(α) − B| < 10 −8)in every scenario, while Lagrangian methods maintain violations of 10 −2 to 10 −1. Second, on hard instances ( correlated tight , boundary ), manifold optimization converges 2–8 × closer to the DP optimum than augmented Lagrangian, and the gap widens at scale ( large : 2.25% vs. 0.01%). Third, when the true optimum costs less than the budget ( cheap optimal , mixed slack ), equality-constrained methods waste budget on inferior options; the slack variable (Section 2, Appendix A.7) recovers the DP optimum. 
+
+4.2 MoE expert pruning 
+
+We apply the manifold algorithm to MoE expert pruning, where each expert is a group with two options (keep or prune), costs are binary, and the budget fixes the total number of pruned experts. EvoESAP [Liu et al., 2026] is contemporaneous work that performs evolutionary search over cross-layer count allocation while holding within-layer pruning order fixed according to a chosen importance criterion (we use REAP, the strongest of the four criteria they evaluate). RCO addresses a strictly larger search space: per-expert logits give it 2N joint keep/prune assignments over all N experts, so the manifold simultaneously chooses per-layer pruning counts and which specific experts to drop within each layer, with the freedom to deviate from REAP ordering when the calibration loss favors it. We use REAP scores only to initialize the logits. 6Table 1: Qwen3-30B-A3B expert pruning: per-expert RCO vs. EvoESAP. RCO: ∼85 min; EvoESAP: 5.2 h ( 3.7× slower). Full breakdown in Appendix B. Bold: best among pruned models. All values in %.                                         
+
+> Sparsity Method ARC-C BoolQ HSwag MMLU Wino Avg
+> 0% Full model 62.5 88.7 79.7 80.2 73.6 73.7 25% EvoESAP 51.4 86.6 67.0 66.2 70.2 66.5
+> RCO 58.4 88.5 75.7 73.3 71.4 71.0
+> 50% EvoESAP 43.7 80.5 51.8 57.6 62.9 58.5
+> RCO 42.8 83.5 62.4 58.7 64.7 60.5
+
+Table 2: OLMoE-1B-7B at 25% expert sparsity: iteration sweep. RCO at 50 steps ( ∼10 min) already exceeds EvoESAP (5.8 h). Avg: mean of eight benchmarks (five shown; full breakdown in Appendix B). All values in %.                                                 
+
+> ARC-C ARC-E BoolQ HSwag MMLU Avg Time Full model 49.3 75.8 76.8 80.6 53.4 65.3 -REAP 40.8 67.6 68.3 66.0 45.2 56.6 <1 m EvoESAP 42.7 64.1 67.3 68.5 47.4 58.1 5.8 h RCO ( s=50 )44.2 71.3 69.3 69.1 47.6 59.7 ∼10 m RCO ( s=100 )44.6 71.6 69.2 71.3 46.5 60.0 ∼23 m RCO ( s=300 )45.8 69.8 71.3 71.1 47.9 60.8 ∼66 m
+
+Setup. We evaluate on OLMoE-1B-7B (64 experts/layer), Qwen3-30B-A3B (128 experts/layer), and Qwen3-Coder-Next (512 experts/layer). Baselines are REAP [Lasby et al., 2025] (uniform budget allocation, REAP ordering within each layer) and EvoESAP [Liu et al., 2026] (evolutionary search over layer budgets, REAP ordering within each layer). RCO uses the same REAP scores only to initialize its per-expert logits; the search itself is free to deviate from the REAP ordering and to redistribute budget across layers. We report Avg, the unweighted mean of eight standard benchmarks. All EvoESAP numbers are our own reproductions under a matched protocol (same calibration data, fitness, eval harness, and compute environment as RCO); details in Appendix D.1. 
+
+Qwen3-30B-A3B. Table 1 compares RCO against EvoESAP at 25% and 50% sparsity. We find that RCO recovers 96% of the uncompressed baseline average at 25% pruning, at a significant advantage vs EvoESAP (71% vs. 66.5%) in ∼85 min versus 5.2 h. RCO maintains a +2.0 point advantage vs EvoESAP at 50% pruning. 
+
+OLMoE-1B-7B. Table 2 shows zero-shot averages at 25% sparsity against RCO search steps. At 50 steps ( ∼10 min) RCO already exceeds EvoESAP (0.597 vs. 0.581, searched for 5.8 h); at 300 steps it reaches 0.608 ( +2.7 points, 5× faster). 
+
+Qwen3-Coder-Next. Table 3 evaluates expert pruning on Qwen3-Coder-Next, an 80B3A MoE model with 512 experts/layer, across calibration domain (coding vs. general) and budget allocation (uniform vs. nonuniform). Non-uniform allocation is critical at high sparsity: at 50%, nonuniform recovers 97% of HumanEval versus 55% for uniform; at 25%, both coding-nonuniform and general-nonuniform match the full model. Also, the calibration domain determines a sharp trade-off: coding-calibrated variants preserve code generation but lose general knowledge; generally-calibrated variants preserve averages but lose coding ability entirely (Appendix B.4). 
+
+4.3 Mixed-precision quantization 
+
+We apply RCO to mixed-precision quantization on Qwen3-8B, assigning one of seven bitwidths (2–8) to each of 252 linear layers. Layers are quantized via GPTQ [Frantar et al., 2023]; the manifold search optimizes the bitwidth assignment to minimize calibration KL divergence (Eq. 5). Calibration uses 256 FineWeb-Edu sequences (seq_len=2048). Evaluation reports perplexity on two held-out corpora (FineWeb-Edu, C4). 7Table 3: Qwen3-Coder-Next expert pruning (512 experts/layer). Uniform: fixed expert count per layer; nonuniform: RCO redistributes the budget. HE: HumanEval, MB: MBPP (pass@1); Avg: mean of eight general benchmarks. Bold: best per sparsity level. All values in %.                                                                                                                           
+
+> Coding General Sparsity Cal. Alloc. HE MB ARC-C ARC-E BoolQ HSwag MMLU OBQA RTE Wino Avg 0% Full model 74.4 76.4 60.6 82.1 88.5 77.5 76.7 43.0 76.5 66.6 71.4 25% coding uniform 68.3 68.8 50.1 72.2 86.4 69.0 71.0 38.0 72.9 65.5 65.6 coding nonunif. 74.4 67.8 46.2 66.2 85.1 66.5 68.0 36.2 77.6 64.2 63.8 general uniform 4.3 4.6 60.0 80.7 87.6 78.5 70.4 45.2 75.1 67.7 70.7 general nonunif. 6.1 5.8 61.8 82.2 88.2 77.6 71.2 44.2 76.2 69.9 71.4
+> 50% coding uniform 40.9 53.4 40.3 64.1 78.9 57.8 56.4 35.0 67.1 61.6 57.7 coding nonunif. 72.0 69.0 35.6 55.5 77.6 54.8 54.3 34.0 64.6 60.3 54.6 general uniform 0.0 1.8 54.1 77.1 83.9 70.9 61.0 42.8 67.5 65.8 65.4
+> general nonunif. 1.2 1.0 52.6 76.2 84.2 70.8 59.5 41.4 67.5 63.5 64.4
+
+Table 4: Qwen3-8B mixed-precision quantization. Perplexity ( ↓) on FineWeb-Edu (FW) and C4; FP16: FW=10.96, C4=17.20. Same GPTQ-quantized weights per layer/bitwidth. †Binary bitwidth; Shapley surrogate, MILP. ‡Linear surrogate, DP. 
+
+2.25 bits 2.5 bits 3.5 bits 4.0 bits Method FW C4 FW C4 FW C4 FW C4 Wall RCO ( g=4 , s=200 ) 20.60 32.44 15.78 24.73 11.41 17.86 11.17 17.52 62 m RCO ( g=32 , s=50 ) 20.66 32.94 15.43 24.00 11.46 18.00 11.14 17.40 117 m RCO ( g=16 , s=200 ) 20.47 32.45 15.45 23.79 11.45 17.91 11.16 17.46 215 m EvoPress (100 gen) 21.40 33.92 15.33 23.94 11.50 18.07 11.16 17.58 11–14 h IMPQ † 24.18 38.68 18.79 29.84 12.31 19.09 11.42 17.76 ∼2 h HIGGS ‡ 32.07 53.61 20.08 31.15 11.65 18.22 11.28 17.70 ∼2 h 
+
+Baselines. Table 4 compares three RCO configurations against EvoPress [Sieberling et al., 2025] (evolutionary search over actual model loss, 100 generations), IMPQ [Zhao et al., 2025] (Shapley-based surrogate with pairwise layer interactions, solved via MILP), and dynamic HIGGS [Malinovskii et al., 2025] (linear surrogate, solved via DP) across four average bitwidths (2.25–4.0). All EvoPress numbers for Qwen3-8B are our own reproductions under a matched protocol; Sieberling et al. [2025] do not include Qwen3-8B in their reported experiments. Details in Appendix D.2. At high compression (2.25 bits), RCO reduces FW perplexity by 36% over HIGGS (20.47 vs. 32.07) and by 4% over EvoPress (20.47 vs. 21.40) at ∼10 × lower wall-clock cost. At 2.5 bits, both methods converge to the same optimum (FW 15.43 vs. 15.33), with RCO reaching it in 62 minutes versus 11–14 hours. At 3.5–4.0 bits the problem is easy enough that even surrogate methods solve it well (HIGGS within 3% of RCO). Both RCO and EvoPress thus converge to similar solutions, which is natural since EvoPress performs guided random search. Here, RCO’s advantage is wall-clock time, with a modest quality gain at extreme compression where surrogates break down. 
+
+Ablations. Appendix C reports sweeps over nine hyperparameters. Two findings stand out. First, Gumbel sample count per step is the most important hyperparameter: increasing from g=1 to g=4 
+
+reduces FW perplexity by 0.85, with diminishing but consistent gains through g=32 . Second, sample efficiency dominates step count: g=32 with 50 steps matches g=16 with 200 steps at half the forward passes, because the STE gradient benefits more from diverse samples than from additional iterations. 
+
+## 5 Related Work 
+
+Budget constraints in ML are predominantly enforced via penalty or Lagrangian methods. In neural architecture search, ProxylessNAS [Cai et al., 2019], FBNet [Wu et al., 2019], and SDQ [Huang et al., 2022] add expected-cost penalties to the objective; MnasNet [Tan et al., 2019] and HAQ [Wang et al., 2019] use RL reward shaping; in constrained RL, primal-dual methods update Lagrange multipliers 8alongside policy parameters [Achiam et al., 2017, Tessler et al., 2019, Stooke et al., 2020]. All satisfy constraints only approximately and require tuning a multiplier or schedule. RC-DARTS [Jin et al., 2020] shares the constraint form but enforces it through a decaying Lagrangian penalty, without identifying the manifold structure. HardCoRe-NAS [Nayman et al., 2021] is a notable exception, enforcing a hard latency constraint via block-coordinate Frank-Wolfe on a linearized convex polytope, but this restricts the optimizer to Frank-Wolfe updates and does not transport optimizer state across steps. Riemannian optimization provides a different path: restricting iterates to a smooth manifold enforces constraints exactly [Absil et al., 2008, Boumal, 2023]. Efficient algorithms exist for Stiefel, Grassmann, SPD, and hyperbolic manifolds [Bonnabel, 2013, Bécigneul and Ganea, 2019, Zhang and Sra, 2016, Nickel and Kiela, 2017], and for doubly stochastic matrices via Sinkhorn retraction [Douik and Hassibi, 2019]. The expected-cost level set under softmax has not been previously treated as a Riemannian manifold. It differs from these in admitting a monotonic binary-search retraction (Proposition 3), a structural property of the softmax Jacobian interacting with linear cost that reduces retraction to scalar root-finding. The closest prior work is Douik and Hassibi [2019], whose constraint is linear (row and column sums) and whose retraction is iterative (Sinkhorn); the constraint here is nonlinear in the logits. In non-uniform model compression, the budget problem is concrete: allocate bitwidths, sparsity levels, or expert counts across layers to minimize model loss under a total cost constraint. Sensitivity methods [Dong et al., 2019, 2020, Yao et al., 2021, Yin et al., 2024, Li et al., 2023] score layers independently and allocate via DP or ILP, assuming the loss decomposes across groups. HIGGS [Ma-linovskii et al., 2025] formalizes this via a linearity theorem relating per-layer MSE to perplexity; IMPQ [Zhao et al., 2025] extends the surrogate with pairwise Shapley interactions but still solves offline rather than optimizing actual model loss. Sieberling et al. [2025] showed this assumption fails at high compression and proposed evolutionary search over actual model loss. Concurrently with this work, Liu et al. [2026] proposed EvoESAP, an evolutionary search framework for non-uniform layer-wise sparsity allocation in MoE expert pruning that is plug-and-play across multiple within-layer importance criteria; we compare against their strongest variant in Section 4.2. Both evolutionary methods are zero-order, requiring hundreds of full model evaluations. Orthogonally, Gumbel-softmax [Jang et al., 2017, Maddison et al., 2017] and the straight-through estimator [Ben-gio et al., 2013] enable gradient flow through discrete samples, and differentiable combinatorial solvers [Berthet et al., 2020, Vlastelica et al., 2020] extend this to structured problems. These address differentiability of discrete choices, not budget enforcement. Our algorithm separates the two concerns: Gumbel-STE with budget-constrained DP [Kellerer et al., 2004] handles discrete feasibility in the forward pass; the manifold projection handles budget enforcement in the backward pass. Prior analyses of STE bias characterize it via Taylor expansion in the categorical case [Liu et al., 2023] or zero-temperature analysis of the Gumbel-Softmax family [Shekhovtsov, 2023]; convergence guarantees for STE training are limited to two-layer networks with binary activations [Yin et al., 2019]. None of these address the projected bias relevant under manifold constraints. 
+
+## 6 Conclusion and Limitations 
+
+The level set of expected cost under softmax parameterization turns out to be a well-behaved Riemannian submanifold: normals are available in closed form, retraction reduces to binary search on a monotone scalar function, and vector transport is a single inner product. RCO wraps these three operations around Adam and enforces the budget exactly at every iterate, without introducing any constraint-related hyperparameters. On synthetic knapsack instances, where the decomposable objective admits closed-form gradients and isolates the manifold constraint handling from the Gumbel-STE, the manifold operations recover DP-optimal solutions that Lagrangian methods miss by a wide margin. On LLM compression, where the non-decomposable loss requires the full algorithm, RCO matches or exceeds evolutionary search methods at a fraction of the wall-clock cost on the configurations we evaluate. Several limitations apply. The forward-pass DP runs in O(N KB ′) time; this is negligible relative to the model forward pass for LLMs, but could become a bottleneck for problems with very large option sets or fine budget discretization. The STE introduces gradient bias; convergence of the full algorithm (Adam with temperature annealing) is validated empirically rather than proven. The monotonic retraction relies on cost being linear in the assignment probabilities; nonlinear costs such as end-to-end inference latency would require a different retraction strategy. 9References 
+
+P.-A. Absil, R. Mahony, and R. Sepulchre. Optimization Algorithms on Matrix Manifolds . Princeton University Press, 2008. Joshua Achiam, David Held, Abbas Tamar, and Pieter Abbeel. Constrained policy optimization. In 
+
+Proceedings of the 34th International Conference on Machine Learning , volume 70 of PMLR ,pages 22–31, 2017. Gary Bécigneul and Octavian-Eugen Ganea. Riemannian adaptive optimization methods. In Interna-tional Conference on Learning Representations , 2019. Yoshua Bengio, Nicholas Léonard, and Aaron Courville. Estimating or propagating gradients through stochastic neurons for conditional computation. arXiv preprint arXiv:1308.3432 , 2013. Quentin Berthet, Mathieu Blondel, Olivier Teboul, Marco Cuturi, Jean-Philippe Vert, and Francis Bach. Learning with differentiable perturbed optimizers. In Advances in Neural Information Processing Systems , volume 33, 2020. Silvère Bonnabel. Stochastic gradient descent on Riemannian manifolds. IEEE Transactions on Automatic Control , 58(9):2217–2229, 2013. Nicolas Boumal. An Introduction to Optimization on Smooth Manifolds . Cambridge University Press, 2023. Han Cai, Ligeng Zhu, and Song Han. ProxylessNAS: Direct neural architecture search on target task and hardware. In International Conference on Learning Representations , 2019. Zhen Dong, Zhewei Yao, Amir Gholami, Michael W. Mahoney, and Kurt Keutzer. HAWQ: Hessian aware quantization of neural networks with mixed-precision. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 293–302, 2019. Zhen Dong, Zhewei Yao, Yaohui Cai, Daiyaan Arfeen, Amir Gholami, Michael W. Mahoney, and Kurt Keutzer. HAWQ-V2: Hessian aware trace-weighted quantization of neural networks. In 
+
+Advances in Neural Information Processing Systems , volume 33, pages 18518–18529, 2020. Ahmed Douik and Babak Hassibi. Manifold optimization over the set of doubly stochastic matrices: A second-order geometry. IEEE Transactions on Signal Processing , 67(22):5761–5774, 2019. William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity. arXiv preprint arXiv:2101.03961 , 2021. Elias Frantar and Dan Alistarh. SPDY: Accurate pruning with speedup guarantees. In Proceedings of the 39th International Conference on Machine Learning , volume 162 of PMLR , pages 6726–6743. PMLR, 2022. Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. GPTQ: Accurate post-training quantization for generative pre-trained transformers. In Proceedings of the 11th International Conference on Learning Representations , 2023. Hai Huang, Ao Zheng, Jianqiang Huang, Zhicheng He, and Tong He. SDQ: Stochastic differentiable quantization with mixed precision. In Proceedings of the 39th International Conference on Machine Learning , volume 162 of PMLR , pages 9295–9309, 2022. Eric Jang, Shixiang Gu, and Ben Poole. Categorical reparameterization with Gumbel-softmax. In 
+
+International Conference on Learning Representations , 2017. Xiaojie Jin, Jiang Wang, Joshua Slocum, Ming-Hsuan Yang, Shengyang Dai, Shuicheng Yan, and Jiashi Feng. RC-DARTS: Resource constrained differentiable architecture search. arXiv preprint arXiv:1912.12814 , 2020. Hans Kellerer, Ulrich Pferschy, and David Pisinger. Knapsack Problems . Springer, 2004. Michael Lasby, Reza Bayat, Ivan Googler, Konstantinos N. Plataniotis, and Mahdi S. Hosseini. REAP: Router-weighted expert activation pruning. arXiv preprint arXiv:2510.13999 , 2025. 10 Shiyao Li, Xuefei Ning, Ke Hong, Tengxuan Liu, Luning Wang, Xiuhong Li, Kai Zhong, Guohao Dai, Huazhong Yang, and Yu Wang. LLM-MQ: Mixed-precision quantization for efficient LLM deployment. In NeurIPS 2023 Workshop on Efficient Natural Language and Speech Processing ,pages 1–5, 2023. Liyuan Liu, Chengyu Dong, Xiaodong Liu, Bin Yu, and Jianfeng Gao. Bridging discrete and backpropagation: Straight-through and beyond. In Advances in Neural Information Processing Systems , volume 36, 2023. Zongfang Liu, Shengkun Tang, Boyang Sun, Ping Wang, Zhiqiang Shen, and Xin Yuan. EvoESAP: Non-uniform expert pruning for sparse MoE. arXiv preprint arXiv:2603.06003 , 2026. Xudong Lu, Liu Qi, Yuhui Xu, Aojun Zhou, Siyuan Huang, Bo Zhang, Junchi Yan, and Hong-Jiang Zhang. Not all experts are equal: Efficient expert pruning and skipping for mixture of experts. In 
+
+Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics , 2024. Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The concrete distribution: A continuous relaxation of discrete random variables. In International Conference on Learning Representations ,2017. Vladimir Malinovskii, Andrei Panferov, Ivan Ilin, Han Guo, Peter Richtárik, and Dan Alistarh. HIGGS: Pushing the limits of large language model quantization via the linearity theorem. In 
+
+Proceedings of the 2025 Conference of the North American Chapter of the Association for Compu-tational Linguistics , volume 1, pages 10857–10886. Association for Computational Linguistics, 2025. Niv Nayman, Yonathan Aflalo, Asaf Noy, and Lihi Zelnik-Manor. HardCoRe-NAS: Hard constrained differentiable neural architecture search. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of PMLR , 2021. Maximilian Nickel and Douwe Kiela. Poincaré embeddings for learning hierarchical representations. In Advances in Neural Information Processing Systems , volume 30, 2017. Alexander Shekhovtsov. Cold analysis of Rao-Blackwellized straight-through Gumbel-softmax gradient estimator. In Proceedings of the 40th International Conference on Machine Learning ,volume 202 of PMLR , pages 30931–30955, 2023. Oliver Sieberling, Denis Kuznedelev, Eldar Kurtic, and Dan Alistarh. EvoPress: Accurate dynamic model compression via evolutionary search. In Proceedings of the 42nd International Conference on Machine Learning , PMLR, 2025. Adam Stooke, Joshua Achiam, and Pieter Abbeel. Responsive safety in reinforcement learning by PID Lagrangian methods. In Proceedings of the 37th International Conference on Machine Learning , volume 119 of PMLR , pages 9133–9143, 2020. Mingxing Tan, Bo Chen, Ruoming Pang, Vijay Vasudevan, Mark Sandler, Andrew Howard, and Quoc V. Le. MnasNet: Platform-aware neural architecture search for mobile. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2820–2828, 2019. Chen Tessler, Daniel J. Mankowitz, and Shie Mannor. Reward constrained policy optimization. In 
+
+International Conference on Learning Representations , 2019. Marin Vlastelica, Anselm Paulus, Vit Musil, Georg Martius, and Michal Rolínek. Differentiation of blackbox combinatorial solvers. In International Conference on Learning Representations , 2020. Kuan Wang, Zhijian Liu, Yujun Lin, Ji Lin, and Song Han. HAQ: Hardware-aware automated quantization with mixed precision. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8612–8620, 2019. Bichen Wu, Xiaoliang Dai, Peizhao Zhang, Yanghan Wang, Fei Sun, Yiming Wu, Yuandong Tian, Peter Vajda, Yangqing Jia, and Kurt Keutzer. FBNet: Hardware-aware efficient ConvNet design via differentiable neural architecture search. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10734–10742, 2019. 11 Zhewei Yao, Zhen Dong, Zhangcheng Zheng, Amir Gholami, Jiali Yu, Eric Tan, Leyuan Wang, Qijing Huang, Yida Wang, Michael W. Mahoney, and Kurt Keutzer. HAWQ-V3: Dyadic neural network quantization. In Proceedings of the 38th International Conference on Machine Learning ,volume 139 of PMLR , pages 11875–11886. PMLR, 2021. Lu Yin, You Wu, Zhenyu Zhang, Cheng-Yu Hsieh, Yaqing Wang, Yiling Jia, Gen Li, Ajay Jaiswal, Mykola Pechenizkiy, Yi Liang, Michael Bendersky, Zhangyang Wang, and Shiwei Liu. OWL: Outlier weighed layerwise sparsity for accelerating large language models. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of PMLR , pages 57101–57115. PMLR, 2024. Penghang Yin, Jiancheng Lyu, Shuai Zhang, Stanley Osher, Yingyong Qi, and Jack Xin. Under-standing straight-through estimator in training activation quantized neural nets. In International Conference on Learning Representations , 2019. Hongyi Zhang and Suvrit Sra. First-order methods for geodesically convex optimization. In 
+
+Conference on Learning Theory , volume 49 of PMLR , pages 1617–1638, 2016. Junchen Zhao, Ali Derakhshan, Dushyant Bharadwaj, Jayden Kana Hyman, Junhao Dong, Sangeetha Abdu Jyothi, and Ian Harris. IMPQ: Interaction-aware layerwise mixed precision quantization for LLMs. arXiv preprint arXiv:2509.15455 , 2025. Yanqi Zhou, Tao Lei, Hanxiao Liu, Nan Du, Yanping Huang, Vincent Zhao, Andrew Dai, Zhifeng Chen, Quoc Le, and James Laudon. Mixture-of-experts with expert choice routing. In Advances in Neural Information Processing Systems , volume 35, 2022. 12 A Proofs and Theoretical Details 
+
+This appendix provides formal statements and proofs for results referenced in Section 2, verifies that the algorithm components satisfy standard Riemannian optimization axioms, and derives the extensions to inequality and multiple constraints. 
+
+A.1 Manifold structure and normal vector 
+
+Proof of Proposition 1. The expected cost C(α) = P 
+
+> i
+
+wi⟨softmax( αi), c⟩ is a composition of the smooth softmax with a linear function, hence smooth. By Proposition 2, the (i, k ) entry of ∇C(α)
+
+is wi pik (ck − Epi [c]) . Since softmax produces strictly positive probabilities ( pik > 0 for all i, k ), 
+
+∥∇ C∥2 =
+
+> N
+
+X
+
+> i=1
+
+w2
+
+> iK
+
+X
+
+> k=1
+
+p2
+
+> ik
+
+ ck − Epi [c]2.
+
+If the costs are not all equal, then for every group i, Epi [c] is a strict convex combination of distinct values, so at least one ck̸ = Epi [c], and pik > 0 gives ∥∇ C∥2 > 0. The regular value theorem [Boumal, 2023, Theorem 3.2] then implies that M is a smooth (N K −1) -dimensional submanifold. 
+
+Proof of Proposition 2. The softmax Jacobian is ∂p ij /∂α ik = pij (δjk − pik ). Differentiating (1): 
+
+∂C ∂α ik 
+
+= wiKX
+
+> j=1
+
+cj pij (δjk − pik )= wi
+
+ ck pik − pik 
+
+P 
+
+> j
+
+cj pij 
+
+
+
+= wi pik 
+
+ ck − Epi [c].
+
+A.2 Monotonic retraction 
+
+Proof of Proposition 3. Let ˜cik = ck. By the chain rule and Proposition 2: 
+
+ddt C(α + t˜c) = X
+
+> i,k
+
+wi pik (t) ck − Epi(t)[c] ck
+
+=
+
+> N
+
+X
+
+> i=1
+
+wi
+
+X 
+
+> k
+
+pik (t) c2 
+
+> k
+
+−  Epi(t)[c]2
+
+=
+
+> N
+
+X
+
+> i=1
+
+wi Var pi(t)[c].
+
+Since wi > 0 and pik (t) > 0 for all k, Var pi(t)[c] > 0 whenever costs are not all equal. Moreover, as t → +∞ the softmax concentrates on arg max k ck giving C → P 
+
+> i
+
+wi max k ck, and as t → −∞ ,
+
+C → P 
+
+> i
+
+wi min k ck. Strict monotonicity and these limiting values ensure that C(α + t˜c) = B has a unique solution for any B in the feasible range, found by binary search in O(log(1 /ε )) steps. 
+
+A.3 Verification of retraction axioms 
+
+A retraction on a manifold M is a smooth map R : T M → M satisfying two axioms [Absil et al., 2008, Definition 4.1]: (i) Rα(0) = α (centering), and (ii) ddt Rα(tξ) t=0 = ξ for all ξ ∈ TαM
+
+(local rigidity). Our retraction takes a tangent vector ξ ∈ TαM, forms α′ = α + ξ, and finds t∗ such that 
+
+C(α′ + t∗˜c) = B. Smoothness of t∗ as a function of ξ follows from the implicit function theorem applied to 
+
+F (ξ, t ) = C(α + ξ + t˜c) − B. 
+
+The partial derivative ∂F/∂t = P 
+
+> i
+
+wi Var pi [c] > 0 (Proposition 3) is nonzero everywhere, so t∗(ξ)
+
+is smooth in a neighborhood of any point on M.13 Proposition 4 (Retraction axioms) . The map Rα(ξ) = α + ξ + t∗(ξ) ˜ c, where t∗ solves C(α + ξ +
+
+t∗˜c) = B, satisfies both retraction axioms. Proof. Centering. When ξ = 0, C(α) = B already holds, so t∗ = 0 and Rα(0) = α.
+
+Local rigidity. Write Rα(tξ) = α + tξ + t∗(tξ) ˜ c. Differentiating the constraint 
+
+C α + tξ + t∗(tξ) ˜ c = B
+
+at t = 0 gives 
+
+⟨∇ C(α), ξ⟩ + dt ∗
+
+dt t=0 
+
+⟨∇ C(α), ˜c⟩ = 0 .
+
+The first term vanishes because ξ ∈ TαM, and ⟨∇ C, ˜c⟩̸ = 0 by Proposition 3, so dt ∗  
+
+> dt t=0
+
+= 0 .Therefore ddt t=0 Rα(tξ) = ξ.
+
+A.4 Riemannian gradient 
+
+The Riemannian gradient of a function f : M → R at α ∈ M is the unique tangent vector 
+
+grad f (α) ∈ TαM satisfying ⟨grad f, ξ⟩ = Df (α)[ ξ] for all ξ ∈ TαM [Boumal, 2023, Proposi-tion 3.61]. We verify that the tangent projection used in Algorithm 1 recovers it. 
+
+Proposition 5 (Projected gradient is the Riemannian gradient) . Let L : RN K → R be smooth and let 
+
+n = ∇C(α). Then 
+
+grad L M(α) = ∇L(α) − ⟨∇ L(α), n⟩∥n∥2 n.
+
+Proof. The tangent space is TαM = {ξ : ⟨n, ξ⟩ = 0 }. Since M inherits the Euclidean metric, the Riemannian gradient equals the orthogonal projection of ∇L onto TαM. The normal space is 
+
+span( n), giving the stated formula. This confirms that every projected-gradient step in Algorithm 1 moves in the steepest-descent direction on M. Note that this differs from projected gradient descent (PGD), which projects the iterate onto a convex constraint set after each step. Here we project the gradient onto the tangent space and use a separate retraction to bring the iterate back to M. This is necessary because M is not convex, so projecting iterates onto it is not well-defined in general. 
+
+A.5 Vector transport by projection 
+
+Exact parallel transport on implicitly defined submanifolds is expensive to compute. We instead use 
+
+vector transport by projection [Absil et al., 2008, Section 8.1.3]: given ξ ∈ TαM and a retraction step to α′, the transported vector is 
+
+Tα→α′ (ξ) = ξ − ⟨ξ, n′⟩∥n′∥2 n′,
+
+where n′ = ∇C(α′). This satisfies the vector transport axioms [Absil et al., 2008, Definition 8.1.1] and coincides with parallel transport to first order in the step size. In Algorithm 1, we apply this transport to Adam’s first moment m. We only transport the first moment; the second moment is a scalar scaling factor per coordinate and does not need transport. 
+
+A.6 Robustness to gradient bias 
+
+The convergence analysis of Riemannian gradient descent (Section 2) assumes exact gradients. In practice, Algorithm 1 uses biased gradient estimates from the straight-through estimator. The following result shows that the tangent projection removes the normal component of any bias before it reaches the optimizer, and that the remaining tangential bias does not cause constraint violation (the per-step violation depends on manifold curvature, not on bias magnitude). 
+
+Proposition 6 (Constraint robustness under biased gradients) . Let ˜g = ∇L(α) + b be a biased gradient estimate at α ∈ M , where b is an arbitrary bias vector. Let n = ∇C(α) denote the constraint normal and write PT (v) = v − (⟨v, n⟩/∥n∥2) n for the tangent projection. 
+
+14 (i) Normal bias elimination. The tangent projection eliminates the constraint-normal compo-nent of the bias: 
+
+PT (˜ g) = PT (∇L) + bT ,
+
+where bT = b − ⟨b,n⟩∥n∥2 n is the tangential component of the bias. The normal component 
+
+bn = b − bT does not enter the optimizer. 
+
+(ii) Constraint violation bound (gradient descent). For a gradient step α′ = α − η P T (˜ g), the per-step constraint violation satisfies 
+
+|C(α′) − B| ≤ η2
+
+2 ∥∇ 2C(α)∥op ∥PT (˜ g)∥2 + O(η3).
+
+This bound is second-order in η and independent of ∥bn∥. Without projection, the violation is first-order: |C(α − η ˜g) − B| = η |⟨ n, ˜g⟩| + O(η2).
+
+(iii) Momentum insulation (Adam). In Algorithm 1, after tangent projection (line 7) and vector transport (line 11), Adam’s first moment satisfies ⟨mt, nt⟩ = 0 for all t ≥ 0, regardless of the bias in the gradient estimates. Proof. Part (i). PT is linear (it is an orthogonal projection onto the hyperplane {v : ⟨v, n⟩ = 0 }), so PT (˜ g) = PT (∇L) + PT (b). Since PT (b) = b − ⟨b,n⟩∥n∥2 n = bT , the normal component bn is removed. 
+
+Part (ii). Let d = PT (˜ g). Taylor-expanding C at α ∈ M :
+
+C(α − η d) = C(α)
+
+| {z }  
+
+> =B
+
+−η ⟨∇ C(α), d⟩
+
+| {z }  
+
+> =⟨n,d⟩= 0
+
++ η2
+
+2 dT ∇2C(α) d + O(η3).
+
+The first-order term vanishes because d ∈ TαM. The Hessian ∇2C exists and has bounded operator norm because C is smooth (Proposition 1), giving the stated bound. Without projection, d = ˜ g and 
+
+⟨n, ˜g⟩̸ = 0 in general, so the violation is O(η).
+
+Part (iii). By induction on t. At each step, the momentum passes through two stages: the Adam update (which mixes old momentum with the new projected gradient) and the vector transport (which re-projects onto the tangent space at the retracted point). We write m+ 
+
+> t
+
+for the momentum after the Adam update and mT 
+
+> t
+
+for the momentum after transport. 
+
+Base case. mT 
+
+> 0
+
+= 0, so ⟨mT 
+
+> 0
+
+, n⟩ = 0 for any n.
+
+Inductive step. Suppose ⟨mT
+
+> t−1
+
+, nt⟩ = 0 , where nt = ∇C(αt) is the normal at the current iterate. The projected gradient satisfies ⟨PT (˜ gt), nt⟩ = 0 by construction. Adam’s momentum update is a convex combination of these two orthogonal-to-nt vectors: m+ 
+
+> t
+
+= β1mT 
+
+> t−1
+
++ (1 − β1) PT (˜ gt), so 
+
+⟨m+ 
+
+> t
+
+, nt⟩ = β1 · 0 + (1 − β1) · 0 = 0 . After the Adam step and retraction to α′ 
+
+> t
+
+∈ M , vector transport (Algorithm 1, line 11) projects m+ 
+
+> t
+
+onto the new tangent space: mT 
+
+> t
+
+= m+ 
+
+> t
+
+− (⟨m+ 
+
+> t
+
+, n′
+
+> t
+
+⟩/∥n′
+
+> t
+
+∥2) n′
+
+> t
+
+,which satisfies ⟨mT 
+
+> t
+
+, n′
+
+> t
+
+⟩ = 0 by construction of the projection. Since αt+1 = α′
+
+> t
+
+, we have 
+
+nt+1 = n′
+
+> t
+
+, completing the induction. 
+
+Remark 7 (Adam’s per-coordinate scaling) . Part (ii) applies to gradient descent. Adam’s step direction is d = ˆ m ⊘ (√ˆv + ϵ) (element-wise), and the per-coordinate scaling does not preserve the tangent plane: ⟨n, d⟩̸ = 0 even when ⟨m, n⟩ = 0 . To quantify how much normal leakage Adam introduces, write D = diag(1 /(√ˆvik + ϵ)) for the scaling matrix and ¯d for its mean diagonal entry, and decompose D into its uniform part ¯dI (which preserves the tangent plane) and the non-uniform residual D − ¯dI :
+
+⟨n, D m⟩ = mT (D − ¯dI ) n + ¯d ⟨m, n⟩
+
+| {z }  
+
+> = 0 by (iii)
+
+.
+
+The projection eliminates the direct bias-driven normal component ¯d ⟨m, n⟩. The remaining normal leakage |mT (D − ¯dI ) n| ≤ ∥ m∥ ∥ n∥ ∥ D − ¯dI ∥op is proportional to the non-uniformity of Adam’s second-moment estimates: if D were a scalar matrix (uniform scaling), this term would vanish regardless of ∥m∥. The factor ∥m∥ still reflects the accumulated (tangential) gradient history, 
+
+15 including tangential bias; what the projection guarantees is that bias enters this bound only through the non-uniformity factor ∥D − ¯dI ∥op , not directly. The retraction (Proposition 3) corrects this residual exactly. 
+
+Proposition 6 establishes that the tangent projection and vector transport isolate constraint satisfaction from gradient estimation quality: the constraint-normal component of any bias is eliminated before it reaches the optimizer. The tangential component bT does not cause constraint violation, but it does affect optimization quality. 
+
+A.7 Inequality constraints via slack variables 
+
+For the inequality constraint C(α) ≤ B, we introduce a scalar slack variable s ∈ R and define the augmented equality constraint 
+
+ˆC(α, s ) = C(α) + s2 = B. (6) This defines a smooth manifold ˆM ⊂ RN K +1 . The gradient of ˆC in the augmented space is 
+
+∇ ˆC(α, s ) =  ∇αC(α), 2s.
+
+When s > 0, the normal has a nonzero component in the s-direction, so the tangent space includes directions that change α freely (with compensating changes in s). The optimizer can decrease cost below budget by increasing s. As s → 0, the algorithm reduces to the equality-constrained case. The tangent projection in the augmented space is 
+
+proj  g, 0 =  g, 0 − ⟨g, ∇αC⟩∥∇ αC∥2 + 4 s2
+
+ ∇αC, 2s,
+
+where g = ∇αL and the s-component of the objective gradient is zero (the objective does not depend on s). Retraction proceeds by first updating (α, s ) via the projected Adam step, then adjusting: if C(α) > B ,retract α via binary search to C(α) = B and set s = 0 ; otherwise set s = pB − C(α). This maintains ˆC(α, s ) = B exactly. 
+
+Smoothness at s = 0 . The retraction is continuous but not smooth at the boundary s = 0 , because the square-root branch s′ = pB − C(α′) has an infinite derivative as s′ → 0+. In practice, the optimizer either settles to a point with s > 0 (the optimum is strictly under budget) or converges to the equality-constrained manifold ( s = 0 ), spending at most a few iterations near the boundary. We observe no numerical issues from this non-smoothness in any of our experiments. 
+
+A.8 Multiple equality constraints 
+
+Given m constraints Cj (α) = bj for j = 1 , . . . , m , the feasible set is M = T 
+
+> j
+
+C−1 
+
+> j
+
+(bj ). Let 
+
+nj = ∇Cj (α) and N = [ n1 · · · nm]. If the nj are linearly independent, M is a smooth (N K − m)-dimensional submanifold with tangent space 
+
+TαM = {ξ : N⊤ξ = 0}.
+
+The tangent projection becomes 
+
+gtan = g − N N⊤N−1N⊤g,
+
+which requires solving an m × m system, cheap when m ≪ N K .Retraction generalizes via Newton root-finding on the m-dimensional system: find t ∈ Rm such that 
+
+Cj (α + P 
+
+> l
+
+tl˜cl) = bj for all j. The Jacobian entry is 
+
+Jjl =
+
+> N
+
+X
+
+> i=1
+
+wi Cov pi [cj , c l],
+
+available in closed form from the current softmax distributions. For m = 1 this reduces to the scalar P 
+
+> i
+
+wi Var pi [c] from Proposition 3, and binary search on the same monotone function is the simpler 16 alternative used in Section 2. Quadratic convergence typically requires 3–4 iterations for general m.When the constraints are separable (each depends on a disjoint subset of groups), independent scalar retraction per constraint suffices. Figure 3 validates this extension on a synthetic problem with m=16 simultaneous resource constraints, 
+
+N =500 groups, and K=32 options. RCO satisfies all 16 constraints to ∼ 10 −13 (the limit of double-precision arithmetic) throughout optimization. Lagrangian penalty cannot balance 16 independent multipliers and diverges to violations of order 10; augmented Lagrangian reduces this to ∼ 10 −2 but still exceeds RCO by ten orders of magnitude. 0 200 400 600 800 1000             
+
+> Step
+> 2
+> 1
+> 0
+> 1
+> 2
+> Violation  ( [cost j] bj)
+> max |v| = 9.1e-13
+> RCO
+> 0200 400 600 800 1000
+> Step
+> 15
+> 10
+> 5
+> 0
+> 5
+> 10
+> 15 max |v| = 1.5e+01
+> Lagrangian
+> 0200 400 600 800 1000
+> Step
+> 2
+> 1
+> 0
+> 1
+> 2max |v| = 6.3e-02
+> Aug. Lagrangian
+
+Figure 3: Per-constraint violation trajectories with m=16 simultaneous budget constraints ( N =500 ,
+
+K=32 ). Each trace is one constraint; y-axis scales differ between panels. RCO enforces all 16 constraints to ∼ 10 −13 throughout optimization. Lagrangian methods lack the geometric structure to balance many constraints and exhibit persistent violations orders of magnitude larger. 
+
+## B Full Expert Pruning Results 
+
+Gradient signal under sparse routing. In MoE models, only the top-k routed experts are computed per token; the STE pruning mask is applied after routing by scaling each selected expert’s contribution. An expert’s pruning logit αi therefore receives gradient only from tokens where expert i was routed, which is a small fraction of the calibration set. This makes the per-expert gradient signal inherently sparser than in the quantization setting, where every layer processes every token. The sparsity explains why the Gumbel sample count g is the most important hyperparameter in the expert pruning ablations: more samples per step expose each expert to more diverse pruning contexts, compensating for the low per-token coverage. Because router weights are frozen, pruned experts are masked out at inference in the same way as during optimization (the remaining top-k experts are upweighted); there is no approximation gap between the STE training objective and deployment. This would change if the router were fine-tuned after pruning to re-route around removed experts, which we leave to future work. 
+
+B.1 OLMoE-1B-7B: sparsity sweep 
+
+Table 5 reports all eight benchmarks across sparsity levels from 5% to 50% (RCO, 300 steps). 17 Table 5: OLMoE-1B-7B per-benchmark results across sparsity levels (RCO, 300 steps). Avg is the unweighted mean of all eight benchmarks.                                                                      
+
+> Full 5% 10% 15% 20% 25% 50% ARC-C .493 .497 .489 .497 .470 .458 .334 ARC-E .758 .760 .741 .738 .718 .698 .525 BoolQ .768 .757 .750 .717 .707 .713 .602 HellaSwag .806 .797 .779 .759 .735 .711 .469 MMLU .534 .531 .526 .506 .495 .479 .301 OBQA .468 .470 .466 .462 .450 .456 .326 RTE .715 .726 .693 .704 .718 .755 .570 WinoGrande .680 .690 .650 .645 .624 .596 .533
+> Avg .653 .653 .637 .629 .615 .608 .458
+
+At 5% sparsity, every individual benchmark remains within 1–2 percentage points of the full model; several (ARC-C, ARC-E, OBQA, RTE) are within noise. Degradation is monotonic for most benchmarks, with the exception of RTE, which improves under moderate pruning (0.715 → 0.755 at 25%). The largest per-benchmark drops occur at 50% sparsity on HellaSwag ( −33.7 points) and MMLU ( −23.3 points), consistent with these benchmarks’ sensitivity to knowledge capacity. 
+
+B.2 OLMoE-1B-7B: full iteration sweep 
+
+Table 6 extends Table 2 in the main text with OBQA, RTE, and WinoGrande columns. Table 6: OLMoE-1B-7B at 25% sparsity: full per-benchmark iteration sweep. All eight benchmarks contributing to Avg.                                                                                                    
+
+> ARC-C ARC-E BoolQ HSwag MMLU OBQA RTE Wino Avg Time Full model .493 .758 .768 .806 .534 .468 .715 .680 .653 -REAP .408 .676 .683 .660 .452 .406 .664 .580 .566 <1 m EvoESAP .427 .641 .673 .685 .474 .386 .614 .649 .581 5.8 h RCO ( s=50 ).442 .713 .693 .691 .476 .440 .718 .602 .597 ∼10 m RCO ( s=100 ).446 .716 .692 .713 .465 .438 .722 .608 .600 ∼23 m RCO ( s=150 ).454 .727 .697 .703 .427 .452 .668 .616 .593 ∼32 m RCO ( s=200 ).459 .701 .701 .708 .475 .420 .697 .608 .596 ∼44 m RCO ( s=300 ).458 .698 .713 .711 .479 .456 .755 .596 .608 ∼66 m RCO ( s=500 ).456 .699 .698 .711 .479 .444 .722 .612 .603 ∼108 m
+
+RCO reaches 0.597 Avg at 50 steps and improves to 0.608 at 300 steps. Returns diminish beyond 300 steps (500 steps: 0.603). Individual benchmarks show non-monotonic behavior during optimization (e.g., MMLU dips at s=150 ), reflecting the stochastic nature of Gumbel-STE sampling, but the aggregate Avg trends upward through 300 steps. 
+
+B.3 Qwen3-30B-A3B: full per-benchmark comparison 
+
+Table 7 extends Table 1 in the main text with all eight benchmarks. 18 Table 7: Qwen3-30B-A3B per-expert pruning: full benchmark breakdown. RCO wins on all 8 benchmarks at 25% and on 6/8 at 50%. Largest gains at 25%: HellaSwag (+8.7), MMLU (+7.1), ARC-C (+7.0).                                                           
+
+> Sparsity Method ARC-C ARC-E BoolQ HSwag MMLU OBQA RTE Wino Avg
+> 0% Full model .625 .838 .887 .797 .802 .446 .769 .736 .737 25% EvoESAP .514 .758 .866 .670 .662 .366 .780 .702 .665
+> RCO .584 .797 .885 .757 .733 .424 .783 .714 .710
+> 50% EvoESAP .437 .638 .805 .518 .576 .332 .747 .629 .585
+> RCO .428 .632 .835 .624 .587 .336 .751 .647 .605
+
+At 25% sparsity, RCO improves over EvoESAP on every benchmark. The gains are largest on benchmarks that test world knowledge and reasoning (HellaSwag +8.7, MMLU +7.1, ARC-C +7.0), suggesting that the manifold search better preserves the experts carrying factual and reasoning capacity. At 50% sparsity, EvoESAP retains a small edge on ARC-C ( −0.9) and ARC-E ( −0.6), while RCO dominates on HellaSwag (+10.6), BoolQ (+3.0), and WinoGrande (+1.8). 
+
+B.4 Qwen3-Coder-Next: calibration and allocation ablation 
+
+Qwen3-Coder-Next has 512 routed experts per layer with 10 active per token. We evaluate eight RCO variants spanning two calibration domains (coding: evol-codealpaca; general: FineWeb-Edu), two sparsity levels (25%, 50%), and two budget allocation strategies (uniform, nonuniform). All evaluations use vLLM with bf16 and greedy decoding. 
+
+Uniform vs. nonuniform allocation. Each variant prunes a fixed fraction of total experts across all layers. Uniform allocation keeps the same number of experts per layer (e.g., 384 at 25%, 256 at 50%). Nonuniform allocation lets the optimizer freely distribute the pruning budget based on calibration loss: critical layers keep more experts, redundant layers are pruned more aggressively. The effect is stark on coding benchmarks (Table 8): at 50% sparsity, nonuniform recovers 97% of HumanEval versus 55% for uniform, a 42-point gap. At 25%, the gap narrows to 8 points (100% vs. 92%). The gap grows with sparsity because uniform allocation forces equal pruning on layers that differ substantially in sensitivity; at low sparsity, even sensitive layers retain enough experts to function. 
+
+Coding vs. general calibration. RCO minimizes KL divergence on the calibration dataset, so the choice of calibration data determines which capabilities the pruned model preserves. Coding-calibrated variants (evol-codealpaca) preserve code generation at the cost of general knowledge; general-calibrated variants (FineWeb-Edu) preserve Avg at the cost of coding ability. The trade-off is sharp: general-calibrated variants lose coding ability almost entirely (HumanEval ≤6.1% at 25% sparsity), while coding-calibrated variants at 50% sparsity still retain 76% of Avg (Table 9). The asymmetry reflects the base model’s specialization: its coding experts are concentrated in a small subset, easily lost when calibration does not exercise them. 
+
+Coding benchmarks. Table 8 reports HumanEval (pass@1) and MBPP (pass@1) with recovery relative to the full model. 19 Table 8: Qwen3-Coder-Next coding benchmarks across calibration domain and allocation strategy. Recovery is relative to the full (unpruned) model. Bold: best among pruned models per sparsity level. All values in %.                                                    
+
+> Sparsity Cal. Alloc. HE rec. MBPP rec. 0% Full model 74.4 –76.4 –25% coding uniform 68.3 92 68.8 90
+> coding nonunif. 74.4 100 67.8 89 general uniform 4.3 64.6 6general nonunif. 6.1 85.8 850% coding uniform 40.9 55 53.4 70 coding nonunif. 72.0 97 69.0 90
+> general uniform 0.0 01.8 2general nonunif. 1.2 21.0 1
+
+General benchmarks. Table 9 reports all eight general benchmarks. Avg is the unweighted mean. General-calibrated variants preserve Avg up to 100% at 25% (nonuniform) and 92% at 50% (uniform). At 50% general sparsity, uniform (65.4) slightly outperforms nonuniform (64.4), in contrast to the coding results where nonuniform dominates. Table 9: Qwen3-Coder-Next general benchmarks (Avg and per-benchmark breakdown). Bold: best among pruned models per sparsity level. All values in %.                                                                                          
+
+> Sparsity Cal. Alloc. ARC-C ARC-E BoolQ HSwag MMLU OBQA RTE Wino Avg 0% Full model 60.6 82.1 88.5 77.5 76.7 43.0 76.5 66.6 71.4 25% coding uniform 50.1 72.2 86.4 69.0 71.0 38.0 72.9 65.5 65.6 coding nonunif. 46.2 66.2 85.1 66.5 68.0 36.2 77.6 64.2 63.8 general uniform 60.0 80.7 87.6 78.5 70.4 45.2 75.1 67.7 70.7 general nonunif. 61.8 82.2 88.2 77.6 71.2 44.2 76.2 69.9 71.4
+> 50% coding uniform 40.3 64.1 78.9 57.8 56.4 35.0 67.1 61.6 57.7 coding nonunif. 35.6 55.5 77.6 54.8 54.3 34.0 64.6 60.3 54.6 general uniform 54.1 77.1 83.9 70.9 61.0 42.8 67.5 65.8 65.4
+> general nonunif. 52.6 76.2 84.2 70.8 59.5 41.4 67.5 63.5 64.4
+
+## C Mixed-Precision Quantization: Ablation Study 
+
+We report ablation sweeps for RCO applied to mixed-precision quantization on Qwen3-8B (252 linear layers, 7 bitwidth options: 2, 3, 4, 5, 6, 7, 8) at a target of 2.5 average bits per parameter. All layers are treated as independent groups (no structural grouping unless stated otherwise). Calibration uses FineWeb-Edu with 256 samples at sequence length 2048 unless noted. Evaluation reports perplexity on two held-out corpora: FineWeb-Edu (FW) and C4, each with 131k tokens at sequence length 2048. The FP16 baseline achieves FW=10.96, C4=17.20. 
+
+Hardware. All ablation sweeps use an RTX 3090 (24 GB). The baseline comparison (Table 4) reports wall times from an RTX A6000 (48 GB). 
+
+C.1 Gumbel samples per step 
+
+Each optimization step draws g independent Gumbel-softmax assignments and averages their STE gradients before the optimizer update. More samples reduce gradient variance over the discrete assignment space at the cost of additional forward-backward passes per step. 20 Table 10: Effect of Gumbel sample count ( g). Fixed: s=200 , τmin =0 .01 , lr =0.1, seed=42, cal=256. Hardware: RTX 3090.                     
+
+> gFW ↓C4 ↓Wall Fwd passes 116.46 25.63 23 m 200 415.61 24.29 62 m 800 815.66 24.13 114 m 1600 16 15.51 24.30 218 m 3200
+
+The largest gain occurs from g=1 to g=4 (−0.85 FW perplexity). Further increases to g=16 yield diminishing and non-monotonic gains on FW (within seed noise), though C4 improves monotonically. Gradient variance over discrete assignments is the primary bottleneck: more samples provide cleaner per-layer signal about which bitwidth to prefer. 
+
+C.2 Optimization steps 
+
+Temperature anneals exponentially from τ0=1 .0 to τmin over s steps, so more steps produce slower annealing. Table 11: Effect of optimization steps ( s). Fixed: g=4 , τmin =0 .01 , lr =0.1, seed=42, cal=256. Hardware: RTX 3090.                 
+
+> sFW ↓C4 ↓Wall Fwd passes 100 15.62 24.17 35 m 400 200 15.61 24.29 62 m 800 400 15.68 24.34 115 m 1600
+
+Results are non-monotonic: s=100 and s=200 are nearly identical, while s=400 is slightly worse. The optimization converges quickly; additional steps at low temperature accumulate biased STE gradients without improving the solution. 
+
+C.3 Samples vs. steps at fixed compute 
+
+For a fixed compute budget (same number of forward passes), is it better to increase Gumbel samples per step or to run more steps? Table 12: Compute-matched configurations. g=32 , s=50 achieves the same quality as g=16 , s=200 
+
+at half the compute (1600 vs. 3200 forward passes). Note: g=32 uses seed=2; others use seed=42. Hardware: RTX 3090.                          
+
+> gsFW ↓C4 ↓Fwd passes Wall 4200 15.61 24.29 800 62 m 8100 15.68 24.28 800 61 m 16 200 15.53 24.13 3200 202 m 32 50 15.56 24.10 1600 110 m
+
+Sample efficiency dominates step count. The STE gradient benefits more from averaging over diverse discrete assignments than from additional optimization iterations at low temperature. 
+
+C.4 Temperature minimum 
+
+Temperature decays exponentially from τ0=1 .0 to τmin . Lower τmin forces sharper assignments earlier; higher τmin leaves more uncertainty at convergence. The final discrete assignment is extracted via budget-constrained argmax regardless of τmin .21 Table 13: Effect of τmin . Fixed: g=4 , s=200 , lr =0.1, seed=42, cal=256. Hardware: RTX 3090.           
+
+> τmin FW ↓C4 ↓
+> 0.05 15.75 24.55
+> 0.01 15.61 24.29
+> 0.005 15.77 24.42 0.001 16.26 25.20
+
+τmin =0 .01 is optimal. Higher values leave too many layers with soft, undecided assignments. Lower values force premature hard decisions before layers have accumulated sufficient gradient signal, locking in suboptimal assignments early. 
+
+C.5 Learning rate 
+
+The Adam optimizer step size in logit space. Table 14: Effect of learning rate. Fixed: g=4 , s=200 , τmin =0 .01 , seed=42, cal=256. Hardware: RTX 3090.         
+
+> LR FW ↓C4 ↓
+> 0.05 15.66 24.33 0.1 15.61 24.29 0.2 15.63 24.40
+
+Results are robust across a 4 × range (within seed noise of ∼0.2 PPL). The manifold projection removes the budget-changing gradient component, and the retraction prevents constraint violation, leaving the optimizer in a well-conditioned subspace. 
+
+C.6 Antithetic sampling 
+
+Antithetic sampling pairs each uniform draw U with 1−U , producing two negatively correlated Gumbel variates per draw. This halves the number of independent assignments explored per step. Table 15: Effect of antithetic sampling. Fixed: g=4 , s=200 , τmin =0 .01 , lr =0.1, seed=42, cal=256. Hardware: RTX 3090.       
+
+> Antithetic FW ↓C4 ↓
+> No 15.61 24.29
+> Yes 15.97 24.63
+
+Antithetic sampling hurts. With g=4 , the two base draws plus two mirrored draws reduce diversity in the discrete assignment space. The variance reduction from negative correlation does not compensate for the reduced exploration. Independent samples explore the combinatorial space more effectively. 
+
+C.7 Seed variance 
+
+The random seed affects calibration data ordering, Gumbel noise sequences, and optimizer initializa-tion. 22 Table 16: Seed variance. Fixed: g=4 , s=200 , τmin =0 .01 , lr =0.1, cal=256. Hardware: RTX 3090.             
+
+> Seed FW ↓C4 ↓
+> 215.57 24.24 42 15.61 24.29 015.83 24.84 115.96 25.23 315.98 24.71
+
+FW perplexity: mean=15.79, std=0.18, range=0.41. The range exceeds most hyperparameter effects except Gumbel sample count. Approximately 180 of 252 layers converge to the same assignment across seeds; the remaining ∼70 ambiguous layers (where multiple bitwidths yield similar KL) account for the variance. More Gumbel samples reduce this variance by providing better gradient signal for ambiguous layers. 
+
+C.8 Layer grouping 
+
+Structural grouping forces layers with similar roles (e.g., gate_proj and up_proj, or q/k/v_proj) to share a bitwidth, reducing the search space from 252 to ∼144 groups. Table 17: Effect of layer grouping. Fixed: g=4 , s=200 , τmin =0 .01 , lr =0.1, seed=42. Hardware: RTX 3090.                      
+
+> Grouping Cal FW ↓C4 ↓
+> None 256 15.60 24.14
+> Grouped 256 16.11 25.36 None 512 15.82 24.83
+> Grouped 512 16.94 26.98 None 1024 16.14 25.13
+> Grouped 1024 16.40 25.73
+
+No grouping consistently outperforms grouped assignment by 0.3–1.1 FW perplexity. Individual layers within structural groups can have different quantization sensitivity, so forcing a shared bitwidth is suboptimal. RCO scales well to the full 252-dimensional search space without grouping. 
+
+C.9 Calibration samples 
+
+More calibration sequences produce a less noisy KL objective but require proportionally more RAM for cached reference log-probabilities ( ∼159 GB for 256 samples). Table 18: Effect of calibration set size. Note: cal=512 runs use lr =0.2; comparison is not perfectly controlled. Hardware: RTX 3090.                    
+
+> Cal Config FW ↓C4 ↓
+> 256 g=8 ,s=200 , lr=0.1 15.78 24.48 512 g=8 ,s=200 , lr=0.2 15.65 24.51 256 g=4 ,s=200 , lr=0.1 15.81 24.73 512 g=4 ,s=200 , lr=0.2 16.23 25.38
+
+No clear benefit from doubling calibration data. The dominant source of variance is the discrete assignment landscape (seed variance, Section C.7), not calibration noise. At 256 samples (524k tokens), the gradient signal is sufficient for the ∼252 decisions. 
+
+C.10 Scaling: Gumbel samples with fixed steps 
+
+Table 19 summarizes the compute-quality tradeoff as Gumbel sample count increases, alongside EvoPress. 23 Table 19: Scaling behavior. RCO with g=32 , s=50 matches or exceeds EvoPress on both FW and C4. The compute-optimal strategy maximizes samples per step while minimizing step count.                                    
+
+> Method gsFW ↓C4 ↓Wall RCO 1200 16.46 25.63 23 m RCO 4200 15.61 24.29 62 m RCO 8200 15.66 24.13 114 m RCO 16 200 15.53 24.30 218 m
+> RCO 32 50 15.56 24.10 110 m
+> EvoPress =150 gen 15.64 24.63 10 h
+
+C.11 Recommended defaults 
+
+Table 20 summarizes the recommended hyperparameters based on the ablations above. Table 20: Recommended RCO hyperparameters for mixed-precision quantization.                         
+
+> Parameter Recommended Robust range Note Gumbel samples ( g)16–32 4–64 More is better; diminishing returns Steps ( s)50–200 50–400 Non-monotonic; fewer fine with more samples
+> τmin 0.01 0.005–0.05 Too low: premature decisions Learning rate 0.1 0.05–0.2 Robust due to manifold projection Antithetic No -Reduces assignment diversity Calibration 256 128–512 Not the bottleneck Layer grouping None -Layers differ in sensitivity
+
+## D Baseline Reproduction Details 
+
+All evolutionary search baselines reported in this paper are our own reproductions under a matched evaluation protocol, not numbers taken from the original papers. This section documents the reproduction setup for each. 
+
+D.1 EvoESAP 
+
+All EvoESAP numbers are produced using the authors’ released code 1 under our evaluation pipeline: same models, same FineWeb-Edu calibration data and KL-divergence fitness used for RCO, same lm-eval-harness configuration for downstream benchmarks, same compute environment. We use REAP as the within-layer importance criterion since it is the strongest of the four criteria evaluated by Liu et al. [2026]. We run EvoESAP at the generation counts recommended in their paper (50 for OLMoE-1B-7B, 10 for Qwen3-30B-A3B). Our EvoESAP numbers therefore reflect performance under a matched protocol with RCO and may differ from the numbers in Liu et al. [2026], who calibrate REAP on evol-codealpaca-v1 and search on tulu-3-sft-personas-math; the difference reflects calibration data choice, not algorithmic performance. 
+
+D.2 EvoPress 
+
+All EvoPress numbers for Qwen3-8B are our own reproductions, run using the authors’ released code 2 under our evaluation pipeline (FineWeb-Edu calibration, KL divergence fitness, 256 calibration samples, same eval setup as RCO). Sieberling et al. [2025] do not include Qwen3-8B in their reported experiments. We run EvoPress for 100 generations, matching the search budget recommended by Sieberling et al. [2025]. RCO and EvoPress are measured in the same compute environment. 
+
+> 1https://github.com/ZongfangLiu/EvoESAP
+> 2https://github.com/IST-DASLab/EvoPress
+
+24 E Full MCKP Results 
+
+Table 21 reports the complete results across all 12 scenarios (20 instances each, 500 steps, learning rate 0.01). Gap denotes the percentage below the DP optimum for the greedy-repaired discrete assignment. Violation is the mean absolute constraint violation |C(α) − B| averaged over all optimization steps. Table 21: Full MCKP benchmark results. Gap: % below DP optimum (mean ± std over 20 instances). Violation: mean |E[cost ] − B|. Budet manifold (eq.) maintains violation < 10 −8 in all scenarios. Budet manifold (ineq.) violation is reported as “-” when the slack variable is active (the constraint is satisfied as an inequality).                                                                                                                                                                                                            
+
+> Budet manifold (eq.) Budet manifold (ineq.) Lagrangian Aug. Lagrangian Scenario Gap% |v|Gap% |v|Gap% |v|Gap% |v|
+> small easy 0.55 ±0.88 0.00 0.34 ±0.78 1.68 0.56 ±0.88 0.07 0.56 ±0.88 0.01
+> medium 0.02 ±0.03 0.00 0.01 ±0.02 2.98 0.02 ±0.03 0.05 0.08 ±0.09 0.02
+> large 0.01 ±0.01 0.00 0.01 ±0.01 4.71 0.01 ±0.01 0.03 2.25 ±0.36 0.13
+> tight budget 0.34 ±0.38 0.00 0.39 ±0.39 0.19 0.39 ±0.39 0.08 0.39 ±0.39 0.02
+> correlated 0.77 ±0.58 0.00 0.77 ±0.58 0.03 1.04 ±0.98 0.10 1.24 ±0.62 0.08
+> adversarial 0.10 ±0.05 0.00 0.12 ±0.07 0.02 0.12 ±0.07 0.08 0.12 ±0.07 0.01
+> float costs 0.01 ±0.01 0.00 0.01 ±0.01 5.20 0.01 ±0.01 0.02 2.63 ±0.51 0.16
+> correlated tight 1.14 ±0.88 0.00 1.19 ±0.82 0.02 2.25 ±1.33 0.10 8.42 ±3.36 0.10
+> nonuniform 0.28 ±0.34 0.00 0.53 ±0.49 12.97 0.00 ±0.00 0.06 0.00 ±0.00 0.01
+> boundary 0.89 ±0.62 0.00 0.86 ±0.64 0.01 2.76 ±2.15 0.13 7.09 ±3.03 0.14
+> cheap optimal 49.88 ±1.16 0.00 0.01 ±0.01 -49.98 ±1.24 0.10 49.95 ±1.27 0.08
+> mixed slack 12.08 ±0.87 0.00 0.00 ±0.00 -11.82 ±0.72 0.09 11.45 ±1.12 0.03
+
+The results fall into three regimes. 
+
+Easy instances (small easy , medium , adversarial ). All methods find near-optimal solutions. The gap from the DP optimum is below 1% for every method. Budet manifold offers no significant quality advantage here, but maintains zero constraint violation versus 10 −2–10 −1 for the Lagrangian baselines. 
+
+Hard equality instances (correlated tight , boundary , large , float costs ). These scenarios combine correlated costs and values (good options are expensive) with tight budgets, or test large-scale instances. Budet manifold (equality) achieves gaps 2–8 × smaller than augmented Lagrangian. The augmented Lagrangian degrades particularly at scale ( large : 2.25% gap vs 0.01% for Budet manifold) and with continuous costs ( float costs : 2.63% vs 0.01%). The Lagrangian penalty performs between Budet manifold and augmented Lagrangian. 
+
+Under-budget optima (cheap optimal , mixed slack ). When the value-maximizing assignment costs less than the budget, equality-constrained methods are forced to spend the remaining budget on inferior options, losing up to half the optimal value. The slack variable resolves this completely: Budet manifold (inequality) finds the DP optimum. This scenario is relevant in practice when budget targets are set conservatively. Figures 4 and 5 show per-instance convergence traces for representative scenarios. The raw constraint violation traces (panel c in each figure) make the oscillation of Lagrangian methods visible: the penalty weight overshoots and undershoots the budget repeatedly, while Budet manifold maintains violation at ∼ 10 −8 throughout. 25 0 500 1000 1500 2000 2500 3000 
+
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> Gap to optimal
+
+Gap to DP optimal           
+
+> 0500 1000 1500 2000 2500 3000
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> Gap (log scale)
+
+Gap to DP optimal (log)       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step 
+
+> 0.10
+> 0.05
+> 0.00
+> 0.05
+> 0.10
+> E[cost] - budget
+
+Constraint violation       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step      
+
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> |Violation|
+
+|Constraint violation| (log) 
+
+Adversarial (N=50, K=8) 
+
+Lagrangian Aug. Lagrangian Budget manifold (a) Adversarial scenario ( N =50 , K=8 , single instance). Costs clustered near budget /N , values nearly tied. The Lagrangian penalty oscillates persistently (panel c), never satisfying the constraint. Budet manifold converges to the DP optimum with zero violation. 0 500 1000 1500 2000 2500 3000 
+
+> 0.000
+> 0.025
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> 0.150
+> Gap to optimal
+
+Gap to DP optimal           
+
+> 0500 1000 1500 2000 2500 3000
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> Gap (log scale)
+
+Gap to DP optimal (log)       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step 
+
+> 1.5
+> 1.0
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> E[cost] - budget
+
+Constraint violation       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step      
+
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> |Violation|
+
+|Constraint violation| (log) 
+
+Correlated Tight (N=50, K=8) 
+
+Lagrangian Aug. Lagrangian Budget manifold 
+
+(b) Correlated tight scenario ( N =50 , K=8 , single instance). Strong cost-value correlation with budget only 15% above minimum. Budet manifold converges faster (panels a,b) and maintains 10 −8 violation (panel d) versus 10 −2 for Lagrangian methods. 
+
+Figure 4: MCKP convergence traces for adversarial and correlated tight scenarios. 26 0 500 1000 1500 2000 2500 3000 
+
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> Gap to optimal
+
+Gap to DP optimal              
+
+> 0500 1000 1500 2000 2500 3000
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> Gap (log scale)
+
+Gap to DP optimal (log)       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step 
+
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> E[cost] - budget
+
+Constraint violation       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step      
+
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> |Violation|
+
+|Constraint violation| (log) 
+
+Boundary Clustered (N=50, K=8)   
+
+> Lagrangian Aug. Lagrangian Budget manifold
+
+(a) Boundary-clustered scenario ( N =50 , K=8 , single instance). Many near-optimal solutions packed at the budget boundary. Log-scale convergence (panel b) shows Budet manifold reaching 10 −6 gap while Lagrangian methods plateau at 10 −3.0 500 1000 1500 2000 2500 3000 
+
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Gap to optimal
+
+Gap to DP optimal          
+
+> 0500 1000 1500 2000 2500 3000
+> 10 3
+> 10 2
+> 10 1
+> Gap (log scale)
+
+Gap to DP optimal (log)       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step 
+
+> 200
+> 100
+> 0
+> 100
+> 200
+> E[cost] - budget
+
+Constraint violation       
+
+> 0500 1000 1500 2000 2500 3000
+
+Step      
+
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> 10 3
+> |Violation|
+
+|Constraint violation| (log) 
+
+Cheap Optimal (N=50, K=8)    
+
+> Lagrangian Aug. Lagrangian Budget manifold Budget manifold (slack)
+
+(b) Cheap-optimal scenario ( N =50 , K=8 , single instance) with slack variable. The DP optimum costs well under budget. Equality-constrained methods (Budet manifold (eq.), Lagrangian, Aug. Lagrangian) all converge to ∼50% of optimal (panel a). Budet manifold with slack finds the true optimum, with the slack variable absorbing the unused budget (panel c: C(α) − B → − 276 ). 
+
+Figure 5: MCKP convergence traces for boundary-clustered and cheap-optimal scenarios. 27

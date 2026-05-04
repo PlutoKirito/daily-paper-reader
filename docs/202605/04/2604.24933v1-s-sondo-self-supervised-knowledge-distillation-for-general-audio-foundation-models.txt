@@ -1,0 +1,312 @@
+Title: S-SONDO: Self-Supervised Knowledge Distillation for General Audio Foundation Models
+
+URL Source: https://arxiv.org/pdf/2604.24933v1
+
+Published Time: Wed, 29 Apr 2026 00:12:34 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+## S-SONDO: SELF-SUPERVISED KNOWLEDGE DISTILLATION FOR GENERAL AUDIO FOUNDATION MODELS 
+
+## Mohammed Ali El Adlouni ⋆, Aurian Quelennec ⋆, Pierre Chouteau, Geoffroy Peeters, Slim Essid †
+
+## LTCI , T´ el´ ecom Paris , Institut Polytechnique de Paris , Palaiseau, France 
+
+ABSTRACT 
+
+General audio foundation models have recently achieved remarkable progress, enabling strong performance across diverse tasks. However, state-of-the-art models remain ex-tremely large, often with hundreds of millions of parameters, leading to high inference costs and limited deployability on edge devices. Knowledge distillation is a proven strategy for model compression, but prior work in audio has mostly focused on supervised settings, relying on class logits, inter-mediate features, or architecture-specific techniques. Such assumptions exclude models that output only embeddings, such as self-supervised or metric-learning models. We intro-duce S-SONDO ( Self-Supervised Kn Owledge Distillatio N
+
+for General Au Dio F Oundation Models), the first frame-work to distill general audio models using only their output embeddings. By avoiding the need for logits or layer-level alignment, S-SONDO is architecture-agnostic and broadly applicable to embedding-based teachers. We demonstrate its effectiveness by distilling two audio foundation models into three efficient students that are up to 61 × smaller while retaining up to 96% of teacher performance. We also pro-vide practical insights on loss choice and clustering-based balanced data sampling. Code is available here 1.
+
+1. INTRODUCTION 
+
+Self-Supervised Learning (SSL) has recently emerged as a dominant paradigm in representation learning, with remark-able success across speech and general audio. By learning directly from raw data without labels, SSL models can lever-age vast amounts of unlabeled audio and achieve performance competitive with their supervised counterparts [1, 2, 3]. How-ever, these state-of-the-art models typically contain hundreds of millions of parameters, resulting in high inference costs and limiting their deployment in resource-constrained envi-ronments such as mobile and embedded devices. Knowledge Distillation (KD) offers a promising solution by transferring the knowledge of a large teacher model into a    
+
+> ⋆Equal contributions. †S. Essid is now with NVIDIA. The work was performed when he was with T´ el´ ecom Paris. This work was supported by the Audible project, funded by BPI, and was performed with GENCI-IDRIS resources (Grant 2024-AD011013929R2)
+> 1https://github.com/MedAliAdlouni/ssondo Dataset
+> + Data Sampling
+> 🔥
+> SSL Distillation
+> Student Encoder
+> Pretrained Teacher Encoder
+> Mapping Head
+> 🔥
+> ❄
+
+Fig. 1 . Overview of the proposed S-SONDO framework. The student embeddings are mapped and aligned with the teacher embeddings in the teacher’s latent space through self-supervised knowledge distillation. smaller student, enabling low-complexity models to achieve competitive performance [4, 5, 6]. Yet, the vast majority of these methods rely on Supervised Learning (SL) and class logits. Only a few works have considered the case of SSL KD [7, 8, 9, 10], and they are applied to the vision and speech domains. Moreover, they rely either on a specific architecture or do not leverage teacher and student embeddings simulta-neously. To our knowledge, there is currently no work on self-supervised knowledge distillation for general audio. 
+
+Contributions In this paper, we introduce S-SONDO, a sim-ple yet effective framework for SSL KD. Inspired by the original KD formulation of [4], which only leverages class logits, our approach only relies on teacher and student em-beddings. Prior work [11] aligned student embeddings with the embeddings of a pre-trained teacher while solving a su-pervised classification task. In our proposal, aligning the em-beddings becomes a standalone self-supervised training ob-jective, as shown in Fig. 1. We further enhance KD perfor-mances by using a Balanced Data Sampling (BDS) based on the clustering of the teacher’s embeddings. 
+
+2. RELATED WORK 
+
+Knowledge distillation (KD) is a widely used method for transferring knowledge from a large pre-trained teacher model to a smaller student model. Hinton et al. in [4] in-troduced KD to improve the student’s performance by lever-aging the teacher’s learned knowledge, matching their output 
+
+> arXiv:2604.24933v1 [cs.AI] 27 Apr 2026
+
+class logits through a Cross Entropy with temperature. This method is flexible with respect to the architectures and pre-training of the teacher, but it remains restricted to supervised classification tasks. FitNet [5] extended Hinton’s KD by aligning intermediate teacher and student representations via Mean Squared Error (MSE), using learned mappings for di-mensionality matching. This richer supervision comes at the cost of strong architectural dependencies and continued re-liance on class logits. Later work such as [12] highlighted the difficulty of designing effective mapping functions. While these approaches show the potential of feature-level align-ment, they are unsuitable when only the final embeddings of SSL or metric-learning audio models are available. In the vision domain, SSL KD has been investigated as an alternative to logit-based supervision, removing the need for class labels. ClusterFit [8] trains students with pseudo-labels derived from clustering teacher embeddings, while [7] extends this idea with layer-wise distillation inspired by Fit-Net [5]. However, these approaches have not been applied to general audio models. Neither leverages teacher embeddings directly as a training signal for the student, and the latter is heavily dependent on the student architecture. For speech, several SSL KD approaches [9, 10] have been proposed to distill specific pre-trained models such as HuBERT [13]. They either align intermediate layer embed-dings or train reduced models within HuBERT’s pre-training framework. These methods demonstrate the effectiveness of embedding-based KD. Still, they rely on layer-level su-pervision and require a similar architecture for the student and teacher, leaving open the question of whether aligning only the final embeddings of the teacher and student models provides a sufficient training signal. Finally, for general audio and music, KD has so far been studied exclusively in supervised contexts [14, 11, 15]. Schmid et al. [16] adapted the classic KD paradigm of [4] and explored best practices such as Balanced Data Sam-pling (BDS) and mixup. Ding et al. [11, 15] instead aligned embeddings through distance-preserving objectives. Al-though these works successfully transfer knowledge from general audio teachers, they still depend on classification sig-nals and do not address the open problem of embedding-only distillation for general audio models. 
+
+3. METHOD 
+
+Figure 1 illustrates the overall pipeline of our method. Our KD strategy follows the formulation introduced in the original KD framework [4]. We adopt a response-based approach in which the student is trained to align its outputs with those of the teacher. Unlike the standard KD setting that matches model logits, our self-supervised KD setup instead enforces similarity between the embedding representations produced by the student and the teacher. 
+
+Knowledge Distillation We denote the student model by 
+
+fθ (·), parameterized by θ, and the teacher model by gγ (·),parameterized by γ. Given an input X, the student produces embeddings Zs = fθ (X) ∈ RN ×ds , while the teacher pro-duces embeddings Zt = gγ (X) ∈ RN ×dt , where N is the batch size, and ds and dt are the dimensions of the student and teacher latent spaces, respectively. Since ds and dt typically differ, we introduce a mapping head hβ (·), parameterised by β, to project the student em-bedding into the teacher’s latent space. This yields Z′ 
+
+> s
+
+=
+
+hβ (Zs) ∈ RN ×dt .The projection ensures that the transformed student em-beddings Z′ 
+
+> s
+
+match the dimensionality of Zt, enabling dis-tillation directly in the teacher’s representation space. This space is semantically structured and well-organised as a result of pre-training, whereas the student latent space is untrained and initially uninformative. Aligning with the teacher’s la-tent space, therefore, provides the student with a meaningful training signal from the very beginning. Finally, the projected student embeddings Z′ 
+
+> s
+
+and the teacher embeddings Zt are aligned through a distillation loss LKD (Z′
+
+> s
+
+, Z t). In this work, we study several candidate formulations for this loss, namely: 
+
+LMSE (Z′
+
+> s
+
+, Z t) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥Z′(i) 
+
+> s
+
+− Z(i) 
+
+> t
+
+∥22, (1) 
+
+Lℓ1 (Z′
+
+> s
+
+, Z t) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥Z′(i) 
+
+> s
+
+− Z(i) 
+
+> t
+
+∥1, (2) 
+
+Lcos (Z′
+
+> s
+
+, Z t) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+
+
+1 − ⟨Z′(i) 
+
+> s
+
+, Z (i) 
+
+> t
+
+⟩∥Z′(i) 
+
+> s
+
+∥2 ∥Z(i) 
+
+> t
+
+∥2
+
+
+
+, (3) 
+
+LCLAP (Z′
+
+> s
+
+, Z t) = − 0.5
+
+N
+
+> N
+
+X
+
+> i=1
+
+log( lZ′ 
+
+> s→Zt
+
++ lZt→Z′ 
+
+> s
+
+)(i) (4) 
+
+LKL (Z′
+
+> s
+
+, Z t) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+> dt
+
+X
+
+> j=1
+
+P (i,j ) 
+
+> t
+
+log P (i,j )
+
+> t
+
+P ′(i,j )
+
+> s
+
+, (5) where: ∥ · ∥ 2 and ∥ · ∥ 1 are the ℓ2 and ℓ1 norms; ⟨Z′
+
+> s,i
+
+, Z t,i ⟩
+
+denotes the dot product; la→b = diag (softmax (⟨a, b ⟩)) for CLAP [17] loss; Pt = softmax (Zt) and P ′ 
+
+> s
+
+= softmax (Z′
+
+> s
+
+)
+
+are probability distributions of teacher and student outputs over dt dimensions. Lcos is our default loss. We evalu-ate losses commonly used in standard Supervised Learning knowledge distillation, and we aim to determine which one is most suited in our Self-Supervised learning setup. 
+
+Balanced Data Sampling (BDS) In [14], the authors pro-posed a label-based sampling strategy to counterbalance in-frequent classes and improve supervised KD. Here, we in-vestigate whether this idea can be adapted to our SSL KD framework. Since ground-truth labels are unavailable, we ob-tain pseudo-labels by clustering the teacher embeddings and use the cluster assignments within the sampling strategy. A sampling weight is assigned to each sample, proportional to Student Teacher Size OpenMIC NSynth GTZAN MTT FSD50K ESC-50 US8K Avg. 
+
+fθ (·) gγ (·) mAP Acc(%) Acc(%) mAP mAP Acc(%) Acc(%) MobileNetV3 - 2.9M 84.5 ±0.0 68.0 ±0.2 87.4 ±0.1 38.7 ±0.0 49.3 ±0.0 92.6 ±0.3 83.7 ±0.3 72.0 MobileNetV3 MATPAC++ 2.9M 84.7 ±0.0 74.9 ±0.1 85.2 ±0.0 40.2 ±0.0 48.6 ±0.1 91.0 ±0.1 86.1 ±0.3 73.0 (96.4%) 
+
+MobileNetV3 M2D 2.9M 83.1 ±0.0 69.5 ±0.2 81.4 ±1.5 39.5 ±0.0 41.4 ±0.5 85.9 ±0.1 83.4 ±0.4 69.2 (93.1%) 
+
+DyMN - 8.7M 84.3 ±0.1 67.5 ±0.3 80.8 ±0.5 38.8 ±0.0 47.5 ±0.0 91.3 ±0.1 83.3 ±0.1 70.5 DyMN MATPAC++ 8.7M 84.8 ±0.0 72.1 ±0.1 85.6 ±0.5 39.9 ±0.0 47.9 ±0.1 91.9 ±0.1 86.2 ±0.3 72.6 (95.9%) 
+
+DyMN M2D 8.7M 83.1 ±0.0 67.3 ±1.1 79.2 ±1.8 39.1 ±0.0 40.6 ±0.4 87.4 ±0.2 84.1 ±0.1 68.7 (92.4%) 
+
+ERes2Net - 1.4M 75.0 ±0.7 67.3 ±0.6 62.8 ±3.7 34.3 ±0.2 34.1 ±0.3 77.0 ±1.4 77.4 ±0.5 61.1 ERes2Net MATPAC++ 1.4M 82.6 ±0.0 73.0 ±0.3 77.6 ±0.0 39.4 ±0.1 47.3 ±0.1 89.8 ±0.0 85.9 ±0.2 70.8 (93.5%) 
+
+ERes2Net M2D 1.4M 81.5 ±0.0 72.4 ±0.1 77.6 ±0.0 38.8 ±0.1 43.1 ±0.0 86.7 ±0.2 84.3 ±0.2 69.2 (93.1%) 
+
+- MATPAC++ 86M 85.6 ±0.1 76.8 ±0.2 87.6 ±0.0 40.8 ±0.1 56.1 ±0.1 93.1 ±0.1 89.7 ±0.3 75.7 - M2D 86M 84.8 ±0.0 76.2 ±0.6 84.3 ±1.3 40.6 ±0.1 53.4 ±0.1 92.1 ±0.4 88.5 ±0.3 74.3 
+
+Table 1 . Downstream evaluation of S-SONDO with 95% Confidence Intervals (CI). We report the performance of our Knowl-edge Distillation method across teacher–student combinations. For each student model, supervised training results are reported as a reference (lines where MobileNetV3, DyMN, and ERes2Net have no teacher model). Bold values indicate the best result for each student between supervised and distillation training. Greyed values correspond to teacher performance, and green numbers denote the percentage of teacher performance achieved by the student. the inverse frequency of its cluster w(i) = 1 
+
+> f req (cluster )+100
+
+,where i is the sample index in the dataset. 
+
+4. EXPERIMENTAL SETUP Pre-Training setup We use AudioSet [18] as the training dataset, restricted to 10-second clips, yielding 1.8M samples. Each clip is transformed into a log-Mel spectrogram at 32 kHz with a 32 ms window, 16 ms hop, and 128 Mel bins covering 50–16,000 Hz, which serves as input to the student models. For pre-training, we follow the hyperparameters of [16]. All models are trained for 200 epochs with a batch size of 64 us-ing the Adam optimizer, a base learning rate of 8×10 −4, and a custom learning-rate scheduler. At each epoch, 100,000 clips are sampled without replacement through our unsupervised cluster-based BDS, with k = 50 clusters by default. To illustrate the generalizability of our method, we test it with three different student architectures fθ and two different teachers gγ .
+
+Student Model fθ (·) We chose student models with dis-tinct architectural designs and parameter scales. First, we use MobileNetV3 [19], a lightweight architecture shown to be effective in both vision tasks and general audio supervised KD [16]. We adopt its small variant with 2.9M parame-ters. Second, we include DynamicMobileNet (DyMN), a modified MobileNetV3 that incorporates dynamic convolu-tions. DyMN has demonstrated higher efficiency and stronger supervised KD performance than MobileNetV3 on general audio tasks, with 8.7M parameters. Finally, we employ ERes2Net [20], an efficient model originally introduced for speaker verification. By leveraging multi-scale residual con-nections and inner-layer feature fusion, it achieves strong performance with as few as 1.4M parameters. 
+
+Teacher Model gγ (·) As teacher models, we adopt two state-of-the-art SSL audio foundation models: M2D [1] and MATPAC++ [2]. These architectures produce latent au-dio embeddings rather than class logits, making them well aligned with the S-SONDO method, which relies exclusively on teacher–student representations. Both are Transformer-based models with approximately 86M parameters, orders of magnitude larger than the student models. 
+
+Mapping Head hβ (·) The mapping head is a multi-layer perceptron with one hidden layer of dimension 1280. 
+
+Downstream Datasets For downstream evaluation, we fol-low the protocol used in MATPAC++ [2] to allow for an easy comparison between the performances of the teacher models and the student ones. The evaluation covers seven audio tag-ging tasks, among which four music tasks [21, 22, 23, 24] and three environmental sound tasks [25, 26, 27]. 
+
+5. RESULTS AND DISCUSSION Main results Table 1 reports the results of S-SONDO across all teacher-student combinations. Since this is, to the best of our knowledge, the first SSL KD framework that relies exclu-sively on embeddings as the training signal, we compare the performance of fθ trained using SSL KD of gγ to the ones obtained by training directly fθ in a supervised way. This is consistent with prior KD work in fully supervised settings. Two main observations emerge. First, in 4 out of 6 cases (Avg.=73.0 >72.0 / 72.6 >70.5 / 70.8, 69.2 > 61.1), the dis-tilled students outperform their supervised counterparts, con-firming the effectiveness of aligning student and teacher em-beddings. This indicates that the semantic and structural in-formation encoded in the teacher’s latent space is sufficiently rich to guide the student. Second, across all configurations, students retain at least 92.4% of the average performance of their respective teachers (green values in the last column). The strongest result is achieved with MATPAC++ as teacher and MobileNetV3 as student, where the distilled model at-tains 96.4% of the teacher’s performance while using ∼30 ×
+
+fewer parameters. This setting also yields the highest aver-age score across all distilled student and supervised baseline configurations, with an average of 73.                   
+
+> LKD Music Tasks Env. Tasks Avg. Cosine 71.0 75.0 72.7
+> CLAP 70.5 74.8 72.3 KL Divergence 65.5 67.1 66.2 L1 69.4 60.4 65.6 MSE 68.2 55.3 62.7
+
+Table 2 . Loss choice for S-SONDO 
+
+Loss choice In Table 2, we compare the performance of our best model pair (MatPac++ → MobileNetV3) with vari-ous choices of LKD . Cosine and CLAP yield the best results, with cosine emerging as the most reliable across both music and environmental tasks. Losses such as L1 and MSE pe-nalise embeddings element-wise, which is suboptimal in la-tent spaces where semantic information is encoded in relative directions rather than absolute coordinates. Similarly, KL di-vergence assumes that Z′ 
+
+> s
+
+and Zt are probability distributions, which is not the case for SSL embeddings. CLAP loss can be seen as an extension of cosine loss: it aligns Z′(i) 
+
+> s
+
+and Z(i) 
+
+> t
+
+and forces Z′(i) 
+
+> s
+
+to be dissimilar to all Z′(j) 
+
+> s
+
+with i̸ = j. However, in our setting, this contrastive signal is weakened by a lim-ited batch size, 64, and by the lack of control to avoid making embeddings representing similar semantic content be forced apart only because they are not coming from the same sam-ple in the batch. This explains why CLAP does not surpass cosine in our results. When increasing the batch size (up to 1024), we saw that it started to perform better than the cosine loss, but the scores were less good as with our cosine loss for a batch size of 64. 
+
+Balanced Data Sampling We analyze the effect of BDS using pseudo-labels derived from clustering teacher embed-dings. Table 3 shows results where k = 50 is the number of clusters, and Figure 2 illustrates the impact of varying the number of clusters for (MatPac++ → MobileNetV3). Over-all, the effectiveness of BDS depends on both the teacher and the student. With MATPAC++, two out of three students im-prove, and ERes2Net fails to converge without it. With M2D, only ERes2Net benefits. This suggests that BDS is most use-ful for smaller-capacity students, helping them avoid over-fitting or collapse when distilling from large teachers. The number of clusters also strongly affects performance, but no universal optimum emerges. Tasks with single labels (ESC-50, GTZAN, NSynth, US8K) gain more from clustering than multi-label tasks, likely because k-means struggles to capture complex semantics in multi-label embeddings. 
+
+Fig. 2 . Ablation on the number of clusters for the Balanced Data Sampling. The fixed dashed line is the random sampling baseline.                          
+
+> w/ BDS wo/ BDS MATPAC++ →MobileNetV3 73.0 72.7 MATPAC++ →DyMN 72.6 72.9
+> MATPAC++ →ERes2Net 70.8 44.8 M2D →MobileNetV3 69.2 69.4
+> M2D →DyMN 68.7 69.2
+> M2D →ERes2Net 69.2 68.7
+
+Table 3 . Balanced Data Sampling (BDS) impact 
+
+6. CONCLUSION 
+
+In this work, we introduced S-SONDO, the first self-supervised knowledge distillation method that aligns student and teacher embeddings without relying on class logits or the model’s architecture. We evaluated our method using three different students and two teachers. We showed that in 4/6 cases, the performance of our distillations outperforms that of su-pervised models. This approach also enables students to retain most of the performance of large teacher models (up to 96.4%) while reducing model size by up to 61 ×.Future works will focus on improving balanced data sampling, where pseudo-labels could be made more effec-tive through advanced clustering methods that better capture semantic structure, particularly for multi-label audio tasks. Another promising direction is refining contrastive objectives with improved positive and negative pair selection, com-bining the strengths of cosine similarity for alignment with contrastive separation to avoid collapse around semantically close negatives. 7. REFERENCES 
+
+[1] Daisuke Niizumi, Daiki Takeuchi, Yasunori Ohishi, Noboru Harada, and Kunio Kashino, “Masked modeling duo: Learn-ing representations by encouraging both networks to model the input,” in Proc. ICASSP , June 2023, pp. 1–5. [2] Aurian Quelennec, Pierre Chouteau, Geoffroy Peeters, and Slim Essid, “Matpac++: Enhanced masked latent predic-tion for self-supervised audio representation learning,” arXiv preprint arXiv:2508.12709 , 2025. [3] Sara Atito Ali Ahmed, Muhammad Awais, Wenwu Wang, Mark D. Plumbley, and Josef Kittler, “Asit: Local-global audio spectrogram vision transformer for event classification,” IEEE ACM Trans. Audio Speech Lang. Process. , vol. 32, pp. 3684– 3693, July 2024. [4] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean, “Distill-ing the knowledge in a neural network,” arXiv preprint arXiv:1503.02531 , 2015. [5] Adriana Romero, Nicolas Ballas, Samira Ebrahimi Kahou, An-toine Chassang, Carlo Gatta, and Yoshua Bengio, “Fitnets: Hints for thin deep nets,” in Proc. ICLR , Yoshua Bengio and Yann LeCun, Eds., May 2015. [6] Yijun Tian, Shichao Pei, Xiangliang Zhang, Chuxu Zhang, and Nitesh V. Chawla, “Knowledge distillation on graphs: A sur-vey,” ACM Computing Surveys , vol. 57, 2025. [7] Wei-Chi Chen and Wei-Ta Chu, “Sssd: Self-supervised self distillation,” in Proc. WACV , January 2023, pp. 2770–2777. [8] Xueting Yan, Ishan Misra, Abhinav Gupta, Deepti Ghadi-yaram, and Dhruv Mahajan, “Clusterfit: Improving general-ization of visual representations,” in Proc. CVPR , June 2020, pp. 6508–6517. [9] Heng-Jui Chang, Shu-wen Yang, and Hung-yi Lee, “Distilhu-bert: Speech representation learning by layer-wise distillation of hidden-unit bert,” in Proc. ICASSP , May 2022, pp. 7087– 7091. [10] Hyung gun Chi, Zakaria Aldeneh, Tatiana Likhomanenko, Oggi Rudovic, Takuya Higuchi, Li-Wei Chen, Shinji Watan-abe, and Ahmed Hussen Abdelaziz, “DiceHuBERT: Distilling HuBERT with a Self-Supervised Learning Objective,” in Proc. Interspeech , June 2025, pp. 1–5. [11] Yun-Ning Hung and Alexander Lerch, “Feature-informed em-bedding space regularization for audio classification,” in Proc. Eusipco , June 2022, pp. 1–5. [12] Byeongho Heo, Jeesoo Kim, Sangdoo Yun, Hyojin Park, No-jun Kwak, and Jin Young Choi, “A comprehensive overhaul of feature distillation,” in Proc. ICCV , November 2019, pp. 1921–1930. [13] Wei-Ning Hsu, Benjamin Bolte, Yao-Hung Hubert Tsai, Kushal Lakhotia, Ruslan Salakhutdinov, and Abdelrahman Mohamed, “Hubert: Self-supervised speech representation learning by masked prediction of hidden units,” IEEE ACM Trans. Audio Speech Lang. Process. , vol. 29, pp. 3451–3460, 2021. [14] Florian Schmid, Khaled Koutini, and Gerhard Widmer, “Dy-namic convolutional neural networks as efficient pre-trained audio models,” IEEE ACM Trans. Audio Speech Lang. Pro-cess. , vol. 32, pp. 2227–2241, 2024. [15] Yiwei Ding and Alexander Lerch, “Audio embeddings as teachers for music classification,” in Proc. ISMIR , November 2023, pp. 579–587. [16] Florian Schmid, Khaled Koutini, and Gerhard Widmer, “Effi-cient large-scale audio tagging via transformer-to-cnn knowl-edge distillation,” in Proc. ICASSP , June 2023, pp. 1–5. [17] Benjamin Elizalde, Soham Deshmukh, Mahmoud Al Ismail, and Huaming Wang, “CLAP learning audio concepts from nat-ural language supervision,” in Proc. ICASSP , June 2023, pp. 1–5. [18] J. F. Gemmeke, D. P. W. Ellis, D. Freedman, A. Jansen, W. Lawrence, R. C. Moore, M. Plakal, and M. Ritter, “Audio Set: An ontology and human-labeled dataset for audio events,” in Proc. ICASSP , March 2017, pp. 776–780. [19] Andrew Howard, Mark Sandler, Grace Chu, Liang-Chieh Chen, Bo Chen, Mingxing Tan, Weijun Wang, Yukun Zhu, Ruoming Pang, Vijay Vasudevan, et al., “Searching for mo-bilenetv3,” in Proc. ICCV , November 2019, pp. 1314–1324. [20] Yafeng Chen, Siqi Zheng, Hui Wang, Luyao Cheng, Qian Chen, and Jiajun Qi, “An enhanced res2net with local and global feature fusion for speaker verification,” in Proc. Inter-speech , August 2023, pp. 2228–2232. [21] Eric Humphrey, Simon Durand, and Brian McFee, “Openmic-2018: An open data-set for multiple instrument recognition,” in Proc. ISMIR) , September 2018, pp. 438–444. [22] George Tzanetakis and Perry R. Cook, “Musical genre classi-fication of audio signals,” IEEE Transactions on Speech and Audio Processing , vol. 10, no. 5, pp. 293–302, 2002. [23] Jesse H. Engel, Cinjon Resnick, Adam Roberts, Sander Diele-man, Mohammad Norouzi, Douglas Eck, and Karen Si-monyan, “Neural audio synthesis of musical notes with wavenet autoencoders,” in Proceedings of the 34th Interna-tional Conference on Machine Learning (ICML) , August 2017, vol. 70, pp. 1068–1077. [24] Edith Law, Kris West, Michael Mandel, and Mert Bay J. Stephen Downie, “Evaluation of algorithms using games: The case of music tagging.,” in Proc. ISMIR , October 2009, pp. 387-–392. [25] Karol J. Piczak, “Esc: Dataset for environmental sound classi-fication,” in Proc. MM , Oct. 2015, pp. 1015–1018. [26] Justin Salamon, Christopher Jacoby, and Juan Pablo Bello, “A dataset and taxonomy for urban sound research,” in Proc. MM ,Nov. 2014, pp. 1041–1044. [27] Eduardo Fonseca, Xavier Favory, Jordi Pons, Frederic Font, and Xavier Serra, “Fsd50k: An open dataset of human-labeled sound events,” IEEE/ACM Transactions on Audio, Speech, and Language Processing , vol. 30, pp. 829–852, 2022.
