@@ -6,73 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-04
-- 运行时间：2026-05-04 20:17:56 UTC
+- 最新运行日期：2026-05-05
+- 运行时间：2026-05-05 20:49:01 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：4
+- 本次总论文数：21
+- 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日精选 17 篇前沿论文，深度解析语义压缩的自适应变换编码与边缘 AI 交通安全检测。
-重点推荐 9.5 分的语义压缩突破性方案，以及利用知识蒸馏实现高效部署的弱势路人检测技术。
-建议关注实时数字人生成与生成式先验超分技术，把握 AI 在多媒体与自动驾驶领域的落地趋势。
-- 详情：[/202605/04/README](/202605/04/README)
+今日精选 21 篇前沿论文，重点突破超低比特率视频压缩与语义编码技术。
+扩散模型在极致压缩领域展现出满分潜力，而 DiT-MoE 架构正显著增强多模态模型的统一处理能力。
+建议优先研读扩散模型与传统编码结合的满分佳作，探索超低码率下的视觉重建新可能。
+- 详情：[/202605/05/README](/202605/05/README)
 
 ### 精读区论文标签
-1. [Adaptive Transform Coding for Semantic Compression](/202605/04/2604.26492v1-adaptive-transform-coding-for-semantic-compression)  
-   标签：评分：9.5/10、query:entropy-coding
-   evidence：语义特征压缩的自适应变换编码
-2. [Edge AI for Automotive Vulnerable Road User Safety: Deployable Detection via Knowledge Distillation](/202605/04/2604.26857v1-edge-ai-for-automotive-vulnerable-road-user-safety-deployable-detection-via-knowledge-distillation)  
+1. [Active Sampling for Ultra-Low-Bit-Rate Video Compression via Conditional Controlled Diffusion](/202605/05/2605.02849v1-active-sampling-for-ultra-low-bit-rate-video-compression-via-conditional-controlled-diffusion)  
+   标签：评分：10.0/10、query:vcodec
+   evidence：基于扩散模型的超低比特率视频压缩，利用时间动态和关键帧
+2. [Adaptive Transform Coding for Semantic Compression](/202605/05/2604.26492v1-adaptive-transform-coding-for-semantic-compression)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：用于语义压缩和率失真优化的自适应变换编码
+3. [Cool-chic 5.0: Faster Encoding and Inter-Feature Entropy Modeling for Overfitted Image Compression](/202605/05/2605.02726v1-cool-chic-50-faster-encoding-and-inter-feature-entropy-modeling-for-overfitted-image-compression)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：特征间熵建模与更新的解码器架构
+4. [FPTC: A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression](/202605/05/2605.01086v1-fptc-a-fast-parallel-transform-based-codec-for-efficient-asymmetric-signal-compression)  
    标签：评分：8.5/10、query:train-trick
-   evidence：用于紧凑模型训练和量化鲁棒性的知识蒸馏
-3. [Budget Constraints as Riemannian Manifolds](/202605/04/2605.00649v1-budget-constraints-as-riemannian-manifolds)  
-   标签：评分：8.5/10、query:train-trick
-   evidence：混合精度量化和非均匀剪枝的优化
-4. [MesonGS++: Post-training Compression of 3D Gaussian Splatting with Hyperparameter Searching](/202605/04/2604.26799v1-mesongs-post-training-compression-of-3d-gaussian-splatting-with-hyperparameter-searching)  
+   evidence：适用于资源受限设备的高吞吐量非对称信号编解码器
+5. [Energy-Efficient Plant Monitoring via Knowledge Distillation](/202605/05/2604.27178v1-energy-efficient-plant-monitoring-via-knowledge-distillation)  
    标签：评分：8.0/10、query:train-trick
-   evidence：包括剪枝、变换、量化和熵编码在内的后训练压缩
+   evidence：用于边缘设备高效模型部署的知识蒸馏
+6. [Why Self-Supervised Encoders Want to Be Normal](/202605/05/2604.27743v1-why-self-supervised-encoders-want-to-be-normal)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：将信息瓶颈原理重构为编解码学习的率失真问题
+7. [Evolution of NVENC Efficiency: A Longitudinal Analysis of HQ and UHQ Tuning Efficiency, Latency and Energy Trade-offs](/202605/05/2605.01187v1-evolution-of-nvenc-efficiency-a-longitudinal-analysis-of-hq-and-uhq-tuning-efficiency-latency-and-energy-trade-offs)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：硬件视频编码器的率失真效率和延迟分析
+8. [GETA-3DGS: Automatic Joint Structured Pruning and Quantization for 3D Gaussian Splatting](/202605/05/2605.02086v1-geta-3dgs-automatic-joint-structured-pruning-and-quantization-for-3d-gaussian-splatting)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对3D视频表示的端到端自动联合结构化剪枝与量化
 
 ### 速读区论文标签
-1. [Hallo-Live: Real-Time Streaming Joint Audio-Video Avatar Generation with Asynchronous Dual-Stream and Human-Centric Preference Distillation](/202605/04/2604.23632v1-hallo-live-real-time-streaming-joint-audio-video-avatar-generation-with-asynchronous-dual-stream-and-human-centric-preference-distillation)  
-   标签：评分：7.5/10、query:train-trick
-   evidence：用于加速视频生成的偏好引导蒸馏
-2. [Beyond Gaussian Bottlenecks: Topologically Aligned Encoding of Vision-Transformer Feature Spaces](/202605/04/2604.28122v1-beyond-gaussian-bottlenecks-topologically-aligned-encoding-of-vision-transformer-feature-spaces)  
+1. [Video Generation with Predictive Latents](/202605/05/2605.02134v1-video-generation-with-predictive-latents)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于潜空间视频生成建模的视频VAE及预测性重建目标
+2. [Mamoda2.5: Enhancing Unified Multimodal Model with DiT-MoE](/202605/05/2605.02641v1-mamoda25-enhancing-unified-multimodal-model-with-dit-moe)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于多模态生成和视频编辑的统一自回归扩散框架
+3. [TOC-SR: Task-Optimal Compact diffusion for Image Super Resolution](/202605/05/2605.02767v1-toc-sr-task-optimal-compact-diffusion-for-image-super-resolution)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：通过生成式蒸馏和架构搜索构建紧凑扩散骨干网络
+4. [Motion-Aware Caching for Efficient Autoregressive Video Generation](/202605/05/2605.01725v1-motion-aware-caching-for-efficient-autoregressive-video-generation)  
    标签：评分：7.5/10、query:vcodec
-   evidence：用于压缩3D场景状态的几何优先潜空间学习框架
-3. [BurstGP: Enhancing Raw Burst Image Super Resolution with Generative Priors](/202605/04/2604.23508v1-burstgp-enhancing-raw-burst-image-super-resolution-with-generative-priors)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：用于多帧图像超分辨率的生成式先验和扩散模型
-4. [Hardware-Efficient Softmax and Layer Normalization with Guaranteed Normalization for Edge Devices](/202605/04/2604.23647v1-hardware-efficient-softmax-and-layer-normalization-with-guaranteed-normalization-for-edge-devices)  
+   evidence：利用帧间差异进行视频生成的运动感知缓存
+5. [QFlash: Bridging Quantization and Memory Efficiency in Vision Transformer Attention](/202605/05/2604.25306v1-qflash-bridging-quantization-and-memory-efficiency-in-vision-transformer-attention)  
    标签：评分：7.0/10、query:train-trick
-   evidence：面向边缘生成式人工智能的硬件高效Softmax和层归一化
-5. [FDIM: A Feature-distance-based Generic Video Quality Metric for Versatile Codecs](/202605/04/2604.24123v1-fdim-a-feature-distance-based-generic-video-quality-metric-for-versatile-codecs)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：针对具有生成特性的神经视频编解码器的质量评估指标
-6. [Bridging Restoration and Generation Manifolds in One-Step Diffusion for Real-World Super-Resolution](/202605/04/2604.24136v1-bridging-restoration-and-generation-manifolds-in-one-step-diffusion-for-real-world-super-resolution)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：用于图像修复和生成的单步扩散框架
-7. [Structural Pruning of Large Vision Language Models: A Comprehensive Study on Pruning Dynamics, Recovery, and Data Efficiency](/202605/04/2604.24380v1-structural-pruning-of-large-vision-language-models-a-comprehensive-study-on-pruning-dynamics-recovery-and-data-efficiency)  
+   evidence：视觉Transformer的纯整数化量化与内存效率优化
+6. [Image Compression with Bubble-Aware Frame Rate Adaptation for Energy-Efficient Video Capsule Endoscopy](/202605/05/2604.25464v2-image-compression-with-bubble-aware-frame-rate-adaptation-for-energy-efficient-video-capsule-endoscopy)  
    标签：评分：7.0/10、query:train-trick
-   evidence：用于模型压缩的结构化剪枝和知识蒸馏
-8. [S-SONDO: Self-Supervised Knowledge Distillation for General Audio Foundation Models](/202605/04/2604.24933v1-s-sondo-self-supervised-knowledge-distillation-for-general-audio-foundation-models)  
-   标签：评分：6.5/10、query:train-trick
-   evidence：用于模型压缩和边缘部署的自监督知识蒸馏
-9. [GateMOT: Q-Gated Attention for Dense Object Tracking](/202605/04/2604.26353v1-gatemot-q-gated-attention-for-dense-object-tracking)  
+   evidence：用于节能视频内窥镜的图像压缩流水线
+7. [MetaSR: Content-Adaptive Metadata Orchestration for Generative Super-Resolution](/202605/05/2604.26244v1-metasr-content-adaptive-metadata-orchestration-for-generative-super-resolution)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：使用扩散 Transformer 和元数据编排的生成式超分辨率
+8. [Beyond Fixed Formulas: Data-Driven Linear Predictor for Efficient Diffusion Models](/202605/05/2604.26365v1-beyond-fixed-formulas-data-driven-linear-predictor-for-efficient-diffusion-models)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：用于高效扩散模型的数据驱动线性预测器
+9. [Unified 4D World Action Modeling from Video Priors with Asynchronous Denoising](/202605/05/2604.26694v1-unified-4d-world-action-modeling-from-video-priors-with-asynchronous-denoising)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：利用预训练视频扩散模型的视频先验进行4D世界建模
+10. [Faithful Extreme Image Rescaling with Learnable Reversible Transformation and Semantic Priors](/202605/05/2605.00605v1-faithful-extreme-image-rescaling-with-learnable-reversible-transformation-and-semantic-priors)  
    标签：评分：6.5/10、query:vcodec
-   evidence：用于密集运动估计的高效注意力机制
-10. [Featurising Pixels from Dynamic 3D Scenes with Linear In-Context Learners](/202605/04/2604.26488v1-featurising-pixels-from-dynamic-3d-scenes-with-linear-in-context-learners)  
+   evidence：基于扩散模型的极端图像缩放框架，包含潜空间变换
+11. [Action Agent: Agentic Video Generation Meets Flow-Constrained Diffusion](/202605/05/2605.01477v1-action-agent-agentic-video-generation-meets-flow-constrained-diffusion)  
    标签：评分：6.5/10、query:vcodec
-   evidence：视频中的时空线索图和运动估计
-11. [RayFormer: Modeling Inter- and Intra-Ray Similarity for NeRF-Based Video Snapshot Compressive Imaging](/202605/04/2604.27702v1-rayformer-modeling-inter--and-intra-ray-similarity-for-nerf-based-video-snapshot-compressive-imaging)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：视频快照压缩成像与基于NeRF的重建
-12. [Technical Report: Activation Residual Hessian Quantization (ARHQ) for Low-Bit LLM Quantization](/202605/04/2605.00140v1-technical-report-activation-residual-hessian-quantization-arhq-for-low-bit-llm-quantization)  
-   标签：评分：6.5/10、query:train-trick
-   evidence：训练后权重拆分与低比特激活权重量化技术
-13. [UniVidX: A Unified Multimodal Framework for Versatile Video Generation via Diffusion Priors](/202605/04/2605.00658v1-unividx-a-unified-multimodal-framework-for-versatile-video-generation-via-diffusion-priors)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：视频扩散模型与多模态任务的生成式先验
+   evidence：用于视频生成和运动控制的流约束扩散模型
+12. [LearnPruner: Rethinking Attention-based Token Pruning in Vision Language Models](/202605/05/2604.23950v1-learnpruner-rethinking-attention-based-token-pruning-in-vision-language-models)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：针对视觉模型的基于注意力的令牌剪枝以减轻计算负担
+13. [Structural Pruning of Large Vision Language Models: A Comprehensive Study on Pruning Dynamics, Recovery, and Data Efficiency](/202605/05/2604.24380v1-structural-pruning-of-large-vision-language-models-a-comprehensive-study-on-pruning-dynamics-recovery-and-data-efficiency)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：用于模型压缩的结构化剪枝与知识蒸馏
 
 
 <div class="dpr-home-promo-card">
