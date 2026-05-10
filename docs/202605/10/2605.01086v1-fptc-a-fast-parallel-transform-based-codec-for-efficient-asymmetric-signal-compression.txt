@@ -1,0 +1,835 @@
+Title: FPTC: A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression
+
+URL Source: https://arxiv.org/pdf/2605.01086v1
+
+Published Time: Tue, 05 May 2026 00:22:49 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# FPTC: A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression 
+
+## Ben Mechels 
+
+University of Minnesota Minneapolis, MN, USA meche046@umn.edu 
+
+## Ryan Billmeyer 
+
+Medtronic Minneapolis, MN, USA ryan.billmeyer@medtronic.com 
+
+## Alexander Chen 
+
+University of Minnesota Minneapolis, MN, USA chen8206@umn.edu 
+
+## Shiyang Li 
+
+University of Minnesota Minneapolis, MN, USA li004074@umn.edu 
+
+## Caiwen Ding ∗
+
+University of Minnesota Minneapolis, MN, USA dingc@umn.edu 
+
+## Abstract 
+
+Modern high-performance computing and Internet-of-Things de-ployments increasingly generate large volumes of signal data that must be compressed efficiently on resource-constrained acquisition devices and decompressed at scale on centralized servers. Lossy compression is widely adopted to minimize storage and transmis-sion costs on low-power hardware sensors, yet existing methods rarely optimize for both reconstruction quality and decompression throughput simultaneously, nor do they apply methods that gen-eralize across signal domains. In this work, we introduce fptc , a high-throughput asymmetric signal codec that pairs a lightweight sequential encoder with a massively parallel GPU decoder designed for server-side batch decompression. fptc applies a windowed discrete cosine transform (DCT) to exploit frequency-domain spar-sity, quantizes spectral coefficients with a hybrid three-zone map-ping, and entropy codes the result using Huffman coding with a novel packing scheme. The pipeline used in fptc is designed to be throughput oriented on the GPU, maximizing performance with-out sacrificing reconstruction quality. We evaluate fptc on ten datasets spanning four signal domains: biomedical diagnostic, seis-mic reflections, power-grid production metrics, and meteorological recordings. Our results demonstrate that fptc outperforms existing frameworks in compression ratio while maintaining competitive throughput, achieving multiplicative compression performance of 3.6x (power), 3.1x (meterological), 1.5x (biomedical), and 1.2x (seis-mic) over existing frameworks. 
+
+## 1 Introduction 
+
+Today’s high-performance computing (HPC) and Internet-of-Things (IoT) deployments generate massive volumes of heterogeneous data from a wide range of sensing modalities. These streams are acquired continuously on resource-constrained devices, thus transmitting or storing raw data is often impractical under limited bandwidth, mem-ory, and energy budgets [ 1, 2]. In these domains, data is compressed and sent to centralized servers for archival, reconstruction, filtering, analytics, or machine-learning pipelines. Compression is therefore a fundamental requirement for making such sensing systems prac-tical end to end. However, while these workloads primarily take the form of sampled time-series, they are highly heterogeneous in amplitude range, temporal smoothness, correlation structure, noise 
+
+> ∗Corresponding author.
+
+characteristics, and tolerance to distortion [ 3 , 4]. This heterogeneity makes compression fundamentally challenging: a method tuned for one data family often generalizes poorly to others, either sacrificing compression ratio or inducing unacceptable reconstruction error. 
+
+Figure 1: Prediction-based HPC Compressors [ 5 ] exhibit ma-jor distortion compressing EEG waveforms at 10x CR. 
+
+Lossy compression is the predominant strategy for meeting these constraints. By tolerating bounded reconstruction error, lossy codecs achieve compression ratios beyond what is practical with lossless methods, reducing data transmission energy and storage cost. However, existing compressors often optimize only a subset of the design objectives. Recent work has highlighted a trade-off between compression and runtime: many compressors that achieve strong compression ratios do so at low throughput, whereas many high throughput codecs provide substantially weaker compression effectiveness [ 6]. On the decoding side, recent work has demon-strated that general-purpose compressed formats can be decoded at high throughput on massively parallel hardware such as GPUs [ 7], but such designs are not tailored to the statistical structure and distortion requirements of transformed signal data. Another class of compressors, especially in biomedical settings, primarily opti-mize compression ratio (CR) and distortion with percentage root-mean-square difference (PRD), while giving much less attention to throughput-oriented parallel decompression [ 8 –10 ]. Few existing systems jointly optimize for both a minimal resource encoder and a high throughput decoder, and fewer still consider signal fidelity as a primary design objective alongside compression and throughput. 
+
+> arXiv:2605.01086v1 [cs.DC] 1 May 2026
+
+fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. Analytics 
+
+> Archival
+> ML Pipelines
+> Parallel
+> Decompression
+> Reconstructed
+> Signals go to:
+> Telemetry
+> Link
+> Distributed
+> Embedded Sensors
+> DECOMP
+
+Figure 2: fptc asymmetric system architecture 
+
+In this work, we introduce fptc , an asymmetric lossy codec designed for signal domains where compression runs on resource-constrained embedded hardware and decompression runs at scale on GPUs. The pipeline of the codec is tuned through parameters and prebuilt structures. In a given domain, representative datasets are utilized to precompute data structures for the most algorith-mically challenging parts of the pipeline: the quantization table and the Huffman coding tree. These structures are deployed per signal domain to provide low-complexity encoding at scale and high throughput decompression on centralized GPU servers. Our contributions are as follows: 
+
+• We present fptc , an asymmetric lossy signal codec designed for sensing workloads, with a lightweight sequential encoder for resource-constrained devices and a massively parallel GPU decoder for high-throughput server-side reconstruc-tion. 
+
+• We introduce a transform-based compression pipeline that combines windowed DCT, hybrid three-zone quantization, and length-limited canonical Huffman coding, while using offline-trained quantization tables and codebooks to reduce runtime encoder complexity. 
+
+• We design a SymLen bitstream format that packs Huffman codewords into self-contained words with per-word sym-bol counts, enabling low-overhead, fully independent GPU Huffman decoding without inter-thread synchronization. 
+
+• We develop a dual-fused GPU decompression pipeline. The first stage kernel fuses per-thread Huffman decoding with variable buffer compaction, and the second stage kernel fuses dequantization with inverse DCT reconstruction using a uniform per-sample work assignment. We evaluate fptc across 4 signal domains, including biomedical, geophysical, infrastructure, and meteorological data, and show that it outperforms existing technologies in compression, throughput, and reconstruction fidelity. 
+
+## 2 Related Work 
+
+This section outlines existing design objectives in codec pipeline designs in both low-power embedded and massively parallel HPC systems and how they differ. Primarily, the objectives are divided into complexity-focused embedded compression and throughput-focused HPC big data workflows. 
+
+## 2.1 Embedded Compression 
+
+Many sensing deployments follow an asymmetric execution model: data is acquired continuously on resource-constrained devices, then transmitted to centralized servers for archival, reconstruction, and downstream analysis. This pattern appears in wireless sensor net-works, wearable and implantable biomedical devices, smart-health systems, and other cloud telemetry settings [ 11 – 15 ]. In such sys-tems, battery life, memory capacity, and compute budget are tightly constrained, making low-complexity on-device compression a criti-cal consideration. The severity of these constraints are often under-stated in the literature, especially for continuous signal workloads. For example, ECG and EEG monitoring produce long data streams that are expensive to transmit or archive in raw form, particularly in wearable and implantable devices [1]. Furthermore, many studies on physiological signal compression focus on CR and PRD with limited consideration for energy and compute constraints. These methods commonly use complex trans-forms, adaptive quantization, dynamic thresholding, and elaborate entropy coding methods to optimize CR and PRD for a specific signal class [ 16 –21 ]. While effective, such methods can be impracti-cal for resource-constrained embedded systems. Similar challenges arise in seismic acquisition, power-grid telemetry, and environ-mental sensing. Across these domains, efficient compression is not simply a storage optimization but a requirement for real deploy-ment [ 11 , 22 ]. Furthermore, these domains exhibit local correlation in the frequency-domain, making transform-based lossy compres-sion attractive. Prior work in signal compression and wireless sens-ing has shown that transform-domain representations can reduce redundancy while preserving fidelity [ 16 , 21 ]. This motivates a design that utilizes a common transform and entropy-coding frame-work with established efficient implementations, while allowing signal-class-specific tuning. 
+
+## 2.2 Parallel Compression 
+
+Recent work in high-performance computing has produced several GPU-oriented lossy compressors that target strong rate-distortion performance and high throughput on floating-point scientific data, including cuSZp [ 23 ], cuSZp2 [ 5], FZ-GPU [ 24 ], PFPL [ 25 ], and CUDA-enabled ZFP [ 26 ]. These systems are most relevant for our baselines on centralized parallel decompression as they prioritize compression ratio with bounded error with foremost interest in extreme throughput on GPU accelerators. However, these methods target general-purpose floating-point compression using prediction-based models, and do not exploit the transform strategy used in fptc .Parallel Huffman decoding has attracted significant attention due to its widespread use and lossless nature. Prior work has explored massively parallel decode strategies, self-synchronizing streams, gap-array methods, canonical-Huffman decoding on many-core pro-cessors, and GPU-oriented decompression [ 6 , 27 – 30 ]. These works highlight the primary challenges in developing high-throughput Huffman decoders: the variable-length nature of codewords cre-ating thread divergence and the indeterminability of codeword positions. Domain-specific GPU decompression work has explored these challenges in seismic processing using wavelet and Huffman based methods [31, 32]. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. Original Waveform  
+
+> Forward Discrete Cosine Transform
+> Quantization & Spectral Truncation
+> Huffman Entropy Encoding Encoded Data
+> Symbol Lengths Compressed Package
+> Compression [Embedded Device]
+> Huffman Entropy Decoding
+> Prefix-Scan
+> Decompression [Server GPU]
+> Aggregate Data Telemetry
+> Encoded Data
+> Symbol Lengths
+> Compressed Package
+> Reverse Quantization Inverse Discrete Cosine Transform
+> Variable Buffer Compaction
+> Domain-specific Quantization Table Domain-specific Huffman Tree Domain-specific Quantization Table Domain-specific Huffman Tree Reconstructed Waveform
+
+Figure 3: fptc compression and decompression pipelines 
+
+## 3 Design Overview 
+
+fptc is structured around an asymmetric model motivated on each end by the constraints of signal acquisition systems and the enor-mous compute of modern GPUs. In domains such as medical devices, insertable cardiac monitors have very limited computation and en-ergy budgets. This presents the need for on-board compression to be a low-complexity, single pass pipeline. After aggregate data from many cardiac monitors arrive on centralized servers, GPU architectures can be utilized to decompress this data simultaneously at high throughput. Figure 3 illustrates the end-to-end data flow. The codec has three compression stages: transform, quantization, and entropy coding. 
+
+## 3.1 Transform Stage 
+
+Time to frequency transformation is the first step of fptc . While this transform does compress some data itself under certain parameters, it mainly serves to prepare signal strips for compression in subse-quent stages by exploiting frequency sparsity. For signals, images, audio, and many more applications this technique is well studied [ 33 ]. In our pipeline, each signal strip of length 𝑆 is partitioned into non-overlapping windows of 𝑁 samples. Within each window, the signal is transformed using the type-II discrete cosine trans-form (DCT-II). For a window of samples 𝑥 [0], 𝑥 [1], . . . , 𝑥 [𝑁 −1],the forward DCT computes 𝑁 frequency-domain coefficients: 
+
+𝐶 [𝑘 ] = 2
+
+𝑁  
+
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑛 =0
+
+𝑥 [𝑛 ] cos 
+
+ 𝜋 𝑁 
+
+ 𝑛 + 12
+
+ 𝑘 
+
+
+
+, 𝑘 = 0, 1, . . . , 𝑁 −1. (1) The DCT is chosen over the discrete Fourier transform (DFT) for two main reasons. First, the DCT produces real-valued coefficients, halving the storage requirement compared to complex DFT output. Second, the even-symmetric extension of the DCT avoids boundary discontinuities that would spread energy across many bins [ 34 ], resulting in better energy compaction for our signal applications. The key property exploited by fptc is frequency sparsity : for the signal classes of interest, the vast majority of spectral energy concentrates in a small number of low-frequency coefficients. Given a window of size 𝑁 , only the first 𝐸 ≤ 𝑁 coefficients are retained and the remaining 𝑁 − 𝐸 high-frequency bins are discarded before quantization. This spectral truncation achieves an immediate 𝑁 /𝐸 
+
+reduction in the symbol count entering the entropy coder, while the energy compaction property shows that the discarded bins will contribute negligibly to reconstruction quality. The truncation boundary 𝐸 is a parameter that is set per signal class based on the smoothness and sampling rate of that class. 
+
+## 3.2 Quantization Stage 
+
+After spectral transform, each retained coefficient is a 32-bit float. The quantization stage maps these to 8-bit unsigned integers, achiev-ing a set 4× compression ratio. Rather than applying a single quan-tization rule uniformly, fptc uses a hybrid three-zone quantizer that adapts its mapping to the statistical properties of each frequency band within the DCT window. The 𝐸 retained coefficient indices from the DCT output are partitioned into three contiguous zones with two boundaries 𝐵 1 and 𝐵 2.
+
+3.2.1 Zone 0: 𝜇 -Law Companding (bins 0 to 𝐵 1−1). The lowest-frequency bins carry the most energy and exhibit the widest dy-namic range, thus they must be preserved carefully. These coeffi-cients are quantized with 𝜇 -law companding, a non-linear mapping that allocates finer quantization resolution near zero and progres-sively coarser resolution toward the extremes [ 35 ]. This is a direct tradeoff where the output of this stage will exhibit a more uniform distribution less suited for compression in entropy coding but we find that the reconstruction fidelity it provides makes this tradeoff worthwhile. For a coefficient 𝑐 with per-zone maximum 𝐴 0, the compressed value is: 
+
+𝑞 = ln (1 + 𝜇 · | 𝑐 |/ 𝐴 0)
+
+ln (1 + 𝜇 ) , |𝑐 | ≤ 𝐴 0 (2) where 𝜇 is a configurable companding parameter set per signal class that controls the degree of non-linearity. The compressed value 𝑞 ∈[0, 1] is then mapped to an 8-bit level: positive coefficients occupy bins 129 –255 , negative coefficients occupy bins 0–127 , and the zero bin is fixed at 128 . The maximum 𝐴 0 is computed as a clipped percentile of the absolute coefficient values across all windows at the given frequency bands, rejecting outliers that would otherwise fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. waste quantization levels on rare extremes. Importantly, since the distributions of randomly sampled DCT windows are very similar, we are able to make assumptions about the DCT output that allow more fine tuned quantization compared to frameworks without transforms. 
+
+3.2.2 Zone 1: Linear Deadzone (bins 𝐵 1 to 𝐵 2−1). Mid-band coeffi-cients carry moderate energy. These are quantized with a symmet-ric linear mapping enhanced by a deadzone , a region around zero within which all values are collapsed to the zero bin. The deadzone ratio 𝛼 1 is a tunable constant. Increasing 𝛼 1 forces more coefficients to the zero bin, improving entropy coding efficiency at the cost of reconstruction fidelity. For a coefficient 𝑐 with per-zone maximum 
+
+𝐴 1 and deadzone width 𝑑 1 = 𝛼 1𝐴 1
+
+𝑞 =
+
+
+
+129 +
+
+ 𝑐 − 𝑑 1
+
+𝐴 1 − 𝑑 1
+
+· 126 + 0.5
+
+
+
+if 𝑐 > 𝑑 1,
+
+127 −
+
+ |𝑐 | − 𝑑 1
+
+𝐴 1 − 𝑑 1
+
+· 127 + 0.5
+
+
+
+if 𝑐 < −𝑑 1,
+
+128 otherwise. (3) 
+
+3.2.3 Zone 2: Aggressive Zeroing (bins 𝐵 2 to 𝐸 −1). High-frequency coefficients carry minimal signal energy. The deadzone in Zone 2 spans the entire dynamic range and every coefficient maps to the zero bin . This concentrates quantized values onto a single symbol, thereby reducing the average codeword length. Although Zone 2 coefficients carry no information post-quantization, they are still present in the bitstream when 𝐵 2 ≤ 𝐸 −1 as highly compressible values. 
+
+## 3.3 Entropy Coding Stage 
+
+The quantized coefficient stream is entropy coded with a length-limited canonical Huffman scheme [ 36 ], compressing 1-byte sym-bols into variable-length codewords. This Huffman variant en-ables low-complexity, low-memory embedded encoding and high-throughput, independent decoding. A symbol histogram is first computed on the quantized coefficients of a representative dataset. From this histogram, optimal code lengths are determined based on a maximum length constraint 𝐿 max using the Larmore–Hirschberg package-merge algorithm which solves the length-limited minimum-redundancy coding problem in 𝑂 (𝜎𝐿 max ) time for an alphabet of size 𝜎 , which is 256 based on 1-byte values encoded post-quantization. The length-limited variant of Huffman coding is employed to bound the runtime memory usage of the encoder and decoder. A lookup-table (LUT) with 2𝐿 𝑚𝑎𝑥 entries is used to achieve 𝑂 (1)
+
+conversions. Bounding the LUT size allows it remain cache-resident during both compression and decompression. Futhermore, this codebook is canonical as the Larmore–Hirschberg package merge algorithm provides a symbol to codeword length mapping, thus codes are canonized iteratively to provide codeword bit mappings. 
+
+## 3.4 Signal Domain Parameters 
+
+Signal-domain parameters are determined by evaluating codec per-formance on a representative dataset, optimizing for reconstruction quality while throughput remains a secondary consideration. Pa-rameter choices significantly effect reconstruction fidelity but have limited impact on throughput. Table 1 provides the fptc parameters BACDE F                 
+
+> BACD222
+> ... 3... ... 10 11 00 010
+> -4.25 -10.5 -2.75 -2.5 -5.0 -4.5 -4.0
+> ... -3.5 ... ... 0000Z0 Z1 Z2 Symbol Length Code
+> 256 Huffman Symbols 256 Quantized Values
+> Tree Hardware Representation Table Hardware Representation
+> Sample DCT Window Sample Symbol Histogram
+> Huffman Tree
+> Lossy Structure
+> Quantization Table
+> Lossless Structure
+> 2.a
+> 2.b
+> 2.c
+> 1.a
+> 1.b
+> 1.c
+
+Figure 4: Codec structures, including quantization table (1.b) built from DCT data (1.a) and represented as a multidim array (1.c), and Huffman tree (2.b) built from a coefficient histogram (2.a) and represented as a flattened tree (2.c). 
+
+with typical values for reference along with the ranges tested. Note that not all values in this table vary signficantly, such as 𝛼 1 for example, which remains relatively constant across all testing. 
+
+3.4.1 Lossy. We find that the typical values for 𝜇 and 𝛼 1 are perfor-mant across all studied signal domains while parameters 𝑁 , 𝐸, 𝐵 1
+
+and 𝐴 0 exhibit higher sensitivity to the application signal domain. 
+
+𝑁 and 𝐸 relate to the local smoothness and sampling rate of a signal. For instance, we observe that Load Power is highly smooth and thus necessitates a lower 𝐸 : 𝑁 ratio for optimal compression in comparison to the less structured EEG. 𝐵 1 is determined by rate of decay of the average coeffcient window. 𝐴 0 relates to the variance between the probability distributions of distinct DCT windows. For example, the sinus rhythm of ECG data affords the ability to only 𝜇 -compand the very first coefficient, where EEG requires this zone to cover more coefficients for fidelty. For similar reasons, the percentile clip 𝐴 0 is set higher on ECG since the domain has high stationarity. 
+
+3.4.2 Lossless. The entropy coding stage uses a pre-computed codebook for Huffman look-up operations. The parameters in Huff-man are more nuanced as the tree-building itself is exact to a certain distribution. This codebook can be constructed from general fptc 
+
+DCT coefficient distributions of the specific domain, but when ap-plied to randomly sampled domain data, it will only approximate the most optimal length-limited encoding of that data. However, this is an intrinsic property of Huffman regardless [ 37 ]. We find an approxmation in this way is more than sufficient to achieve high compression due to signal stationarity. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 
+
+Table 1: Dataset parameters with typical values on studied signal classes. Parameter Symbol Description Range Typical Value 
+
+DCT_SIZE 𝑁 Transform block size (DCT dimension) [4, 128 ] 32 
+
+ENCODED_COEFFS 𝐸 Number of retained low-frequency coefficients [1, 𝑁 ] 16 
+
+HYBRID_BOUNDARY_1 𝐵 1 Boundary separating low- and mid-frequency regions [0, 𝐸 ] 2
+
+HYBRID_BOUNDARY_2 𝐵 2 Boundary separating mid- and high-frequency regions [𝐵 1, 𝐸 ] 16 
+
+MU_COMPANDING 𝜇 Quantization or scaling strength parameter [1, 500 ] 50.0 
+
+DEAD_RATIO_ZONE1 𝛼 1 Deadzone ratio for mid-frequency band [0.0, 1] 0.004 
+
+ZONE_PERCENTILE 𝐴 0 Percentile threshold for zone bounds [90 .0, 100 .0] 99.9 
+
+## 4 Optimization 
+
+The following section covers how fptc is implemented from the proposed design in Section 3. Where the design overview focuses on how the proposed design enables high compression with recon-struction fidelity, this section focuses on the hardware realization of the codec. We first describe the compression pipeline, emphasizing lowing algorithmic complexity, then present the decompression pipeline with a focus on exploiting parallelism on GPUs. 
+
+## 4.1 Compression 
+
+To enable single pass encoding, the encoding side of fptc uses a prebuilt quantization table and Huffman codebook. The encoder executes three steps of transformation according to these struc-tures. First, it computes the DCT as discussed in Section 3.1. It then converts spectral coefficients from their float values to quantized 
+
+uint8 types according to the quantization table. Finally, the encoder must deal with alignment in converting the predictable length input in fixed byte lengths to variable bit-length codes packed into words. We introduce a SymLen method that cleanly packs the variable-sized compressed bitstream of Huffman encoding into fixed length buffered chunks. This method greedily packs as many translated Huffman codes as possible into a 64-bit chunk and then stores the number contained separately. 3.0                  
+
+> 2.1
+> 1.1 1.9 1.8 3.7 3.5 3.9 2.1
+> 9.8 -7.5 -0.71 0.01 0.02 -0.04 0.52
+> 144 255 28 128 128 128 128
+> 012345678 symbols
+> Data Symlen
+> Universal Quantization Table
+> Universal Huffman Tree
+> Time Series Data Frequency Domain Quantized Data Encoded Package
+> 1
+> 2
+> 3
+> 128
+
+Figure 5: Compression steps on low-complexity encoder in-cluding forward DCT-II (1), quantization according to domain table (2) and Huffman Symlen word packing (3). 
+
+The algorithm processes the quantized symbol stream sequen-tially and returns an array of fixed-width 64-bit words. For each symbol, it retrieves the corresponding canonical Huffman codeword and greedily appends that codeword to the current output word if sufficient capacity remains. Otherwise, the current word is finalized, its associated symbol count is recorded in the parallel SymLen array, and packing resumes in a fresh 64-bit word. Importantly, codewords are never split across word boundaries: each symbol is either fully contained in the current word or deferred entirely to the next. The symlen metadata is the key property of the format. Rather than storing the number of valid bits in each word, fptc stores the number of encoded symbols contained in that word. During decod-ing, a thread can then stop after reconstructing exactly symlen[ 𝑤 ]
+
+symbols, ignoring any padded suffix bits in the tail. This makes each encoded word independently decodable without any inter-thread synchronization, using a prefix-scan of the symlen array to index the output of each GPU thread output. 
+
+Algorithm 1 Huffman Stream Encoding with SymLen  
+
+> 1:
+
+Input: Huffman map 𝐻 from symbols to (𝑐𝑜𝑑𝑒, 𝑙𝑒𝑛𝑔𝑡ℎ ) pairs; quantized input array 𝑋 [0 . . . 𝐿 − 1] 
+
+> 2:
+
+Output: encoded 64-bit word array 𝑜𝑢𝑡 [] and symbol-count array 𝑠𝑦𝑚𝑙𝑒𝑛 []  
+
+> 3:
+
+𝑖 ← 0, 𝑤 ← 0, 𝑐𝑜𝑢𝑛𝑡 ← 0 
+
+> 4:
+
+𝑏𝑢 𝑓 𝑓 𝑒𝑟 ← 0, 𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 ← 0 
+
+> 5:
+
+while 𝑖 < 𝐿 do  
+
+> 6:
+
+(𝑐𝑜𝑑𝑒, 𝑐𝑜𝑑𝑒 _𝑙𝑒𝑛 ) ← 𝐻 [𝑋 [𝑖 ]]  
+
+> 7:
+
+if 𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 + 𝑐𝑜𝑑𝑒 _𝑙𝑒𝑛 > 64 then  
+
+> 8:
+
+𝑜𝑢𝑡 [𝑤 ] ← 𝑏𝑢 𝑓 𝑓 𝑒𝑟  
+
+> 9:
+
+𝑠𝑦𝑚𝑙𝑒𝑛 [𝑤 ] ← 𝑐𝑜𝑢𝑛𝑡  
+
+> 10:
+
+𝑤 ← 𝑤 + 1 
+
+> 11:
+
+𝑏𝑢 𝑓 𝑓 𝑒𝑟 ← 0 
+
+> 12:
+
+𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 ← 0 
+
+> 13:
+
+𝑐𝑜𝑢𝑛𝑡 ← 0 {retry the same symbol on next word}  
+
+> 14:
+
+else  
+
+> 15:
+
+𝑠ℎ𝑖 𝑓 𝑡 ← 64 − 𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 − 𝑐𝑜𝑑𝑒 _𝑙𝑒𝑛  
+
+> 16:
+
+𝑏𝑢 𝑓 𝑓 𝑒𝑟 ← 𝑏𝑢 𝑓 𝑓 𝑒𝑟 | ( uint64 (𝑐𝑜𝑑𝑒 ) ≪ 𝑠ℎ𝑖 𝑓 𝑡 ) 
+
+> 17:
+
+𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 ← 𝑏𝑖𝑡 _𝑠𝑖𝑧𝑒 + 𝑐𝑜𝑑𝑒 _𝑙𝑒𝑛  
+
+> 18:
+
+𝑐𝑜𝑢𝑛𝑡 ← 𝑐𝑜𝑢𝑛𝑡 + 1 
+
+> 19:
+
+𝑖 ← 𝑖 + 1 {move to the next symbol}  
+
+> 20:
+
+end if  
+
+> 21:
+
+end while  
+
+> 22:
+
+if 𝑐𝑜𝑢𝑛𝑡 > 0 then  
+
+> 23:
+
+𝑜𝑢𝑡 [𝑤 ] ← 𝑏𝑢 𝑓 𝑓 𝑒𝑟  
+
+> 24:
+
+𝑠𝑦𝑚𝑙𝑒𝑛 [𝑤 ] ← 𝑐𝑜𝑢𝑛𝑡  
+
+> 25:
+
+end if  
+
+> 26:
+
+return (𝑜𝑢𝑡, 𝑠𝑦𝑚𝑙𝑒𝑛 )fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. Thread 0 | SymLen = 4                                                                       
+
+> L_MAX L_MAX L_MAX
+> L_MAX L_MAX L_MAX L_MAX
+> Thread 1 | SymLen = 3 Thread 2 | SymLen = 4 Thread 3 | SymLen = 2
+> Read Iteration 1 Read Iteration 2
+> ... SymLen[0] ... SymLen[1] ... SymLen[2] ... SymLen[3]
+> L_MAX
+> After Iteration N S0 S1 S2 S3 S0 S1 S2 S0 S1 S2 S3 S0 S1
+> S0 S1 S2 S3 S0 S1 S2 S3 S0 S1 S2 S3 S0 S1 S2 S3 Write Stage 0
+> [Thread 0 Broadcasts]
+> BROADCAST
+> S0 S1
+> T1 Write Buffer
+> PrefixScan[]
+> T2 Write Buffer T3 Write Buffer
+> PS0 PS1 PS2 PS3 PS4 PS5 PS6 PS7
+> S2 S3
+> EXTRACT EXTRACT WARP N-1 WARP N
+> Empty Empty Empty
+> Stage 0 WARP N+1 T0 Warp Lane STORE AT SUM STORE AT SUM
+> Stage 1 Stage 2 Stage 3 T1 Warp Lane T2 Warp Lane T3 Warp Lane
+> QuantCoeffs[]
+> PS0
+> Number of Threads
+> =Current Window =Huffman Codeword =Decoded Segment =Buffer Bit =Decoded Byte =Prefix Scan =Quant. Coeff. S0
+
+Figure 6: Kernel level diagram of lossless decompression stage with bit-level view of the Huffman code logic using the SymLen method of buffered encodings, and byte-level view of orchestrated thread writes via multistage warp broadcasts. 
+
+## 4.2 Decompression 
+
+4.2.1 Lossless. For decompression, fptc must extract the Huffman codewords from the packed bitstream, translate the codeword to a symbol, and reconstruct the time-series format. Paired with the 
+
+SymLen encoder design for 64-bit words, achieving high-throughput memory accesses to the encoded array is straightforward. This is inherent to the work assignment we choose: assigning threads to adopt a fixed-length encoded segments, leading to two challenges later on in the decoding. The first challenge being that different threads have different quantities of symbols to decode, and the positioning of all but the first symbol inside of each fixed-length chunks is unknown. Thus, translating their segments in parallel among threads in a warp can lead to repeated divergence. The sec-ond challenge is maintaining high-throughput coaslesced memory writes to a unified and fully compacted array due to the variability in the number of symbols each thread decodes. To address the first challenge, fptc assigns one thread to each 64-bit encoded word and uses the corresponding symlen value as the decode termination condition. Each thread therefore decodes exactly the number of symbols stored in its assigned segment rather than searching for delimiters or attempting to infer the end of valid bits. Inside the kernel, the thread repeatedly extracts a prefix of up to 𝐿 max bits from its current bit position, indexes a canonical Huffman lookup table, emits the recovered symbol, and advances by the matched code length. Since the code length is bounded, this translation remains constant time per symbol. To reduce lookup latency, the codebook is first staged in shared memory at the block level, and each thread decodes into a small private buffer before performing any global writes. Importantly, threads are not able to determine the bit length of their work assignment prior to decoding, so the buffered bits may be treated as part of a codeword window. Since the codes are prefix-free, a lookup with the buffered bit will still yield the correct value. The second challenge is compacting the variable-length per-thread outputs into a dense coefficient array. This is resolved by computing an exclusive prefix sum over the symlen array before decode, producing the output offset for each compressed word. A naive implementation would then have each thread write its de-coded bytes directly to global memory, but such writes are poorly coalesced because neighboring threads generally emit runs of dif-ferent lengths. Instead, fptc uses a warp-cooperative output stage based on __shfl_sync : the warp broadcasts one lane’s decoded symbols and output offset, and all lanes participate in writing that lane’s symbol run to contiguous addresses. This converts irregular per-thread decode output into coalesced global stores while pre-serving the one-thread-per-word mapping. The result of this first kernel is a fully compacted array of quantized coefficients, which is then consumed directly by the reconstruction kernel. 
+
+4.2.2 Lossy. The output of the lossless decompression stage is an array of spectral quantized coefficients that must have an in-verse DCT computed over their float converted values to return to the time-domain representation of the signal data. The choice to separate this into a secondary kernel is motivated by the fact that this stage will have uniform work amongst all threads. This uniform work assignment occurs for dequantization and inverse DCT, so they are fused into one kernel just as Huffman decoding and quantized coefficient compaction are fused, hence the name Dual-Fused Kernel design. A visual representation of the steps on sample data is shown below in Figure 7 at each individual stage of the decompression pipeline. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 1 8 16 24 32             
+
+> Codeword Index
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Bits
+> 1) Huffman Code Lengths
+> 1816 24 32
+> Coefficient Index
+> −1
+> 0
+> 1
+> 2
+> 3
+> Integer Level
+> 2) Quantized Coefficients
+> 1816 24 32
+> Frequency Index
+> −0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> Value
+> 3) DCT Spectral Coefficients
+> 1816 24 32
+> Sample Index
+> −1.0
+> −0.5
+> 0.0
+> 0.5
+> Amplitude
+> 4) Input Time Series (Window = 32)
+
+Figure 7: Visualization of data at each decompression step. 
+
+## 5 Experimental Setup 
+
+This section outlines the methodology of our experiment including our dataset selection and our three metrics of interest and baseline compression comparisons. 
+
+## 5.1 Metrics 
+
+We consider the following metrics: compression ratio (CR), percent-age root-mean-square difference (PRD), and throughput. Together, these capture the central tradeoffs of lossy signal compression: storage reduction, reconstruction fidelity, and runtime efficiency. Consider 𝑆 orig as the original data size and 𝑆 comp to be the com-pressed representation. Let 𝑥 𝑖 denote the original signal samples and ˆ𝑥 𝑖 the reconstructed samples. Then, the metrics are defined as 
+
+Compression Ratio Percentage RMS Difference 
+
+𝐶𝑅 = 𝑆 orig 
+
+𝑆 comp 
+
+(4) 𝑃𝑅𝐷 = 100 ×√︄ Í𝑁 −1 
+
+> 𝑖 =0
+
+(𝑥 𝑖 − ˆ𝑥 𝑖 )2
+
+Í𝑁 −1 
+
+> 𝑖 =0
+
+𝑥 2
+
+> 𝑖
+
+(5) Finally, throughput measures the rate at which the decompressor produces output, expressed in GB/s. Since compression operates in real-time, throughput is evaluated only on the decompression side. We measure the time between when compressed data is placed in GPU memory and when the fully decompressed data is written to GPU memory, excluding host-device transfer times, consistent with standard practice for GPU-only data compressors [5]. 
+
+## 5.2 Datasets 
+
+The evaluation uses ten datasets spanning four signal domains where asymmetric compression is well motivated: biomedical di-agnostic, seismic traces, power-grid telemetry, and meteorological sensing. Note that some of these datasets, for example the MIT-BIH Electrocardiogram dataset, are considered canonical yet are rather small studies in terms of data size. To give a fair comparison across compressors that reach maximum throughput at different data sizes, each dataset was duplicated until it exceeded 1 GB in size. Since the duplication is exact, a given set of parameters on any compressor will yield the same CR/PRD performance regardless of if it is run on the original size or the scaled size. 
+
+Table 2: Experimental datasets Dataset Domain Orig (MB) Scaled (MB) 
+
+MIT-BIH [38] Biomedical 238.04 1160 ECG-ARTH [39] Biomedical 19.05 1000 EEG-MAT [39] Biomedical 499.88 1460 Seismic [40] Seismic Traces 14.98 1010 Wind Power [41] Power/Energy 396.27 1160 Solar Power [41] Power/Energy 396.27 1160 Load Power [41] Power/Energy 396.27 1160 Temperature [41] Meteorological 396.27 1160 Irradiance [41] Meteorological 1160.00 1160 Wind Speed [41] Meteorological 396.27 1160 These datasets were selected to cover a wide range of smooth-ness, sampling characteristics, amplitude distributions, and spectral decay behavior. ECG and EEG represent biomedical waveform do-mains with strong fidelity requirements. Seismic traces provide a geophysical domain with stricter distortion tolerance and different local structure. Power and meteorological signals represent infras-tructure and environmental telemetry, which are often smoother and therefore especially favorable to transform-domain compres-sion. 
+
+## 5.3 Platform and Baselines 
+
+fptc is evaluated on an NVIDIA RTX PRO 6000 Blackwell Work-station Edition GPU with 96 GB memory. The evaluation system runs Ubuntu 22.04 with CUDA Toolkit 13. The fptc implementa-tion was compiled with nvcc with -O3, and competing codecs were built according to their public release instructions. The compari-son includes recent GPU-oriented lossy compressors that target high throughput and error-bounded reconstruction: cuSZp3 [ 5], FZ-GPU [ 24 ], PFPL [ 25 ], and cuZFP [ 26 ]. Where supported by the implementation, each baseline is tuned to produce points near the PRD values used in the comparison. Because different compressors expose different control parameters and target different error mod-els, the evaluation compares them by achieved PRD rather than by nominal error-bound setting. 
+
+## 6 Experimental Results 
+
+Our experimental evaluation characterizes the trade-offs between reconstruction fidelity (PRD), compression ratio (CR), and decom-pression throughput, benchmarking fptc against state-of-the-art GPU-accelerated lossy compressors. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 1 2 3 4 5 6                                                   
+
+> 4
+> 6
+> 8
+> 10
+> 12
+> ECG-ARTH
+> 123456
+> 3
+> 6
+> 9
+> 12
+> 15
+> 18
+> 21
+> 24
+> 27
+> EEG-MAT
+> 123456
+> 8
+> 16
+> 24
+> 32
+> 40
+> 48
+> 56
+> 64
+> Irradiance
+> 123456
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> 700
+> 800
+> Load Power
+> 123456
+> 6
+> 9
+> 12
+> 15
+> 18
+> 21
+> 24
+> MIT-BIH
+> 123456
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> 9
+> 10
+> 11
+> Seismic
+> 123456
+> 15
+> 30
+> 45
+> 60
+> 75
+> 90
+> 105
+> Solar Power
+> 123456
+> 0
+> 60
+> 120
+> 180
+> 240
+> 300
+> 360
+> 420
+> 480
+> Temperature
+> 123456
+> 0
+> 40
+> 80
+> 120
+> 160
+> 200
+> 240
+> 280
+> Wind Power
+> 123456
+> 0
+> 40
+> 80
+> 120
+> 160
+> 200
+> 240
+> 280
+> Wind Speed
+> Percent Root-mean-square Difference (PRD)
+> Compression Ratio (CR)
+> Rate Distortion: PRD vs CR |cuSZp3-plain FZ-GPU FPTC cuZFP PFPL
+
+Figure 8: Rate distortion curve performance for all datasets in the PRD range 1–6. 
+
+## 6.1 Compression 
+
+6.1.1 Rate Distortion. In signal-processing pipelines, the maximum CR is constrained by the maximum distortion a specific application can tolerate. While this threshold varies across different sensing modalities, empirical studies generally identify up to 5% as the boundary for high-fidelity reconstruction [ 42 –45 ]. Thus, our rate-distortion curves highlight this range for all evaluated domains. To construct the rate-distortion (RD) curves in Figure 8, each compressor is evaluated over a sweep of its exposed compression controls, and every point is mapped to its (PRD , CR ). For fptc , the sweep is performed over all lossy parameters but focused primarily on the size of the DCT window 𝑁 and number of retained DCT coefficients 𝐸 . For each signal domain, these parameters are swept over a broad range as an approximation. This produces a dense set of points, which do not exhibit the same tendencies as "single-knob" lossy bounded compressors, hence why a Pareto front is constructed to analyze only the trend of the best suited parameters. 2 3 4 5   
+
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> Bare Datapoints
+> 2345
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> Extracted Pareto Front & Data Space
+> Data Cloud
+> Smoothed Pareto Front
+> Percent Root-mean-square Difference (%)
+> Compression Ratio
+
+Figure 9: Extraction of Pareto front from a uniform sweep of 
+
+fptc parameters on a subset of MIT-BIH data. 
+
+An example of this is shown in Figure 9, where the plot shows compression settings on a sample from MIT-BIH dataset that are uniformly swept, therefore including many impractical configura-tions that perform poorly and would not be deliberately choosen in a real system. 
+
+6.1.2 Performance Comparison. Across nearly all evaluated datasets, 
+
+fptc exhibits the strongest Pareto front, achieving substantially higher compression ratios than the baseline compressors at com-parable PRD. This advantage is most pronounced on smooth or strongly energy-compacted signals, where fptc achieves dramati-cally higher compression ratios than all baselines over most of the tested PRD range. In these domains, the DCT truncation is shown to be highly effective, where often the highest compression ratios have only a few retained coefficients. 
+
+Observation I : In analyzing domain data, fptc parameters can be set not only to target the inherent structure of signal data, but also to target a particular location along the RD curve, mainly by the configuration of parameters 𝑁 and 𝐸 .
+
+fptc also performs strongly on biomedical datasets. On MIT-BIH Arrhythmia and EEG-MAT, it consistently exceeds the baselines. The gains are smaller than on the smoothest infrastructure and environmental traces, but still substantial. Notably, the ECG-ARTH dataset is the most competitive case. fptc still achieves the best RD trend, but the margin over the strongest baselines is reduced. Quantifying these improvements via the compression ratio against the strongest competitor per dataset shows clear domain-specific trends: the most significant gains occur in Power/Energy (360%) and Meteorological (305%) domains, followed by strong performance in Biomedical (148%) and Seismic (111%) data. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 
+
+6.1.3 Distortion. The following summarizes acceptable PRD thresh-olds for domains evaluated in this work based on domain literature. 
+
+• Electrocardiography (ECG, target PRD < 5% ): ECG stan-dards establish 5% as the clinical boundary for excellent reconstruction [ 42 ], with thresholds up to 10% considered acceptable before diagnostic reliability degrades. As later discussed, PRD is a global metric and should be interpreted alongside local feature preservation. 
+
+• Electroencephalography (EEG, target PRD < 5% ): Clini-cal validation studies place roughly 5% as the upper bound for clinician-acceptable reconstruction [ 43 ], beyond which quality degrades rapidly; PRD above 15% is generally unac-ceptable. 
+
+• Seismic (target PRD < 2% ): Seismic reconstruction quality is typically reported as NRMSE, with high-fidelity results falling in the 1–2% range [ 44 ]. Since PRD is an equivalent nor-malized RMS measure, this places the high-quality threshold at approximately 2%. 
+
+• Power/Energy (target PRD ∼< 5% ): No standardized PRD threshold exists for this domain. Preserving trends, local ramps, and short-term fluctuations for monitoring and fore-casting places the practical operating region in the low single digits [46]. 
+
+• Meteorological (target PRD ∼< 5% ): Similarly lacking a universal threshold, meteorological signals require preser-vation of seasonal shape and local variations, motivating operation in the low-single-digit PRD range [45]. Since PRD is a global error metric, Figure 10 provides a qualitative reconstruction comparison on representative load-power data at approximately matched fidelity. Despite sharing PRD, the CR of the three compressors varies significantly from 5x on cuSZp3 to 100x on fptc . It is illustrated that fptc retains a minimal set of coefficients to achieve this results, yet the reconstruction preserves the essential signal structure well. 0.6            
+
+> 0.9
+> 1.2 (a)
+> Load Power
+> Reference
+> 0.6
+> 0.9
+> 1.2 (b)
+> FPTC
+> CR
+> PRD 0.855%
+> 100.4x
+> 0.6
+> 0.9
+> 1.2 (c)
+> PFPL
+> CR
+> PRD 1.067%
+> 69.5x
+> 04K 8K 12K 16K
+> Sample Index
+> 0.6
+> 0.9
+> 1.2 (d)
+> cuSZp3
+> CR
+> PRD 1.001%
+> 4.9x
+
+Figure 10: Sample Reconstructed Load Power Data Observation II : Load power data has the largest rate-distortion difference, but even at a given PRD not all compressors pre-serve local features equivalently, as evident by the block arti-facts in the predictive compressors reconstruction. At a certain point, all compressors will suffer from this but the CR limit is different based on the architecture of the compressor. At very low PRD (<1%), some baseline methods match or exceed 
+
+fptc . This behavior is expected. In the extreme high-fidelity regime, the room for the baseline quantization-aggressiveness used in fptc 
+
+becomes limited. While full 𝜇 -companding can be used to match ultra-low tolerance, it does so at great expense to CR. However, even without this adjustment, fptc remains competitive in the ultra-low distortion regime. ECG-ARTH                                                                                            
+
+> EEG-MAT
+> MIT-BIH
+> Load Power
+> Irradiance
+> Seismic
+> Solar Power
+> Temperature
+> Wind Power
+> Wind Speed
+> ECG-ARTH
+> EEG-MAT
+> MIT-BIH
+> Load Power
+> Irradiance
+> Seismic
+> Solar Power
+> Temperature
+> Wind Power
+> Wind Speed
+> 1.00 0.92 0.97 0.60 0.68 0.51 0.64 0.55 0.73 0.75
+> 0.92 1.00 0.97 0.72 0.88 0.71 0.87 0.80 0.94 0.91
+> 0.97 0.97 1.00 0.58 0.81 0.66 0.79 0.68 0.84 0.83
+> 0.60 0.72 0.58 1.00 0.49 0.24 0.53 0.70 0.73 0.77
+> 0.68 0.88 0.81 0.49 1.00 0.89 0.94 0.74 0.93 0.78
+> 0.51 0.71 0.66 0.24 0.89 1.00 0.88 0.66 0.76 0.65
+> 0.64 0.87 0.79 0.53 0.94 0.88 1.00 0.91 0.96 0.90
+> 0.55 0.80 0.68 0.70 0.74 0.66 0.91 1.00 0.90 0.97
+> 0.73 0.94 0.84 0.73 0.93 0.76 0.96 0.90 1.00 0.94
+> 0.75 0.91 0.83 0.77 0.78 0.65 0.90 0.97 0.94 1.00 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+
+Figure 11: Correlation matrix between optimized parameters of datasets. Correlation is calculated as the Pearson Correla-tion Coefficient ( 𝑟 ). Larger 𝑟 indicates stronger relationship between the parameters of two datasets 
+
+6.1.4 Dataset Correlation. Another importantant trend observed is the correlation between the optimal parameters for each dataset. As shown in Figure 11, the optimal compression configurations cluster naturally according to the underlying characteristics of the domain and the sampling frequency of the sensor. For instance, the biosig-nal domain (ECG and EEG) exhibits an extremely high intra-group correlation ( 𝑟 ≥ 0.92 ), suggesting that signals with localized spikes and biological frequency profile converge toward nearly identical Pareto-optimal parameter sets. This result demonstrates that our complex parameters tend to converge for applications within a single domain. This behavior justifies the use of representative do-main data to pretrain the compression structures since, for example, structures trained on one ECG study tend to remain performant on across other ECG datasets. Conversely, we find that signals from domains with dissimilar characteristics exhibit distinct optimal pa-rameters. For example, highly non-smooth seismic data requires markedly different parameters than the comparatively smoother Load Power. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 0                        
+
+> 500
+> 1000
+> Throughput
+> (GB/s)
+> PRD 2[0, 2] |FZ-GPU PFPL cuSZp3-plain cuZFP* FPTC
+> 0
+> 500
+> 1000
+> Throughput
+> (GB/s)
+> PRD 2(2, 4] |FZ-GPU PFPL cuSZp3-plain cuZFP* FPTC
+> ECG-ARTH
+> EEG-MAT
+> Irradiance
+> Load Power
+> MIT-BIH
+> Seismic
+> Solar Power
+> Temperature
+> Wind Power
+> Wind Speed
+> Average
+> 0
+> 500
+> 1000
+> Throughput
+> (GB/s)
+> PRD 2(4, 6] |FZ-GPU PFPL cuSZp3-plain cuZFP* FPTC
+
+Figure 12: Decompression throughput across Datasets at PRD ranges of [0, 2], (2, 4], (4, 6]. Reported throughput taken as average across five trials. *Note that cuZFP is included for comparison despite having unacceptable RD quality on all datasets. 
+
+## 6.2 Throughput 
+
+Unlike the rate-distortion curves, throughput is not plotted over a continuous fidelity axis. Instead, the same parameter sweeps used to generate the RD curves are reused, and every point is grouped by its PRD according to three intervals. This binning enables the com-parison of codecs at approximately matched distortion constraints, acknowledging that allowed distortion directly affects throughput. Decode throughputs were measured for a set of parameters in three trials and averaged to account for performance variation of each compressor. Throughput variation is reflected in Table 3 across five trials on the MIT-BIH Arrhythmia dataset at low PRD tolerance where trials are run immediately in sequence on a GPU that is already warmed. 
+
+Trial # Compressor 1 2 3 4 5 Avg. 
+
+FZ-GPU 227.20 225.50 226.29 228.21 227.83 227.01 
+
+PFPL 400.29 377.26 395.57 402.58 403.15 395.77 
+
+cuSZp3-plain 49.89 243.75 71.24 699.45 600.17 332.90 
+
+cuZFP 658.78 658.44 661.09 674.18 668.39 664.18 
+
+FPTC 243.09 288.43 243.40 243.56 295.91 262.88 
+
+Table 3: Compressor throughput stability (GB/s) on MIT-BIH Arrhythmia dataset at PRD ≈ 2% across five trials 
+
+While cuZFP and FZ-GPU exhibit consist performance, cuSZp3 shows pronounced instability, with throughput varying from 49 .89 
+
+GB/s to 699 .45 GB/s across trials. This high variance may pose risks for real-time telemetry pipelines that require predictable latency. 
+
+fptc remains relatively stable, averaging 262 .88 GB/s, though it exhibits minor jitter in trials 2 and 5. Even with these fluctutations, 
+
+fptc maintains a reliable performance floor that is sufficient for the requirements of wireless sensor network applications. Across all trials, the throughput of fptc is second only to cuZFP. However, we find that cuZFP exhibits the most significant signal distortion on re-construction, suggesting that cuZFP emphasizes a high-throughput decoder to the detriment of the achieved compression ratio. 
+
+Observation III : The throughput of fptc remains competitive across all domains in all PRD ranges despite having a pipeline designed to achieve high rate-distortion performance. The measured throughput is especially encouraging on signals with high sampling frequencies. fptc is strongest or near-strongest on Load Power, Temperature, Wind Speed, and Wind Power in mul-tiple PRD ranges. These are the domains in which fptc achieved the largest compression gains, indicating that the same signal struc-ture that improves rate-distortion performance also benefits the GPU reconstruction pipeline in terms of end-to-end decompression throughput. This result is consistent with expectations as memory accesses are dominant the runtime of fptc , and higher compression ratios directly reduce the volume of memory traffic. The most challenging datasets for fptc are ECG-ARTH, EEG, MIT-BIH, and Seismic. Signals from these domains exhibit less smoothness and stationarity, reducing the level of sparsity ex-ploitable by a transform-domain codec. In turn, this makes the reconstruction workload less favorable for fptc because more coef-ficients are retained, resulting in an increased amount of meaningful work in the lossless stages of the decompressor. Even in these do-mains, fptc remains within a practical throughput range while offering substantially better compression ratios in comparison to the general-purpose baselines at similar PRD. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. Another important trend is that fptc generally improves in throughput as the PRD target is relaxed. This is evident across mul-tiple individual datasets as well as in the aggregate averages. The trend is expected: increasingly aggressive compression reduces the amount of retained spectral information, thereby producing less decode and reconstruction work. As a result, fptc often improves compression ratio and decompression throughput together rather than trading one directly against the other. Runtime of individual stages has an interesting pattern. Since the lossless stage processes data from its initial compressed package and expands it up to 8x, the size of data that it handles is considerably smaller in comparison to lossy. However, it is also highly irregular and thus in many cases this adds latency that offsets the reduced read and write sizes. The impact of these varying expansion ratios is quantified in Figure 13, which shows kernel latencies across different domains. In datasets like MIT-BIH, the lossless kernel dominates the runtime (60%), as the signal is not as compresssible as smooth domains. However, on the comparatively smoother Wind Speed dataset, the lossless kernel processes relatively less data, and a high DCT parameter 𝑁 requires more computations by the lossy kernel to reconstruction the time-domain signal leading to a higher runtime (80%) in comparison. MIT-BIH   
+
+> ECG-ARTH
+> EEG-MAT
+> Seismic
+> Wind Power
+> Solar Power
+> Load Power
+> Temperature
+> Irradiance
+> Wind Speed
+> 0%
+> 50%
+> 100%
+> Normalized Runtime  Block Scan Lossy Kernel Lossless Kernel
+
+Figure 13: Normalized runtime breakdown of the three fptc 
+
+decompression kernels across 10 scaled datasets 
+
+This suggests that as signals are increasingly compressed further, the computational cost shifts due to the lossless kernel only having to handled a small number of retained coefficients compared to the large DCT window used to best exploit the frequency sparsity. This indicates that the dual-fused kernel design is optimal for diverse domains here, as a design adapted to one domain would prioritize the work assignment based on the dominant runtime, thus would not generalize across domains at the same throughput. Beyond domain-inherent properties, the end-to-end performance is heavily dictated by the specific compression configuration. Specif-ically, as shown in Figure 14, throughput is inversely proportional to the number of encoded coefficients ( ENCODED_COEFFS ). Fewer coefficients naturally reduce the data volume processed by the Huffman stage and the arithmetic complexity of the lossy ker-nel. Interestingly, throughput peaks at a DCT_SIZE of 32 for low 
+
+ENCODED_COEFFS values. This operating point reflects a balance be-tween transform overhead and computational complexity, outside of which performance starts to degrade. 8 16 24 32 40 48 56 64       
+
+> DCT Size
+> 0
+> 100
+> 200
+> 300
+> 400
+> Total Throughput (GB/s)
+> Encoded Coefficients
+> 124816 32 64
+
+Figure 14: Throughput as function of DCT, EC on the MIT-BIH dataset. Generally, number of encoded coefficients is inversely proportional to throughput. 
+
+It is also important to relate this consideration on throughput back to the rate-distortion curves and visual reconstruction of data. For example, retaining only one coefficient in a 64-point DCT may introduce pronounced block-discontinuity features compared to retaining all coefficients in a 16-point DCT. This will reduce the limit of achievable throughput but we find that high quality recon-struction and embedded-telemtry favorable compression are more important design considerations than maximizing decompression throughput alone. 
+
+## 7 Summary 
+
+This work presented fptc , an asymmetric lossy codec designed for signal data collected on resource-constrained devices and recon-structed at scale on GPUs. fptc combines a lightweight transform-based encoder with a throughput-oriented GPU decoder built around independent Huffman decoding, compact output placement, and fused reconstruction kernels. The design is motivated by the practi-cal imbalance between low-resource embedded collection and com-pression and high-volume centralized decompression for archival and analysis purposes. The evaluation across biomedical, geophysical, infrastructure, and meteorological datasets demonstrates that fptc achieves strong rate-distortion performance while maintaining competitive GPU decompression throughput. In particular, the results demonstrate that transform-domain signal compression, compact entropy-coded representations, and massively parallel reconstruction can be co-designed effectively rather than treated as separate objectives. The correlation analysis further reveals that optimal compression pa-rameters cluster strongly within signal domains, validating the use of domain-representative data to pretrain codec structures that generalize across datasets of the same class. Overall, fptc provides a practical framework for asymmetric compression in real sens-ing systems where both compression efficiency and large-scale decompression performance are critical. fptc : A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression Mechels et al. 
+
+## References 
+
+[1] Christos Strydis and Georgi N Gaydadjiev. Profiling of lossless-compression algorithms for a novel biomedical-implant architecture. In Proceedings of the 6th IEEE/ACM/IFIP international conference on Hardware/Software codesign and system synthesis , pages 109–114, 2008. [2] Zhilin Zhang, Tzyy-Ping Jung, Scott Makeig, and Bhaskar D Rao. Compressed sensing for energy-efficient wireless telemonitoring of noninvasive fetal ecg via block sparse bayesian learning. IEEE Transactions on Biomedical Engineering ,60(2):300–309, 2012. [3] Haoyuan Chen, Liang Liu, Jingwen Meng, and Wanying Lu. Afc: An adaptive lossless floating-point compression algorithm in time series database. Information Sciences , 654:119847, January 2024. [4] Tossaporn Srisooksai, Kamol Keamarungsi, Poonlap Lamsrichan, and Kiyomichi Araki. Practical data compression in wireless sensor networks: A survey. Journal of Network and Computer Applications , 35(1):37–59, 2012. [5] Yafan Huang, Sheng Di, Guanpeng Li, and Franck Cappello. cuszp2: A gpu lossy compressor with extreme throughput and optimized compression ratio. In Proceedings of the International Conference for High Performance Computing, Networking, Storage, and Analysis , SC ’24. IEEE Press, 2024. [6] Noushin Azami, Alex Fallin, and Martin Burtscher. Efficient lossless compression of scientific floating-point data on cpus and gpus. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 , ASPLOS ’25, New York, NY, USA, 2025. Association for Computing Machinery. [7] Fangzheng Lin, Kasidis Arunruangsirilert, Heming Sun, and Jiro Katto. Recoil: Parallel rans decoding with decoder-adaptive scalability. In Proceedings of the 52nd International Conference on Parallel Processing , 2023. [8] M. Blanco-Velasco, F. Cruz-Roldán, J. I. Godino-Llorente, and K. E. Barner. On the use of prd and cr parameters for ecg compression. Biomedical Signal Processing and Control , 1(1):56–64, 2005. [9] E. Dasan and M. Turkan. A novel dimensionality reduction approach for ecg signal compression in iot based healthcare systems. Biomedical Signal Processing and Control , 2021. [10] L. Zheng et al. Effective compression and classification of ecg arrhythmia by assembling deep neural networks. Biomedical Signal Processing and Control , 2021. [11] Christopher M. Sadler and Margaret Martonosi. Data compression algorithms for energy-constrained devices in delay tolerant networks. In Proceedings of the 4th International Conference on Embedded Networked Sensor Systems , SenSys ’06, page 265–278, New York, NY, USA, 2006. Association for Computing Machinery. [12] Francesco Marcelloni and Massimo Vecchio. An efficient lossless compression algorithm for tiny nodes of monitoring wireless sensor networks. The Computer Journal , 52(8):969–987, 2009. [13] Marco F Duarte, Godwin Shen, Antonio Ortega, and Richard G Baraniuk. Signal compression in wireless sensor networks. Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences , 370(1958):118–135, 2012. [14] M. A. Razzaque, Chris Bleakley, and Simon Dobson. Compression in wireless sensor networks: A survey and comparative evaluation. ACM Trans. Sen. Netw. ,10(1), December 2013. [15] Alaa Awad Abdellatif, Amr Mohamed, Carla Fabiana Chiasserini, Mounira Tlili, and Aiman Erbad. Edge computing for smart health: Context-aware approaches, opportunities, and challenges. IEEE Network , 33(3):196–203, 2019. [16] Rawaa K Hamza, Khalida S Rijab, and Mohammed A Hussien. The ecg data compression by discrete wavelet transform and huffman encoding. In 2021 7th In-ternational Conference on Contemporary Information Technology and Mathematics (ICCITM) , pages 75–81. IEEE, 2021. [17] Isuri Devindi, Sashini Liyanage, Titus Jayarathna, Janaka Alawatugoda, and Roshan Ragel. A novel ecg compression algorithm using pulse-width modulation integrated quantization for low-power real-time monitoring. Scientific Reports ,14(1):17162, 2024. [18] Goutam Kumar Sahoo, Samit Ari, and Sarat Kumar Patra. Performance evaluation of ecg compression techniques. In 2015 IEEE International Conference on Electrical, Computer and Communication Technologies (ICECCT) , pages 1–5. IEEE, 2015. [19] L Naga Sai Gayathri Priya, P Swetha, V Venkata Kiran, Nagarjuna Malladhi, and K Narsimha Reddy. Low power and high-speed ecg compression using dynamic threshold. In 2024 4th International Conference on Intelligent Technologies (CONIT) ,pages 1–6. IEEE, 2024. [20] Chunwei Liu, John Paparrizos, and Aaron J. Elmore. Adaedge: A dynamic com-pression selection framework for resource constrained devices. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) , pages 1506–1519, 2024. [21] Passakorn Luanloet, Watcharapan Suwansantisuk, and Pinit Kumhom. An effi-cient electrocardiography data compression. ECTI Transactions on Computer and Information Technology (ECTI-CIT) , 17(3):387–397, 2023. [22] Kenneth C. Barr and Krste Asanović. Energy-aware lossless data compression. 
+
+ACM Trans. Comput. Syst. , 24(3):250–291, August 2006. [23] Yafan Huang, Sheng Di, Xiaodong Yu, Guanpeng Li, and Franck Cappello. cuszp: An ultra-fast gpu error-bounded lossy compression framework with optimized end-to-end performance. In Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis , SC ’23, New York, NY, USA, 2023. Association for Computing Machinery. [24] Boyuan Zhang, Jiannan Tian, Sheng Di, Xiaodong Yu, Yunhe Feng, Xin Liang, Dingwen Tao, and Franck Cappello. Fz-gpu: A fast and high-ratio lossy com-pressor for scientific computing applications on gpus. In Proceedings of the 32nd International Symposium on High-Performance Parallel and Distributed Computing ,HPDC ’23, page 129–142, New York, NY, USA, 2023. Association for Computing Machinery. [25] Alex Fallin, Noushin Azami, Sheng Di, Franck Cappello, and Martin Burtscher. Fast and effective lossy compression on gpus and cpus with guaranteed error bounds. In 2025 IEEE International Parallel and Distributed Processing Symposium (IPDPS) , pages 874–887, 2025. [26] Peter Lindstrom. Fixed-rate compressed floating-point arrays. IEEE transactions on visualization and computer graphics , 20(12):2674–2683, 2014. [27] André Weißenberger and Bertil Schmidt. Massively parallel huffman decoding on gpus. In Proceedings of the 47th International Conference on Parallel Processing ,ICPP ’18, New York, NY, USA, 2018. Association for Computing Machinery. [28] Naoya Yamamoto, Koji Nakano, Yasuaki Ito, Daisuke Takafuji, Akihiko Kasagi, and Tsuguchika Tabaru. Huffman coding with gap arrays for gpu acceleration. In Proceedings of the 49th International Conference on Parallel Processing , ICPP ’20, New York, NY, USA, 2020. Association for Computing Machinery. [29] Satyabrata Sarangi and Bevan Baas. Canonical huffman decoder on fine-grain many-core processor arrays. page 512–517, 2021. [30] Shmuel Tomi Klein and Yair Wiseman. Parallel huffman decoding with applica-tions to jpeg files. The Computer Journal , 46(5):487–497, 2003. [31] Jairo A. Castelar, Carlos A. Angulo, and Carlos A. Fajardo. Parallel decompression of seismic data on gpu using a lifting wavelet algorithm. In 2015 20th Symposium on Signal Processing, Images and Computer Vision (STSIVA) , pages 1–7, 2015. [32] Carlos A Angulo, Christian D Hernández, Gabriel Rincón, Carlos A Boada, Javier Castillo, and Carlos A Fajardo. Accelerating huffman decoding of seismic data on gpus. In 2015 20th Symposium on Signal Processing, Images and Computer Vision (STSIVA) , pages 1–6. IEEE, 2015. [33] Stuart Lawson and Jian Zhu. Image compression using wavelets and jpeg2000: a tutorial. Electronics & Communication Engineering Journal , 14(3):112–121, 2002. [34] Syed Ali Khayam. The discrete cosine transform (dct): theory and application. 
+
+Michigan State University , 114(1):31, 2003. [35] Robert M. Gray and David L. Neuhoff. Quantization. IEEE Transactions on Information Theory , 44(6):2325–2383, October 1998. [36] Lawrence L. Larmore and Daniel S. Hirschberg. A fast algorithm for optimal length-limited huffman codes. J. ACM , 37(3):464–473, July 1990. [37] Milan Shah, Xiaodong Yu, Sheng Di, Michela Becchi, and Franck Cappello. Light-weight huffman coding for efficient gpu compression. In Proceedings of the 37th ACM International Conference on Supercomputing , ICS ’23, page 99–110, New York, NY, USA, 2023. Association for Computing Machinery. [38] Ary L Goldberger, Luís Amaral, Leon Glass, Jeffrey M Hausdorff, Plamen Ch Ivanov, Roger G Mark, Joseph E Mietus, George B Moody, Chung-Kang Peng, and H Eugene Stanley. Components of a new research resource for complex physiologic signals. PhysioBank, PhysioToolkit, and Physionet , 2000. [39] Hui Liu, Dan Chen, Da Chen, Xiyu Zhang, Huijie Li, Lipan Bian, Minglei Shu, and Yinglong Wang. A large-scale multi-label 12-lead electrocardiogram database with standardized diagnostic statements. Scientific data , 9(1):272, 2022. [40] Peter Triezenberg, Patrick E Hart, and Jonathan R Childs. National archive of marine seismic surveys (namss: A usgs data website of marine seismic reflection data within the us exclusive economic zone (eez). US Geological Survey (USGS) Data Release , page 39, 2016. [41] Xiangtian Zheng, Nan Xu, Loc Trinh, Dongqi Wu, Tong Huang, S Sivaranjani, Yan Liu, and Le Xie. A multi-scale time-series dataset with benchmark for machine learning in decarbonized energy grids. Scientific Data , 9(1):359, 2022. [42] Andrea Němcová, Radovan Smíšek, Lucie Maršánová, Lukáš Smital, and Martin Vítek. A comparative analysis of methods for evaluation of ecg signal quality after compression. BioMed Research International , 2018:1–26, 2018. [43] Filippo Battaglia, Mattia Galanti, Giovanni Gugliandolo, Stefan Rampp, Jan Remi, Alexandra Parashos, Sonali Sharma, Sonal Bhatia, Brian C. Dean, Ekrem Kutluay, Zeke Campbell, Sarah Schmitt, Nicola Donato, Jonathan J. Halford, and Giuseppe Campobello. Neurophysiology signal codecs for the DICOM ® standard: Prelimi-nary results. In 2024 IEEE International Symposium on Medical Measurements and Applications (MeMeA) , pages 1–6, Eindhoven, Netherlands, Jun 2024. [44] Codrin Donciu, Marian-Silviu Temneanu, Marius Paulet, and Alexandru Salceanu. Frequency seismic response for EEWS testing on uniaxial shaking table. Entropy ,25(4):655, Apr 2023. PubMed Central PMCID: PMC10137255. [45] Allison H. Baker, Dorit M. Hammerling, Sheri A. Mickelson, et al. Evaluating lossy data compression on climate simulation data within a large ensemble. 
+
+Geoscientific Model Development , 9:4381–4403, 2016. [46] Michel P. Tcheou, Lisandro Lovisolo, Moisés V. R. Ribeiro, Eduardo A. B. da Silva, Marco A. M. Rodrigues, Jo ao M. T. Romano, and Paulo S. R. Diniz. The com-pression of electric signal waveforms for smart grids: State of the art and future trends. IEEE Transactions on Smart Grid , 5(1):291–302, 2014.
