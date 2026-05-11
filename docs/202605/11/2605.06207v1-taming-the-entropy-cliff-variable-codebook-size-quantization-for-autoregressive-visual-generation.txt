@@ -1,0 +1,471 @@
+Title: Taming the Entropy Cliff: Variable Codebook Size Quantization for Autoregressive Visual Generation
+
+URL Source: https://arxiv.org/pdf/2605.06207v1
+
+Published Time: Fri, 08 May 2026 01:31:53 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# Taming the Entropy Cliff: Variable Codebook Size Quantization for Autoregressive Visual Generation 
+
+Bowen Zheng 1, Weijian Luo 2, Guang Yang 2, Colin Zhang 2 and Tianyang Hu 1 
+
+> 1The Chinese University of Hong Kong, Shenzhen, 2hi-Lab, Xiaohongshu Inc
+
+Most discrete visual tokenizers rely on a default design: every position in the sequence shares the same codebook. Researchers try to scale the codebook size 𝐾 to get better reconstruction performance. Such a constant-codebook design hits a fundamental information-theoretic limit. We observe that the per-position conditional entropy of the training set decays so quickly along the sequence that, after a few positions, the conditional distribution becomes essentially deterministic. On ImageNet with 𝐾 = 16384 ,this happens within only 2 out of 256 positions, turning the remaining 254 into a memorization problem. We call this phenomenon the Entropy Cliff and formalize it with a simple expression: 𝑡 ∗ = ⌈log 2 𝑁 /𝑙𝑜𝑔 2 𝐾 ⌉.
+
+Interestingly, this phenomenon is not observed in language, as its natural structure keeps the effective entropy per position well below the codebook capacity. To address this, we propose Variable Codebook Size Quantization (VCQ), where the codebook size 𝐾 𝑡 grows monotonically along the sequence from 
+
+𝐾 min = 2 to 𝐾 max , leaving the loss function, parameter count, and AR training procedure unchanged. With a vanilla autoregressive Transformer and standard next-token prediction, a base version of VCQ reduces gFID w/o CFG from 27.98 to 14.80 on ImageNet 256 × 256 over the baseline. Scaled up, it reaches gFID 1.71 with 684M autoregressive parameters, without any extra training techniques such as semantic regularization or causal alignment. The extreme information bottleneck at 𝐾 min = 2 naturally induces a coarse-to-fine semantic hierarchy: a linear probe on only the first 10 tokens reaches 43.8% top-1 accuracy on ImageNet, compared to 27.1% for uniform codebooks. Ultimately, these results show that what matters is not only the total capacity of the codebook, but also how that capacity is distributed and organized. 
+
+## 1. Introduction 
+
+Discrete tokenizers are the foundation of autoregressive visual generation. From VQ-VAE (van den Oord et al., 2017) and VQ-GAN (Esser et al., 2021) to more recent works such as LlamaGen (Sun et al., 2024), GigaTok (Xiong et al., 2025), a persistent trend has been to increase the codebook size 
+
+𝐾 for better reconstruction quality; a size of 16k or more has become standard. These works differ in training objectives, network architectures, and inference strategies, yet they share one design choice with striking unanimity: every position in the sequence can potentially use all tokens in the same codebook size. We refer to this default codebook setting as the constant codebook size quantization or uniform codebooks. However, the uniform codebook has significant flaws (Fig. 2(a)). We encode all ImageNet images into 256 tokens with a uniform codebook of 𝐾 =16384 (the codebook from LlamaGen (Sun et al., 2024)) and calculate the per-position conditional entropy on the training set: at 𝑡 =0 the conditional entropy is about 14 bits, which is pretty fair for an initial token. But by 𝑡 = 2 it plummets to below 1 bit, approaching zero thereafter. At 254 out of 256 positions, the AR model seems to do a nearly deterministic conditional generation instead of a probabilistic generation. This phenomenon encourages the AR model to memorize the training set instead of learning to generate novel images based on previous tokens; at inference time, any prefix not seen during training risks generation 
+
+> arXiv:2605.06207v1 [cs.CV] 7 May 2026
+
+Variable Codebook Size Quantization for Autoregressive Visual Generation 2Encoder 
+
+> Constant
+> Codebook Size
+> Quantizer
+
+Constant  Codebook Size Quantization     
+
+> Variable
+> Codebook Size
+> Quantizer
+> Only Two Tokens Commit to a Picture
+> Poor Generalization
+> Memorize Generalize
+> K=2
+> K=16384
+> Growing up
+> Codebook
+> More Tokens Commit to a Picture
+> Good Generalization
+> Codebook
+> K=16384
+
+Variable  Codebook Size Quantization (ours) 
+
+Encoder          
+
+> Probability of Committing
+> to the Picture
+> Memorize Generalize
+> Selected Code
+> Unselected Code
+> P
+> 01254 255
+> Position
+> 100%
+> P
+> 01254 255
+> Position
+> 100%
+> P
+
+Figure 1 | VCQ architecture. Left : Constant Codebook Size Quantization, where every position 𝑡 
+
+shares the same codebook of size 𝐾 , leading to the entropy cliff after 𝑡 ∗ = ⌈log 2 𝑁 /log 2 𝐾 ⌉ positions. 
+
+Right : our Variable Codebook Size Quantization (VCQ), where the codebook size 𝐾 𝑡 grows monotoni-cally from 𝐾 min =2 to 𝐾 max along the sequence. Early positions use small codebook size to impose a strong information bottleneck and delay the entropy cliff, while later positions use larger codebook size to preserve reconstruction fidelity. We implement VCQ with a single shared codebook of 𝐾 max 
+
+entries, where position 𝑡 selects the nearest neighbor from only the first 𝐾 𝑡 entries—introducing no extra parameters and leaving the loss function and AR training procedure unchanged. failure. We call this phenomenon the Entropy Cliff .Although training strategies such as strong weight decay can partially mitigate overfitting and memorization in AR models, they address only model-level symptoms rather than a more fundamental representational issue: current tokenizers use a fixed codebook size across all autoregressive positions. A naive remedy is to globally reduce the codebook size, which lowers the effective prediction entropy and delays deterministic collapse in early-stage autoregressive generation. However, uniformly shrinking the codebook also restricts later positions, where richer local detail is required, inevitably degrading reconstruction fidelity. The core problem, therefore, is not the total representational capacity, but how capacity is distributed across the autoregressive sequence. Early positions primarily determine high-level semantic structure and are particularly sensitive to excessive discrete freedom, while later positions benefit from larger codebooks to model fine-grained details. This observation motivates Variable Codebook Size Quantization (VCQ) , which assigns smaller codebooks to early positions to stabilize global autoregressive generation, and progressively increases the codebook size at later positions to preserve reconstruction quality and local detail. Specifically, 𝐾 𝑡 
+
+increases monotonically from 𝐾 min =2 to 𝐾 max (Eq. 3). At early positions, smaller codebooks impose a stronger information bottleneck that delays the onset of the entropy cliff; at later positions, larger codebooks provide sufficient capacity to preserve reconstruction quality. We observe advantages of VCQ along three axes: Variable Codebook Size Quantization for Autoregressive Visual Generation 30.0 2.5 5.0 7.5 10.0 12.5 15.0 
+
+Token position t  
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> Remaining entropy (bits)
+> entropy cliff
+> t*≈2
+
+(a)        
+
+> Constant (15.6 bits)
+> VCQ (ours, 15.6 bits)
+> Language (21.5 bits)
+> 050 100 150 200 250
+
+Token position t
+
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Codebook size  Kt
+> Kmin =16
+> Kmax =16384
+
+(b)  
+
+> Constant ( K=16384 )
+> VCQ ( Kmin =16 → Kmax =16384 )
+
+Figure 2 | Entropy cliff and codebook schedule. (a) Remaining entropy: Constant ( 𝐾 = 16384 )exhausts the entire ∼15.6-bit information budget within the first 2 positions (entropy cliff), while VCQ spreads the information consumption over ∼6 positions; the language model (LAMBADA, ∼21.5 bits) consumes information smoothly, illustrating the ideal allocation for natural sequences. For clarity, this plot uses a Power schedule with 𝐾 min = 16 . (b) Codebook size schedule: Constant is fixed at 
+
+𝐾 =16384 ; VCQ increases gradually from 𝐾 min to 𝐾 max .1. Delayed entropy cliff. VCQ pushes 𝑡 ∗ from 2 to ∼5 on ImageNet with only 1M training images. Although this corresponds to only three additional tokens, the gap is exponential in data scale: under a uniform codebook, each extra token before the entropy cliff would require another factor of 𝐾 more data. 2. Improved generation quality. Compared with the baseline, VCQ-Base reduces gFID w/o CFG from 27.98 to 14.80 ( −47% ), and gFID from 6.43 to 4.79 ( −26% ). This advantage further compounds with scale: VCQ-Large achieves gFID=1.71 with a 684M-parameter AR model, without semantic alignment or causal regularization (§4.2). 3. Emergent semantic tokens. 𝐾 min = 2 forces the first few positions to encode global semantic information. Using only the first 10 tokens (3.9% of the sequence), linear probing top-1 accuracy on ImageNet classification reaches 43.8%, compared to 27.1% for constant-codebook (§4.4). 
+
+## 2. The entropy cliff of constant codebook size quantization 
+
+Notation. A dataset contains 𝑁 samples. The tokenizer encodes each sample into a sequence of 
+
+𝐿 tokens 𝑥 1, . . . , 𝑥 𝐿 , all positions sharing a codebook of size 𝐾 . 𝐻 (𝑥 𝑡 | 𝑥 <𝑡 ) denotes the empirical conditional entropy at position 𝑡 . Two constraints apply: the joint entropy 𝐻 (𝑥 1, . . . , 𝑥 𝐿 ) ≤ log 2 𝑁 
+
+(dataset size), and 𝐻 (𝑥 𝑡 | 𝑥 <𝑡 ) ≤ log 2 𝐾 (codebook size) at each position. 
+
+2.1. 𝑡 ∗: the entropy cliff 
+
+The intuition is straightforward: the total information content of a training set of 𝑁 samples is at most 
+
+𝐸 = log 2 𝑁 bits, and a uniform codebook consumes at most log 2 𝐾 bits per position. Therefore, after Variable Codebook Size Quantization for Autoregressive Visual Generation 4Table 1 | 𝑡 ∗ under 𝐾 =16384 (log 2 𝐾 = 14 bits/pos). Top: empirical 𝑡 ∗ for datasets from small-scale to internet-scale; five orders of magnitude of data buy only one extra position. Bottom: data thresholds 
+
+𝑁 𝑚 = 𝐾 𝑚 −1 required to push 𝑡 ∗ to a given value; beyond 𝑡 ∗ = 3 the required scale far exceeds any existing dataset. 
+
+Dataset / Regime Type 𝑁 log 2 𝑁 𝑡 ∗ (or equiv.) 
+
+Empirical: real-world datasets 
+
+CIFAR-10/100 Classification 50K 15.6 2COCO Detection/Segm. 118K 16.9 2ImageNet-1K Classification (1K) 1.28M 20.3 2CC12M Image-text 12M 23.5 2LAION-400M Image-text 400M 28.6 3LAION-5B Image-text 5B 32.2 3
+
+Hypothetical: thresholds 𝑁 𝑚 = 𝐾 𝑚 −1 for a given 𝑡 ∗ 
+
+> 𝑡 ∗
+
+=2 threshold — 𝐾 1 =16 K 14.0 any standard dataset suffices  
+
+> 𝑡 ∗
+
+=3 threshold — 𝐾 2 ≈ 268 M 28.0 ∼209 × ImageNet  
+
+> 𝑡 ∗
+
+=4 threshold — 𝐾 3 ≈ 4.4T 42.0 ∼3.4M × ImageNet  
+
+> 𝑡 ∗
+
+=5 threshold — 𝐾 4 ≈ 7.2×10 16 56.0 far beyond any current scale 
+
+at most 
+
+𝑡 ∗ =
+
+ log 2 𝑁 
+
+log 2 𝐾 
+
+
+
+(1) positions, the entire information budget is exhausted. More precisely: 
+
+Proposition 1 (Entropy Cliff) . For a uniform codebook ( 𝐾 𝑡 ≡ 𝐾 ), the empirical conditional entropy at position 𝑡 satisfies 𝐻 (𝑥 𝑡 | 𝑥 <𝑡 ) ≤ max  0, log 2 𝑁 − ( 𝑡 −1) log 2 𝐾 . For 𝑡 > 𝑡 ∗ the upper bound is zero. 
+
+Note that 𝑡 ∗ is a theoretical upper bound: in practice, codebook utilization at each position is typically less than 100%, so the actual entropy cliff may occur slightly later. As shown in Fig. 2(a), the observed entropy decay of image tokenizers aligns closely with the theoretical prediction, with per-position codebook utilization empirically around 80–90%. Scaling formula. From Eq. (1) , the minimum data size required for a constant codebook to reach 𝑡 ∗ =𝑚 is 𝑁 𝑚 = 𝐾 𝑚 −1: each additional position requires 𝐾 times more data. Table 1 contrasts the empirical 𝑡 ∗ of standard datasets (top) with the hypothetical data thresholds needed to push 𝑡 ∗ higher (bottom), all under 𝐾 =16384 . The asymmetry is striking: from CIFAR (50K) to LAION-5B (5B), five orders of magnitude of data volume but only one extra position; pushing 𝑡 ∗ from 3 to 4 would require about 4.4T images, and reaching 
+
+𝑡 ∗ = 5 demands 7.2×10 16 images, beyond any conceivable data scale. Improving 𝑡 ∗ through data scaling alone is therefore prohibitively expensive. 
+
+Information redistribution by VCQ. VCQ increases 𝐾 𝑡 monotonically from 𝐾 min to 𝐾 max along the sequence (the specific schedule is detailed in §3). Define the cumulative information capacity as 
+
+𝐼 (𝑡 ) =
+
+> 𝑡 −1
+
+∑︁ 
+
+> 𝑖 =0
+
+log 2 𝐾 𝑖 , (2) and let 𝑡 ∗ 
+
+> vcq
+
+be the smallest 𝑡 satisfying 𝐼 (𝑡 ) ≥ log 2 𝑁 . Equivalently, the remaining information budget at position 𝑡 is log 2 𝑁 − 𝐼 (𝑡 ), which is what Fig. 2(a) plots. For a uniform codebook with 𝐾 = 16384 ,
+
+𝐼 (𝑡 ) = 𝑡 · log 2 𝐾 grows linearly at log 2 𝐾 = 14 bits/pos, exhausting the log 2 𝑁 ≈ 20 .3 bits of ImageNet within only 2 positions. By contrast, with 𝐾 min = 2, VCQ starts at a rate close to log 2 𝐾 min = 1 bit/pos Variable Codebook Size Quantization for Autoregressive Visual Generation 5Table 2 | Schedule parameters. ¯𝐾 is the average codebook size, BPP the bitrate, and 𝑡 ∗ the entropy cliff position.                                    
+
+> Schedule 𝐾 min 𝐾 max ¯𝐾 BPP 𝑡 ∗
+> Constant ( 𝐾 =16384) 16384 16384 16384 0.055 2Constant ( 𝐾 =8192) 8192 8192 8192 0.051 2Linear 216384 8193 0.049 ∼4Cosine 216384 5964 0.044 ∼5Power ( 𝛼 =2.5) 216384 4696 0.041 ∼6Cosine-L 211264 4100 0.042 ∼5
+
+and only gradually approaches log 2 𝐾 max , substantially delaying 𝑡 ∗. On ImageNet, VCQ pushes 𝑡 ∗ from 2 to around 5 (§2.1). Reaching 𝑡 ∗ =5 with a uniform codebook would require 𝑁 ≥ 𝐾 4 ≈ 7.2 × 10 16 
+
+(still under 𝐾 = 16384 ). VCQ thus achieves an information utilization efficiency equivalent to orders-of-magnitude data expansion simply by redistributing the codebook capacity across positions. 
+
+Remark (Language does not exhibit the same cliff) . The syntactic and semantic rules of language naturally constrain the set of valid choices at each position, keeping the effective utilization far below 
+
+log 2 𝐾 . Measuring per-position conditional entropy on LAMBADA (Paperno et al., 2016) (1M sliding-window samples with 256 sequence length) with the Llama (Touvron et al., 2023) tokenizer (vocabulary 
+
+∼32K, twice the size of 𝐾 = 16384 ), we find 𝑡 ∗ is delayed to nearly 7, and the conditional entropy decays much more gradually. Image tokenizers lack such structural constraints, per-position codebook utilization reaching 80–90%, so the conditional entropy drops to zero after very few positions. This is precisely why VCQ must intervene at the codebook structure level. 
+
+Empirical verification. Fig. 2(a) directly verifies the theory above. Constant ( 𝐾 =16384 ) exhausts the entire data information budget (about 15.6 bits) within the first 2 positions, and the remaining entropy drops to a residual: this is the entropy cliff. The ease-in property of VCQ keeps 𝐾 𝑡 very small at the beginning ( 𝐾 0 =2, 𝐾 1 =2, 𝐾 2 =3 . . . , power=2.5), deferring information consumption to positions where 𝐾 𝑡 grows larger. As a reference, the language model on LAMBADA (Paperno et al., 2016) exhibits the ideal smooth information allocation. 
+
+2.2. What happens beyond 𝑡 ∗, and why regularization is insufficient 
+
+For 𝑡 > 𝑡 ∗, the conditional distribution on the training set degenerates to a point distribution, and the AR model can only memorize the mapping 𝑥 <𝑡 ↦ → 𝑥 𝑡 . At inference time, once the model encounters a prefix not seen during training, the memorized mapping breaks down. This is the direct mechanism by which the entropy cliff damages generation quality. Standard regularization techniques (e.g., weight decay, dropout, label smoothing) mitigate model-level overfitting by constraining the hypothesis space, but the entropy cliff is a data-level problem: the training-set conditional distribution is itself deterministic for 𝑡 > 𝑡 ∗, and no amount of regularization can inject uncertainty into target distributions that have already collapsed to point masses. We verify this distinction from multiple angles (Constant and VCQ use exactly the same AR training configuration, including weight decay = 0.03 ): 
+
+• gFID w/o CFG: 27.98 vs. 14.80 ( −47%), directly reflecting the difference in AR modeling quality. 
+
+• gFID: 6.43 vs. 4.79 ( −26%), a substantial gap even with CFG. 
+
+• Semantic hierarchy: Linear probing accuracy on the first 10 tokens is 43.8% vs. 27.1% (§4.4), indicating that VCQ provides the AR model with more meaningful conditional structure to learn, rather than memorized mappings. Variable Codebook Size Quantization for Autoregressive Visual Generation 6Table 3 | Model configurations. Tokenizer and AR model variants used in experiments.            
+
+> Tokenizer
+> Base ViT-B Enc + ViT-B Dec, 𝐾 max =16384 172M Large ViT-B Enc + ViT-L Dec, 𝐾 max =11264 496M
+> AR Model
+> B115M L343M XL 684M
+
+All of these differences emerge under matched regularization, confirming that the entropy cliff originates from the tokenizer’s information allocation and cannot be compensated at the optimization level. 
+
+## 3. Variable codebook quantization 
+
+Fig. 1 illustrates the difference between Constant Codebook Size Quantization and our Variable Codebook Size Quantization. Our method is simple and intuitive: the only change is to make the codebook size vary by position rather than remain fixed. We elaborate on two design choices below. 
+
+Schedule family 𝐾 𝑡 increases monotonically from 𝐾 min to 𝐾 max : 
+
+> 𝐾 𝑡
+
+= 𝐾 min + ( 𝐾 max − 𝐾 min ) · 𝑓 
+
+ 𝑡 𝐿 −1
+
+  
+
+> ,𝑓
+
+(0) = 0, 𝑓 (1) = 1 (3)  
+
+> 𝑓
+
+controls the convexity of the growth curve (Fig. 2(b)): 
+
+• Linear : 𝑓 (𝜏 ) = 𝜏 . Uniform growth, no hyperparameters. 
+
+• Cosine : 𝑓 (𝜏 ) = 1 − cos (𝜋𝜏 /2). Slow at the beginning, fast toward the end. (default) 
+
+• Power : 𝑓 (𝜏 ) = 𝜏 𝛼 . 𝛼 controls the degree of suppression at early positions. Table 2 summarizes the concrete schedule configurations used in our VCQ experiments, including the minimum and maximum codebook sizes, the resulting average codebook size ¯𝐾 , the bitrate measured by BPP, and the transition position 𝑡 ∗. The more concave 𝑓 is, the smaller 𝐾 𝑡 at early positions and the larger 𝑡 ∗: the AR model faces non-trivial conditional distributions at more positions, at the cost of a smaller average codebook size ¯𝐾 and higher rFID. The uniform codebook is the degenerate case  
+
+> 𝑓
+
+≡ 1. We default to 𝐾 min =2, 𝐾 max =16384 , and the Cosine schedule. 
+
+Shared codebook We implement VCQ with a shared codebook: a single global codebook of 𝐾 max 
+
+entries is maintained, and position 𝑡 selects the nearest neighbor from only the first 𝐾 𝑡 entries. No extra parameters are introduced and the gradient flow is unchanged. The tokenizer is trained with standard VQ losses (Esser et al., 2021) (L1+LPIPS (Zhang et al., 2018)+PatchGAN (Isola et al., 2017)) and the AR model with standard next-token prediction. VCQ changes only the size of the quantization candidate set at each position. 
+
+CodebookSize-Aware CFG The non-uniform codebook of VCQ requires a corresponding adjustment to CFG: at early positions where the codebook is small and the distribution is concentrated, standard CFG over-conditions. CodebookSize-Aware CFG ties the guidance scale to the excess information Variable Codebook Size Quantization for Autoregressive Visual Generation 7Table 4 | Baseline comparison . All configurations share exactly the same training setup; the only difference is the codebook structure. gFID uses each method’s best inference hyperparameters.                                         
+
+> Schedule ¯𝐾 BPP PSNR ↑rFID ↓gFID ↓gFID noCFG ↓
+> Constant ( 𝐾 =16384) 16384 0.055 20.67 2.26 6.43 27.98 Constant ( 𝐾 =8192) 8192 0.051 20.48 2.36 5.87 18.16 VCQ-Linear 8193 0.049 20.35 2.42 5.32 14.70
+> VCQ-Cosine 5964 0.044 20.02 2.77 4.79 14.80 VCQ-Power ( 𝛼 =2.5) 4696 0.041 19.82 2.89 5.14 16.19
+
+capacity at position 𝑡 : 
+
+> 𝑠 𝑡
+
+= 𝑠 · log 2 𝐾 𝑡 − log 2 𝐾 min 
+
+log 2 𝐾 max − log 2 𝐾 min 
+
+(4) where 𝑠 is the base CFG scale. When 𝐾 𝑡 = 𝐾 min , 𝑠 𝑡 = 0 (no CFG); when 𝐾 𝑡 = 𝐾 max , 𝑠 𝑡 = 𝑠 (standard CFG). The output logits at position 𝑡 are (1 + 𝑠 𝑡 ) logits cond − 𝑠 𝑡 logits uncond . For uniform codebooks where  
+
+> 𝐾 𝑡
+
+≡ 𝐾 max , CodebookSize-Aware CFG reduces to standard CFG. Appendix C verifies that applying the CodebookSize-Aware CFG schedule of VCQ to a constant codebook yields no improvement. 
+
+## 4. Experiments 
+
+4.1. Setup 
+
+We conduct our main experiment on ImageNet 256 ×256 (Russakovsky et al., 2015). Our baseline tokenizer is a classical 1D tokenizer (Yu et al., 2024a) with sequence length=256. We train the tokenizer with standard L1, LPIPS and PatchGAN loss. The AR model is then trained on the frozen tokenizer with a next-token prediction task. We do not utilize auxiliary losses/models, diffusion decoders or non-standard generation orders/methods, deliberately choosing the simplest setup to isolate the effect of codebook structure. All experiments use AdamW (Loshchilov and Hutter, 2019). Reconstruction quality is reported with rFID and PSNR; generation quality is reported with gFID (Heusel et al., 2017), Inception Score (Salimans et al., 2016), and the Precision/Recall metric (Kynkäänniemi et al., 2019). rFID is reported on the ImageNet validation set, and gFID follows the ADM evaluation protocol. Full configurations are listed in Appendix A; throughout the paper, configurations are named as “Tok-AR” (e.g., VCQ B-L = Base Tokenizer + Large AR). 
+
+VCQ configuration. 𝐾 min = 2, default Cosine schedule. Base Tok: 𝐾 max = 16384 . Large Tok:  
+
+> 𝐾 max
+
+=11264 .
+
+4.2. Baseline comparison: schedule selection and ablations 
+
+Table 4 compares all codebook configurations under the same Base Tokenizer + Base AR. The training objective, optimizer, and number of steps are identical; the only difference is the codebook structure. 
+
+Variable structure vs. total capacity. Does VCQ’s improvement come solely from reducing ¯𝐾 ?Constant 𝐾 =8192 and VCQ-Linear have nearly identical ¯𝐾 (8192 vs. 8193) and BPP (differing by only 0.002), yet their 𝑡 ∗ values are 2 and ∼4, respectively, and gFID w/o CFG differs by 3.46 points (18.16 vs. 14.70). The improvement comes from the variable structure redistributing the pace of information consumption. From Constant 𝐾 =8192 onwards, all three concave schedules (Linear, Cosine, Power-2.5) cluster in the 14.7–16.2 range on gFID w/o CFG, all substantially better than any Variable Codebook Size Quantization for Autoregressive Visual Generation 8Table 5 | Reconstruction and generation comparison (ImageNet 256 2 class-conditional). Nam-ing format “Tok-AR” (B=Base, L=Large, XL=XLarge). rFID/PSNR are tokenizer reconstruc-tion properties and are identical across rows that share the same tokenizer. “Diff.”=diffusion, “M+D”=mask+diffusion, “Mask.”=masked transformer, “HAR”=hierarchical AR, “PAR”=parallel AR. 
+
+SSemantic/VFM: semantic regularization, semantic alignment, or frozen/pre-trained vision founda-tion model; CClustering: periodic token/codebook clustering; DDiff./FM: diffusion or flow-matching generator, decoder, token-distribution model, or loss; TDropout: tail dropout. 
+
+Method Gen & Param rFID ↓ PSNR ↑ gFID ↓ gFID w/o CFG ↓ IS ↑ Prec ↑ Rec ↑
+
+Continuous tokens: diffusion / MAR 
+
+LDM-4-G (Rombach et al., 2022) D Diff. 400M 0.27 — 3.60 10.56 247.7 0.87 0.48 DiT-XL/2 (Peebles and Xie, 2023) D Diff. 675M 0.62 — 2.27 9.62 278.2 0.83 0.57 SiT-XL (Ma et al., 2024) D Diff. 675M — — 2.06 8.61 270.3 0.82 0.59 REPA (SiT-XL) (Yu et al., 2025) SD Diff. 675M — — 1.42 5.90 305.7 0.80 0.65 LightningDiT (Yao et al., 2025) SD Diff. 675M 0.28 — 1.35 2.17 295.3 0.79 0.65 MAR-B (Li et al., 2024) D M+D 208M 0.87 — 2.31 3.48 281.7 0.82 0.57 MAR-H (Li et al., 2024) D M+D 943M 0.87 — 1.55 2.35 303.7 0.81 0.62 FlowAR-B (Ren et al., 2024) D Flow+VAR 300M 0.87 — 2.90 — 272.5 0.84 0.54 
+
+Discrete tokens, non-AR (VAR / masked transformer) 
+
+VAR-d30 (Tian et al., 2024) VAR 2.0B — — 1.92 — 323.1 0.82 0.59 MaskGIT (Chang et al., 2022) Mask. 227M 2.28 — — 6.18 182.1 0.80 0.51 MAGVIT-v2 (Yu et al., 2024b) Mask. 307M — — 1.78 3.65 319.4 — —
+
+2D discrete tokens, AR 
+
+VQGAN (Esser et al., 2021) AR 1.4B 4.98 — — 15.78 74.3 — —RQ-Trans. (Lee et al., 2022) AR 3.8B 3.20 — — 7.55 134.0 — —LlamaGen-XL (Sun et al., 2024) AR 775M 0.94 — 2.62 — 244.1 0.80 0.57 LlamaGen-XXL (Sun et al., 2024) AR 1.4B 0.94 — 2.34 — 253.9 0.80 0.59 PAR-L-4 × (Wang et al., 2025a) PAR 343M 0.94 — 3.76 — 218.9 0.84 0.50 
+
+1D discrete tokens, non-standard AR (mask / random-order / hierarchical / parallel) 
+
+TiTok-S-128 (Yu et al., 2024a) Mask. 287M 1.71 — 1.97 4.44 281.8 — —TiTok-L-32 (Yu et al., 2024a) Mask. 177M 2.21 — 2.77 3.15 199.8 — —ImageFolder (Li et al., 2025) ST VAR 362M 0.80 — 2.60 — 295.0 0.75 0.63 ResTok (Zhang et al., 2026) ST HAR 326M 1.28 — 2.34 — 257.8 0.79 0.60 SpectralAR (Huang et al., 2025) AR 310M 4.03 — 3.02 — 282.2 0.81 0.55 DetailFlow-16 (Liu et al., 2025) PAR 326M 1.22 19.05 2.96 — 221.4 0.82 0.57 RAR-XL (Yu et al., 2024c) RandAR 955M — — 1.50 3.72 306.9 0.80 0.62 RAR-XXL (Yu et al., 2024c) RandAR 1.5B — — 1.48 3.26 326.0 0.80 0.63 
+
+1D discrete tokens, standard AR 
+
+GigaTok-B-L (Xiong et al., 2025) S AR 111M 0.81 21.21 3.26 — 221.0 0.81 0.56 VFMTok-L (Zheng et al., 2025) S AR 343M 0.89 — 2.75 2.11 278.8 0.84 0.57 AliTok-B (Wu et al., 2026) C AR 177M 0.86 — 1.44 2.40 319.5 0.77 0.65 AliTok-L (Wu et al., 2026) C AR 318M 0.86 — 1.38 1.98 326.2 0.78 0.65 AliTok-XL (Wu et al., 2026) C AR 662M 0.86 — 1.28 1.88 306.3 0.79 0.65 
+
+VCQ B-B (ours) AR 115M 2.77 20.02 4.79 14.80 221.9 0.828 0.452 
+
+VCQ B-L (ours) AR 343M 2.77 20.02 2.75 7.47 258.3 0.801 0.572 
+
+VCQ B-XL (ours) AR 684M 2.77 20.02 2.38 6.82 306.9 0.802 0.587 
+
+VCQ L-B (ours) AR 115M 0.96 19.71 2.73 5.14 218.7 0.777 0.590 
+
+VCQ L-L (ours) AR 343M 0.96 19.71 1.90 2.72 243.6 0.752 0.658 
+
+VCQ L-XL (ours) AR 684M 0.96 19.71 1.71 2.29 250.8 0.762 0.670 
+
+uniform codebook, confirming that a stronger early-position information bottleneck yields a stronger AR training signal. 
+
+Schedule selection. From Constant ( 𝐾 =16384) to VCQ-Cosine, gFID w/o CFG drops from 27.98 to 14.80 ( −47%) and gFID drops from 6.43 to 4.79 ( −26%). VCQ-Linear matches VCQ-Cosine on gFID w/o CFG (14.70 vs. 14.80), but Cosine still wins under inference-time guidance (4.79 vs. 5.32 gFID). The more aggressive suppression at early positions also gives CodebookSize-Aware CFG a wider adjustment range (Appendix C), making Cosine the better default for the full pipeline. 
+
+Reconstruction cost vs. generation gain. The rFID cost of VCQ-Cosine (+0.51) relative to its gFID gain ( −1.64) yields a ratio of approximately 1:3.2; the ratio with the gFID w/o CFG gain ( −13.18) reaches 1:26. The current bottleneck is the quality of the training signal on the generation side, not reconstruction accuracy. Variable Codebook Size Quantization for Autoregressive Visual Generation 9Table 6 | Semantic aggregation. 𝐾 min =2 forces the tokenizer to compress discriminative information into the earliest positions.                              
+
+> Tokenizer 𝑘 Top-1 ↑Top-5 ↑
+> Constant ( 𝐾 =16384) 10 27.12% 49.27% Constant ( 𝐾 =16384) 256 48.02% 71.51% VCQ-Linear 10 31.24% 54.59% VCQ-Linear 256 46.60% 70.11% VCQ-Cosine 10 43.77% 67.70% VCQ-Cosine 256 48.79% 72.70%
+> VCQ-Power ( 𝛼 =2.5) 10 49.42% 72.70% VCQ-Power ( 𝛼 =2.5) 256 46.93% 70.71%
+
+4.3. Comparison with existing methods 
+
+Table 5 jointly compares VCQ against existing methods on reconstruction (rFID/PSNR/Usage) and generation (gFID/IS/Prec/Rec). The comparison groups span continuous-token diffusion baselines, VAR/masked-transformer baselines, 2D discrete-token AR, and 1D discrete-token AR. On the recon-struction side, VCQ-L reaches an rFID of 0.96, competitive among 256-token methods; the rFID cost of Base VCQ (2.77 vs. LlamaGen 2.19) is a known trade-off of the variable codebook, but is repaid several times over on the generation side. On the generation side, VCQ uses no auxiliary training techniques (no semantic regularization (Xiong et al., 2025; Zheng et al., 2025), no causal alignment (Wu et al., 2026), no hierarchical residuals (Zhang et al., 2026), no random-order training (Yu et al., 2024c; Pang et al., 2025)) and obtains its quality gain solely through changes at the codebook structure level. 
+
+Scaling behavior. VCQ’s gains stack along both the tokenizer and AR model dimensions. With the Base Tokenizer, VCQ B-B (115M) already cuts gFID w/o CFG from 27.98 to 14.80 at matched scale; scaling the AR alone, VCQ B-L drops it to 7.47, and VCQ B-XL to 6.82. Switching to the Large Tokenizer (Table 5), VCQ L-B reaches a gFID w/o CFG of 5.14 (already better than any Base-Tok configuration); L-L and L-XL further drive gFID w/o CFG down to 2.72 and 2.29 , on par with strong CFG-equipped 2D-token AR baselines such as LlamaGen-XXL (1.4B, gFID 2.34). With CodebookSize-Aware CFG, VCQ L-L and VCQ L-XL reach gFID 1.90 and 1.71 with 343M and 684M AR parameters, respectively, and no auxiliary training techniques. 
+
+4.4. Semantic aggregation and visualization  
+
+> 𝐾 min
+
+= 2 compresses the first position to a capacity of only 1 bit. The tokenizer is forced to make choices under this extreme information bottleneck, and the result is that it prioritizes encoding semantic information. Using only 10 tokens (3.9% of the sequence), VCQ-Cosine achieves a linear probing accuracy of 43.77%, while Constant reaches only 27.12%. When all 256 tokens are used, the gap narrows substantially (48.79% vs. 48.02%): the total discriminative information is comparable, and the difference lies in how it is distributed. In Constant, each token corresponds to a local 16 ×16 
+
+patch, and discriminative information is dispersed across 256 local descriptors. VCQ, through its small codebooks at early positions, forces the tokenizer to aggregate information that would otherwise be scattered across individual patches into global semantic representations at the beginning of the sequence, reorganizing from local texture to global semantics. Variable Codebook Size Quantization for Autoregressive Visual Generation 10 
+
+Figure 3 | Uncurated class-conditional samples from VCQ L-XL. A 4×8 grid covering visually diverse ImageNet classes with no manual curation. Samples use the Large Tokenizer ( 𝐾 max = 11264 ) and AR-XL (684M) with CodebookSize-Aware CFG at the best EVAL_virtual_npz gFID configuration: cosine CFG with cfg =3 and power =1.0. The Cosine schedule grows very slowly at the start ( 𝐾 1 =3, 𝐾 2 =6), imposing a far more extreme information bottleneck than Linear ( 𝐾 1 = 66 , 𝐾 2 = 130 ); the top-10-token accuracy differs by 12.5 percentage points. This coarse-to-fine semantic hierarchy is entirely a natural consequence of the information bottleneck, without any explicit semantic supervision. 
+
+## 5. Discussion 
+
+Limitations. (i) All experiments are conducted on ImageNet 256 × 256 class-conditional generation.  
+
+> 𝑡 ∗
+
+depends on 𝑁 and 𝐾 ; switching datasets or tasks requires re-estimation. (ii) Proposition 1 provides an upper bound. The actual entropy cliff may occur earlier or later depending on codebook utilization. (iii) The combined effect of VCQ with existing training techniques (semantic regularization, causal alignment, etc.) has not yet been verified. We expect them to be orthogonal, but experimental confirmation is needed. 
+
+Broader impact. VCQ is a structural modification to visual tokenizers that improves autoregressive image generation quality. As with all advances in generative modeling, improved image synthesis carries both positive and negative societal implications. On the positive side, higher-quality generation at lower computational cost can democratize creative tools, reduce the environmental footprint of training large-scale models, and provide researchers with more efficient baselines for studying visual representation learning. On the negative side, more capable image generators may lower the barrier to creating misleading visual content such as deepfakes or non-consensual imagery. We emphasize that VCQ does not introduce fundamentally new generation capabilities; it improves efficiency and quality within the existing autoregressive paradigm. Standard mitigation strategies, including invisible watermarking, provenance tracking, and content authentication systems, remain fully applicable Variable Codebook Size Quantization for Autoregressive Visual Generation 11 
+
+## 6. Conclusion 
+
+A uniform codebook of 𝐾 =16384 exhausts all empirical uncertainty of ImageNet in just 2 tokens; for the remaining 254 positions, the AR model can only resort to rote memorization. VCQ increases 
+
+𝐾 𝑡 along the sequence from 𝐾 min = 2 to 𝐾 max to delay this critical point. This is a purely structural modification that changes neither the loss function, the parameter count, nor the training procedure. gFID w/o CFG drops from 27.98 to 14.80 ( −47%), directly validating the predictive power of the 𝑡 ∗
+
+theory; combined with CodebookSize-Aware CFG, gFID drops from 6.43 to 4.79. Scaling to the Large tokenizer and XL AR further brings gFID to 1.71 , competitive with state-of-the-art methods that rely on auxiliary training techniques. The extreme information bottleneck at 𝐾 min =2 also spontaneously induces a coarse-to-fine semantic hierarchy (10-token linear probing accuracy 43.8% vs. 27.1%). VCQ is orthogonal to existing training techniques; evaluating their combination and validating on more datasets are natural next steps. 
+
+## References 
+
+Aäron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. Neural discrete representation learning. In Isabelle Guyon, Ulrike von Luxburg, Samy Bengio, Hanna M. Wallach, Rob Fergus, S. V. N. Vish-wanathan, and Roman Garnett, editors, Advances in Neural Information Processing Systems 30: An-nual Conference on Neural Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, USA , pages 6306–6315, 2017. URL https://proceedings.neurips.cc/paper/2017/hash/ 7a98af17e63a0ac09ce2e96d03992fbc-Abstract.html .Patrick Esser, Robin Rombach, and Björn Ommer. Taming transformers for high-resolution image syn-thesis. In IEEE Conference on Computer Vision and Pattern Recognition, CVPR 2021, virtual, June 19-25, 2021 , pages 12873–12883. Computer Vision Foundation / IEEE, 2021. doi: 10.1109/CVPR46437. 2021.01268. URL https://openaccess.thecvf.com/content/CVPR2021/html/Esser_Taming_ Transformers_for_High-Resolution_Image_Synthesis_CVPR_2021_paper.html .Peize Sun, Yi Jiang, Shoufa Chen, Shilong Zhang, Bingyue Peng, Ping Luo, and Zehuan Yuan. Autoregressive model beats diffusion: Llama for scalable image generation, 2024. URL https://arxiv.org/abs/2406. 06525 .Tianwei Xiong, Jun Hao Liew, Zilong Huang, Jiashi Feng, and Xihui Liu. Gigatok: Scaling visual tokenizers to 3 billion parameters for autoregressive image generation, 2025. URL https://arxiv.org/abs/2504. 08736 .Denis Paperno, Germán Kruszewski, Angeliki Lazaridou, Ngoc Quan Pham, Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda, and Raquel Fernández. The LAMBADA dataset: Word prediction requiring a broad discourse context. In Katrin Erk and Noah A. Smith, editors, Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 1525–1534, Berlin, Germany, August 2016. Association for Computational Linguistics. doi: 10.18653/v1/P16-1144. URL 
+
+https://aclanthology.org/P16-1144/ .Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and Guillaume Lample. Llama: Open and efficient foundation language models, 2023. URL 
+
+https://arxiv.org/abs/2302.13971 .Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreason-able effectiveness of deep features as a perceptual metric. In 2018 IEEE Conference on Com-puter Vision and Pattern Recognition, CVPR 2018, Salt Lake City, UT, USA, June 18-22, 2018 ,pages 586–595. Computer Vision Foundation / IEEE Computer Society, 2018. doi: 10.1109/ CVPR.2018.00068. URL http://openaccess.thecvf.com/content_cvpr_2018/html/Zhang_The_ Unreasonable_Effectiveness_CVPR_2018_paper.html .Variable Codebook Size Quantization for Autoregressive Visual Generation 12 
+
+Phillip Isola, Jun-Yan Zhu, Tinghui Zhou, and Alexei A. Efros. Image-to-image translation with conditional adversarial networks. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , July 2017. Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang, Andrej Karpathy, Aditya Khosla, Michael S. Bernstein, Alexander C. Berg, and Li Fei-Fei. Imagenet large scale visual recognition challenge. Int. J. Comput. Vis. , 115(3):211–252, 2015. doi: 10.1007/S11263-015-0816-Y. URL 
+
+https://doi.org/10.1007/s11263-015-0816-y .Qihang Yu, Mark Weber, Xueqing Deng, Xiaohui Shen, Daniel Cremers, and Liang-Chieh Chen. An image is worth 32 tokens for reconstruction and generation. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024a. URL https://openreview.net/forum?id=tOXoQPRzPL .Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In 7th International Conference on Learning Representations, ICLR 2019, New Orleans, LA, USA, May 6-9, 2019 . OpenReview.net, 2019. URL 
+
+https://openreview.net/forum?id=Bkg6RiCqY7 .Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilibrium. In Isabelle Guyon, Ulrike von Luxburg, Samy Bengio, Hanna M. Wallach, Rob Fergus, S. V. N. Vishwanathan, and Roman Garnett, editors, Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, USA , pages 6626–6637, 2017. URL https://proceedings. neurips.cc/paper/2017/hash/8a1d694707eb0fefe65871369074926d-Abstract.html .Tim Salimans, Ian J. Goodfellow, Wojciech Zaremba, Vicki Cheung, Alec Radford, and Xi Chen. Im-proved techniques for training gans. In Daniel D. Lee, Masashi Sugiyama, Ulrike von Luxburg, Is-abelle Guyon, and Roman Garnett, editors, Advances in Neural Information Processing Systems 29: Annual Conference on Neural Information Processing Systems 2016, December 5-10, 2016, Barcelona, Spain , pages 2226–2234, 2016. URL https://proceedings.neurips.cc/paper/2016/hash/ 8a3363abe792db2d8761d6403605aeb7-Abstract.html .Tuomas Kynkäänniemi, Tero Karras, Samuli Laine, Jaakko Lehtinen, and Timo Aila. Improved precision and recall metric for assessing generative models. In Hanna M. Wallach, Hugo Larochelle, Alina Beygelzimer, Florence d’Alché-Buc, Emily B. Fox, and Roman Garnett, editors, Advances in Neural Information Processing Systems 32: Annual Conference on Neural Information Processing Systems 2019, NeurIPS 2019, December 8-14, 2019, Vancouver, BC, Canada , pages 3929–3938, 2019. URL https://proceedings.neurips.cc/ paper/2019/hash/0234c510bc6d908b28c70ff313743079-Abstract.html .Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 10684–10695, June 2022. William Peebles and Saining Xie. Scalable diffusion models with transformers. In IEEE/CVF International Conference on Computer Vision, ICCV 2023, Paris, France, October 1-6, 2023 , pages 4172–4182. IEEE, 2023. doi: 10.1109/ICCV51070.2023.00387. URL https://doi.org/10.1109/ICCV51070.2023.00387 .Nanye Ma, Mark Goldstein, Michael S. Albergo, Nicholas M. Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers. In Aleš Leonardis, Elisa Ricci, Stefan Roth, Olga Russakovsky, Torsten Sattler, and Gül Varol, editors, Computer Vision – ECCV 2024 , pages 23–40, Cham, 2024. Springer Nature Switzerland. ISBN 978-3-031-72980-5. Sihyun Yu, Sangkyung Kwak, Huiwon Jang, Jongheon Jeong, Jonathan Huang, Jinwoo Shin, and Saining Xie. Representation alignment for generation: Training diffusion transformers is easier than you think. In The Thirteenth International Conference on Learning Representations , 2025. URL https://openreview.net/ forum?id=DJSZGGZYVi .Jingfeng Yao, Bin Yang, and Xinggang Wang. Reconstruction vs. generation: Taming optimization dilemma in latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 15703–15712, June 2025. Variable Codebook Size Quantization for Autoregressive Visual Generation 13 
+
+Tianhong Li, Yonglong Tian, He Li, Mingyang Deng, and Kaiming He. Autoregressive image generation without vector quantization. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Advances in Neural Information Processing Systems , volume 37, pages 56424–56445. Curran Associates, Inc., 2024. doi: 10.52202/079017-1797. URL https://proceedings.neurips.cc/paper_ files/paper/2024/file/66e226469f20625aaebddbe47f0ca997-Paper-Conference.pdf .Sucheng Ren, Qihang Yu, Ju He, Xiaohui Shen, Alan Yuille, and Liang-Chieh Chen. Flowar: Scale-wise autoregressive image generation meets flow matching, 2024. URL https://arxiv.org/abs/2412. 15205 .Keyu Tian, Yi Jiang, Zehuan Yuan, Bingyue Peng, and Liwei Wang. Visual autoregressive model-ing: Scalable image generation via next-scale prediction. In A. Globerson, L. Mackey, D. Bel-grave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Advances in Neural Information Processing Systems , volume 37, pages 84839–84865. Curran Associates, Inc., 2024. doi: 10. 52202/079017-2694. URL https://proceedings.neurips.cc/paper_files/paper/2024/file/ 9a24e284b187f662681440ba15c416fb-Paper-Conference.pdf .Huiwen Chang, Han Zhang, Lu Jiang, Ce Liu, and William T. Freeman. Maskgit: Masked generative image transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) ,pages 11315–11325, June 2022. Lijun Yu, Jose Lezama, Nitesh Bharadwaj Gundavarapu, Luca Versari, Kihyuk Sohn, David Minnen, Yong Cheng, Agrim Gupta, Xiuye Gu, Alexander G Hauptmann, Boqing Gong, Ming-Hsuan Yang, Irfan Essa, David A Ross, and Lu Jiang. Language model beats diffusion - tokenizer is key to visual generation. In The Twelfth International Conference on Learning Representations , 2024b. URL https://openreview.net/forum? id=gzqrANCF4g .Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. Autoregressive image generation using residual quantization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11523–11532, June 2022. Yuqing Wang, Shuhuai Ren, Zhijie Lin, Yujin Han, Haoyuan Guo, Zhenheng Yang, Difan Zou, Jiashi Feng, and Xihui Liu. Parallelized autoregressive visual generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 12955–12965, June 2025a. Xiang Li, Kai Qiu, Hao Chen, Jason Kuen, Jiuxiang Gu, Bhiksha Raj, and Zhe Lin. Imagefolder: Autoregressive image generation with folded tokens. In The Thirteenth International Conference on Learning Representations ,2025. URL https://openreview.net/forum?id=QE1LFzXQPL .Xu Zhang, Cheng Da, Huan Yang, Kun Gai, Ming Lu, and Zhan Ma. Restok: Learning hierarchical residuals in 1d visual tokenizers for autoregressive image generation, 2026. URL https://arxiv.org/abs/2601.03955 .Yuanhui Huang, Weiliang Chen, Wenzhao Zheng, Yueqi Duan, Jie Zhou, and Jiwen Lu. Spectralar: Spectral autoregressive visual generation, 2025. URL https://arxiv.org/abs/2506.10962 .Yiheng Liu, Liao Qu, Huichao Zhang, Xu Wang, Yi Jiang, Yiming Gao, Hu Ye, Xian Li, Shuai Wang, Daniel K. Du, Fangmin Chen, Zehuan Yuan, and Xinglong Wu. Detailflow: 1d coarse-to-fine autoregressive image generation via next-detail prediction, 2025. URL https://arxiv.org/abs/2505.21473 .Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-Chieh Chen. Randomized autoregressive visual generation, 2024c. URL https://arxiv.org/abs/2411.00776 .Anlin Zheng, Xin Wen, Xuanyang Zhang, Chuofan Ma, Tiancai Wang, Gang YU, Xiangyu Zhang, and XIAOJUAN QI. Vision foundation models as effective visual tokenizers for autoregressive generation. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. URL https://openreview.net/ forum?id=PESrAH82Zh .Pingyu Wu, Kai Zhu, Yu Liu, Longxiang Tang, Jian Yang, Yansong Peng, Wei Zhai, Yang Cao, and Zheng-Jun Zha. Towards sequence modeling alignment between tokenizer and autoregressive model. In The Fourteenth International Conference on Learning Representations , 2026. URL https://openreview.net/forum?id= GT3obnZ5Fk .Variable Codebook Size Quantization for Autoregressive Visual Generation 14 
+
+Ziqi Pang, Tianyuan Zhang, Fujun Luan, Yunze Man, Hao Tan, Kai Zhang, William T. Freeman, and Yu-Xiong Wang. Randar: Decoder-only autoregressive visual generation in random orders. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 45–55, June 2025. Jiahui Yu, Xin Li, Jing Yu Koh, Han Zhang, Ruoming Pang, James Qin, Alexander Ku, Yuanzhong Xu, Jason Baldridge, and Yonghui Wu. Vector-quantized image modeling with improved VQGAN. In International Con-ference on Learning Representations , 2022a. URL https://openreview.net/forum?id=pfNyExj7z2 .Zhuoyan Luo, Fengyuan Shi, Yixiao Ge, Yujiu Yang, Limin Wang, and Ying Shan. Open-magvit2: An open-source project toward democratizing auto-regressive visual generation, 2025. URL https://arxiv.org/abs/ 2409.04410 .Fengyuan Shi, Zhuoyan Luo, Yixiao Ge, Yujiu Yang, Ying Shan, and Limin Wang. Scalable image tokenization with index backpropagation quantization, 2025. URL https://arxiv.org/abs/2412.02692 .Roman Bachmann, Jesse Allardice, David Mizrahi, Enrico Fini, Oğuzhan Fatih Kar, Elmira Amirloo, Alaaeldin El-Nouby, Amir Zamir, and Afshin Dehghan. Flextok: Resampling images into 1d token sequences of flexible length, 2025. URL https://arxiv.org/abs/2502.13967 .Keita Miwa, Kento Sasaki, Hidehisa Arai, Tsubasa Takahashi, and Yu Yamaguchi. One-d-piece: Image tokenizer meets quality-controllable compression, 2025. URL https://arxiv.org/abs/2501.10064 .Bohan Wang, Zhongqi Yue, Fengda Zhang, Shuo Chen, Li’an Bi, Junzhe Zhang, Xue Song, Kennard Yanting Chan, Jiachun Pan, Weijia Wu, Mingze Zhou, Wang Lin, Kaihang Pan, Saining Zhang, Liyu Jia, Wentao Hu, Wei Zhao, and Hanwang Zhang. Selftok: Discrete visual tokens of autoregression, by diffusion, and for reasoning, 2025b. URL https://arxiv.org/abs/2505.07538 .Mark Weber, Lijun Yu, Qihang Yu, Xueqing Deng, Xiaohui Shen, Daniel Cremers, and Liang-Chieh Chen. Maskbit: Embedding-free image generation via bit tokens. Transactions on Machine Learning Research , 2024. ISSN 2835-8856. URL https://openreview.net/forum?id=NYe2JuN3v3 . Featured Certification, Reproducibility Certification. Kyle Sargent, Kyle Hsu, Justin Johnson, Li Fei-Fei, and Jiajun Wu. Flow to the mode: Mode-seeking diffusion autoencoders for state-of-the-art image tokenization. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 19471–19481, October 2025. Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel HAZIZA, Francisco Massa, Alaaeldin El-Nouby, Mido Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herve Jegou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. DINOv2: Learning robust visual features without supervision. Transactions on Machine Learning Research , 2024. ISSN 2835-8856. URL https://openreview.net/forum?id=a68SUt6zFt . Featured Certification. Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In Marina Meila and Tong Zhang, editors, Proceedings of the 38th International Conference on Machine Learning, ICML 2021, 18-24 July 2021, Virtual Event , Proceedings of Machine Learning Research, pages 8748–8763. PMLR, 2021. URL http://proceedings.mlr.press/ v139/radford21a.html .Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea Voss, Alec Radford, Mark Chen, and Ilya Sutskever. Zero-shot text-to-image generation. In Marina Meila and Tong Zhang, editors, Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research ,pages 8821–8831. PMLR, 18–24 Jul 2021. URL https://proceedings.mlr.press/v139/ramesh21a. html .Jiahui Yu, Yuanzhong Xu, Jing Yu Koh, Thang Luong, Gunjan Baid, Zirui Wang, Vijay Vasudevan, Alexander Ku, Yinfei Yang, Burcu Karagol Ayan, Ben Hutchinson, Wei Han, Zarana Parekh, Xin Li, Han Zhang, Jason Baldridge, and Yonghui Wu. Scaling autoregressive models for content-rich text-to-image generation. Variable Codebook Size Quantization for Autoregressive Visual Generation 15 
+
+Transactions on Machine Learning Research , 2022b. ISSN 2835-8856. URL https://openreview.net/ forum?id=AFDcYJKhND . Featured Certification. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Isabelle Guyon, Ulrike von Luxburg, Samy Bengio, Hanna M. Wallach, Rob Fergus, S. V. N. Vishwanathan, and Roman Garnett, editors, Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, USA , pages 5998–6008, 2017. URL https://proceedings.neurips.cc/paper/ 2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html .Prafulla Dhariwal and Alexander Quinn Nichol. Diffusion models beat gans on image synthesis. In Marc’Aurelio Ranzato, Alina Beygelzimer, Yann N. Dauphin, Percy Liang, and Jennifer Wortman Vaughan, editors, Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021, December 6-14, 2021, virtual , pages 8780–8794, 2021. URL https://proceedings. neurips.cc/paper/2021/hash/49ad23d1ec9fa4bd8d77d02681df5cfa-Abstract.html .Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Hugo Larochelle, Marc’Aurelio Ranzato, Raia Hadsell, Maria-Florina Balcan, and Hsuan-Tien Lin, editors, Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual , 2020. URL https://proceedings.neurips.cc/paper/2020/ hash/4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html .Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance, 2022. URL https://arxiv.org/abs/ 2207.12598 .Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In 9th International Conference on Learning Representations, ICLR 2021, Virtual Event, Austria, May 3-7, 2021 . OpenReview.net, 2021. URL 
+
+https://openreview.net/forum?id=YicbFdNTTy .
+
+## A. Training details 
+
+Dataset and compute accounting. All tokenizer and autoregressive (AR) experiments are trained on the ImageNet-1K training set. Experiments were run on a heterogeneous NVIDIA GPU cluster. For comparability, we report training duration as A100-equivalent wall-clock time. 
+
+Tokenizer training. Both tokenizers use a 1D sequence length of 256 and a shared cosine VCQ codebook with 𝐾 min = 2. The Base tokenizer uses 𝐾 max = 16384 , while the Large tokenizer uses 
+
+𝐾 max = 11264 . The Base tokenizer follows a ViT-B encoder and ViT-B decoder design with 172M parameters in total. The Large tokenizer keeps the same ViT-B encoder but uses a larger ViT-L decoder, resulting in 496M parameters. For the Large tokenizer, LPIPS is computed using a ConvNeXt-S backbone following (Wu et al., 2026). Both tokenizers are trained for 1.3M optimization steps with a global batch size of 256, correspond-ing to 260 ImageNet epochs. The Base tokenizer is trained on 8 GPUs and takes 13.0 A100-equivalent hours. The Large tokenizer is trained on 8 GPUs and takes 18.2 A100-equivalent hours. Tokenizer optimization uses AdamW. The learning rate is linearly decayed from 10 −4 to 3 ×
+
+10 −5, with a 13k-step warmup and a 65k-step peak. The reconstruction objective combines L1 reconstruction, LPIPS perceptual loss, adversarial generator loss, adversarial discriminator loss, and the VQ commitment loss. The L1, LPIPS, discriminator, and commitment losses use weight 1.0, while the adversarial generator loss uses weight 0.1. We use random cropping and horizontal flipping for Variable Codebook Size Quantization for Autoregressive Visual Generation 16 image augmentation, and adversarial augmentation is always enabled. Training uses bf16 mixed precision. 
+
+Autoregressive training. AR models are trained on frozen tokenizers with standard next-token prediction. All AR runs use ten-crop augmentation, horizontal flipping, class-label dropout of 0.1, AR dropout of 0.1, and token-embedding dropout of 0.1. For the Base-tokenizer group, BB, BL, and BXL are trained for 1.0M optimization steps with a global batch size of 512, corresponding to 400 ImageNet epochs. BB uses the 115M AR-B model with 12 layers, 12 heads, and hidden dimension 768. It is trained on 8 GPUs and takes 7.6 A100-equivalent hours. BL uses the 343M AR-L model with 24 layers, 16 heads, and hidden dimension 1024. It is trained on 8 GPUs and takes 15.7 A100-equivalent hours. BXL uses the 684M AR-XL model with 32 layers, 20 heads, and hidden dimension 1280. It is trained on 16 GPUs and takes 20.0 A100-equivalent hours. For this Base-tokenizer group, AR optimization uses AdamW with 𝛽 = (0.9, 0.96 ). The learning rate is linearly decayed from 2 × 10 −4 to 4 × 10 −5. The schedule uses a 10k-step warmup and reaches its peak at 50k steps. The AR weight decay is 3 × 10 −2, while bias, normalization, and adaptive normalization parameters are excluded from weight decay. Gradient clipping is set to 1.0. For the Large-tokenizer group, LB, LL, and LXL are trained for 500k optimization steps with a global batch size of 2048, corresponding to 800 ImageNet epochs. LB uses the 115M AR-B model and is trained on 16 GPUs for 5.3 A100-equivalent hours. LL uses the 343M AR-L model and is trained on 16 GPUs for 12.4 A100-equivalent hours. LXL uses the 684M AR-XL model and is trained on 32 GPUs for 15.1 A100-equivalent hours. For this Large-tokenizer group, AR optimization also uses AdamW with 𝛽 = (0.9, 0.96 ) and the same weight-decay rule as above. The learning rate is linearly decayed from 4 × 10 −4 to 10 −5, with a 62.5k-step warmup. Gradient clipping is set to 1.0. 
+
+## B. Inference details 
+
+We report the exact inference hyperparameters used to produce each gFID and gFID w/o CFG number in the main text. Table 7 lists the chosen hyperparameters for every model variant. Notably, stronger models (e.g., VCQ L-XL) require lower CFG scales, consistent with the observation that better AR modeling quality reduces the need for aggressive guidance. 
+
+## C. Disentangling CodebookSize-Aware CFG and VCQ contributions 
+
+The gFID improvement of VCQ involves two factors: the codebook structure (VCQ) and the inference strategy (CodebookSize-Aware CFG from Eq. (4) ). This section disentangles them through two controlled experiments. 
+
+Experiment 1: Vanilla CFG vs. CodebookSize-Aware CFG. Table 8 switches inference strategies on the same VCQ tokenizer and AR model. gFID w/o CFG is independent of the inference strategy and directly reflects the AR model’s modeling quality. The two VCQ rows have identical gFID w/o CFG (14.80): modeling quality is determined by the codebook structure and is independent of the inference strategy. VCQ brings gFID w/o CFG from 27.98 to 14.80 ( −47%), which is the contribution of the codebook structure. CodebookSize-Aware Variable Codebook Size Quantization for Autoregressive Visual Generation 17 Table 7 | CFG and temperature configurations corresponding to the reported gFID and gFID w/o CFG values.                                                                
+
+> Model Comment CFG Temperature Constant ( 𝐾 =16384) gFID=6.43 cosine, scale=20, p=1.5 1.0 Constant ( 𝐾 =16384) gFID w/o CFG=27.98 cfg=0 0.85 Constant ( 𝐾 =8192) gFID=5.87 cosine, scale=20, p=2.0 1.0 Constant ( 𝐾 =8192) gFID w/o CFG=18.16 cfg=0 0.85 VCQ-Linear gFID=5.32 cosine, scale=14, p=1.75 1.0 VCQ-Linear gFID w/o CFG=14.70 cfg=0 0.85 VCQ-Cosine / VCQ B-B gFID=4.79 cosine, scale=10, p=1.5 1.0 VCQ-Cosine / VCQ B-B gFID w/o CFG=14.80 cfg=0 0.85 VCQ-Power ( 𝛼 =2.5) gFID=5.14 cosine, scale=10, p=1.75 1.0 VCQ-Power ( 𝛼 =2.5) gFID w/o CFG=16.19 cfg=0 0.85 VCQ B-L gFID=2.75 cosine, scale=4, p=0.75 1.0 VCQ B-L gFID w/o CFG=7.47 cfg=0 0.85 VCQ B-XL gFID=2.38 cosine, scale=5, p=0.75 1.0 VCQ B-XL gFID w/o CFG=6.82 cfg=0 0.85 VCQ L-B gFID=2.73 cosine, scale=4, p=1.25 1.0 VCQ L-B gFID w/o CFG=5.14 cfg=0 0.90 VCQ L-L gFID=1.90 cosine, scale=4, p=1.25 1.0 VCQ L-L gFID w/o CFG=2.72 cfg=0 0.90 VCQ L-XL gFID=1.71 cosine, scale=3, p=1.0 1.0 VCQ L-XL gFID w/o CFG=2.29 cfg=0 0.95
+
+CFG further reduces gFID from 7.61 to 4.79 ( −2.82), which is the contribution of the inference strategy. The gFID of VCQ + Vanilla Cosine CFG (7.61) is worse than Constant (6.43) because Vanilla Cosine CFG does not match VCQ’s variable structure: at early positions where the codebook is small and the distribution is concentrated, a uniform CFG scale over-conditions. CodebookSize-Aware CFG ties the scale to excess information capacity (Eq. (4) ); when 𝐾 𝑡 = 𝐾 min , 𝑠 𝑡 = 0, resolving this mismatch. 
+
+Experiment 2: CodebookSize-Aware CFG on uniform codebooks. To rule out the alternative explanation that “the gFID improvement comes from CodebookSize-Aware CFG rather than codebook structure,” we exhaustively search CodebookSize-Aware CFG schedules with cfg_start=0 on Constant (28 hyperparameter configurations each). For 𝐾 =16384, the results are identical (6.43). For 𝐾 =8192, the apparent difference of 0.05 vanishes when compared hyperparameter by hyperparameter (difference <0.05); the 0.05 comes only from grid range differences ( ∗the main-text Table 4 reports 𝐾 =8192’s overall best as 5.87). All positions share the same 𝐾 in uniform codebooks, so CodebookSize-Aware CFG reduces to standard CFG, as expected. Combining both experiments: VCQ improves modeling quality (no-CFG −47%) and CodebookSize-Aware CFG improves inference effectiveness (gFID −2.82). The two are orthogonal, and the effective-ness of CodebookSize-Aware CFG depends on VCQ’s variable structure: CodebookSize-Aware CFG has no effect on uniform codebooks. Variable Codebook Size Quantization for Autoregressive Visual Generation 18 Table 8 | Disentangling VCQ and CodebookSize-Aware CFG contributions. Same VCQ model, different inference strategies. gFID w/o CFG is independent of the inference strategy and reflects modeling quality. Tokenizer Inference strategy gFID ↓ gFID noCFG ↓ ΔgFID Constant ( 𝐾 =16384) Cosine CFG 6.43 27.98 —Constant ( 𝐾 =8192) Cosine CFG 5.87 18.16 —VCQ Cosine CFG 7.61 14.80 —VCQ CodebookSize-Aware CFG 4.79 14.80 −2.82 Table 9 | CodebookSize-Aware CFG on uniform codebooks. Difference is <0.05 under matched hyperparameters. Tokenizer CFG strategy Best gFID ↓ Δ
+
+Constant 𝐾 =16K Standard cosine CFG 6.43 —Constant 𝐾 =16K cfg_start=0 6.43 0.00 Constant 𝐾 =8K Standard cosine CFG 5.92 —Constant 𝐾 =8K cfg_start=0 5.87 ∗ −0.05 
+
+## D. Related work 
+
+Discrete visual tokenizers. VQ-VAE (van den Oord et al., 2017) and VQ-GAN (Esser et al., 2021) established the basic paradigm of representing images as sequences of discrete codes from a finite codebook. Subsequent works have improved from various angles: better optimization and larger codebooks (ViT-VQGAN (Yu et al., 2022a); LlamaGen (Sun et al., 2024) with 𝐾 = 16384 ; Open-MAGVIT2 (Luo et al., 2025) and MAGVIT-v2 (Yu et al., 2024b) with LFQ; IBQ (Shi et al., 2025) with index back-propagation); 1D / variable-length tokenizers (TiTok (Yu et al., 2024a); FlexTok (Bach-mann et al., 2025); One-D-Piece (Miwa et al., 2025); Self Tok (Wang et al., 2025b)); training techniques (GigaTok (Xiong et al., 2025) with semantic regularization, AliTok (Wu et al., 2026) with causal alignment, ResTok (Zhang et al., 2026) with hierarchical residuals, ImageFolder (Li et al., 2025) with folded tokens, MaskBit (Weber et al., 2024) with bit-level codes, FlowMo (Sargent et al., 2025) with mode-seeking diffusion autoencoders); and the use of pre-trained vision foundation models such as DINOv2 (Oquab et al., 2024) and CLIP (Radford et al., 2021) as encoders or alignment targets (LightningDiT/VA-VAE (Yao et al., 2025), VFMTok (Zheng et al., 2025)). To the best of our knowledge, prior discrete visual tokenizers do not systematically study position-dependent codebook cardinality  
+
+> 𝐾 𝑡
+
+as a primary design variable and VCQ is the first work to systematically explore position-dependent  
+
+> 𝐾 𝑡
+
+.
+
+AR visual generation. Early AR image models such as DALL-E (Ramesh et al., 2021) and Parti (Yu et al., 2022b) treat tokenized images as sequences and generate them with large Trans-formers (Vaswani et al., 2017); VQ-GAN (Esser et al., 2021) brought GPT-style class-conditional AR to ImageNet. Subsequent developments include scaling (LlamaGen (Sun et al., 2024)), residual quantization (RQ-Transformer (Lee et al., 2022)), next-scale prediction (VAR (Tian et al., 2024)), masked / non-causal generation (MaskGIT (Chang et al., 2022)), diffusion-loss heads on continuous tokens (MAR (Li et al., 2024), FlowAR (Ren et al., 2024)), parallel decoding (PAR (Wang et al., 2025a)), random or randomized generation orders (RandAR (Pang et al., 2025), RAR (Yu et al., 2024c)), and coarse-to-fine 1D ordering (DetailFlow (Liu et al., 2025), SpectralAR (Huang et al., Variable Codebook Size Quantization for Autoregressive Visual Generation 19 2025)). On the diffusion side, ADM (Dhariwal and Nichol, 2021) and DDPM (Ho et al., 2020) together with classifier-free guidance (Ho and Salimans, 2022) laid the foundation for latent diffusion (LDM (Rombach et al., 2022)) and Diffusion/Interpolant Transformers (DiT (Peebles and Xie, 2023), SiT (Ma et al., 2024), REPA (Yu et al., 2025), LightningDiT (Yao et al., 2025)). This paper deliberately focuses on the simplest setup (1D raster-scan + standard next-token prediction) to isolate the effect of codebook structure. 
+
+Reconstruction-generation trade-off. GigaTok (Xiong et al., 2025) attributes the harm of increasing 𝐾 for generation to increased latent space complexity, and proposes semantic regularization as a remedy. We provide a complementary information-theoretic explanation: uniform large codebooks produce deterministic conditional distributions beyond 𝑡 ∗, causing the AR training signal to vanish. The two perspectives point to solutions at different levels and can be combined. 
+
+Evaluation protocol. Throughout the paper we follow standard protocols: FID (Heusel et al., 2017) and Inception Score (Salimans et al., 2016) as fidelity/quality summaries, and the improved Precision/Recall (Kynkäänniemi et al., 2019) as a separate measure of fidelity vs. coverage. Recon-struction quality is reported with rFID, PSNR. All FID/IS/Prec/Rec numbers are computed against the standard ADM (Dhariwal and Nichol, 2021) reference statistics. Architectural and optimiza-tion choices follow widely-used recipes (ViT (Dosovitskiy et al., 2021), Transformer (Vaswani et al., 2017), AdamW (Loshchilov and Hutter, 2019), PatchGAN-style adversarial loss (Isola et al., 2017), Llama-style decoder-only AR (Touvron et al., 2023)). 
+
+## E. Additional generation samples 
+
+We provide the full uncurated sample gallery for VCQ L-XL (Large Tokenizer with 𝐾 max = 11264 ,AR-XL with 684M parameters). Sampling uses CodebookSize-Aware CFG at the configuration that minimizes gFID under ADM protocol: cosine CFG with cfg=3 and power=1.0 . Each page is an 8×8
+
+grid of 64 randomly selected ImageNet classes, one uncurated sample per class. Across the eight appendix pages, the class sets are disjoint, yielding 512 sampled classes in total. Variable Codebook Size Quantization for Autoregressive Visual Generation 20 
+
+Figure 4 | Uncurated VCQ L-XL samples (1/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 21 
+
+Figure 5 | Uncurated VCQ L-XL samples (2/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 22 
+
+Figure 6 | Uncurated VCQ L-XL samples (3/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 23 
+
+Figure 7 | Uncurated VCQ L-XL samples (4/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 24 
+
+Figure 8 | Uncurated VCQ L-XL samples (5/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 25 
+
+Figure 9 | Uncurated VCQ L-XL samples (6/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 26 
+
+Figure 10 | Uncurated VCQ L-XL samples (7/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0. Variable Codebook Size Quantization for Autoregressive Visual Generation 27 
+
+Figure 11 | Uncurated VCQ L-XL samples (8/8). An 8×8 grid of 64 randomly selected distinct ImageNet classes, disjoint from the other gallery pages. Sampling uses LXL with CodebookSize-Aware CFG, cosine CFG cfg =3 and power =1.0.

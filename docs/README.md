@@ -6,85 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-10
-- 运行时间：2026-05-10 20:25:18 UTC
+- 最新运行日期：2026-05-11
+- 运行时间：2026-05-11 21:00:57 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日深挖 21 篇 AI 顶尖论文，聚焦视频生成潜变量预测与高效图像压缩技术的跨越式进化。
-核心突破在于通过 Predictive Latents 强化视频连贯性，以及 Cool-chic 5.0 带来的极速编码与熵建模优化。
-建议优先研读流式视频生成与 3DGS 自动化剪枝技术，把握模型轻量化与实时生成的最新风向。
-- 详情：[/202605/10/README](/202605/10/README)
+今日深度解析 21 篇前沿成果，重点攻克 Cool-chic 5.0 图像压缩效率与预测性潜空间视频生成。
+图像压缩在过拟合编码速度上实现跨越，流式视频生成则通过奖励蒸馏平衡了可靠性与视觉表现。
+推荐优先研读 9.5 分的 Cool-chic 5.0 了解特征建模新范式，并关注 3DGS 的自动化剪枝量化技术。
+- 详情：[/202605/11/README](/202605/11/README)
 
 ### 精读区论文标签
-1. [Video Generation with Predictive Latents](/202605/10/2605.02134v1-video-generation-with-predictive-latents)  
+1. [Cool-chic 5.0: Faster Encoding and Inter-Feature Entropy Modeling for Overfitted Image Compression](/202605/11/2605.02726v1-cool-chic-50-faster-encoding-and-inter-feature-entropy-modeling-for-overfitted-image-compression)  
+   标签：评分：9.5/10、query:entropy-coding
+   evidence：过拟合编解码器的特征间熵建模与优化
+2. [Video Generation with Predictive Latents](/202605/11/2605.02134v1-video-generation-with-predictive-latents)  
    标签：评分：9.0/10、query:vcodec
-   evidence：用于潜空间视频生成建模和预测学习的视频VAE
-2. [Cool-chic 5.0: Faster Encoding and Inter-Feature Entropy Modeling for Overfitted Image Compression](/202605/10/2605.02726v1-cool-chic-50-faster-encoding-and-inter-feature-entropy-modeling-for-overfitted-image-compression)  
+   evidence：具有预测潜变量的视频VAE用于生成式建模
+3. [What Matters in Practical Learned Image Compression](/202605/11/2605.05148v1-what-matters-in-practical-learned-image-compression)  
    标签：评分：9.0/10、query:entropy-coding
-   evidence：过拟合图像压缩中的特征间熵建模与解码器架构更新
-3. [Stream-R1: Reliability-Perplexity Aware Reward Distillation for Streaming Video Generation](/202605/10/2605.03849v1-stream-r1-reliability-perplexity-aware-reward-distillation-for-streaming-video-generation)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：流式视频扩散模型的奖励蒸馏与生成式视频生成
-4. [What Matters in Practical Learned Image Compression](/202605/10/2605.05148v1-what-matters-in-practical-learned-image-compression)  
-   标签：评分：9.0/10、query:entropy-coding
-   evidence：针对感知质量和运行时间优化的实用学习型图像压缩
-5. [LiVeAction: a Lightweight, Versatile, and Asymmetric Neural Codec Design for Real-time Operation](/202605/10/2605.06628v1-liveaction-a-lightweight-versatile-and-asymmetric-neural-codec-design-for-real-time-operation)  
+   evidence：学习型编解码器的感知率失真优化与神经架构搜索
+4. [LiVeAction: a Lightweight, Versatile, and Asymmetric Neural Codec Design for Real-time Operation](/202605/11/2605.06628v1-liveaction-a-lightweight-versatile-and-asymmetric-neural-codec-design-for-real-time-operation)  
    标签：评分：9.0/10、query:train-trick
-   evidence：针对受限设备实时运行的轻量级非对称神经编解码器设计
-6. [Evolution of NVENC Efficiency: A Longitudinal Analysis of HQ and UHQ Tuning Efficiency, Latency and Energy Trade-offs](/202605/10/2605.01187v1-evolution-of-nvenc-efficiency-a-longitudinal-analysis-of-hq-and-uhq-tuning-efficiency-latency-and-energy-trade-offs)  
-   标签：评分：8.5/10、query:entropy-coding
-   evidence：NVENC率失真效率与延迟的纵向分析
-7. [FPTC: A Fast Parallel Transform-based Codec for Efficient Asymmetric Signal Compression](/202605/10/2605.01086v1-fptc-a-fast-parallel-transform-based-codec-for-efficient-asymmetric-signal-compression)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：用于高效非对称信号压缩的快速并行变换编解码器
-8. [PACE: Post-Causal Entropy Modeling for Learned LiDAR Point Cloud Compression](/202605/10/2605.01320v1-pace-post-causal-entropy-modeling-for-learned-lidar-point-cloud-compression)  
+   evidence：轻量级、通用且非对称的神经编解码器设计
+5. [Continuous First, Discrete Later: VQ-VAEs Without Dimensional Collapse](/202605/11/2605.06870v1-continuous-first-discrete-later-vq-vaes-without-dimensional-collapse)  
+   标签：评分：9.0/10、query:train-trick
+   evidence：基于率失真理论的VQ-VAE多阶段训练（预热期）
+6. [Consistency Regularised Gradient Flows for Inverse Problems](/202605/11/2605.07907v1-consistency-regularised-gradient-flows-for-inverse-problems)  
+   标签：评分：8.5/10、query:vcodec
+   evidence：视觉语言潜扩散模型（LDM）作为生成式先验
+7. [What Matters for Diffusion-Friendly Latent Manifold? Prior-Aligned Autoencoders for Latent Diffusion](/202605/11/2605.07915v1-what-matters-for-diffusion-friendly-latent-manifold-prior-aligned-autoencoders-for-latent-diffusion)  
+   标签：评分：8.5/10、query:vcodec
+   evidence：用于潜空间扩散流形组织的先验对齐自编码器
+8. [Contextual Wireless Video Semantic Communication in MIMO-OFDM Systems](/202605/11/2605.01798v1-contextual-wireless-video-semantic-communication-in-mimo-ofdm-systems)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：用于点云压缩的学习熵模型和非因果骨干网络
+   evidence：具有通过信道状态感知增强的熵编码模型的视频语义传输框架
 
 ### 速读区论文标签
-1. [Exploring Data-Free LoRA Transferability for Video Diffusion Models](/202605/10/2605.01929v1-exploring-data-free-lora-transferability-for-video-diffusion-models)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：视频扩散模型的迁移性与权重空间分析
-2. [GETA-3DGS: Automatic Joint Structured Pruning and Quantization for 3D Gaussian Splatting](/202605/10/2605.02086v1-geta-3dgs-automatic-joint-structured-pruning-and-quantization-for-3d-gaussian-splatting)  
+1. [GETA-3DGS: Automatic Joint Structured Pruning and Quantization for 3D Gaussian Splatting](/202605/11/2605.02086v1-geta-3dgs-automatic-joint-structured-pruning-and-quantization-for-3d-gaussian-splatting)  
    标签：评分：8.0/10、query:train-trick
-   evidence：3D高斯泼溅压缩的联合结构化剪枝与量化
-3. [Stream-T1: Test-Time Scaling for Streaming Video Generation](/202605/10/2605.04461v1-stream-t1-test-time-scaling-for-streaming-video-generation)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：利用扩散模型和测试时缩放进行流式视频生成
-4. [DiBA: Diagonal and Binary Matrix Approximation for Neural Network Weight Compression](/202605/10/2605.05994v1-diba-diagonal-and-binary-matrix-approximation-for-neural-network-weight-compression)  
+   evidence：3DGS压缩的端到端自动联合结构化剪枝和量化
+2. [Stream-R1: Reliability-Perplexity Aware Reward Distillation for Streaming Video Generation](/202605/11/2605.03849v1-stream-r1-reliability-perplexity-aware-reward-distillation-for-streaming-video-generation)  
    标签：评分：8.0/10、query:train-trick
-   evidence：用于神经网络权重压缩的矩阵近似
-5. [Eulerian Motion Guidance: Robust Image Animation via Bidirectional Geometric Consistency](/202605/10/2605.06280v1-eulerian-motion-guidance-robust-image-animation-via-bidirectional-geometric-consistency)  
+   evidence：流式视频生成模型的奖励蒸馏
+3. [Contextual Memory-Enhanced Source Coding for Low-SNR Communications](/202605/11/2605.04400v2-contextual-memory-enhanced-source-coding-for-low-snr-communications)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：基于大语言模型概率估计的算术编码用于信源编码
+4. [DiBA: Diagonal and Binary Matrix Approximation for Neural Network Weight Compression](/202605/11/2605.05994v1-diba-diagonal-and-binary-matrix-approximation-for-neural-network-weight-compression)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：用于神经网络权重压缩的矩阵分解
+5. [Taming the Entropy Cliff: Variable Codebook Size Quantization for Autoregressive Visual Generation](/202605/11/2605.06207v1-taming-the-entropy-cliff-variable-codebook-size-quantization-for-autoregressive-visual-generation)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：可变码本大小量化与熵分析
+6. [Motion-Aware Caching for Efficient Autoregressive Video Generation](/202605/11/2605.01725v1-motion-aware-caching-for-efficient-autoregressive-video-generation)  
    标签：评分：7.5/10、query:vcodec
-   evidence：用于视频生成的欧拉运动引导和光流
-6. [Light-FMP: Lightweight Feature and Model Pruning for Enhanced Deep Recommender Systems](/202605/10/2605.06441v1-light-fmp-lightweight-feature-and-model-pruning-for-enhanced-deep-recommender-systems)  
+   evidence：利用帧间差异的自回归视频生成运动感知缓存框架
+7. [TOC-SR: Task-Optimal Compact diffusion for Image Super Resolution](/202605/11/2605.02767v1-toc-sr-task-optimal-compact-diffusion-for-image-super-resolution)  
    标签：评分：7.5/10、query:train-trick
-   evidence：包含预训练和持续训练的轻量级特征与模型剪枝框架
-7. [Colinearity Decay: Training Quantization-Friendly ViTs with Outlier Decay](/202605/10/2605.01330v1-colinearity-decay-training-quantization-friendly-vits-with-outlier-decay)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：用于训练量化友好型视觉Transformer的结构正则化器
-8. [AgriKD: Cross-Architecture Knowledge Distillation for Efficient Leaf Disease Classification](/202605/10/2605.01355v1-agrikd-cross-architecture-knowledge-distillation-for-efficient-leaf-disease-classification)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：用于高效边缘部署的跨架构知识蒸馏
-9. [Contextual Wireless Video Semantic Communication in MIMO-OFDM Systems](/202605/10/2605.01798v1-contextual-wireless-video-semantic-communication-in-mimo-ofdm-systems)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：增强熵编码模型的语义视频传输框架
-10. [Hybrid Visual Telemetry for Bandwidth-Constrained Robotic Vision: A Pilot Study with HEVC Base Video and JPEG ROI Stills](/202605/10/2605.01826v1-hybrid-visual-telemetry-for-bandwidth-constrained-robotic-vision-a-pilot-study-with-hevc-base-video-and-jpeg-roi-stills)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：针对带宽受限视觉的HEVC基础视频与ROI静态图混合架构
-11. [Diffusion Masked Pretraining for Dynamic Point Cloud](/202605/10/2605.03639v1-diffusion-masked-pretraining-for-dynamic-point-cloud)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：动态点云运动学习中的扩散建模
-12. [FedeKD: Energy-Based Gating for Robust Federated Knowledge Distillation under Heterogeneous Settings](/202605/10/2605.05553v1-fedekd-energy-based-gating-for-robust-federated-knowledge-distillation-under-heterogeneous-settings)  
+   evidence：通过生成式蒸馏和架构搜索构建紧凑型扩散模型
+8. [AHPA: Adaptive Hierarchical Prior Alignment for Diffusion Transformers](/202605/11/2605.03317v1-ahpa-adaptive-hierarchical-prior-alignment-for-diffusion-transformers)  
+   标签：评分：7.5/10、query:vcodec
+   evidence：扩散Transformer的自适应分层先验对齐
+9. [Hardware-Aware Neural Feature Extraction for Resource-Constrained Devices](/202605/11/2605.04282v1-hardware-aware-neural-feature-extraction-for-resource-constrained-devices)  
+   标签：评分：7.5/10、query:train-trick
+   evidence：面向资源受限设备的知识蒸馏与量化
+10. [Importance-Guided Basis Selection for Low-Rank Decomposition of Large Language Models](/202605/11/2605.01627v2-importance-guided-basis-selection-for-low-rank-decomposition-of-large-language-models)  
    标签：评分：6.5/10、query:train-trick
-   evidence：使用轻量级共享代理模型的联邦知识蒸馏
-13. [FREPix: Frequency-Heterogeneous Flow Matching for Pixel-Space Image Generation](/202605/10/2605.06421v1-frepix-frequency-heterogeneous-flow-matching-for-pixel-space-image-generation)  
+   evidence：用于模型压缩的低秩分解与剪枝
+11. [VLMaxxing through FrameMogging Training-Free Anti-Recomputation for Video Vision-Language Models](/202605/11/2605.03351v1-vlmaxxing-through-framemogging-training-free-anti-recomputation-for-video-vision-language-models)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：视频模型的免训练抗重计算技术，减少延迟和冗余
+12. [WorldJen: An End-to-End Multi-Dimensional Benchmark for Generative Video Models](/202605/11/2605.03475v1-worldjen-an-end-to-end-multi-dimensional-benchmark-for-generative-video-models)  
    标签：评分：6.5/10、query:vcodec
-   evidence：用于像素空间图像生成的频率异构流匹配
+   evidence：生成式视频模型基准测试与语义正确性评估
+13. [Real Image Denoising with Knowledge Distillation for High-Performance Mobile NPUs](/202605/11/2605.03680v1-real-image-denoising-with-knowledge-distillation-for-high-performance-mobile-npus)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：针对移动端NPU的轻量化学生网络知识蒸馏
 
 
 <div class="dpr-home-promo-card">
