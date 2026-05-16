@@ -6,85 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-15
-- 运行时间：2026-05-15 20:32:39 UTC
+- 最新运行日期：2026-05-16
+- 运行时间：2026-05-16 20:56:27 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日深挖 21 篇视觉前沿，重点攻克神经网络视频压缩与实时编解码的性能瓶颈。
-满分论文揭示了领域迁移在视频压缩中的巨大潜力，而 LiVeAction 则为轻量化实时操作提供了非对称编解码新方案。
-建议优先研读视频一致性与离散表征优化相关成果，把握长视频生成与高效存储的最新趋势。
-- 详情：[/202605/15/README](/202605/15/README)
+今日深度解析 21 篇视觉与压缩前沿，重点突破神经视频压缩的域迁移与低复杂度图像编码技术。
+满分论文揭示了域迁移在视频压缩中的性能飞跃，空间竞争机制则为轻量化图像压缩提供了高效方案。
+建议关注实时交互视频生成与隐私保护下的率失真权衡，把握生成式压缩的最新演进方向。
+- 详情：[/202605/16/README](/202605/16/README)
 
 ### 精读区论文标签
-1. [Neural Video Compression with Domain Transfer](/202605/15/2605.13476v1-neural-video-compression-with-domain-transfer)  
+1. [Neural Video Compression with Domain Transfer](/202605/16/2605.13476v1-neural-video-compression-with-domain-transfer)  
    标签：评分：10.0/10、query:entropy-coding
-   evidence：具有动态率失真优化的领域转移增强型神经视频压缩框架
-2. [LiVeAction: a Lightweight, Versatile, and Asymmetric Neural Codec Design for Real-time Operation](/202605/15/2605.06628v1-liveaction-a-lightweight-versatile-and-asymmetric-neural-codec-design-for-real-time-operation)  
+   evidence：具有领域迁移和动态率失真优化的神经视频压缩
+2. [Spatial Competition for Low-Complexity Learned Image Compression](/202605/16/2605.13243v1-spatial-competition-for-low-complexity-learned-image-compression)  
    标签：评分：9.0/10、query:train-trick
-   evidence：针对受限设备的实时轻量化神经编解码器设计
-3. [Spatial Competition for Low-Complexity Learned Image Compression](/202605/15/2605.13243v1-spatial-competition-for-low-complexity-learned-image-compression)  
-   标签：评分：9.0/10、query:train-trick
-   evidence：通过神经编解码器之间的空间竞争实现低复杂度学习型图像压缩
-4. [RefDecoder: Enhancing Visual Generation with Conditional Video Decoding](/202605/15/2605.15196v1-refdecoder-enhancing-visual-generation-with-conditional-video-decoding)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：用于潜扩散模型的条件视频VAE解码器以提高一致性
-5. [CoReDiT: Spatial Coherence-Guided Token Pruning and Reconstruction for Efficient Diffusion Transformers](/202605/15/2605.14191v1-coredit-spatial-coherence-guided-token-pruning-and-reconstruction-for-efficient-diffusion-transformers)  
-   标签：评分：8.5/10、query:vcodec
-   evidence：视频生成中高效扩散Transformer的标记剪枝与重构
-6. [Dual-Latent Collaborative Decoding for Fidelity-Perception Balanced Image Compression](/202605/15/2605.14391v1-dual-latent-collaborative-decoding-for-fidelity-perception-balanced-image-compression)  
-   标签：评分：8.5/10、query:vcodec
-   evidence：使用双潜变量协作解码的保真度-感知平衡图像压缩
-7. [Continuous First, Discrete Later: VQ-VAEs Without Dimensional Collapse](/202605/15/2605.06870v1-continuous-first-discrete-later-vq-vaes-without-dimensional-collapse)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：基于率失真理论的VQ-VAE多阶段训练（预热阶段）
-8. [SoLAR: Error-Resilient Streamable Long-Horizon Free-Viewpoint Video Reconstruction with Anchor Activation and Latent Recalibration](/202605/15/2605.07346v1-solar-error-resilient-streamable-long-horizon-free-viewpoint-video-reconstruction-with-anchor-activation-and-latent-recalibration)  
+   evidence：引入了一种基于神经编解码器之间空间竞争的低复杂度学习图像压缩框架。
+3. [ML-CLIPSim: Multi-Layer CLIP Similarity for Machine-Oriented Image Quality](/202605/16/2605.09479v1-ml-clipsim-multi-layer-clip-similarity-for-machine-oriented-image-quality)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：可流式自由视角视频的率失真优化
+   evidence：面向机器视觉质量和学习型图像压缩的可微质量度量指标
+4. [Dual-Path Hyperprior Informed Deep Unfolding Network for Image Compressive Sensing](/202605/16/2605.09566v1-dual-path-hyperprior-informed-deep-unfolding-network-for-image-compressive-sensing)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：用于图像重建的双路径超先验深度展开网络
+5. [BCJR-QAT: A Differentiable Relaxation of Trellis-Coded Weight Quantization](/202605/16/2605.10655v1-bcjr-qat-a-differentiable-relaxation-of-trellis-coded-weight-quantization)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：用于量化感知训练的网格编码权重量化可微松弛
+6. [FIS-DiT: Breaking the Few-Step Video Inference Barrier via Training-Free Frame Interleaved Sparsity](/202605/16/2605.11869v1-fis-dit-breaking-the-few-step-video-inference-barrier-via-training-free-frame-interleaved-sparsity)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：通过帧间交织稀疏性加速视频扩散Transformer
+7. [DiffST: Spatiotemporal-Aware Diffusion for Real-World Space-Time Video Super-Resolution](/202605/16/2605.13182v1-diffst-spatiotemporal-aware-diffusion-for-real-world-space-time-video-super-resolution)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：高效的时空感知视频扩散框架
+8. [The Diffusion Encoder](/202605/16/2605.13399v1-the-diffusion-encoder)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：基于扩散模型的编码器和潜变量表示的交替训练方案
 
 ### 速读区论文标签
-1. [Eulerian Motion Guidance: Robust Image Animation via Bidirectional Geometric Consistency](/202605/15/2605.06280v2-eulerian-motion-guidance-robust-image-animation-via-bidirectional-geometric-consistency)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：使用扩散模型和光流进行图像动画的欧拉运动引导
-2. [Continuous First, Discrete Later: VQ-VAEs Without Dimensional Collapse](/202605/15/2605.06870v2-continuous-first-discrete-later-vq-vaes-without-dimensional-collapse)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：基于率失真理论的VQ-VAE多阶段训练（预热阶段）
-3. [A$^2$RD: Agentic Autoregressive Diffusion for Long Video Consistency](/202605/15/2605.06924v1-a2rd-agentic-autoregressive-diffusion-for-long-video-consistency)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：用于长视频一致性的自回归扩散模型
-4. [Learning to Compress and Transmit: Adaptive Rate Control for Semantic Communications over LEO Satellite-to-Ground Links](/202605/15/2605.10095v1-learning-to-compress-and-transmit-adaptive-rate-control-for-semantic-communications-over-leo-satellite-to-ground-links)  
+1. [Rényi Rate-Distortion-Perception-Privacy Tradeoff under Indirect Observation](/202605/16/2605.09921v1-rnyi-rate-distortion-perception-privacy-tradeoff-under-indirect-observation)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：图像的自适应速率控制和联合信源信道编码
-5. [L2P: Unlocking Latent Potential for Pixel Generation](/202605/15/2605.12013v1-l2p-unlocking-latent-potential-for-pixel-generation)  
+   evidence：间接源编码的率失真-感知-隐私权衡框架。
+2. [FaSST: Fast Sparsifying Secondary Transform](/202605/16/2605.15086v1-fasst-fast-sparsifying-secondary-transform)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：具有率失真优化设计的低复杂度二次变换
+3. [Causal Forcing++: Scalable Few-Step Autoregressive Diffusion Distillation for Real-Time Interactive Video Generation](/202605/16/2605.15141v1-causal-forcing-scalable-few-step-autoregressive-diffusion-distillation-for-real-time-interactive-video-generation)  
    标签：评分：8.0/10、query:vcodec
-   evidence：利用预训练潜扩散模型进行高效像素空间生成
-6. [Eulerian Motion Guidance: Robust Image Animation via Bidirectional Geometric Consistency](/202605/15/2605.06280v1-eulerian-motion-guidance-robust-image-animation-via-bidirectional-geometric-consistency)  
+   evidence：用于实时交互式视频生成的自回归扩散蒸馏
+4. [RAVEN: Real-time Autoregressive Video Extrapolation with Consistency-model GRPO](/202605/16/2605.15190v1-raven-real-time-autoregressive-video-extrapolation-with-consistency-model-grpo)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：用于实时流媒体的自回归视频扩散模型
+5. [RefDecoder: Enhancing Visual Generation with Conditional Video Decoding](/202605/16/2605.15196v1-refdecoder-enhancing-visual-generation-with-conditional-video-decoding)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：潜空间扩散模型的条件视频解码
+6. [Stochastic Transition-Map Distillation for Fast Probabilistic Inference](/202605/16/2605.07661v1-stochastic-transition-map-distillation-for-fast-probabilistic-inference)  
    标签：评分：7.5/10、query:vcodec
-   evidence：基于扩散模型的图像动画欧拉运动场
-7. [Forcing-KV: Hybrid KV Cache Compression for Efficient Autoregressive Video Diffusion Models](/202605/15/2605.09681v1-forcing-kv-hybrid-kv-cache-compression-for-efficient-autoregressive-video-diffusion-models)  
+   evidence：用于扩散模型快速概率推理的蒸馏技术
+7. [HASTE: Training-Free Video Diffusion Acceleration via Head-Wise Adaptive Sparse Attention](/202605/16/2605.14513v1-haste-training-free-video-diffusion-acceleration-via-head-wise-adaptive-sparse-attention)  
    标签：评分：7.5/10、query:vcodec
-   evidence：自回归视频扩散模型的KV缓存压缩
-8. [BCJR-QAT: A Differentiable Relaxation of Trellis-Coded Weight Quantization](/202605/15/2605.10655v1-bcjr-qat-a-differentiable-relaxation-of-trellis-coded-weight-quantization)  
-   标签：评分：7.5/10、query:train-trick
-   evidence：用于量化感知训练的网格编码量化微分松弛技术
-9. [RQ-MoE: Residual Quantization via Mixture of Experts for Efficient Input-Dependent Vector Compression](/202605/15/2605.14359v1-rq-moe-residual-quantization-via-mixture-of-experts-for-efficient-input-dependent-vector-compression)  
-   标签：评分：7.5/10、query:train-trick
-   evidence：通过混合专家系统进行残差量化以实现高效向量压缩
-10. [FluxShard: Motion-Aware Feature Cache Reuse for Collaborative Video Analytics in Mobile Edge Computing](/202605/15/2605.06027v1-fluxshard-motion-aware-feature-cache-reuse-for-collaborative-video-analytics-in-mobile-edge-computing)  
+   evidence：通过自适应稀疏注意力实现无需训练的视频扩散加速
+8. [Compositional Video Generation via Inference-Time Guidance](/202605/16/2605.14988v1-compositional-video-generation-via-inference-time-guidance)  
+   标签：评分：7.5/10、query:vcodec
+   evidence：基于扩散的视频生成的推理阶段引导
+9. [Teacher-Feature Drifting: One-Step Diffusion Distillation with Pretrained Diffusion Representations](/202605/16/2605.07327v1-teacher-feature-drifting-one-step-diffusion-distillation-with-pretrained-diffusion-representations)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：利用预训练教师表示进行单步扩散蒸馏
+10. [Elucidating Representation Degradation Problem in Diffusion Model Training](/202605/16/2605.10790v1-elucidating-representation-degradation-problem-in-diffusion-model-training)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：扩散模型训练优化与表示退化
+11. [Flow Augmentation and Knowledge Distillation for Lightweight Face Presentation Attack Detection](/202605/16/2605.13108v1-flow-augmentation-and-knowledge-distillation-for-lightweight-face-presentation-attack-detection)  
+   标签：评分：6.5/10、query:train-trick
+   evidence：利用知识蒸馏增强运动表示且不增加推理开销
+12. [OP4KSR: One-Step Patch-Free 4K Super-Resolution with Periodic Artifact Suppression](/202605/16/2605.13457v1-op4ksr-one-step-patch-free-4k-super-resolution-with-periodic-artifact-suppression)  
    标签：评分：6.5/10、query:vcodec
-   evidence：用于视频分析的运动感知特征缓存复用
-11. [Render, Don't Decode: Weight-Space World Models with Latent Structural Disentanglement](/202605/15/2605.06298v1-render-dont-decode-weight-space-world-models-with-latent-structural-disentanglement)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：将原始像素编码为紧凑的潜空间，无需重型解码器
-12. [Task-Oriented Communication for Human Action Understanding via Edge-Cloud Co-Inference](/202605/15/2605.07354v1-task-oriented-communication-for-human-action-understanding-via-edge-cloud-co-inference)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：使用VQ-VAE进行面向任务的通信，以减少边缘端的视频数据量
-13. [On Variance Reduction in Learning Mean Flows](/202605/15/2605.09235v1-on-variance-reduction-in-learning-mean-flows)  
-   标签：评分：6.5/10、query:vcodec
-   evidence：生成式流与扩散模型中的方差缩减
+   evidence：基于扩散模型的超分辨率，利用极高压缩比的VAE实现显存优化
+13. [Amortized-Precision Quantization for Early-Exit Vision Transformers](/202605/16/2605.07317v1-amortized-precision-quantization-for-early-exit-vision-transformers)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：针对视觉Transformer的利用率感知量化与位宽优化
 
 
 <div class="dpr-home-promo-card">

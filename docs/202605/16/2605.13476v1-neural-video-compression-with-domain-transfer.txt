@@ -1,0 +1,265 @@
+Title: Neural Video Compression with Domain Transfer
+
+URL Source: https://arxiv.org/pdf/2605.13476v1
+
+Published Time: Thu, 14 May 2026 01:27:18 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Neural Video Compression with Domain Transfer 
+
+Tiange Zhang ∗†‡ , Rongqun Lin †, Xiandong Meng †, Haofeng Wang ∗, Xing Tian †, Qi Zhang †, Siwei Ma ∗†‡ 
+
+Email: {tgzhang, hfwang }@stu.pku.edu.cn, {linrq, mengxd }@pcl.ac.cn, txsing@live.com, qizhang@alumni.pku.edu.cn, swma@pku.edu.cn 
+
+> ∗
+
+Shenzhen Graduate School, Peking University, Shenzhen, China 
+
+> †
+
+Pengcheng Laboratory, Shenzhen, China 
+
+> ‡
+
+School of Computer Science, Peking University, Beijing, China 
+
+Abstract —Content-adaptive compression has always been a key direction in neural video coding (NVC), aiming to mitigate the domain gap between training and testing data. Such gaps often arise from distributional discrepancies between training and inference data, which may cause noticeable performance degradation when the testing content differs from the training distribution. To tackle this challenge, we propose DCVC-DT, a domain transfer enhanced neural video compression framework. Specifically, we design a lightweight online domain transfer (DT) mechanism that dynamically adapts the encoded latent repre-sentation during inference, effectively bridging the domain gap without modifying the encoder or decoder parameters. In addi-tion, we develop a frame-level dynamic RD (Rate and Distortion) adjustment scheme that actively regulates the ratio of R and D in the loss function based on quality fluctuation, thereby improving rate-distortion performance. Extensive experiments demonstrate that DCVC-DT achieves up to 6.21% bitrate savings over the baseline DCVC-DC, while significantly enhancing generalization to unseen testing data and alleviating error propagation. Our code is available at https://github.com/SunnyMass/DCVC-DT. 
+
+Index Terms —neural video compression, domain transfer, online learning, rate-distortion optimization 
+
+I. I NTRODUCTION 
+
+Content-adaptive neural video compression (NVC) has be-come a key direction in recent years, aiming to enhance the adaptability of pre-trained models across diverse video con-tents. Although various existing NVCs [1]–[24] have achieved remarkable progress and outperform traditional codecs [25]– [27], their performance still relies heavily on the domain consistency between training and testing data. In practice, non-natural content such as screen recordings, animations, and medical videos often exhibit distinct statistical properties from natural videos, resulting in severe domain gaps that degrade both coding efficiency and generalization ability. In deep image compression, significant efforts have been made to address domain differences. Initially, Campos et al. [28] refined latent representations via an iterative proce-dure while keeping network parameters fixed. This strategy was further advanced by Yang et al. [29] through optimized inference to address gaps in amortization, discretization, and   
+
+> Tiange Zhang and Rongqun Lin contributed equally to this work. Cor-responding authors: Siwei Ma (swma@pku.edu.cn) and Xiandong Meng (mengxd@pcl.ac.cn). This work was supported in part by the Key Research
+> &Development Program of Pengcheng Laboratory under grant PCL2024A02 and in part by Natural Science Foundation of China No. 62371008, and New Cornerstone Science Foundation through the XPLORER PRIZE.
+
+marginalization. Beyond latent updates, other approaches in-volve parameter fine-tuning or incorporating adaptive mod-ules. For instance, Van Rozendaal et al. [30] refined the entire network architecture, while Tsubota et al. [31] pro-posed a universal framework combining latent refinement with lightweight decoder adapters. Similarly, Pan et al. [32] utilized adaptive strategies like content-adaptive channel dropping and Spatial Feature Transformation (SFT) layers. These advance-ments demonstrated the potential of combining parameter op-timization with adaptive mechanisms to enhance compression performance. Similar to image compression, recent video compression methods also explored content-adaptive strategies. Tang et al. [33] enhanced optical flow by fine-tuning a pre-trained network with motion information from VTM in an offline stage, followed by online optimization of latent features. However, this primarily improves motion estimation. Chen et al. [34] applied parameter-efficient transfer learning (PETL) through low-rank adapters and GoP-level optimization, but still requires partial parameter updates and increases encoder complexity. These approaches primarily focus on the motion coding components, overlooking the latent fine-tuning of con-text coding modules, which account for a larger portion of the bitrate. Moreover, the current parameter fine-tuning methods introduce high complexity in video compression models. Motivated by these observations, we propose DCVC-DT, a domain transfer enhanced neural video compression frame-work that achieves content adaptation purely in the latent domain. Instead of updating network parameters or introduc-ing additional modules, our method dynamically adjusts the encoded latent representation on the encoder side through an online domain transfer (DT) mechanism, enabling efficient adaptation to unseen domains while maintaining decoding time. Furthermore, a frame-level dynamic RD adjustment strategy guided by quality fluctuation is designed to actively regulate the ratio of R and D in the loss function for better rate–distortion performance. In summary, our main contributions are as follows:  
+
+> •
+
+We introduce a lightweight online domain transfer mech-anism that performs adaptive latent refinement during inference, effectively bridging the domain gap without modifying model parameters or decoder architecture.  
+
+> •
+
+We develop a frame-level dynamic RD adjustment strat-egy that actively regulates the ratio of R and D in                
+
+> arXiv:2605.13476v1 [cs.CV] 13 May 2026 Context
+> Encoder
+> Context
+> Decoder
+> 𝑥𝑥 𝑡𝑡
+> Motion
+> Estimation
+> 𝑣𝑣 𝑡𝑡 �𝑣𝑣 𝑡𝑡
+> Temporal
+> Context Mining
+> �𝑥𝑥 𝑡𝑡−1
+> Entropy
+> Model
+> [𝑦𝑦 𝑡𝑡 ][�𝑦𝑦 𝑡𝑡 ]Frame
+> Generator
+> 𝐹𝐹 𝑡𝑡
+> AE AD
+> Motion
+> Encoder
+> Entropy
+> Model
+> [𝑚𝑚 𝑡𝑡 ][�𝑚𝑚 𝑡𝑡 ]
+> AE AD Motion
+> Decoder
+> Current Frame Decoded Frame
+> Buffer
+> Buffer
+> 𝐶𝐶 𝑡𝑡 1,𝐶𝐶 𝑡𝑡 2,𝐶𝐶 𝑡𝑡 3
+> 𝐹𝐹 𝑡𝑡−1
+> �𝑥𝑥 𝑡𝑡
+> Domain Transfer Fig. 1. Overall framework of DCVC-DT. We integrate the proposed Online Domain Transfer (DT) mechanism and Dynamic RD Adjustment strategy into the baseline NVC architecture. By optimizing latent features solely on the encoder side, our framework effectively bridges the domain gap between training and testing data and enhances generalization to diverse contents.
+
+the loss function based on quality fluctuation, improving rate–distortion performance.  
+
+> •
+
+Extensive experiments demonstrate that DCVC-DT achieves up to 6.21% bitrate savings over the baseline DCVC-DC and maintains strong cross-domain general-ization across heterogeneous video datasets. II. R ELATED WORKS 
+
+A. Neural Video Compression 
+
+The DCVC family [1], [35]–[39] represents one of the most influential paradigms in neural video compression (NVC). Built upon motion estimation and compensation, DCVC [35] introduced conditional coding in the feature domain to ex-ploit temporal contexts more effectively. DCVC-TCM [36] enhanced temporal context through multi-scale feature extrac-tion, while DCVC-HEM [37] improved the precision of the entropy model by jointly exploiting spatial and temporal pri-ors. DCVC-DC [1] diversified context mining through group-based offset design, DCVC-FM [1] expanded the achievable bitrate range, and DCVC-RT [38] explored real-time coding efficiency. These developments have established DCVC as a representative baseline for state-of-the-art NVC frameworks. 
+
+B. Content-Adaptive Optimization in NVC 
+
+Content-adaptive strategies are increasingly explored in video compression to address the domain gap between training and testing data. Tang et al. [33] fine-tuned optical flow using motion information from VTM in an offline stage, followed by online iterative optimization to enhance motion estimation. Similarly, Chen et al. [34] extended parameter-efficient transfer learning (PETL) to NVC using low-rank adapters. Lu et al. [40] proposed an online content-adaptive framework based on rate-distortion optimization, while Zuo et al. [41] introduced a frame-level adaptive λ for dynamic rate-distortion control. Additionally, Bilican et al. [42] adjusted motion vector scales at test time to improve compression for videos with complex motion. III. P ROPOSED METHOD 
+
+As shown in Fig. 1, DCVC-DT extends the condition-based NVC framework DCVC-DC [1] with two modules: an online latent refinement for domain transfer and a frame-level dynamic RD adjustment for quality fluctuation guidance. Both encoder and decoder parameters are fixed, with only the latent representation being optimized on the encoder side. This optimization does not affect decoding time and mitigates the error propagation issue present in DCVC-DC. 
+
+A. Overview 
+
+During inference, the motion estimation network generates motion vectors vt between xt and ˆxt−1, which are encoded into latent motion features mt and decoded as ˆvt. The re-constructed motion warps previous-frame features Ft−1 to produce multi-scale temporal contexts C1,2,3 
+
+> t
+
+for conditional coding of the current frame. The latent representation yt is then quantized and entropy coded. To enhance adaptivity, DCVC-DT refines yt online through a lightweight domain transfer process and dynamic adjustment of frame-level RD based on quality variations. 
+
+B. Online Latent Refinement 
+
+The proposed online latent refinement module operates entirely on the encoder side and refines the latent represen-tation yt after initial encoding. Instead of updating model Context         
+
+> Encoder
+> 𝑥𝑥 𝑡𝑡
+> [𝑦𝑦 𝑡𝑡 ][�𝑦𝑦 𝑡𝑡 ]Frame
+> Generator
+> AE AD
+> Current Frame Decoded Frame
+> Distortion
+> �𝑥𝑥 𝑡𝑡
+> 𝑄𝑄
+> AE : Arithmetic Encoder
+> AD : Arithmetic Decoder
+> Q : Quantization
+> 𝑄𝑄 −1
+> 𝑦𝑦 𝑡𝑡 Context
+> Decoder
+> Dynamic RD Adjustment
+
+𝐿𝐿 𝑡𝑡  = 𝛽𝛽 𝑡𝑡  · 𝑅𝑅  + 𝑤𝑤 𝑡𝑡  · 𝜆𝜆 · 𝐷𝐷 (𝑥𝑥 𝑡𝑡 , �𝑥𝑥 𝑡𝑡 )𝑦𝑦 𝑡𝑡  
+
+> ’
+
+= 𝑦𝑦 𝑡𝑡 − 𝛼𝛼 𝜕𝜕𝐿𝐿 𝑡𝑡 
+
+𝜕𝜕𝑦𝑦 𝑡𝑡       
+
+> �𝑦𝑦 𝑡𝑡 Fig. 2. Illustration of the proposed Online Latent Refinement and Frame-level Dynamic RD Adjustment modules. During inference, the encoder iteratively updates the latent representation ytvia gradient descent to minimize RD loss. Simultaneously, the dynamic RD adjustment module regulates the rate weight βt
+> based on the inter-frame quality fluctuation ∆Qtto effectively enhance RD performance. Notably, this entire process requires no network parameter updates.
+
+parameters, the module directly optimizes yt in accordance with the rate–distortion objective: 
+
+Lt = R + wt · λ · D(xt, ˆxt), (1) where D(·) measures the reconstruction distortion PSNR, R(·)
+
+denotes the estimated bitrate, and wt is a frame-level weighting factor that controls the RD trade-off, with wt values of {0.5, 1.2, 0.5, 0.9 } for a 4-frame miniGOP, representing factors for hierarchical quality structure adjustment. The latent representation is updated via gradient descent: 
+
+y′ 
+
+> t
+
+= yt − α ∂Lt
+
+∂y t
+
+, (2) where α is the learning rate. We replace the rounding process with stochastic Gumbel annealing based quantization (SGA-Q) [29], formulated as [y′
+
+> t
+
+] = Q(yt). Since only the latent representation is refined, both encoder and decoder param-eters are fixed, ensuring no impact on decoding time. This lightweight process enables the encoder to adapt dynamically to domain-specific content characteristics, effectively bridging the gap between training and testing domains. 
+
+C. Frame-level Dynamic RD Adjustment 
+
+In addition to online latent refinement, DCVC-DT intro-duces a frame-level dynamic RD adjustment strategy to im-prove reconstruction quality. The method dynamically adjusts a weighting factor βt in the bitrate computation according to the distortion variation between consecutive frames. The updated loss function is as follows: 
+
+Lt = βt · R + wt · λ · D(xt, ˆxt), (3) where βt is a dynamically adjusted weighting factor that mod-ulates the bitrate R. The factor βt is based on the distortion variation between consecutive frames, and it helps to adjust the contribution of the bitrate term to the loss function, optimizing the RD trade-off for better RD performance. Specifically, the distortion difference is computed as ∆Qt =
+
+Q(xt, ˆxt) − Q(xt−1, ˆxt−1), where Q(·) measures reconstruc-tion distortion PSNR. The factor βt is then updated from a baseline β0 = 1 as: 
+
+βt = β0 − 0.2 · sign (∆ Qt), (4) where β0 is the initial value of βt, and the adjustment step is 0.2. This value of 0.2 is empirically chosen, and experiments have shown it to be the optimal value compared to 0.1 and 0.3. It does not significantly degrade the distortion term while allowing for an increase in bitrate, which helps to improve reconstruction quality. If the current frame has a lower PSNR than the previous one, βt is increased by 0.2, otherwise, it is decreased by 0.2. This allows dynamic adjustment of the weights of R and D in the loss function based on distortion fluctuations between frames, optimizing overall RD performance. Unlike the fixed periodic bitrate weighting schemes in DCVC-DC, where wt values are set as {0.5, 1.2, 0.5, 0.9 },our approach adjusts both R and D, redistributing their con-tributions in the loss function. This adaptive method provides more precise control over bitrate allocation, smoothing quality fluctuations and enhancing overall rate-distortion efficiency across sequences. IV. E XPERIMENTS AND RESULTS 
+
+A. Experimental Setup 
+
+We evaluate DCVC-DT on HEVC Class C and D test sequences [43] following the evaluation settings of DCVC-DC [1]. All videos are converted to BT.709 color space for evaluation. The learning rate for the refinement process is initially set to 1 × 10 −3 and is reduced to 1 × 10 −4 after 
+
+80% of the total iterations. The optimization is performed for up to 1000 iterations for each test sequence. Different 
+
+λ = 8 · { 85 , 170 , 380 , 840 } values are applied to control the rate–distortion trade-off at various bitrate points, with the factor of 8 adjusting for the online optimization to align the results with the original bitrate. All experiments are conducted under a real encoding and decoding process with an intra period of 32. The first 96 frames are evaluated. 
+
+B. Experimental Results 
+
+We compare DCVC-DT with representative DCVC works, including DCVC-DC [1], DCVC-TCM [36], and DCVC-HEM [37]. Rate–distortion performance is evaluated in terms of PSNR on HEVC Class C and D datasets. As shown in TABLE I BD-RATE (%) COMPARISON OF DCVC-BASED METHODS ON HEVC C LASS C AND D DATASETS EVALUATED UNDER PSNR. T HE ANCHOR IS DCVC-DC. 
+
+Method HEVC C HEVC D Avg 
+
+BQMall BasketballDrill PartyScene RaceHorses BasketballPass BlowingBubbles BQSquare RaceHorses DCVC-TCM [36] 103.99 101.37 107.23 77.11 82.13 81.95 140.53 66.42 95.09 DCVC-HEM [37] 38.85 54.14 49.09 30.81 38.84 40.71 63.29 33.70 43.68 DCVC-DC [1] 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 DCVC-DT (Ours) -7.95 -5.49 -3.22 -8.72 -5.64 -5.48 -5.91 -7.25 -6.21 30             
+
+> 31
+> 32
+> 33
+> 34
+> 35
+> 36
+> 37
+> 38
+> 0.03 0.08 0.13 0.18 0.23 0.28
+> PSNR(dB)
+> BPP
+> HEVC D
+> DCVC-TCM
+> DCVC-HEM
+> DCVC-DC
+> DCVC-DT
+> 30
+> 31
+> 32
+> 33
+> 34
+> 35
+> 36
+> 37
+> 0.03 0.08 0.13 0.18 0.23 0.28
+> PSNR(dB)
+> BPP
+> HEVC C
+> DCVC-TCM
+> DCVC-HEM
+> DCVC-DC
+> DCVC-DT
+
+Fig. 3. R–D performance comparison on HEVC Class C and D datasets evaluated with PSNR under BT.709 color space. 
+
+Table I and Fig. 3, DCVC-DT consistently outperforms all compared methods, achieving an average BD-rate (PSNR) [44] reduction of 6.21% over DCVC-DC. To further demonstrate the effectiveness of our method, we provide a curve visualization in Fig. 4, which presents the PSNR and BPP fluctuation curves for the first 32 frames of the BasketballPass sequence from the HEVC Class D dataset at the highest bitrate. The results clearly show that DCVC-DT achieves improved reconstruction quality and significantly alleviates the error propagation issue. This is due to the continuous improvement in the quality of reference frames, which leads to progressively better performance across frames. 38                                                               
+
+> 38.5
+> 39
+> 39.5
+> 40
+> 40.5
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+> PSNR(dB)
+> DCVC-DC
+> DCVC-DT
+> 0
+> 0.05
+> 0.1
+> 0.15
+> 0.2
+> 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+> BPP
+
+Fig. 4. The first 32 frames of the BasketballPass sequence from the HEVC Class D dataset, showing PSNR and BPP fluctuations at the highest bitrate. This highlights better error propagation management. TABLE II ABLATION STUDY ON THE FIRST 32 FRAMES OF BASKETBALL PASS SEQUENCE FROM THE HEVC C LASS D DATASET WITH BD-RATE (PSNR). 
+
+Component Model A Model B Model C 
+
+Online Latent Refinement ✗ ✓ ✓
+
+Frame-level Dynamic RD Adjustment ✗ ✗ ✓
+
+BD-Rate (%) 0.0 -2.35 -3.61 
+
+C. Ablation Study 
+
+To evaluate the contribution of each component, ablation experiments are conducted on first 32 frames of the Basketball-Pass sequence from the HEVC Class D dataset. The baseline Model A corresponds to the original DCVC-DC. Model B incorporates only the online latent refinement module, while Model C further adds the frame-level dynamic RD adjustment strategy. Each refinement process is performed for 500 iter-ations during inference. As shown in Table II, online latent refinement alone achieves a 2.35% BD-rate reduction, and the integration of frame-level dynamic RD adjustment brings 3.61% improvement. These results confirm that both modules are effective. 
+
+D. Complexity Analysis 
+
+The proposed method performs domain transfer at the encoding side, which increases both computation and memory requirements on the encoder due to iterative optimization. If iteration is set to 500, fine-tuning a single HEVC Class D sequence at one bitrate point takes only about 25 minutes on a single A100 (40G) GPU. The number of iterations can be adjusted based on the desired level of optimization and complexity constraints. In contrast, the encoder and de-coder parameters remain unchanged, and the decoding time is unaffected. This makes the method particularly suitable for scenarios requiring fine optimization on the encoder side. V. C ONCLUSION 
+
+In this work, we presented DCVC-DT, a domain transfer enhanced neural video compression framework that mitigates the domain gap between training and testing data. By intro-ducing a lightweight online domain transfer mechanism and a frame-level dynamic RD adjustment scheme, our method achieves adaptive compression without modifying the network parameters. Experimental results demonstrate that DCVC-DT improves rate-distortion efficiency and enhances generaliza-tion across diverse testing scenarios, highlighting its strong potential for content adaptation in video encoding. REFERENCES [1] J. Li, B. Li, and Y. Lu, “Neural video compression with diverse contexts,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023, pp. 22 616–22 626. [2] G. Zhang, L. Tang, and X. Zhang, “Vqnerv: Vector quantization neural representation for video compression,” in IEEE International Symposium on Circuits and Systems , 2024. [3] J. Liao, L. Li, D. Liu, and H. Li, “Efvc: Error-propagation-free neural video coding with reversible transform,” in IEEE International Sympo-sium on Circuits and Systems , 2025. [4] X. Sheng, L. Li, D. Liu, and S. Wang, “Bi-directional deep contextual video compression,” IEEE Transactions on Multimedia , 2025. [5] Y. Zhai, L. Tang, W. Jiang, J. Yang, and R. Wang, “L-lbvc: Long-term motion estimation and prediction for learned bi-directional video compression,” in IEEE Data Compression Conference , 2025, pp. 53–62. [6] C. Jia, F. Ye, S. Ma, W. Gao, H. Sun, and L. Chiariglione, “Emerging advances in learned video compression: Models, systems and beyond,” in International Joint Conference on Artificial Intelligence , 2025. [7] F. Ye, L. Zhang, and C. Jia, “Deep video compression with scaled hier-archical bi-directional motion model,” in ACM International Conference on Multimedia , 2024, pp. 11 244–11 247. [8] R. Lin, M. Wang, P. Zhang, S. Wang, and S. Kwong, “Multiple hypotheses based motion compensation for learned video compression,” 
+
+Neurocomputing , vol. 548, p. 126396, 2023. [9] S. Ma, S. Song, B. Chen, Q. Mao, X. Fang, C. Jia, and S. Wang, “Generative coding: Promise and challenges,” APSIPA Transactions on Signal and Information Processing , vol. 14, 2025. [10] T. Zhang, X. Meng, and S. Ma, “Content adaptive based motion alignment framework for learned video compression,” in arXiv preprint arXiv:2512.12936 , 2025. [11] T. Zhang, Z. Huang, X. Meng, K. Zhang, Z. Deng, and S. Ma, “L-stec: Learned video compression with long-term spatio-temporal enhanced context,” in arXiv preprint arXiv:2512.12790 , 2025. [12] X. Meng, S. Zhu, S. Ma, and B. Zeng, “Learned image compression with large capacity and low redundancy of latent representation,” in 
+
+IEEE International Conference on Image Processing , 2023, pp. 1640– 1644. [13] W. Jiang, J. Li, K. Zhang, and L. Zhang, “Ecvc: Exploiting non-local correlations in multiple frames for contextual video compression,” in 
+
+IEEE/CVF Conference on Computer Vision and Pattern Recognition Conference , 2025, pp. 7331–7341. [14] X. Sheng, L. Li, D. Liu, and H. Li, “Spatial decomposition and temporal fusion based inter prediction for learned video compression,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 7, pp. 6460–6473, 2024. [15] Y. Zhai, J. Yang, W. Jiang, C. Yang, L. Tang, and R. Wang, “Hybrid local-global context learning for neural video compression,” in IEEE Data Compression Conference , 2024, pp. 322–331. [16] X. Sheng, L. Li, D. Liu, and H. Li, “Prediction and reference quality adaptation for learned video compression,” IEEE Transactions on Image Processing , 2025. [17] W. Jiang, J. Li, K. Zhang, and L. Zhang, “Biecvc: Gated diversifica-tion of bidirectional contexts for learned video compression,” in ACM International Conference on Multimedia , 2025, pp. 7248–7257. [18] K. Lin, C. Jia, X. Zhang, S. Wang, S. Ma, and W. Gao, “Dmvc: Decomposed motion modeling for learned video compression,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 33, no. 7, pp. 3502–3515, 2022. [19] S. Liao, K. Feng, Z. Huang, S. Ma, Q. Wang, L. Chen, and C. Jia, “Dy-namic temporal reference aggregation for neural video compression,” in 
+
+IEEE Data Compression Conference , 2025, pp. 13–22. [20] S. Liao, K. Feng, C. Jia, Z. Huang, and S. Ma, “Neural video com-pression with dynamic temporal context mining,” in IEEE International Conference on Wireless Communications and Signal Processing , 2024, pp. 1337–1342. [21] K. Feng, S. Liao, Z. Huang, C. Jia, Q. Wang, L. Chen, S. Ma, and W. Gao, “Staco: Spatio-temporal adaptive context optimization for neural video compression,” in IEEE Data Compression Conference .IEEE, 2025, pp. 365–365. [22] S. Liao, C. Jia, H. Fan, J. Yan, and S. Ma, “Rate-quality based rate control model for neural video compression,” in IEEE International Conference on Acoustics, Speech and Signal Processing , 2024, pp. 4215–4219. [23] Y. Zhao, J. Fu, Z. Li, Q. Wang, Z. Huang, J. Zhang, C. Jia, and S. Ma, “Advanced learning-based coding tools for ecm: Intra prediction and in-loop filtering,” in IEEE International Symposium on Circuits and Systems , 2025. [24] T. Zhang, H. Wang, X. Meng, K. Zhang, X. Deng, Z. Huang, and S. Ma, “Chnerv: Condition enhanced hybrid neural representation for videos,” in IEEE International Conference on Acoustics, Speech and Signal Processing , 2026, pp. 8377–8381. [25] T. Wiegand, G. J. Sullivan, G. Bjontegaard, and A. Luthra, “Overview of the h. 264/avc video coding standard,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 13, no. 7, pp. 560–576, 2003. [26] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, “Overview of the high efficiency video coding (hevc) standard,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 22, no. 12, pp. 1649– 1668, 2012. [27] B. Bross, Y.-K. Wang, Y. Ye, S. Liu, J. Chen, G. J. Sullivan, and J.-R. Ohm, “Overview of the versatile video coding (vvc) standard and its applications,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 10, pp. 3736–3764, 2021. [28] J. Campos, S. Meierhans, A. Djelouah, and C. Schroers, “Content adaptive optimization for neural image compression,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops ,2019. [29] Y. Yang, R. Bamler, and S. Mandt, “Improving inference for neural image compression,” in Advances in Neural Information Processing Systems , vol. 33, 2020, pp. 573–584. [30] T. van Rozendaal, I. Huijben, and T. S. Cohen, “Overfitting for fun and profit: Instance-adaptive data compression,” in International Conference on Learning Representations , 2021. [31] K. Tsubota, H. Akutsu, and K. Aizawa, “Universal deep image com-pression via content-adaptive optimization with adapters,” in IEEE/CVF Winter Conference on Applications of Computer Vision , 2023, pp. 2529– 2538. [32] G. Pan, G. Lu, Z. Hu, and D. Xu, “Content adaptive latents and decoder for neural image compression,” in European Conference on Computer Vision . Springer, 2022, pp. 556–573. [33] C. Tang, X. Sheng, Z. Li, H. Zhang, L. Li, and D. Liu, “Offline and online optical flow enhancement for deep video compression,” in AAAI Conference on Artificial Intelligence , vol. 38, no. 6, 2024, pp. 5118– 5126. [34] Z. Chen, L. Zhou, Z. Hu, and D. Xu, “Group-aware parameter-efficient updating for content-adaptive neural video compression,” in ACM Inter-national Conference on Multimedia , 2024, pp. 11 022–11 031. [35] J. Li, B. Li, and Y. Lu, “Deep contextual video compression,” in 
+
+Advances in Neural Information Processing Systems , vol. 34, 2021, pp. 18 114–18 125. [36] X. Sheng, J. Li, B. Li, L. Li, D. Liu, and Y. Lu, “Temporal context min-ing for learned video compression,” IEEE Transactions on Multimedia ,vol. 25, pp. 7311–7322, 2022. [37] J. Li, B. Li, and Y. Lu, “Hybrid spatial-temporal entropy modelling for neural video compression,” in ACM International Conference on Multimedia , 2022, pp. 1503–1511. [38] Z. Jia, B. Li, J. Li, W. Xie, L. Qi, H. Li, and Y. Lu, “Towards practical real-time neural video compression,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025, pp. 12 543–12 552. [39] J. Li, B. Li, and Y. Lu, “Neural video compression with feature modulation,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 26 099–26 108. [40] G. Lu, C. Cai, X. Zhang, L. Chen, W. Ouyang, D. Xu, and Z. Gao, “Content adaptive and error propagation aware deep video compression,” in European Conference on Computer Vision . Springer, 2020, pp. 456– 472. [41] Z. Zuo, J. Liao, X. Song, Z. Liu, H. Zheng, and D. Liu, “Frame level content adaptive λ for neural video compression,” in IEEE International Conference on Visual Communications and Image Processing , 2024. [42] A. Bilican, M. A. Yılmaz, and A. M. Tekalp, “Content-adaptive infer-ence for state-of-the-art learned video compression,” IEEE Open Journal of Signal Processing , 2025. [43] F. Bossen, “Common test conditions and software reference configura-tions,” in 3rd. JCT-VC Meeting, Guangzhou, CN, October 2010 , 2010. [44] G. Bjontegaard, “Calculation of average psnr differences between rd-curves,” ITU-T SG16, Doc. VCEG-M33 , 2001.
