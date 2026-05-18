@@ -1,0 +1,294 @@
+Title: Spatial Competition for Low-Complexity Learned Image Compression
+
+URL Source: https://arxiv.org/pdf/2605.13243v1
+
+Published Time: Thu, 14 May 2026 00:58:55 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+## SPATIAL COMPETITION FOR LOW-COMPLEXITY LEARNED IMAGE COMPRESSION 
+
+## Th´ eophile Blard †⋆ Pierrick Philippe † Th´ eo Ladune † Xiaoran Jiang ⋆ Olivier D´ eforges ⋆ 
+
+> †
+
+## Orange Research, France firstname.lastname@orange.com  
+
+> ⋆
+
+## Univ Rennes, INSA Rennes, CNRS, IETR (UMR 6164), France firstname.lastname@insa-rennes.fr 
+
+ABSTRACT 
+
+Autoencoder-based image codecs achieve state-of-the-art compression performance but often incur high computational complexity, particularly at decoding time. This work intro-duces a low-complexity learned image compression frame-work based on spatial competition between multiple spe-cialized neural codecs. For each image region, the encoder selects the codec that best matches the local content according to a rate-distortion cost. A mode map is transmitted as side information to indicate the per-region codec selection. At decoding time, this mode map-based selection guides recon-struction while preserving the complexity of a single codec. This design enables per-image adaptation with low decoding complexity and fast encoding. On the CLIC 2020 dataset, our method achieves up to −14 .5% rate reduction compared to a single codec and reaches HEVC-level performance with a decoding complexity of 1433 MACs per pixel. 
+
+Index Terms — Image coding, learned compression, low complexity, lightweight networks, content adaptation. 
+
+1. INTRODUCTION AND RELATED WORKS 
+
+Learned image codecs [1, 2] have recently surpassed con-ventional codecs (HEVC [3], VVC [4]) in rate-distortion (RD) performance. These methods typically train autoen-coders end-to-end to minimize the average RD cost over a large dataset. Once trained, their parameters are fixed, and compression of unseen images relies solely on generalization .Achieving strong generalization typically requires complex neural networks, leading to high decoding complexity, often exceeding 10 5 multiplications per pixel (Fig. 1). Such com-plexity might hinder practical deployment, particularly for decoding on resource-constrained devices. Reducing computational cost has therefore become an active area of research [5, 6, 7]. Decoding complexity is particularly critical, motivating asymmetric architectures that shift most of computation to the encoder side while keeping the decoder low in complexity [8, 9]. Beyond architectural design, model compression techniques such as structured pruning [1, 10, 11] and knowledge distillation [12] have also proved to be effective. Nevertheless, these approaches still 
+
+10 3 10 4 10 5 10 6
+
+−30 
+
+−20 
+
+−10 
+
+0
+
+10 
+
+20 N-O Cool-chic [15] 
+
+> Cool-chic 4.0 [14]
+
+Ours (M=1) 
+
+Ours (M=8) 
+
+> Scale Hyperprior [16]
+> Shallow-NTC [8]
+> EVC-LS [1]
+> DCVC-RT [2]
+> HEVC (HM 16.20)
+> VVC (VTM 19.1)
+> −14 .5%
+
+Decoding complexity [MAC / pixel] ↓     
+
+> BD-rate vs. HEVC (HM 16.20) [%]  ↓
+> 10 410 510 610 710 810 9
+
+Encoding complexity [MAC / pixel] ↓
+
+Fig. 1 : Rate savings vs. HEVC on the CLIC 2020 [17] dataset as a function of decoding complexity. Negative values mean fewer bits than HEVC at equal quality. Circle area de-notes encoding complexity. Values are reported in Table 2. incur substantially higher decoding complexity than con-ventional codecs and often require dedicated hardware accel-erators (e.g., GPUs) to achieve practical decoding throughput. An alternative paradigm is proposed by overfitted codecs such as Cool-chic [13, 14], which jointly learn (overfit) a lightweight decoder and latent representation per image rather than aiming for generalization. The decoder parameters are conveyed alongside the latents in the bitstream. This yields rate-distortion performance on par with VVC with a decoder complexity on the order of a few thousand multiplications per pixel, but requires a costly iterative optimization process at the encoder. Non-overfitted (N-O) Cool-chic [15] replaces per-image optimization with a learned encoder that generates the latents in a single forward pass, and a universal decoder, thereby significantly accelerating encoding while preserving fast decoding. However, this comes at the cost of reduced performance, suggesting that per-image adaptation may be particularly important when decoder capacity is limited. 
+
+> arXiv:2605.13243v1 [eess.IV] 13 May 2026
+
+This work aims to reconcile low decoding complexity and fast encoding in learned image compression. Inspired by mode selection in conventional coding, we investigate spatial competition between multiple neural codecs as an efficient mechanism for content adaptation. The proposed method relies on a set of pretrained codecs, each specialized for spe-cific image content, and selects at inference the most suitable codec for each region. The selection is conveyed to the de-coder via a mode map transmitted in the bitstream. This design enables per-image adaptation without requiring the iterative optimization process used by overfitted codecs. Our contributions are summarized as follows: • Content adaptation via spatial competition. We in-troduce a computationally efficient content adaptation mechanism that performs rate-distortion-based spatial selection among learned image codecs. • Specialization of learned codecs. An offline training framework is proposed to learn a set of neural codecs specialized for different image content. • Experimental evaluation. The approach is evaluated on multiple datasets and compared against representa-tive low-complexity learned codecs and conventional codecs. 
+
+2. METHOD 2.1. Autoencoder-based learned image compression 
+
+Learned image compression [16] is commonly formulated within the transform coding paradigm using autoencoder ar-chitectures optimized under a rate-distortion objective. It comprises an analysis transform ga(·; θ), a synthesis trans-form gs(·; ϕ) and an entropy model p(·; ψ), parameterized by θ, ϕ, and ψ, respectively. Given an input image x, the analysis transform produces a latent representation y, which is quantized to ˆy with a quantization function Q and entropy coded using the entropy model. The synthesis transform reconstructs the image ˆx from the quantized latents: 
+
+y = ga(x; θ), ˆy = Q(y), ˆx = gs( ˆ y; ϕ). (1) The model is optimized end-to-end by minimizing the rate-distortion loss: 
+
+L(x; θ, ϕ, ψ ) = D(x, ˆx) + λR ( ˆ y), (2) where D is a distortion metric (here, the MSE), R denotes the estimated bitrate and λ controls the trade-off. During training, the rate term is estimated via the entropy model as 
+
+R( ˆ y) = − log 2 p( ˆ y; ψ). (3) C
+
+> 2
+> input image
+> mode map
+
+Fig. 2 : Mode selection. The input image is first partitioned into non-overlapping patches. For each patch, the M codecs are evaluated by their rate-distortion costs, and the codec min-imizing this cost is selected, yielding the mode map m.
+
+2.2. Spatial competition of neural codecs 
+
+The learned image compression framework can be ex-tended by allowing the use of multiple codecs in competition. Specifically, we consider a set of M neural codecs, each de-fined by a distinct set of parameters {θm, ϕ m, ψ m}Mm=1 for the analysis, synthesis, and entropy models. Since the codecs are learned offline, all parameter sets are fixed after training and available to the encoder and the decoder. 
+
+Mode selection. The input image x ∈ R3×H×W is parti-tioned into non-overlapping P × P patches {xk}Kk=1 , where 
+
+K = ⌈H/P ⌉ · ⌈ W/P ⌉. For each patch xk, a mode index 
+
+mk ∈ { 1, . . . , M } is selected to minimize the rate-distortion loss: 
+
+mk = arg min  
+
+> m∈{ 1,...,M }
+
+L(xk; θm, ϕ m, ψ m) . (4) Fig. 2 illustrates the mode selection process. This per-patch selection ignores spatial interactions between neighboring patches but enables mode determination in a parallel fashion. The resulting mode map m = {mk}Kk=1 is encoded using fixed-length coding and added to the bitstream. This induces a rate overhead of 
+
+R(m) = K ⌈log 2 M ⌉
+
+HW bpp . (5) 
+
+Encoding. Given the image patches {xk}Kk=1 and the mode map m, each patch is encoded using the analysis trans-form specified by the selected mode mk:
+
+yk = ga(xk; θmk ), ˆyk = Q(yk). (6) As shown in Fig. 3, patches assigned to the same mode are processed jointly as connected regions, while boundaries be-tween patches with different modes are treated as local image borders. The resulting quantized latent patches { ˆyk}Kk=1 are entropy-coded using the selected entropy model parameters and written to the bitstream together with the mode map m.image patches 
+
+> bitstream
+> mode map
+> 2
+> codec parameters
+
+Fig. 3 : Spatial encoding process. Given the mode map m,each image patch is encoded using the selected analysis trans-form and entropy model. Patches sharing the same mode are processed continuously. AE denotes arithmetic encoding. 
+
+Decoding. The mode map m is first retrieved from the bit-stream. For each patch index k, the corresponding latent rep-resentation ˆyk is entropy-decoded using the entropy model parameters ψmk . Each decoded latent patch is then recon-structed using the corresponding synthesis transform: 
+
+ˆxk = gs( ˆ yk; ϕmk ). (7) As in encoding, patches sharing the same mode are recon-structed continuously. The image patches { ˆxk}Kk=1 are finally assembled to form the reconstructed image ˆx.
+
+Computational complexity. During mode selection, each patch is evaluated independently for the M codecs, requiring 
+
+M forward passes through the analysis transform, synthesis transform, and entropy model. After the mode map m is de-termined, each patch is processed once more through the se-lected analysis transform and entropy model. Let κga , κgs ,and κp denote the cost of a single forward pass through the analysis transform, synthesis transform, and entropy model, respectively. The total encoding complexity is therefore given by 
+
+κenc = M (κga + κgs + κp)
+
+| {z }
+
+> mode selection
+
++ κga + κp
+
+| {z }
+
+> final encoding
+
+. (8) The decoding complexity remains independent of M , as each patch requires a single pass in the selected entropy model and synthesis transform: 
+
+κdec = κgs + κp. (9) 
+
+2.3. Training specialized codecs for competition 
+
+The proposed spatial competition method relies on the availability of multiple specialized codecs. Such special-ization requires finding an appropriate repartition of the training data, so that each codec is adapted to a subset of image patches. Given a dataset of image patches D =
+
+{xi}Ni=1 , our goal is to jointly learn a set of codec param-eters {θm, ϕ m, ψ m}Mm=1 and a cluster assignment zi ∈{1, . . . , M } for each training patch, such that the overall rate-distortion cost is minimized: 
+
+min 
+
+> {zi},{θm,ϕ m,ψ m}
+> N
+
+X
+
+> i=1
+
+L(xi; θzi , ϕ zi , ψ zi ) . (10) Similar to clustering and codebook-learning methods in vector quantization [18] and transform competition [19], this optimization is performed by alternating between an assign-ment step and an update step .
+
+Assignment step. Each training sample xi is assigned to the codec that yields the lowest rate-distortion loss: 
+
+zi ← arg min  
+
+> m∈{ 1,...,M }
+
+L(xi; θm, ϕ m, ψ m) . (11) This induces a partition of the training set into M clusters, 
+
+Dm = {xi | zi = m}. (12) 
+
+Update step. Given the current assignments, the param-eters of each codec are updated by minimizing the rate-distortion loss over the samples assigned to its cluster: 
+
+θm, ϕ m, ψ m ← arg min 
+
+> θ,ϕ,ψ
+
+X
+
+> xi∈D m
+
+L(xi, θ, ϕ, ψ ) (13) Unlike vector quantization or transform competition methods, where updates are derived analytically, the update step here is performed via gradient-based optimization of the neural net-work parameters. This procedure alternates between assign-ment and update steps until the cluster assignments converge. 
+
+3. EXPERIMENTS 3.1. Experimental setup Model architecture. All experiments are conducted using the same autoencoder architecture. To enable low-complexity decoding, the synthesis transform and entropy model are taken from Cool-chic 4.0 [14], with respective complexities of κgs = 708 and κp = 725 MAC/pixel. To form a com-plete autoencoder, a compatible analysis transform derived from [15] is adopted. Compared to the original architecture, the number of channels and residual blocks is reduced to con-trol encoding complexity, resulting in κga = 18 kMAC/pixel. 
+
+Training. Models and cluster assignments are optimized through repeated assignment and update steps. At initial-ization, training samples are randomly assigned such that all clusters have the same size. Each update step consists of 100 k training iterations, with the learning rate annealed to zero using a cosine schedule. The initial learning rate Original M = 2 M = 4 M = 8                               
+
+> PSNR ↑/ Rate ↓39 .16 dB / 1.09 bpp 39 .35 dB / 1.10 bpp 39 .33 dB / 1.09 bpp
+> PSNR ↑/ Rate ↓40 .36 dB / 0.35 bpp 40 .49 dB / 0.35 bpp 40 .46 dB / 0.33 bpp
+
+Fig. 4 : Visualization of mode maps for different numbers of modes. Mode maps are obtained with different numbers of competing modes ( M ) at λ = 0 .0002 . Images are stefan-kunze-26931 and nomao-saeki-33553 from the CLIC 2020 dataset. BD-rate (%) vs. single codec ( M = 1 ) ↓
+
+M κenc ↓ Kodak [23] CLIC 2020 [17] JPEG AI [24] 
+
+1 18 0 0 02 57 −4.1 −8.6 −6.24 95 −5.6 −11 .8 −8.7
+
+8 171 −7.4 −14 .5 −11 .4
+
+Table 1 : BD-rate savings relative to a single codec for dif-ferent numbers of modes M . Encoding complexity κenc is reported in kMAC/pixel. is set to 10 −3 and is progressively reduced between phases by a multiplicative factor α = 0 .98 . Training samples con-sist of randomly cropped 128 × 128 patches from the Un-splash [20] dataset. Models are trained using the Adam [21] optimizer with a batch size of 64 . Backpropagation through quantization is enabled using additive noise and softround relaxation [22]. Separate runs are conducted for each rate constraint λ ∈ { 0.01 , 0.004 , 0.001 , 0.0004 , 0.0002 , 0.0001 }
+
+and each number of clusters, with up to M = 8 .
+
+Evaluation. We evaluate on the Kodak [23], CLIC 2020 [17] and JPEG AI Test [24] datasets, covering image resolutions from 512 × 384 to 3680 × 2456 pixels. Consistently with the training setup, test-time inference uses a patch size of 
+
+P = 128 and up to M = 8 competing codecs. Rate-distortion performance is measured using PSNR on RGB channels and codecs are compared using the Bjøntegaard Delta Rate [25] (BD-Rate). Comparisons are made against HEVC [3] (HM 16.20) and several low-complexity learned codecs, including Cool-chic 4.0 [14], N-O Cool-chic [15], Scale Hyperprior [16], Shallow-NTC [8], and EVC [1]. 
+
+3.2. Results Rate-distortion performance. Table 1 shows that increas-ing the number of modes M consistently improves compres-sion efficiency. For M = 8 , BD-rate savings reach up to 
+
+−14 .5% on the CLIC 2020 dataset compared to the single-codec baseline ( M = 1), demonstrating the effectiveness of spatial competition. Fig. 4 further illustrates that larger values of M improve rate-distortion performance. The gains are modest on Kodak, which can be attributed to the smaller image resolution: the limited number of spatial patches limits the exploitation of spatial mode selection. Fig. 6 reports rate-distortion curves, where consistent rate savings are observed across the entire bitrate range. Depending on the number of competing codecs, the encoding complexity ranges from 18 to 171 kMAC/pixel, which remains within the typical range of standard autoencoder-based methods. Importantly, increasing M does not affect decoding complexity, which remains fixed at κdec = 1433 MAC/pixel. 
+
+Comparison to prior work. Fig. 5 and Table 2 posi-tion compression performance against encoding and de-coding complexity. Results are reported relative to HEVC (HM 16.20) on the CLIC 2020 dataset. With M = 2 codecs, our approach outperforms Scale Hyperprior [16], while using a decoder that is 40 × less complex (1.4 vs. 56 kMAC/pixel). With M = 8 , our method reaches near-HEVC performance (+2 .6% BD-rate). At comparable encoding complexity, it significantly outperforms Shallow-NTC [8], which remains 10 4 10 5 10 6 10 7 10 8        
+
+> −10
+> 0
+> 10
+> 20 Shallow-NTC [8]
+> EVC-LS [1]
+> Scale Hyperprior [16]
+> HEVC (HM 16.20)
+> M= 1
+> M= 2
+> M= 4
+> M= 8
+> 1500
+> 2000
+> 3000
+> 4000
+> Encoding complexity [MAC / pixel] ↓
+> BD-rate vs. HEVC (HM 16.20) [%]  ↓
+> Ours N-O Cool-chic [15] Cool-chic 4.0 [14]
+
+Fig. 5 : BD-rate vs. encoding complexity on CLIC 2020. Following [15], encoding complexity for Cool-chic 4.0 is computed as 3 × κdec × number of iterations. Method κenc ↓ κdec ↓ BD-rate [%] ↓
+
+DCVC-RT [2] 256 362 −30 .7
+
+Cool-chic 4.0 [14] ∼ 10 6 1.4 −24 .8
+
+EVC-LS [1] 272 64 −15 .1
+
+Scale Hyperprior [16] 56 56 +12 .8
+
+N-O Cool-chic [15] 162 2.3 +17 .1
+
+Shallow-NTC [8] 262 21 +18 .6
+
+Ours ( M = 1 ) 18 1.4 +20 .4
+
+Ours ( M = 2 ) 57 1.4 +9 .8
+
+Ours ( M = 4 ) 95 1.4 +5 .9
+
+Ours ( M = 8 ) 171 1.4 +2 .6
+
+Table 2 : BD-rate vs. HEVC on CLIC 2020. Encod-ing and decoding complexity κenc and κdec are reported in kMAC/pixel. at +18 .6% BD-rate vs HEVC despite a 15 × more complex decoder (1.4 vs. 21 kMAC/pixel), and improves upon N-O Cool-chic [15] by 11 .8% BD-rate. With identical decod-ing complexity, overfitted Cool-chic [14] achieves superior compression performance; but at the cost of a substantially heavier encoding process. 
+
+Mode-map overhead. Signaling the mode map incurs a negligible side-information cost. With M = 8 the mode map requires only 3 bits per patch, corresponding to 1.8 ×
+
+10 −4 bpp for patch size P = 128 . Across all tested datasets and operating points, this represents at most 1% of the total rate. This low overhead leaves room to increase the number of modes M or to reduce the patch size P for finer adaptation. 
+
+Decoder memory footprint. The number of decoder pa-rameters scales linearly with the number of modes M , as each mode is associated with its own synthesis transform and en-           
+
+> 00.20.40.60.811.2
+> 28
+> 30
+> 32
+> 34
+> 36
+> 38
+> 40
+> Rate [bpp] ↓
+> PSNR [dB]  ↑
+> HM 16.20
+> VTM 19.1
+> Scale Hyperprior [16]
+> Cool-chic 4.0 [14]
+> Ours (M= 1)
+> Ours (M= 8)
+
+Fig. 6 : Rate-distortion performance on CLIC 2020. tropy model. However, these components are extremely com-pact (on the order of a thousand parameters), so the resulting memory overhead remains well below that of a single state-of-the-art autoencoder-based codec. 
+
+4. CONCLUSION 
+
+This work introduces a low-complexity learned image compression framework based on spatial competition be-tween multiple specialized neural codecs. By selecting, for each image region, the codec that minimizes the local rate-distortion cost, the proposed approach enables efficient per-image adaptation. On the CLIC 2020 dataset, our method achieves up to −14 .5% rate reduction relative to a single-codec configuration and delivers rate-distortion results com-parable to HEVC, while maintaining a low decoding com-plexity of 1433 MACs per pixel. Importantly, the encoding complexity remains in the typical range of autoencoder-based codecs; in contrast to overfitted codecs, no costly iterative op-timization is required. These results demonstrate that spatial competition can be an effective mechanism for improving the performance of low-complexity learned codecs. 
+
+Limitations and future work. While the proposed ap-proach demonstrates an attractive trade-off between complex-ity and performance, it still lags behind state-of-the-art meth-ods in absolute rate-distortion performance. Future work will therefore focus on narrowing this gap. Promising directions include increasing the number of competing codecs and re-ducing the patch size to enable finer spatial adaptation. Ex-posing codecs to multiple patch sizes during training and in-ference may further improve performance by better captur-ing content at different scales. Finally, extending the spatial competition framework to other learned compression archi-tectures would help validate its broader applicability. 5. REFERENCES 
+
+[1] Guo-Hua Wang, Jiahao Li, Bin Li, and Yan Lu, “EVC: Towards real-time neural image compression with mask de-cay,” in International Conference on Learning Representa-tions , 2023. [2] Zhaoyang Jia, Bin Li, Jiahao Li, Wenxuan Xie, Linfeng Qi, Houqiang Li, and Yan Lu, “Towards practical real-time neural video compression,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 12543–12552. [3] Gary J Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand, “Overview of the high efficiency video coding (HEVC) standard,” IEEE Transactions on circuits and systems for video technology , vol. 22, no. 12, pp. 1649–1668, 2012. [4] Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J. Sullivan, and Jens-Rainer Ohm, “Overview of the Versatile Video Coding (VVC) standard and its applications,” 
+
+IEEE Transactions on Circuits and Systems for Video Technol-ogy , vol. 31, no. 10, pp. 3736–3764, 2021. [5] Yichi Zhang, Zhihao Duan, and Fengqing Zhu, “On efficient neural network architectures for image compression,” in 2024 IEEE International Conference on Image Processing (ICIP) .IEEE, 2024, pp. 3674–3680. [6] Matthew Muckley, Marton Havasi, Jakob Verbeek, and Karen Ullrich, “Architecture optimizations for improving neural im-age compression compute complexity,” in 2025 Data Com-pression Conference (DCC) . IEEE, 2025, pp. 3–12. [7] Wen Tan, Youneng Bao, Fanyang Meng, and Yongsheng Liang, “Grouped transform for ultra-low-complexity learned image compression,” in 2025 IEEE International Symposium on Circuits and Systems (ISCAS) . IEEE, 2025, pp. 1–5. [8] Yibo Yang and Stephan Mandt, “Computationally-efficient neural image compression with shallow decoders,” in Proceed-ings of the IEEE/CVF International Conference on Computer Vision , 2023, pp. 530–540. [9] Shen Wang, Zhengxue Cheng, Donghui Feng, Guo Lu, Li Song, and Wenjun Zhang, “Asymllic: Asymmetric lightweight learned image compression,” in 2024 IEEE In-ternational Conference on Visual Communications and Image Processing (VCIP) , 2024, pp. 1–5. [10] Nick Johnston, Elad Eban, Ariel Gordon, and Johannes Ball´ e, “Computationally efficient neural image compression,” arXiv preprint arXiv:1912.08771 , 2019. [11] Md Adnan Faisal Hossain and Fengqing Zhu, “Structured pruning and quantization for learned image compression,” in 
+
+2024 IEEE International Conference on Image Processing (ICIP) . IEEE, 2024, pp. 3730–3736. [12] Yunuo Chen, Zezheng Lyu, Bing He, Ning Cao, Gang Chen, Guo Lu, and Wenjun Zhang, “Knowledge distillation for learned image compression,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2025, pp. 4996– 5006. [13] Th´ eo Ladune, Pierrick Philippe, F´ elix Henry, Gordon Clare, and Thomas Leguay, “Cool-chic: Coordinate-based low complexity hierarchical image codec,” in Proceedings of the IEEE/CVF International Conference on Computer Vision ,2023, pp. 13515–13522. [14] Orange Research, “The Cool-chic image and video codec,” 
+
+https://github.com/Orange-OpenSource/ Cool-Chic/releases/tag/v4.0.0 , 2025, Open-source software, version 4.0. [15] Th´ eophile Blard, Th´ eo Ladune, Pierrick Philippe, Gordon Clare, Xiaoran Jiang, and Olivier D´ eforges, “Overfitted image coding at reduced complexity,” in 2024 32nd European Signal Processing Conference (EUSIPCO) . IEEE, 2024, pp. 927–931. [16] Johannes Ball´ e, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston, “Variational image compression with a scale hyperprior,” in International Conference on Learn-ing Representations , 2018. [17] George Toderici, Wenzhe Shi, Radu Timofte, Lucas Theis, Jo-hannes Ball´ e, Eirikur Agustsson, Nick Johnston, and Fabian Mentzer, “Workshop and challenge on learned image com-pression (CLIC2020),” 2020. [18] Robert Gray, “Vector quantization,” IEEE Assp Magazine , vol. 1, no. 2, pp. 4–29, 1984. [19] Adri` a Arrufat Batalla, Multiple Transforms for Video Coding ,Ph.D. thesis, INSA de Rennes, 2015. [20] Luke Chesser, Timothy Carbone, and Ali Zahid, “Unsplash dataset,” https://unsplash.com/data , 2020. [21] Diederik P Kingma, “Adam: A method for stochastic opti-mization,” arXiv preprint arXiv:1412.6980 , 2014. [22] Hyunjik Kim, Matthias Bauer, Lucas Theis, Jonathan Richard Schwarz, and Emilien Dupont, “C3: High-performance and low-complexity neural compression from a single image or video,” in Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , 2024, pp. 9347–9358. [23] Eastman Kodak, “Kodak lossless true color image suite,” 
+
+https://r0k.us/graphics/kodak/ , 1993. [24] JPEG-AI, “JPEG-AI test images,” https://jpegai. github.io/test_images , 2020. [25] Gisle Bjontegaard, “Calculation of average PSNR differences between RD-curves,” ITU-Telecommunications Standardiza-tion Document , 2001.

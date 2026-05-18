@@ -1,0 +1,376 @@
+Title: AQMP: Image compression through Adaptive Quadtree Refinement and Matching Pursuit with Hyperparameter Optimization
+
+URL Source: https://arxiv.org/pdf/2605.09190v1
+
+Published Time: Tue, 12 May 2026 01:30:40 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# AQMP: Image compression through Adaptive Quadtree Refinement and Matching Pursuit with Hyperparameter Optimization 
+
+# Franco Cerino 1, Emmanuel Tassone 1, and Manuel Tiglio 11CONICET. Facultad de Matem´ atica, Astronom´ ıa, F´ ısica y Computaci´ on, Universidad Nacional de C´ ordoba (5000), Argentina May 12, 2026 
+
+Abstract 
+
+We present AQMP, a novel image codec combining Adaptive Quadtree Refinement with Matching Pursuit. Unlike conventional Matching Pursuit methods that operate on fixed-size sub-images, AQMP dy-namically adapts block sizes to local image structure, allocating finer partitions where the image is complex and coarser ones where it is smooth. This adaptivity yields superior compression ratios compared to fixed-size block Matching Pursuit at equivalent image quality, while offering significant parallelization opportunities at both the tree-leaf level and during compression of individual nodes. The algorithm is governed by user-specified accuracy and sparsity parameters alongside a small set of additional hyperparameters. To navigate the trade-off between compression efficiency and visual quality, we perform multi-objective hyperparameter optimization using the Tree-Structured Parzen Estimator, producing comprehensive Pareto fronts. Experimental re-sults show that AQMP achieves up to 4 × higher compression rates than JPEG at comparable SSIM values, while maintaining competi-tive quality across a broad range of compression regimes. Performance evaluation is provided using a representative set of test images. To ensure reproducibility and promote adoption, we have made our im-plementation publicly available on GitHub under the MIT license. 
+
+1
+
+> arXiv:2605.09190v1 [cs.CV] 9 May 2026
+
+# 1 Introduction 
+
+Image compression is a fundamental aspect of digital communication and storage, enabling efficient transmission and storage of visual data. With the exponential growth of digital content, the need for effective compression techniques has become more critical than ever. By reducing the amount of data required to represent an image, these techniques save storage space and lower the bandwidth needed for transmission. A prominent example is web browsing, where faster loading times are essential, particularly on mobile devices where storage and bandwidth are often limited. More broadly, image compression plays a vital role in reducing the costs associated with data storage and transmission, making it an indispensable technology for consumers and enterprises alike. Further applications include digital photography and medical imaging. In the latter, compression — often employing lossless or nearly lossless tech-niques — enables efficient storage and transmission of high-resolution images while adhering to legal and regulatory requirements that prioritize diagnos-tic accuracy and patient safety. This is critical for remote diagnosis and telemedicine, where preserving image fidelity is legally mandated to avoid misinterpretation [27]. Image compression also plays an important role in video streaming, where compressed frames are transmitted to ensure smooth playback, although most compression in that context is performed interframe [6, 14]. While modern video codecs (e.g., H.264 or HEVC) achieve significant compression efficiency through interframe techniques that exploit temporal redundancy between frames, our work focuses on intraframe compression, which instead exploits the redundancy within each individual frame. Traditional image compression methods, such as JPEG and its succes-sors, employ quantization to reduce the bit rate. However, this irreversibly discards high-frequency details, thereby limiting reconstruction fidelity. This paper addresses this issue by applying Matching Pursuit, a sparse approxi-mation technique that represents the most significant structures of the image, mitigating the reliance on rigid block quantization thresholds. The objective is to achieve higher compression rates while preserving perceptual quality The field of image compression has seen significant advances over the years. Recently, the integration of artificial intelligence (AI) and deep learn-ing has led to notable progress in this area. Methods based on convolu-tional neural networks (CNNs) and recurrent neural networks (RNNs) have been employed to achieve compact image representations with high com-pression performance [15, 16]. These AI-based methods learn from large datasets, enabling them to generalize well across diverse image types. For instance, Toderici et al. [15] proposed a recurrent neural network approach 2for full-resolution image compression, while Ball´ e et al. [16] introduced an end-to-end optimized method using deep learning. Despite their impres-sive performance, AI-based approaches often require substantial computa-tional resources for both training and inference, making them less suitable for resource-constrained devices. Matching Pursuit (MP) is a family of greedy algorithms that requires no learning phase and has been widely used in image compression and compres-sive sensing [42] due to its ability to find sparse signal representations [7]. It iteratively selects the best-matching atoms from an over-complete dictionary to approximate a signal (as explained in detail below), achieving a practical balance between compression efficiency and image quality. The use of MP in image compression has been extensively studied, with various adaptations proposed over the years. Elad et al. [34] demonstrated its effectiveness in sparse modeling of signals and images, while Nava-Tudela [1] explored its application in image representation and compression. MP’s ability to adapt to local image structure makes it particularly suitable for images with varying levels of detail. However, traditional MP approaches typically rely on fixed-size block partitioning, which can lead to suboptimal compression ratios and image quality [1, 9, 34]. Prior work on MP-based image compression typically partitions the image into fixed-size N × N and operates on an over-complete dictionary of size 
+
+N 2 × M , where M > N 2, seeking a sparse yet accurate representation via a greedy algorithm. A key limitation is that block sizes are fixed at compression time by the encoder. To overcome this, we introduce AQMP (Adaptive Quadtree 
+
+Matching Pursuit), a new codec that adaptively partitions an image into blocks of varying sizes based on local image structure, achieving better com-pression ratios than standard fixed-size MP at equivalent image quality. Greedy algorithms such as those used in MP offer a different paradigm compared to AI-based methods. While the latter leverage large datasets and complex models to learn optimal compression strategies, greedy algorithms pursue iterative, step-by-step optimization to achieve sparse representations [9]. This makes them more interpretable and easier to implement, especially in resource-constrained settings. Greedy algorithms can also be highly effi-cient in real-time applications, as they require no training or large-scale data processing. That said, the two families of methods are not always directly comparable: each has its own strengths and weaknesses, and the appropriate choice depends on the specific application. AI-based methods may achieve higher compression ratios and better perceptual quality in some settings, while greedy algorithms like MP can offer faster and more resource-efficient solutions [17, 18]. Understanding these trade-offs is therefore essential when 3selecting a compression technique for a given use case. A key limitation of fixed-block MP partitioning is that no single block size is universally appropriate. If blocks are too small, the encoder must store a large number of coefficient vectors, degrading compression efficiency. If blocks are too large, local image structure may not be captured accurately, resulting in poor reconstruction quality. To address these issues, we propose AQMP, which adaptively partitions the image into blocks of varying sizes based on local structure. By recursively refining block sizes through a quadtree decomposition, the encoder captures local image content more faithfully, yielding improved compression ratios and reconstruction quality. The remainder of this paper is organized as follows. Section 2 provides the technical background for this work, including a description of our approach in Subsection 2.3 and the multi-objective hyperparameter optimization (HPO) procedure in Subsection 2.4. Section 3 presents and discusses the experimen-tal results. Section 4 concludes the paper and outlines directions for future work. 
+
+# 2 Technical background 
+
+This section presents the technical background for this work as a linear pro-gression, where each subsection serves as a building block that naturally leads to the next, culminating in the full description of AQMP. Subsection 2.1 ex-plains how images are represented and introduces the dictionaries used in our approach. Subsection 2.2 outlines the core idea behind greedy compression algorithms, with a focus on Matching Pursuit as a means of obtaining sparse yet accurate signal representations. Subsection 2.3 provides a detailed de-scription of the AQMP method, including its implementation and operation. Finally, Subsection 2.4 presents a multi-objective hyperparameter optimiza-tion procedure for the AQMP algorithm. 
+
+# 2.1 Dictionaries and Transforms 
+
+Dictionaries in signal processing and image compression are collections of prototype signal elements known as atoms , used to represent signals or im-ages in a sparse manner. Each atom is a basic building block that can be combined linearly to approximate more complex signals. The primary goal is to achieve a sparse representation, where only a small number of atoms are needed to accurately reconstruct the original signal — a property that is directly beneficial for compression, as it reduces the amount of data required 4for storage or transmission. Dictionaries can be either predefined, such as wavelet or Fourier dictionaries, or learned from data, allowing them to adapt to the specific characteristics of the signals they represent [19, 20]. Predefined dictionaries are typically based on well-established mathemat-ical transforms such as wavelets or the discrete cosine transform (DCT), dis-cussed in the next subsection. An alternative is to learn dictionaries directly from data using methods such as K-SVD (K-means Singular Value Decom-position) or MOD (Method of Optimal Directions) [33], which iteratively update the dictionary atoms to better fit the training data. When choos-ing a dictionary, relevant considerations include the sparsity of the resulting representation, the computational cost of any learning procedure, and the ability of the dictionary to generalize to unseen signals [19, 21]. Several transforms are commonly used to construct dictionaries for sig-nal and image representation. The wavelet transform is widely used due to its ability to capture both spatial and frequency information, making it well-suited for signals with localized features. The discrete cosine transform (DCT) is another popular choice, particularly in image compression stan-dards such as JPEG, owing to its computational efficiency and its tendency to concentrate signal energy into a small number of coefficients for smooth signals. The Fourier transform is also commonly employed, especially for sig-nals with periodic or stationary components, as it provides a global frequency decomposition using complex exponential basis functions. Unlike the DCT, which produces real-valued coefficients and is well-suited for decorrelation in compression, the Fourier transform captures both magnitude and phase information across the entire signal, making it more appropriate for spectral analysis of periodic phenomena [19, 22, 23]. For a 1D DCT of length N , the DCT matrix C is an N × N matrix whose elements Ck,n are defined as 
+
+Ck,n = αk cos 
+
+ πN
+
+
+
+n + 12
+
+
+
+k
+
+
+
+, (1) where k and n range from 0 to N − 1, and αk is a normalization factor given by 
+
+αk =
+
+q 1 
+
+> N
+
+if k = 0 
+
+q 2 
+
+> N
+
+if k > 0. (2) For a 2D DCT, which is the variant used in this work, the transformation is applied separately along the rows and columns of the image, and the full 2D DCT matrix is constructed as the outer product of two 1D DCT matrices. Figure 1 illustrates the structure of these 2D DCT matrices, whose entries 5represent the cosine basis functions used to decompose an image into its frequency components. As shown in Fig. 1, different 2D DCT matrices — commonly referred to as atoms — activate different spatial regions of the image. For example, when atom 26 is applied to an image, only the right-hand portion is activated while the left-hand portion is suppressed. These atoms are grouped into a dictionary that plays a central role in the AQMP algorithm, described in detail in Section 2.3. 
+
+Figure 1: DCT matrix transforms. The image shows matrix transforms of size 16 × 128. Each matrix is multiplied by the image to be compressed, activating different columns. Blue colors indicate columns with zero values, yellow indicates columns with unit values, and intermediate colors correspond to values between zero and one. The more yellow the columns, the greater the weight given to the corresponding image region. 
+
+# 2.2 Greedy Algorithms and Matching Pursuit 
+
+Greedy algorithms [28, 36–40] have been widely used in image and video com-pression due to their simplicity and efficiency. These algorithms iteratively make locally optimal choices in pursuit of a global optimum. Notable exam-ples include the Set Partitioning in Hierarchical Trees (SPIHT) algorithm, which has been extensively used for wavelet-based image compression [12], and the Embedded Zerotree Wavelet (EZW) algorithm, which also employs a greedy approach to achieve efficient image compression [11]. Both have significantly advanced the field by providing effective methods that balance compression ratio and image quality [29]. The greedy algorithm used in this work is Matching Pursuit (MP), a technique that iteratively selects the best-matching atoms from a dictionary to build a sparse approximation of a signal. Let MP( D, y, ε, k ) denote an MP algorithm whose goal is to solve Problem (3,4): min  
+
+> x
+
+∥x∥0 subject to ∥Dx − y∥2 < ε (3) 6where D is a dictionary, y is the target signal, ε is the accuracy tolerance, and k is the maximum number of iterations. The stopping condition is 
+
+∥Dx − y∥2 < ε ∨ ∥x∥0 = k . (4) The rationale for this stopping criterion is as follows. MP initializes x as the zero vector. At each greedy iteration, one previously zero component of 
+
+x is assigned a non-zero value, so that after k iterations x has exactly k non-zero entries. Without the sparsity constraint on k, the accuracy condition 
+
+∥Dx − y∥2 < ε could in principle be satisfied with a large number of non-zero coefficients, yielding a representation that is insufficiently sparse and therefore achieves little compression. The MP algorithm proceeds as follows: 1. Given a signal x ∈ RN and an over-complete dictionary D = {ϕi}Mi=1 
+
+where ϕi ∈ RN , find a sparse representation of x as a linear combination of atoms from D.2. (a) Initialize the residual r0 = x and the iteration counter k = 0. (b) At each iteration k, select the atom ϕik that best matches the current residual: 
+
+ik = arg max  
+
+> i
+
+⟨rk, ϕ i⟩ ,
+
+where ⟨· , ·⟩ denotes a scalar product defined on RN .(c) Update the residual: 
+
+rk+1 = rk − ⟨ rk, ϕ ik ⟩ϕik .
+
+(d) Increment k and repeat steps (b)–(c) until the stopping criterion is met. In this work, each image (or image block) is treated as a flattened vector of pixel values. Specifically, an ( N × N ) block is rearranged into a single column vector ( x ∈ RN 2
+
+), making the 2D image data amenable to Matching Pursuit. We employ Orthogonal Matching Pursuit (OMP) rather than stan-dard MP, as it offers better convergence properties [7]; specifically, we use the OrthogonalMatchingPursuit class from scikit-learn .The main advantage of MP lies in its ability to adapt to the local struc-ture of images, providing a balance between compression efficiency and image quality. For images with complex local structures, more iterations are per-formed, adding more atoms to the sparse representation and achieving a more faithful approximation of the original image. The parameters involved 7in MP include the dictionary size, the stopping criterion, and the number of iterations. MP has been shown to be effective in various applications, including image compression [7, 34], sparse signal modeling [9], and image representation [1]. Despite its effectiveness, traditional MP methods often rely on fixed-size block partitioning, which can lead to suboptimal compres-sion ratios and image quality [1, 9, 34]. 
+
+# 2.3 Adaptive Quadtree Refinement and Matching Pur-suit (AQMP) 
+
+The AQMP method introduced in this paper addresses the limitations of fixed-block partitioning by adaptively partitioning the image into blocks of varying sizes based on local image structure. Adaptivity is achieved through a quadtree structure, where each block is recursively divided into four quad-rants if the target accuracy and sparseness are not met. This process contin-ues until the desired accuracy and sparseness are achieved or the minimum block size is reached. The encoder seeks a sparse representation of sub-images of size N × N ,where N is location-dependent. The process begins with the user specifying an accuracy tolerance ε in the ℓ2 norm, a sparseness parameter s equal to the number of MP iterations k and the ℓ0 norm of the sparse representation, and the minimum and maximum block sizes Nmin and Nmax . Setting a minimum block size is motivated by the fact that very small blocks contain little infor-mation to compress, while a maximum block size limits computational cost. By design, Nmax and Nmin in AQMP are related by a power of 2: Nmin = L
+
+and Nmax = 2 iL, for integers L and i. This defines a set of admissible block sizes 
+
+S = {L, 2L, . . . , 2iL}
+
+for some L > 0 and i ≥ 0. A collection of dictionaries DN of size N × M , one for each N ∈ S, is assumed to be available. The construction of these dictionaries is not the focus of this paper, and any suitable dictionary may be used, though some choices may be more appropriate depending on the image type and domain. A popular choice, such as that discussed in Sec. 2.1, is to concatenate a DCT (Discrete Cosine Transform) basis with wavelets (e.g., Haar [33]). Other extensions, such as adding Jacobi polynomials [33], are also supported. A sparse representation is then sought using MP. If the representation does not meet the ℓ2 target within k iterations for a given sub-image, that sub-image is divided into four quadrant blocks of size N/ 2 × N/ 2, and a sparse representation of each block is sought in turn. This partitioning is 8repeated for any block that fails to meet the target ε within k iterations. The refinement continues until all blocks satisfy both the accuracy and sparseness requirements, or the minimum block size is reached. In summary, AQMP strikes a delicate balance between accuracy and compression that fixed-size block MP cannot achieve, as the latter offers little flexibility to control this trade-off. The AQMP method offers several advantages over traditional fixed-block approaches. By adaptively partitioning the image according to local struc-ture, AQMP achieves better compression ratios while maintaining high im-age quality. This is particularly beneficial for images with varying levels of detail, where fixed-block methods may fail to capture local structure accu-rately. Additionally, the quadtree structure combined with the efficiency of the Matching Pursuit algorithm makes AQMP suitable for real-time appli-cations (cf. Sec. 2.3). In contrast to other quadtree-based partitioning techniques that are of-ten tailored to specific image types or tasks [24–26], AQMP is designed to compress images of any kind and resolution. For example, Gross et al. [26] employ wavelet transforms to decompose surface data into different frequency components; while their algorithm targets low complexity, the need for an inverse wavelet transform at each triangulation step can be computationally intensive for large datasets. By employing a flexible quadtree structure with adaptive refinement, AQMP ensures that both high-detail and low-detail re-gions are optimally segmented, making it versatile and effective across diverse imaging scenarios. The following subsections describe the two components of the image codec introduced here: the encoder and the decoder. 
+
+Figure 2: Encoder high level design. 
+
+2.3.1 Encoder 
+
+At a high level, the encoder consists of three steps: (i) image pre-processing, (ii) Adaptive Quadtree Refinement with MP compression, and (iii) lossless coding. See Figure 2 for a graphical overview. 9Figure 3: Decoder high level design. Steps (i) and (iii) are lossless; Step (ii) is lossy. Although a full codec is presented here, the core contribution of this work is Step (ii), which is described in detail following the high-level description below. (i) The input image is pre-processed to serve as input to Step (ii). The color channels are converted to one of the supported formats, such as RGB or YC BCR, and each channel is then processed independently. (ii) Each channel is divided into blocks of size N × N . A Matching Pursuit algorithm seeks a sparse representation of each block. If MP cannot find a solution meeting the target accuracy and sparseness for a given parent block, that block is split into four children quadrants of size N/ 2 × N/ 2(assuming N to be even). Compression is then applied to each child block at the next level. This process is repeated on each branch until the target accuracy and sparseness are achieved everywhere in the image. (iii) A lossless coding step is applied to the output of Step (ii) to exploit the redundancy of the sparse vectors. The implementation uses DEFLATE [5], though any lossless algorithm may be substituted. The output of this step is the final bitstream. Given the list of color channels produced by Step (i), AQMP is defined by the following two algorithms, presented as pseudocode. 
+
+Algorithm 1 mp encoder 
+
+input: channels, ε 
+
+output: XX := [ ] 
+
+for each c in channels do 
+
+X.append (mp encoder rec (c, ε, N max )) 
+
+end for 
+
+In these pseudocodes, unravel flattens a two-dimensional block into a one-dimensional vector, while min sparsity returns the minimum expected 10 Algorithm 2 mp encoder rec 
+
+input: channel, ε, N 
+
+output: Xk := min sparsity (ε, N )
+
+blocks := list of blocks of size N × N from channel X := [ ] 
+
+for each b in blocks do 
+
+y := unravel (b)
+
+x := M P (DN , y, ε, k )
+
+if ∥x∥0 ≥ k and N > N min then 
+
+X.concat (mp encoder rec (b, ε, N/ 2)) 
+
+else 
+
+X.append (x)
+
+end if end for 
+
+sparsity for a given block size N and error tolerance ε, determining whether further refinement with a smaller block is warranted. The approach is not tied to any particular implementation of these functions. A visualization of the encoder logic is shown in Fig. 4, illustrating the compression path for an image of size 16 × 16 pixels. 
+
+2.3.2 Decoder 
+
+The decoder is also composed of three steps, each reverting one step of the encoder; see Figure 3. (i) The lossless encoding is reversed, producing a bitstream of MP-coded data. This bitstream consists of a list of encoded channels, each of which is in turn a list of sparse vectors. (ii) Each encoded channel is decoded using the mp decoder algorithm de-scribed below. (iii) If necessary, a post-processing step converts the channels back to RGB, the standard format used by displays. Given the width w and height h of the original image and a list of sparse vectors X for a given channel, the decoder reconstructs the channel through the following algorithm: The set block (b, channel ) function places block b into the matrix channel 
+
+at the position determined by the quadtree traversal order. 11 Algorithm 3 mp decoder 
+
+input: X, w, h 
+
+output: channel channel := M atrix (h, w )
+
+for each x in X do 
+
+N := size (x)
+
+y := DN · xb := unravel −1(y)
+
+set block (b, channel )
+
+end for 
+
+Figure 4: AQMP-compression path flow. 
+
+# 2.4 Hyperparameter Optimization (HPO) 
+
+To perform AQMP, different parameters must first be defined before, which determine how the process is carried out, affecting both the final image qual-ity and compression. The set of hyperparameters to take into account in our AQMP approach are the following: 
+
+• max error : maximum squared norm of the residual ( tol in the utilized OrthogonalMatchingPursuit class of scikit-learn ). 
+
+• min sparsity : the threshold for the minimum allowable sparsity (or density of non-zero coefficients). This parameter works alongside max error 
+
+12 as stopping criteria for the optimization problem. AQMP aims to solve a least squares problem with a given tolerance ( max error ) while using at most a maximum number of atoms ( min sparcity ). 
+
+• min n : the minimum block size. 
+
+• max n : the maximum block size. 
+
+• a cols : the number of columns of the dictionary. It is convenient use an efficient methodology to search for a good combi-nation of these parameters. A natural approach is to use an hyperparameter optimization strategy of the field of Machine Learning (ML). Hyperparameters are configuration parameters of a ML model that must be set before training begins: unlike ML parameters, hyperparameters do not change during training. Each combination of hyperparameters results in a unique model configuration, directly affecting its performance. To evaluate the impact of each hyperparameter combination, it is necessary to train a model for each configuration. Standard methods, such as random and grid searches have several draw-backs, such as: i) being computationally inefficient, as they do not use the results of previous evaluations to select better models; if the hyperparameter space is very large or if the models are expensive to train, an exhaustive search is computationally expensive (but they are parallelizable). For those reasons in this work we used Sequential Model-Based Optimization [30, 31] to search a good combination of hyperparameters for AQMP. 
+
+# 2.5 Sequential Model-Based Optimization (SMBO) 
+
+SMBO is a sequential method where, in each iteration: 1. An ML model is trained with hyperparameters x, and a cost function 
+
+f (x) is evaluated. 2. The pairs ( x, f (x)) are used to estimate the hyperparameters x that minimize f (x). In Python, the Optuna library [35] provides an efficient SMBO-based hyperparameter optimization using the Tree-Structured Parzen Estimator (TPE) approach. TPE supports continuous, discrete, and categorical hyper-parameters. Optuna also supports multi-objective optimization. 13 2.6 Tree-Structured Parzen Estimator (TPE) 
+
+• In each iteration, hyperparameters are ordered based on performance on the cost function f (x), resulting in two distributions: 
+
+– l(x) for the best hyperparameters. 
+
+– g(x) for the worst hyperparameters. 
+
+• Each distribution is created using a Gaussian kernel, resulting in a normalized sum of Gaussians (see an example in Figure 5). 
+
+Figure 5: Illustrative probability distribution built from a set of hyperpa-rameters. Each hyperparameter taken in account is represented with a red tick and a gaussian is centered around each one to build the resulting distri-bution. With TPE two of these are built: one for the best hyperparameters and another for the worst. 
+
+• The hyperparameter combination x selected for training in the next iteration is the one that maximizes the ratio l(x)/g (x) (see Figure 6). 
+
+• The computational cost of TPE in Optuna is O(dn log n), where d is the dimensionality of the search space and n is the number of trials [43]. On the other hand, the cost of the random sampler is O(d). 14 Figure 6: Illustrative cost function and associated distributions of best and worst hyperparameters ( l(x) and g(x), respectively). Also the ratio l(x)/g (x)is graphed. The distributions are obtained after 50 steps with TPE Sampler. 
+
+2.6.1 Expected Improvement (EI) Criteria 
+
+The EI criteria is a theoretical justification of why TPE chooses the hyper-parameter that minimizes l(x)/g (x) to improve the performance of a model. As a summary, the main points are (for more details, see [35]): 
+
+• The cost function f (x) = y is the objective to be optimized. For the purpose of selecting an approach, we choose to maximize it, noting that both approaches of maximizing or minimizing are equivalent by shifting the cost function. 15 • The goal is for the next hyperparameter x∗ from combinations x to satisfy: 
+
+f (x∗) − f (x) > 0 (5) 
+
+• We define an improvement function: I( x) := max( f (x∗) − f (x), 0) (6) 
+
+• Since f (x) is unknown, it is treated as a random variable; the goal is to find x∗ that maximizes the expected improvement: EI( x) := E[max( f (x∗) − f (x), 0)] , (7) where the Expected Improvement can be formulated as: EI( x) = 
+
+Z ∞−∞ 
+
+max( y∗ − y, 0) p(y | x) dy (8) =
+
+Z y∗
+
+> −∞
+
+(y∗ − y) p(x | y) p(y)
+
+p(x) dy (9) with each the integrals are evaluated using: 
+
+p(x | y) = 
+
+(
+
+l(x) if y < y ∗
+
+g(x) if y ≥ y∗ . (10) Here y∗ is the γ quantile of the observed values, i.e. p(y < y ∗) = γ. This leads to: EI( x) ∝
+
+
+
+γ + (1 − γ)g(x)
+
+l(x)
+
+−1
+
+. (11) In summary, the goal is to find an x∗ that maximizes the ratio l(x)/g (x). 
+
+# 3 Results 
+
+In this section, we measure the performance of the AQMP algorithm by evaluating the trade-offs between compression rate and image quality. We define the compression rate CR as CR = size original 
+
+size compressed 
+
+, (12) where each size is calculated as the number of bytes in the corresponding file. For size compressed , this means calculating the size of the reconstructed image from the compressed file. 16 To measure the image quality we employed the Structural Similarity Index Measure (SSIM), which is defined as SSIM( x, y ) = (2 μxμy + C1)(2 σxy + C2)(μ2 
+
+> x
+
++ μ2 
+
+> y
+
++ C1)( σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2), (13) where x denotes the original image and y the compressed image. Here, 
+
+μx and μy are the mean intensities of x and y, σx and σy are their respective variances, and σxy is the covariance between them. The constants C1 and C2
+
+are small positive values (often defined as C1 = ( K1L)2, C2 = ( K2L)2 with 
+
+K1 and K2 as calibration parameters and L the dynamic range of the pixel intensities) used to maintain numerical stability when denominators are near zero. SSIM is a metric which quantifies the similarity between the original and compressed images, it ranges from 0 to 1, with higher values indicat-ing greater similarity. We use SSIM to evaluate the visual quality of the compressed images, comparing them to the original ones. As a proof of concept, Fig. [7] shows the original image and three com-pressed counterparts, with a high value of SSIM and a high compression ratio respectively. We can qualitatively see that the compressed image with high SSIM is visually indistinguishable from the original image, while the compressed image with highest compression ratio has barely visible objects. This conceptually demonstrates the usual trade-off between image quality and compression rate. The AQMP approach can produce a highly com-pressed image with high compression ratio ideal for scenarios where only a rough outline of the image is needed, such as movement detection task or geographic maps. On the other hand, each compression in Fig. [7] was done with a specific set of hyperparameters (we discuss what those hyperparameters are below) that are not trivial to find a priori. Finding optimal or nearly optimal hy-perparameters to achieve the best trade-off between high compression and high quality is not a trivial task in our AQMP approach (in fact, in machine learning in general). We discuss and tackle this problem with hyperparame-ter optimization in the next section. 
+
+# 3.1 AQMP Hyperparameter Optimization 
+
+We present the results of hyperparameter optimization with the TPE Sam-pler approach, as introduced in Section [2.4], using the open source package Optuna [33], which aims to find optimal hyperparameter configurations in optimization, in this case for AQMP to achieve a balance between the trade-off of image quality and compression. Our analyses focus on the Pareto front, 17 Figure 7: Image compression results for the Clock.png image with resolution 256 × 256 pixels. The image was taken from the USC-SIPI Image Database [8]. From left to right: original image, compressed images with SSIM 0.993 and CR 1.356, SSIM 0.798 and CR 5.059, SSIM 0.653 and 11.288. i.e. the set of all solutions where no single objective (SSIM or compression rate) can be improved without worsening the other [33]. In this case, the pareto front illustrates the trade-offs between compression rate and SSIM for test images with varying resolutions, selected from the USC-SIPI Im-age Database [8]. This database is a collection of digitized images, which is maintained primarily to support research in image processing, image analy-sis, and machine vision. Images in the database can be found in mainly three sizes: 256x256 pixels, 512x512 pixels, or 1024x1024 pixels. We also provide a summary of the optimal parameters found for the AQMP algorithm. Adetailed explanation of how the hyperparameter optimization was performed is provided in Sec. [2.4]. The optimization procedure focuses on balancing two key objectives: maximizing the Structural Similarity Index Measure (SSIM) and achieving an optimal compression ratio. To address this multi-objective optimization problem , we employ a Pareto optimization, which efficiently navigates the high-dimensional parameter space to identify trade-offs between SSIM and compression ratio using a Bayesian approach. The plots in Figs. 8, 9 and 10 depict the Pareto front for AQMP applied to images with three different resolutions: Clock (256x256), Splash (512x512) and Airplane (U-2) (1024x1024). These images were taken from the USC-SIPI Image Database [8]. The horizontal and vertical axes show the com-pression rates and the SSIMs, respectively. The gray dots represent all trials conducted during the parameter optimization processes for the three images considered, illustrating the trade-offs between compression rates and SSIMs. The red dots and the dashed lines show the Pareto front, which visualizes the best trade-offs. These curves serve as valuable tools for selecting parameters 18 that meet specific application requirements, such as prioritizing high SSIM for quality-critical applications or achieving high compression ratios where storage or transmission constraints are the driving factor(s). At low compression rates (close to 0), the SSIM remains nearly 1, re-flecting high-quality reconstructions with negligible loss of detail. And, as expected, as the compression rate increases, the SSIM begins to decline, indi-cating that more aggressive compression introduces visible artifacts or quality loss. In the intermediate region, the Pareto front exhibits a gradual decline in SSIM with increasing compression rate, showcasing the algorithm’s ability to balance between size reduction and visual quality. At higher compression rates (above 30), the SSIM stabilizes or declines more slowly, suggesting di-minishing returns, as further compression significantly affects quality without proportional gains in size reduction. One aspect to notice is that the compression rate is below 1 when the SSIM is very high. This occurs because, in the highly compressed file, meta-data (such as file headers, compression information, or auxiliary data) can take up a significant portion of the total file size. This overhead becomes prominent when the actual compression of image content is minimal, similar to the behavior observed in formats like TIFF [33].This aspect becomes par-ticularly significant in low-resolution images, such as 256 × 256, where the overall file size is relatively small. Consequently, the proportion of metadata within the compressed file becomes more relevant, as it represents a larger fraction of the total file size. From this plot, a few conclusions can be drawn. First, the algorithm is highly effective in preserving quality at low compression rates, making it suitable for applications requiring high fidelity. Second, as the compression rate increases, the trade-off becomes more apparent, and the Pareto front helps identify optimal parameter configurations depending on whether com-pression efficiency or image quality is prioritized. Finally, the presence of metadata-driven compression inefficiencies at low rates suggests that the al-gorithm could be further optimized by reducing unnecessary metadata or streamlining file structure, which would improve its performance for high-quality reconstructions. Table 1 summarizes optimal parameters found by AQMP. The results show the hyperparameter values for min sparsity , max error , min n , max n 
+
+and a cols , along with the corresponding compression rate and SSIM for the Splash image. The total number of trials used were 100 and the computing time was of 16:57 minutes with a Intel Core i9-9980HK (8 cores). Those hy-perparameters listed in Table 1 are located in the Pareto front, highlighting the effective balances achievable through hyperparameter optimization. This table provides a practical reference for settings that yield optimal compres-19 Figure 8: Hyperparameter Optimization for Clock image (256x256). The image shows the tradeoff between the SSIM and compression ratio for the five hyperparameters. The red curve shows the Pareto front in each image, which establishes the optimal election for the tradeoff between SSIM and compression rate. sion quality and efficiency for this particular image at different resolutions. SSIM Compression Rate Max Error Min Sparsity min n max n a cols Execution time (s) 0.9962 0.9172 0.0015 0.2084 4 4 256 65.5338 0.9032 1.2377 0.0082 0.3298 8 8 32 16.9183 0.8314 9.4504 0.0016 0.6256 4 4 2 28.6854 0.8314 9.4504 47.2277 0.4394 4 4 2 30.7702 0.7284 27.1236 261.8908 0.9236 4 8 2 7.4893 0.7284 27.1236 424.6535 0.8930 4 8 2 7.8326 0.6774 68.8056 0.0022 0.7279 8 16 2 2.4761 0.6774 68.8056 0.0032 0.6841 8 16 2 2.8326 0.6424 130.3471 0.0055 0.2468 8 32 2 1.0816 0.6356 190.1261 30.2875 0.2801 8 128 4 0.6998 0.6347 198.5337 0.0373 0.5549 64 128 2 0.7511 0.6347 198.5337 48.6796 0.6815 8 128 2 0.7679 Table 1: Compression results for Splash image. Each row has results that are in the Pareto front. Execution time is the time needed to compress and decompress an image. 20 Figure 9: Hyperparameter Optimization for Splash image (512x512). The image shows the tradeoff between the SSIM and compression ratio for the five hyperparameters. The red curve shows the Pareto front in each image, which establishes the optimal election for the tradeoff between SSIM and compression rate. 
+
+# 3.2 AQMP vs other compression algorithms 
+
+In this subsection, we compare the compression performance different alter-natives: 
+
+• AQMP with Tree-Structured Parzen Estimator (TPE) for hyperparam-eter optimization. 
+
+• AQMP with a random sampler for hyperparameter optimization. 
+
+• Matching Pursuit (MP) with standard fixed blocks of 8x8 and without quadtree refinement. 
+
+• JPEG algorithm from the Python library PIL. One one hand, the comparison is based on test images of varying reso-lutions from the dataset [8]: Female (256x256), Splash (512x512), and San Francisco (1024x1024). The results are presented as SSIM vs. Compression Rate curves, as shown in Figures [11], [12], and [13]. On the other hand, comparisons are done with handwritten images of the dataset of the Inter-national Document Image Binarization Contest (DIBCO)[41], as shown in Figures [14] and [15]. 21 Figure 10: Hyperparameter Optimization for Airplane (U-2) iamge (1024x1024). The image shows the tradeoff between the SSIM and com-pression ratio for the five hyperparameters. The red curve shows the Pareto front in each image, which establishes the optimal election for the tradeoff between SSIM and compression rate. Overall we see that MP-based techniques, including AQMP, achieve higher compression ratios compared to JPEG. This is due to the ability of MP to adaptively represent image content using sparse representations, which is par-ticularly effective for images with complex local structures. For low compres-sion ratios, the JPEG algorithm performs well in preserving image quality. However, as the compression ratio increases, there is a point where JPEG becomes less efficient than AQMP techniques. This transition highlights the strength of AQMP in preserving quality at higher compression ratios. At low compression ratios, AQMP with TPE consistently outperforms both MP without quadtree refinement and AQMP with a random sampler. This demonstrates the effectiveness of TPE in optimizing hyperparameters to bal-ance compression and quality. The random sampler, while still leveraging the quadtree structure, is less efficient in finding optimal configurations, leading to lower SSIM values at some specific compression ratios. This will clearly depends on how similar are the random parameters to the efficient ones. The results demonstrate that AQMP with TPE is more effective than MP and AQMP with random sampling for achieving high compression ratios while preserving image quality. It outperforms JPEG at higher compression ratios and provides better quality preservation compared to MP without 22 quadtree refinement and AQMP with a random sampler. These findings highlight the importance of both the quadtree refinement and the use of TPE for hyperparameter optimization in achieving optimal performance. 
+
+Figure 11: Comparison of AQMP with TPE, AQMP with Random Sampler, MP without quadtree refinement, and JPEG for the Female image. 
+
+Figure 12: Comparison of AQMP with TPE, AQMP with Random Sampler, MP without quadtree refinement, and JPEG for the San Francisco image. 23 Figure 13: Comparison of AQMP with TPE, AQMP with Random Sampler, MP without quadtree refinement, and JPEG for the Splash image. 
+
+Figure 14: Comparison of AQMP with TPE, AQMP with Random Sampler, MP without quadtree refinement, and JPEG for the handwritten image ‘H02’ of the International Document Image Binarization Contest (DIBCO) from the year 2010 [41]. 
+
+# 3.3 JPEG vs AQMP: compression-rate vs SSIM 
+
+We complement the comparisons in Sec. 3.2 with an aggregated view con-trasting JPEG against AQMP using compression rate (CR) versus SSIM curves across three representative datasets: USC-SIPI, DIBCO, and DIV2K. For each dataset, we sweep AQMP hyperparameters and JPEG quality fac-24 Figure 15: Comparison of AQMP with TPE, AQMP with Random Sampler, MP without quadtree refinement, and JPEG for the handwritten image ‘H09’ of the International Document Image Binarization Contest (DIBCO) from the year 2010 [41]. tors to trace the operating curves, and we report the best observed trade-offs for each method. In all plots below, the horizontal axis is the compression rate, CR = size original /size compressed (higher is better), and the vertical axis is SSIM (higher is better). Qualitatively, we observe a consistent pattern already suggested by Sec. 3.2: 
+
+• At low compression (small CR), JPEG remains very strong and often slightly ahead in SSIM due to its mature quantization and deblocking pipeline. 
+
+• As compression becomes aggressive (larger CR), AQMP retains per-ceptual quality better, pushing the frontier toward higher CR at the same SSIM. 
+
+• The crossover depends on the content: highly textured or structured images tend to favor AQMP earlier, whereas smooth photographic con-tent can favor JPEG longer. Figure 18 shows CR–SSIM curves for the three datasets. Each row cor-responds to a dataset; left column shows AQMP results, right column shows JPEG results. These curves were generated from the same image sets and settings used throughout this paper; details on metrics appear in Sec. 3. Key takeaways from Fig. 18: 25 (a) USC-SIPI — AQMP (b) USC-SIPI — JPEG 
+
+Figure 16: Compression-rate vs SSIM curves for AQMP (left) and JPEG (right) across images of the USC-SIPI dataset. AQMP curves are obtained by sweeping hyperparameters along the Pareto front; JPEG curves by varying quality factors.  
+
+> (a) DIBCO — AQMP (b) DIBCO — JPEG
+
+Figure 17: Compression-rate vs SSIM curves for AQMP (left) and JPEG (right) across images of DIBCO dataset. AQMP curves are obtained by sweeping hyperparameters along the Pareto front; JPEG curves by varying quality factors. 
+
+• USC-SIPI: AQMP begins to dominate beyond medium compression, of-fering higher CR at similar SSIM, aligned with the results in Figs. 11–13. 
+
+• DIBCO: AQMP maintains structure in thin strokes and binary-like regions, sustaining SSIM at higher CR where JPEG degrades sharply. 
+
+• DIV2K: On natural photos, JPEG leads at very low CR, but AQMP 26 (a) DIV2K — AQMP (b) DIV2K — JPEG 
+
+Figure 18: Compression-rate vs SSIM curves for AQMP (left) and JPEG (right) across images of DIV2K dataset. AQMP curves are obtained by sweeping hyperparameters along the Pareto front; JPEG curves by varying quality factors. narrows the gap and surpasses it at higher CR. Overall, AQMP provides a favorable quality–compression trade-off in the high-compression regime, while JPEG remains hard to beat at very low compression. Depending on use case, one may prefer AQMP for band-width/storage constrained settings, or JPEG for archival-quality at modest CR. 
+
+# 4 Discussions and Potential Extensions 
+
+In this work, we introduced a quadtree-based compression algorithm using Matching Pursuit capable of handling images at any resolution and adapt-ing the partition size to local image complexities. By autonomously and efficiently tuning a comprehensive hyperparameter set, the algorithm can flexibly balance compression ratio and image quality. Through sequential model-based optimization (cf. Fig.[7]), we demonstrated that high levels of compression can be achieved while preserving visual fidelity. Beyond the per-image analyses, we also carried out a thorough, side-by-side comparison between JPEG and AQMP via compression-rate vs SSIM curves across multiple datasets (cf. Sec. 3.3). This makes explicit the op-erating regimes where each codec is preferable. For high-resolution content (DIV2K, ˜2K images), the trends persist: JPEG leads at very low compres-sion, while AQMP sustains higher SSIM at large compression rates. At these resolutions, container metadata overhead is negligible relative to content, so CR reflects compression more faithfully and the crossover toward AQMP 27 can occur at slightly lower SSIM loss than in 256–512 px cases. We also ob-served AQMP’s quadtree+MP scales well to 2K resolutions, with the main trade-off being longer encode times (still practical in our experiments), while decoding remains lightweight. When compressing the images of the datasets [8, 41], we found that the best compression rates of AQMP+TPE compared to JPEG are found for SSIM up to approximate values of 0.7 and 0.8. In these cases, we found up to a 4x compression rate for similar SSIM values, as shown in Section [3.2]. We demonstrated the advantages of AQMP + TPE, highlighting its ability to preserve image quality at higher compression ratios while maintaining greater fidelity to the original image at low compression rates compared to alternative approaches (e.g., AQMP + Random Sampler and Only MP). Our analysis revealed a consistent trend: JPEG remains the superior algorithm for low compression ratios, achieving unmatched quality in this regime. However, JPEG exhibits a rapid decline in quality at higher compression ratios, limiting its practicality for aggressive compression sce-narios. In contrast, AQMP + TPE enables improved quality retention at low compression ratios compared to its alternatives, though it does not yet match JPEG’s performance in this range. These findings suggest that future work could focus on refining the AQMP framework—for instance, by optimiz-ing its parameterization or sampling strategies—to bridge the performance gap with JPEG at low compression ratios while retaining its robustness in high-compression regimes. On the other hand, the current design relies on numerous hyperparame-ters ( min sparsity , min n , max n , max error and a cols ), making it chal-lenging to determine the best configuration for achieving either higher quality or smaller file size. However, this is not a practical impediment; for instance, one can use higher values of max n and a cols to achieve higher compression rates, or high and low values in max error and min sparsity to achieve higher SSIM values, respectively. A future direction of this work might be in reducing these into a smaller, more manageable subset (ideally just max n 
+
+and max error ), simplifying and speeding up the HPO optimization. Possible applications of AQMP, where a good compression ratio is needed but not necessarily a high SSIM, include limited-bandwidth scenarios and en-vironments with low storage capacity. In the future, the AQMP algorithm might be extended to support video compression by leveraging temporal re-dundancy and motion estimation. This can be done by incorporating tech-niques such as block matching or optical flow to identify and exploit simi-larities between consecutive frames, while each frame can be compressed by using our AQMP method. Future work could also explore the integration of machine learning models to further enhance compression efficiency and adaptiveness to different types of video content. 28 The code developed for this project is open source and free available under license MIT through GitHub at [32]. 
+
+# 5 Acknowledgements 
+
+This research has been supported by CONICET, Argentina. We thank Al-fredo Nava-Tudela and Andr´ es Pagliano for initial discussions a while ago on some aspects of the approach followed in this paper. 
+
+# A Workflow Summary 
+
+# A.1 Encoder 
+
+Given an input image and an error tolerance ε, to encode the image apply the following steps: 1. Pre-processing step: Separate color channels using format YC BCR
+
+2. MP step: Apply the mp coder algorithm as defined in section 2.3.1 using the following parameters for illustration purposes: (a) M = 128 (b) S = {8, 16 , 32 }
+
+(c) DN = DCT N 2×M | Haar N 2×M for each N ∈ S
+
+(d) unravel (A) = concatenate all columns of A
+
+(e) min sparcity (ε, N ) = 
+
+
+
+128 if N = 8 2 if N = 16 3 if N = 32 3. Lossless coding step: Apply DEFLATE coding [5] to the result of the MP compressor DCT N 2×M and Haar N 2×M are the overcomplete dictionaries of size N 2×M
+
+using Discrete Cosine Transform and Haar Wavelets, see for example [1]. 
+
+# A.2 Decoder 
+
+Given a compressed file f , to reconstruct the image apply the following steps: 1. Lossless decoding: Apply the DEFLATE decoding [5] process to f .29 2. MP decoding step: For each channel, apply the mp decoder algorithm as defined in section 2.3.2 using the following parameters: (a) M = 128 (b) S = {8, 16 , 32 }
+
+(c) DN = DCT N 2×M | Haar N 2×M for each N ∈ S
+
+(d) unravel (A) = concatenate all columns of A
+
+3. Post-processing: Convert channels to RGB format (Optional). 
+
+# References 
+
+[1] Alfredo Nava-Tudela, Image Representation and Compression via Sparse Solutions Of Systems of Linear equations , Ph D Thesis, 2012. [2] Ori Bryt and Michael Elad, Compression of facial images using the K-SVD algorithm , Journal of Visual Communication and Image Represen-tation, Volume 19, Issue 4, May 2008, Pages 270-282. [3] Jian-Liang Lin, Wen-Liang Hwang and Soo-Chang Pei, The fine-grained scalable video coding based on matching pursuits , Image Processing. 2002. Proceedings. 2002 International Conference on, vol. 2, Pages II-53 - II-56 [4] Pierre Garrigues and Avideh Zakhor, Atom position coding in a match-ing pursuit based video coder , Lecture Notes in Computer Science Vol-ume 3893, 2006, pp 153-160. [5] L. Peter Deutsch, DEFLATE Compressed Data Format Specification version 1.3 , IETF. p. 1. sec. Abstract. RFC 1951, 1996. [6] Z. Wang, A. C. Bovik, H. R. Sheikh and E. P. Simoncelli, Image quality assessment: From error visibility to structural similarity , IEEE Trans-actions on Image Processing, vol. 13, no. 4, pp. 600-612, 2004. [7] Y. C. Pati, R. Rezaiifar, and P. S. Krishnaprasad, Orthogonal Matching Pursuit : recursive function approximation with application to wavelet decomposition in Conf. Rec. 27th Asilomar Conf. Signals, Syst. Comput., 1993, vol. 1. [8] Viterbi School of Engineering, University of Southern California. The USC-SIPI image database. http://sipi.usc.edu/database/ .30 [9] S. Mallat and Z. Zhang, Matching pursuits with time-frequency dictio-naries , IEEE Transactions on Signal Processing, vol. 41, no. 12, pp. 3397-3415, 1993. [10] A. Cohen, I. Daubechies, and P. Vial, Wavelets on the interval and fast wavelet transforms , Applied and Computational Harmonic Analysis, vol. 1, no. 1, pp. 54-81, 1999. [11] J. M. Shapiro, Embedded image coding using zerotrees of wavelet coef-ficients , IEEE Transactions on Signal Processing, vol. 41, no. 12, pp. 3445-3462, 1993. [12] A. Said and W. A. Pearlman, A new, fast, and efficient image codec based on set partitioning in hierarchical trees , IEEE Transactions on Circuits and Systems for Video Technology, vol. 6, no. 3, pp. 243-250, 1996. [13] D. Taubman, High performance scalable image compression with EBCOT , IEEE Transactions on Image Processing, vol. 9, no. 7, pp. 1158-1170, 2000. [14] G. K. Wallace, The JPEG still picture compression standard , Commu-nications of the ACM, vol. 34, no. 4, pp. 30-44, 1991. [15] G. Toderici, D. Vincent, N. Johnston, S. J. Hwang, D. Minnen, J. Shor, and M. Covell, Full resolution image compression with recurrent neural networks , in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2017, pp. 5306-5314. [16] J. Ball´ e, V. Laparra, and E. P. Simoncelli, End-to-end optimized image compression , in Proceedings of the International Conference on Learning Representations (ICLR), 2017. [17] A. Blum and J. Spencer, Greedy algorithms for the shortest common superstring , in Proceedings of the 12th Annual ACM-SIAM Symposium on Discrete Algorithms (SODA), 2000, pp. 146-154. [18] F. Mentzer, E. Agustsson, M. Tschannen, R. Timofte, and L. Van Gool, 
+
+Conditional probability models for deep image compression , in Proceed-ings of the IEEE Conference on Computer Vision and Pattern Recogni-tion (CVPR), 2018, pp. 4394-4402. [19] M. Aharon, M. Elad, and A. Bruckstein, K-SVD: An algorithm for de-signing overcomplete dictionaries for sparse representation , IEEE Trans-actions on Signal Processing, vol. 54, no. 11, pp. 4311-4322, 2006. 31 [20] M. Elad, Sparse and redundant representations: From theory to appli-cations in signal and image processing , Springer, 2010. [21] K. Engan, S. O. Aase, and J. H. Husoy, Method of optimal directions for frame design , in Proceedings of the IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP), 1999, vol. 5, pp. 2443-2446. [22] S. Mallat, A wavelet tour of signal processing , Academic Press, 1999. [23] G. Strang and T. Nguyen, Wavelets and filter banks , Wellesley-Cambridge Press, 1999. [24] H. Samet, The Quadtree and Related Hierarchical Data Structures , ACM Computing Surveys, vol. 16, no. 2, pp. 187–260, 1984. [25] C. A. Shaffer, Application of alternative quadtree representations (vlsi, data structures) , Ph.D. dissertation, University of Maryland at College Park, USA, 1986. (Note: AAI8629008) [26] M. H. Gross, O. G. Staadt, and R. Gatti, Efficient Triangular Surface Approximations Using Wavelets and Quadtree Data Structures , IEEE Transactions on Visualization and Computer Graphics , vol. 2, no. 2, pp. 130–143, June 1996. doi: 10.1109/2945.506225 [27] F. Liu, M. Hernandez-Cabronero, V. Sanchez, M. W. Marcellin, and A. Bilgin, The Current Role of Image Compression Standards in Med-ical Imaging , Information (Basel) , vol. 8, no. 4, p. 131, Dec. 2017, doi: 10.3390/info8040131. [28] D. E. Knuth, Algorithms in Modern Mathematics and Computer Sci-ence , Department of Computer Science, Stanford University, 1980. [29] B.-J. Kim and W. A. Pearlman, An embedded wavelet video coder using three-dimensional set partitioning in hierarchical trees (SPIHT) , Pro-ceedings DCC ’97. Data Compression Conference , Snowbird, UT, USA, 1997, pp. 251-260, doi: 10.1109/DCC.1997.582048. [30] James Bergstra, R´ emi Bardenet, Yoshua Bengio, and Bal´ azs K´ egl, Al-gorithms for hyper-parameter optimization , Proceedings of the 25th International Conference on Neural Information Processing Systems (NIPS’11), Curran Associates Inc., Red Hook, NY, USA, 2011, pp. 2546–2554. doi: 10.5555/2986459.2986743. 32 [31] Yoshihiko Ozaki, Yuki Tanigaki, Shuhei Watanabe, and Masaki On-ishi, Multiobjective tree-structured parzen estimator for computation-ally expensive optimization problems , Proceedings of the 2020 Ge-netic and Evolutionary Computation Conference, Association for Com-puting Machinery, New York, NY, USA, 2020, pp. 533–541, doi: 10.1145/3377930.3389817. [32] ”AQMP: Adaptive Quadtree refinement and Matching Pursuit,” GitHub repository, 2024. [Online]. Available: https://github.com/ Emmatassone/AQMP .[33] Tiglio, M., & Villanueva, A., Reduced order and surrogate models for gravitational waves . Living Reviews in Relativity , 25 (1), 2. 2022 [34] Alfred M. Bruckstein, David L. Donoho and Michael Elad, From sparse solutions of systems of equations to sparse modeling of signals and im-ages , SIAM Review, 51(1):34–81, 2009. [35] Cerino, F., Diaz-Pace, J. A., Tassone, E. A., Tiglio, M., & Villegas, A., Hyperparameter Optimization of an hp-Greedy Reduced Basis for Gravitational Wave Surrogates . Universe , 10 (1), 6. 2023 [36] Knuth, D. E., The Art of Computer Programming, Volume 1: Funda-mental Algorithms . Addison-Wesley , 3rd Edition, 1997. [37] Knuth, D. E., The Art of Computer Programming, Volume 2: Seminu-merical Algorithms . Addison-Wesley , 3rd Edition, 1997. [38] Knuth, D. E., The Art of Computer Programming, Volume 3: Sorting and Searching . Addison-Wesley , 2nd Edition, 1998. [39] Knuth, D. E., The Art of Computer Programming, Volume 4A: Combi-natorial Algorithms, Part 1 . Addison-Wesley , 2011. [40] Knuth, D. E., The Art of Computer Programming, Volume 4B: Combi-natorial Algorithms, Part 2 . Addison-Wesley , 2022. [41] Pratikakis, I., Gatos, B., & Ntirogiannis, K., H-DIBCO 2010 - Hand-written Document Image Binarization Competition . Proceedings of the 2010 12th International Conference on Frontiers in Handwriting Recog-nition (ICFHR) , 2010 , 727–732. IEEE Computer Society. [42] Qaisar, S., Bilal, R. M., Iqbal, W., Naureen, M., and Lee, S., Compres-sive sensing: From theory to applications, a survey . Journal of Commu-nications and Networks , vol. 15, no. 5, pp. 443–456, 2013. 33 [43] Optuna Documentation, Samplers — Optuna documentation , Avail-able at: https://optuna.readthedocs.io/en/stable/reference/ samplers/index.html , Accessed: May 15, 2025. 34
