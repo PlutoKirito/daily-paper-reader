@@ -6,81 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-20 ~ 2026-05-29
-- 运行时间：2026-05-29 09:04:44 UTC
+- 最新运行日期：2026-05-29
+- 运行时间：2026-05-29 22:05:09 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：7
-- 速读区：12
+- 本次总论文数：14
+- 精读区：4
+- 速读区：10
 
 ### 今日简报（AI）
-今日AI日报（5.20-5.29）重点推荐两篇高分论文：JLT提出DiT中潜在预测的清洁范式（9.0），FRAPPE用投影追踪编码器实现全输入残差自编码（9.0），均在生成与表征学习上取得突破。
-
-速读中值得关注的还有Scale When Needed与JacQuant两种高效量化感知训练方法（8.0），以及一步式离散扩散蒸馏技术（7.0），适合关注模型轻量化与生成加速的读者。
-
-建议优先精读JLT与FRAPPE原论文理解核心思路，再结合速读中的量化与蒸馏方法验证实际部署效果。
-- 详情：[/20260520-20260529/README](/20260520-20260529/README)
+1) 今日聚焦视频编码加速与IoT分析效率，精读两项高分研究，另涉图像压缩、光流估计与视频生成新方向。
+2) 最值得关注：CNN-层次注意力Transformer混合模型大幅加速HEVC帧内分区（9.0/10）；以及面向IoT视频分析的自适应运动估计停止策略（8.0/10）。
+3) 建议优先深入精读这两篇，尤其对视频编码或端侧AI应用感兴趣的读者，可重点学习其混合模型与资源自适应机制。
+- 详情：[/202605/29/README](/202605/29/README)
 
 ### 精读区论文标签
-1. [JLT: Clean-Latent Prediction in Latent Diffusion Transformers](/20260520-20260529/2605.27102v1-jlt-clean-latent-prediction-in-latent-diffusion-transformers)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：潜在扩散变换器中的干净潜在预测
-2. [FRAPPE: Full Input, Residual Output Autoencoding with Projection Pursuit Encoder](/20260520-20260529/2605.28992v1-frappe-full-input-residual-output-autoencoding-with-projection-pursuit-encoder)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：提出用于媒体压缩的全输入残差输出自编码框架，具有率失真-复杂度权衡和自然通道重要性排序
-3. [Parallel Context Modeling for Sliding Window Attention in Neural Video Coding](/20260520-20260529/2605.20977v1-parallel-context-modeling-for-sliding-window-attention-in-neural-video-coding)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：神经视频编码中的并行上下文建模及熵编码模块优化
-4. [Q-ARVD: Quantizing Autoregressive Video Diffusion Models](/20260520-20260529/2605.21072v1-q-arvd-quantizing-autoregressive-video-diffusion-models)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：自回归视频扩散模型量化
-5. [FAST-ME: Foundation-aware Adaptive Stopping for Motion Estimation for Efficient IoT Video Analysis](/20260520-20260529/2605.23428v1-fast-me-foundation-aware-adaptive-stopping-for-motion-estimation-for-efficient-iot-video-analysis)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：面向IoT的低复杂度运动估计
-6. [Paris 2.0: A Decentralized Diffusion Model for Video Generation](/20260520-20260529/2605.26064v2-paris-20-a-decentralized-diffusion-model-for-video-generation)  
+1. [Accelerating HEVC Intra Partitioning via a CNN-Hierarchical Attention Transformer Hybrid](/202605/29/2605.29063v1-accelerating-hevc-intra-partitioning-via-a-cnn-hierarchical-attention-transformer-hybrid)  
+   标签：评分：9.0/10、query:train-trick
+   evidence：直接通过CNN-Transformer混合加速HEVC帧内分区预测，降低编码复杂度
+2. [FAST-ME: Foundation-aware Adaptive Stopping for Motion Estimation for Efficient IoT Video Analysis](/202605/29/2605.23428v1-fast-me-foundation-aware-adaptive-stopping-for-motion-estimation-for-efficient-iot-video-analysis)  
    标签：评分：8.0/10、query:vcodec
-   evidence：去中心化扩散模型进行视频生成
-7. [NeR-SC: Adapting Neural Video Representation to Screen Content](/20260520-20260529/2605.27024v1-ner-sc-adapting-neural-video-representation-to-screen-content)  
+   evidence：块运动估计框架可直接应用于帧间预测网络优化
+3. [LC-Flow: Learning Local Continuous Optical Flow and Confidence from events](/202605/29/2605.24604v1-lc-flow-learning-local-continuous-optical-flow-and-confidence-from-events)  
    标签：评分：8.0/10、query:vcodec
-   evidence：为屏幕内容视频调整的神经表示编码框架
+   evidence：从事件学习连续光流，与运动估计和压缩联合学习相关
+4. [Scale When Needed: Adaptive Neuron-level Mixed Precision Quantization Aware Training](/202605/29/2605.25054v1-scale-when-needed-adaptive-neuron-level-mixed-precision-quantization-aware-training)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：神经元级混合精度量化感知训练可直接用于视频编码模型
 
 ### 速读区论文标签
-1. [Scale When Needed: Adaptive Neuron-level Mixed Precision Quantization Aware Training](/20260520-20260529/2605.25054v1-scale-when-needed-adaptive-neuron-level-mixed-precision-quantization-aware-training)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：神经元级混合精度量化感知训练，自适应位宽扩展，直接匹配视频编码中的量化感知训练需求
-2. [JacQuant: STE-Free Quantization-Aware Training via Learned Jacobian Surrogates](/20260520-20260529/2605.25469v1-jacquant-ste-free-quantization-aware-training-via-learned-jacobian-surrogates)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：通过学习的雅可比替代实现无STE量化感知训练
-3. [One-Step Distillation of Discrete Diffusion Image Generators via Fixed-Point Iteration](/20260520-20260529/2605.21484v1-one-step-distillation-of-discrete-diffusion-image-generators-via-fixed-point-iteration)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：扩散模型的单步蒸馏方法，可用于高效视频编解码器训练
-4. [Φ-Noise: Training-Free Temporal Video Conditioning via Phase-Based Noise Manipulation](/20260520-20260529/2605.24509v1--noise-training-free-temporal-video-conditioning-via-phase-based-noise-manipulation)  
+1. [Efficient Learned Image Compression without Entropy Coding](/202605/29/2605.23323v1-efficient-learned-image-compression-without-entropy-coding)  
    标签：评分：7.0/10、query:vcodec
-   evidence：使用潜在视频扩散模型和基于相位的噪声条件方法
-5. [Motion-Compensated Weight Compression](/20260520-20260529/2605.24754v1-motion-compensated-weight-compression)  
+   evidence：无熵编码的多码率学习图像压缩
+2. [From Contrast to Consistency: Rethinking Event-based Continuous-Time Optical Flow Estimation](/202605/29/2605.25570v2-from-contrast-to-consistency-rethinking-event-based-continuous-time-optical-flow-estimation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：提出运动补偿权重压缩，采用层间预测和率失真优化熵模型，类似于视频压缩中的运动补偿
-6. [From Contrast to Consistency: Rethinking Event-based Continuous-Time Optical Flow Estimation](/20260520-20260529/2605.25570v1-from-contrast-to-consistency-rethinking-event-based-continuous-time-optical-flow-estimation)  
+   evidence：光流估计方法可迁移至视频压缩中的运动估计
+3. [OSP-Next: Efficient High-Quality Video Generation with Sparse Sequence Parallelism, HiF8 Quantization, and Reinforcement Learning](/202605/29/2605.28691v1-osp-next-efficient-high-quality-video-generation-with-sparse-sequence-parallelism-hif8-quantization-and-reinforcement-learning)  
    标签：评分：7.0/10、query:vcodec
-   evidence：基于事件相机的连续光流估计与混合监督，直接匹配视频压缩中的运动估计需求
-7. [Paris 2.0: A Decentralized Diffusion Model for Video Generation](/20260520-20260529/2605.26064v1-paris-20-a-decentralized-diffusion-model-for-video-generation)  
+   evidence：结合稀疏注意力、量化和强化学习的高效视频生成
+4. [Veda: Scalable Video Diffusion via Distilled Sparse Attention](/202605/29/2605.30325v1-veda-scalable-video-diffusion-via-distilled-sparse-attention)  
    标签：评分：7.0/10、query:vcodec
-   evidence：Paris 2.0 是一种去中心化的视频生成扩散模型，为视频压缩提供生成式先验
-8. [Multi-Teacher Knowledge Distillation via Teacher-Informed Mixture Priors](/20260520-20260529/2605.27967v1-multi-teacher-knowledge-distillation-via-teacher-informed-mixture-priors)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：多教师知识蒸馏方法，可直接应用于视频压缩模型训练
-9. [LANCE: Locally Adaptive Neural Context Estimation for Overfitted Image Compression](/20260520-20260529/2605.20672v1-lance-locally-adaptive-neural-context-estimation-for-overfitted-image-compression)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：过拟合图像压缩中的局部自适应神经上下文估计与空间超先验
-10. [AIR: Amortized Image Reconstruction Framework for Self-Supervised Feed-Forward 2D Gaussian Splatting](/20260520-20260529/2605.20820v1-air-amortized-image-reconstruction-framework-for-self-supervised-feed-forward-2d-gaussian-splatting)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：预测-优化-蒸馏多阶段训练策略
-11. [Adaptive Signal Resuscitation: Channel-wise Post-Pruning Repair for Sparse Vision Networks](/20260520-20260529/2605.21426v1-adaptive-signal-resuscitation-channel-wise-post-pruning-repair-for-sparse-vision-networks)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通道级剪枝后修复方法，可迁移至视频压缩模型剪枝
-12. [ReMATF: Recurrent Motion-Adaptive Multi-scale Turbulence Mitigation for Dynamic Scenes](/20260520-20260529/2605.21440v1-rematf-recurrent-motion-adaptive-multi-scale-turbulence-mitigation-for-dynamic-scenes)  
+   evidence：使用潜在扩散变换器进行视频生成
+5. [DecQ: Detail-Condensing Queries for Enhanced Reconstruction and Generation in Representation Autoencoders](/202605/29/2605.22777v1-decq-detail-condensing-queries-for-enhanced-reconstruction-and-generation-in-representation-autoencoders)  
    标签：评分：6.0/10、query:vcodec
-   evidence：轻量级递归运动自适应时间融合模块
+   evidence：潜扩散模型、表示自编码器、细节浓缩查询提升重建质量
+6. [JetViT: Efficient High-Resolution Vision Transformer with Post-Training Attention Search](/202605/29/2605.26636v1-jetvit-efficient-high-resolution-vision-transformer-with-post-training-attention-search)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：训练后注意力搜索提高ViT推理效率，与低复杂度编解码器相关
+7. [Timestep-Aware SVDQuant-GPTQ for W4A4 Quantization of Wan2.2-I2V](/202605/29/2605.27003v1-timestep-aware-svdquant-gptq-for-w4a4-quantization-of-wan22-i2v)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：视频扩散模型的量化
+8. [PARE: Pruning and Adaptive Routing for Efficient Video Generation](/202605/29/2605.27336v1-pare-pruning-and-adaptive-routing-for-efficient-video-generation)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：视频扩散变换器的剪枝与自适应路由
+9. [Structure over Pixels: Learning Variable-Length Visual Programs](/202605/29/2605.27696v2-structure-over-pixels-learning-variable-length-visual-programs)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：率失真探针用于分词器学习，方法论上类似于超先验结构
+10. [VideoMLA: Low-Rank Latent KV Cache for Minute-Scale Autoregressive Video Diffusion](/202605/29/2605.30351v1-videomla-low-rank-latent-kv-cache-for-minute-scale-autoregressive-video-diffusion)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：低秩潜在KV缓存用于视频扩散
 
 
 <div class="dpr-home-promo-card">
