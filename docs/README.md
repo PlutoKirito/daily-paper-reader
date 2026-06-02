@@ -6,52 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-01
-- 运行时间：2026-06-01 23:12:35 UTC
+- 最新运行日期：2026-06-02
+- 运行时间：2026-06-02 22:55:24 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：3
-- 速读区：7
+- 本次总论文数：13
+- 精读区：5
+- 速读区：8
 
 ### 今日简报（AI）
-1) 今日10篇论文聚焦量化感知训练与多模态生成，重点推荐自适应神经元级混合精度量化及视频-音频联合蓝图。  
-2) 精读9分论文《Scale When Needed》提出按需量化策略，8分《Baton》构建语义蓝图实现视频音频联合生成，值得深入关注。  
-3) 普通读者可优先阅读精读两篇，了解混合精度训练与跨模态生成的最新方法，速读中结构学习与视觉程序生成也具启发性。
-- 详情：[/202606/01/README](/202606/01/README)
+今日13篇论文聚焦视频生成效率与图像压缩，精读方向为KV缓存偏置校正与剪枝自适应路由。
+最值得关注：《Quantized Keys Steal Attention》攻克视频扩散模型KV缓存压缩偏差；《PARE》实现视频生成的高效剪枝与动态路由。
+建议下一步关注HiFloat8量化与超低码率图像压缩的实际部署效果。
+- 详情：[/202606/02/README](/202606/02/README)
 
 ### 精读区论文标签
-1. [Scale When Needed: Adaptive Neuron-level Mixed Precision Quantization Aware Training](/202606/01/2605.25054v1-scale-when-needed-adaptive-neuron-level-mixed-precision-quantization-aware-training)  
-   标签：评分：9.0/10、query:train-trick
-   evidence：视频编码模型的量化感知训练
-2. [Baton: Explicit Semantic Blueprints for Joint Video-Audio Generation](/202606/01/2605.25195v1-baton-explicit-semantic-blueprints-for-joint-video-audio-generation)  
+1. [Quantized Keys Steal Attention: Bias Correction for KV-Cache Compression in Video Diffusion](/202606/02/2605.26266v1-quantized-keys-steal-attention-bias-correction-for-kv-cache-compression-in-video-diffusion)  
    标签：评分：8.0/10、query:vcodec
-   evidence：基于扩散的联合视频-音频生成，带有显式语义规划，可迁移至生成式视频压缩
-3. [Structure over Pixels: Learning Variable-Length Visual Programs](/202606/01/2605.27696v1-structure-over-pixels-learning-variable-length-visual-programs)  
+   evidence：视频扩散模型中量化KV缓存的偏差校正，与扩散式视频压缩相关
+2. [PARE: Pruning and Adaptive Routing for Efficient Video Generation](/202606/02/2605.27336v1-pare-pruning-and-adaptive-routing-for-efficient-video-generation)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对视频扩散变压器的结构感知剪枝与自适应路由
+3. [ChWDTA: Channel-wise Wavelet-Domain Transformer Attention and Entropy Modeling for Learned Image Compression](/202606/02/2606.00111v1-chwdta-channel-wise-wavelet-domain-transformer-attention-and-entropy-modeling-for-learned-image-compression)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：基于率失真优化的变长视觉分词器采用课程学习
+   evidence：通道级小波域注意力与熵建模的端到端图像压缩方法
+4. [How Neural Losses Shape VAE Latents](/202606/02/2606.00635v1-how-neural-losses-shape-vae-latents)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：神经损失重塑VAE潜在空间的率失真问题
+5. [AdaCodec: A Predictive Visual Code for Video MLLMs](/202606/02/2606.02569v1-adacodec-a-predictive-visual-code-for-video-mllms)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：利用帧间变化的预测性视觉码
 
 ### 速读区论文标签
-1. [Max-Window Scale Estimation for Near-Lossless HiF8 W8A8 Quantization-Aware Training](/202606/01/2605.26189v1-max-window-scale-estimation-for-near-lossless-hif8-w8a8-quantization-aware-training)  
+1. [Boundary-Protection W8A8 HiFloat8 Quantization for Large-Scale Text-to-Video Diffusion Transformers](/202606/02/2606.00957v1-boundary-protection-w8a8-hifloat8-quantization-for-large-scale-text-to-video-diffusion-transformers)  
    标签：评分：7.0/10、query:train-trick
-   evidence：量化感知训练用于近无损HiF8 W8A8格式，可迁移至视频编码模型
-2. [Structure over Pixels: Learning Variable-Length Visual Programs](/202606/01/2605.27696v2-structure-over-pixels-learning-variable-length-visual-programs)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：使用率失真探针学习变长离散编码，类似于神经压缩中的超先验结构
-3. [PARE: Pruning and Adaptive Routing for Efficient Video Generation](/202606/01/2605.27336v1-pare-pruning-and-adaptive-routing-for-efficient-video-generation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：用于高效视频编解码器的剪枝方法
-4. [Sequential Neural Probabilistic Amplitude Shaping: Learning the Channel's Language](/202606/01/2605.28143v1-sequential-neural-probabilistic-amplitude-shaping-learning-the-channels-language)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：神经概率幅度成形与自回归编码器，与神经熵编码和概率估计相关
-5. [Your Teacher Can't Help You Here: Combating Supervision Fidelity Decay in On-Policy Distillation](/202606/01/2605.30833v1-your-teacher-cant-help-you-here-combating-supervision-fidelity-decay-in-on-policy-distillation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：在线策略蒸馏用于LLM推理，知识蒸馏方法可迁移至视频压缩
-6. [MergeTok: Unified Continuous and Discrete Visual Tokenization via Token Merging](/202606/01/2605.30904v1-mergetok-unified-continuous-and-discrete-visual-tokenization-via-token-merging)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：通过令牌合并统一连续和离散视觉分词，与熵编码和结构先验相关
-7. [Fixed-Point Masked Generative Modeling](/202606/01/2605.31215v1-fixed-point-masked-generative-modeling)  
+   evidence：针对视频扩散变压器的边界保护量化策略，识别不均匀激活分布
+2. [Exploiting Semantic and Pixel Representations for Ultra-Low Bitrate Image Compression](/202606/02/2606.01608v1-exploiting-semantic-and-pixel-representations-for-ultra-low-bitrate-image-compression)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：基于扩散的超低比特率图像压缩，优化感知率失真
+3. [Real-Time Generation of Streamable Talking Portrait Video with Reference-Guided Deep Compression VAEs](/202606/02/2606.01620v1-real-time-generation-of-streamable-talking-portrait-video-with-reference-guided-deep-compression-vaes)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：生成式视频压缩，包含因果VAE和自回归去噪
+4. [Teaching Video Generators to Remember: Eliciting Dynamic Memory for Out-of-Sight State Evolution](/202606/02/2605.25333v1-teaching-video-generators-to-remember-eliciting-dynamic-memory-for-out-of-sight-state-evolution)  
    标签：评分：6.0/10、query:vcodec
-   evidence：将不动点求解器引入掩码生成模型，类似于潜在扩散实现高效生成
+   evidence：视频扩散Transformer记忆机制，与基于扩散的视频压缩相关
+5. [Accelerating HEVC Intra Partitioning via a CNN-Hierarchical Attention Transformer Hybrid](/202606/02/2605.29063v1-accelerating-hevc-intra-partitioning-via-a-cnn-hierarchical-attention-transformer-hybrid)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：通过深度学习加速HEVC帧内划分，降低编码复杂度
+6. [Decoupled Residual Denoising Diffusion Models for Unified and Data Efficient Image-to-Image Translation](/202606/02/2606.01048v1-decoupled-residual-denoising-diffusion-models-for-unified-and-data-efficient-image-to-image-translation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：潜在扩散模型用于图像翻译，方法可迁移到视频
+7. [Neural Network Compression by Approximate Differential Equivalence](/202606/02/2606.01402v1-neural-network-compression-by-approximate-differential-equivalence)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：通过神经元聚合的模型压缩方法可用于轻量化视频编解码器
+8. [LongLive-RAG: A General Retrieval-Augmented Framework for Long Video Generation](/202606/02/2606.02553v1-longlive-rag-a-general-retrieval-augmented-framework-for-long-video-generation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：自回归视频扩散与检索增强生成框架
 
 
 <div class="dpr-home-promo-card">
