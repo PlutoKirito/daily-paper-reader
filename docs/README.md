@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-02
-- 运行时间：2026-06-02 22:55:24 UTC
+- 最新运行日期：2026-06-03
+- 运行时间：2026-06-03 22:22:25 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：5
-- 速读区：8
+- 本次总论文数：12
+- 精读区：3
+- 速读区：9
 
 ### 今日简报（AI）
-今日13篇论文聚焦视频生成效率与图像压缩，精读方向为KV缓存偏置校正与剪枝自适应路由。
-最值得关注：《Quantized Keys Steal Attention》攻克视频扩散模型KV缓存压缩偏差；《PARE》实现视频生成的高效剪枝与动态路由。
-建议下一步关注HiFloat8量化与超低码率图像压缩的实际部署效果。
-- 详情：[/202606/02/README](/202606/02/README)
+1) 今日精读图像压缩新框架与信息论恒等式，速读涵盖信道学习、VAE潜变量分析及视频扩散模型量化。  
+2) 最值得看：ChWDTA的波域注意力机制显著提升压缩效率；有限温度de Bruijn恒等式将Fisher信息与谱间隙关联，揭示信息几何新洞见。  
+3) 建议优先精读两篇高分论文，理解波域变换在压缩中的优势，再速读信道学习与VAE工作以拓宽方向认知。
+- 详情：[/202606/03/README](/202606/03/README)
 
 ### 精读区论文标签
-1. [Quantized Keys Steal Attention: Bias Correction for KV-Cache Compression in Video Diffusion](/202606/02/2605.26266v1-quantized-keys-steal-attention-bias-correction-for-kv-cache-compression-in-video-diffusion)  
+1. [ChWDTA: Channel-wise Wavelet-Domain Transformer Attention and Entropy Modeling for Learned Image Compression](/202606/03/2606.00111v1-chwdta-channel-wise-wavelet-domain-transformer-attention-and-entropy-modeling-for-learned-image-compression)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：通道级小波域变换器注意力与熵建模用于学习图像压缩
+2. [Finite-Temperature de Bruijn Identities: Fisher Information as the Spectral Gap of Blahut--Arimoto Dynamics](/202606/03/2606.03813v1-finite-temperature-de-bruijn-identities-fisher-information-as-the-spectral-gap-of-blahut--arimoto-dynamics)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：将Fisher信息与BA谱隙联系起来用于率失真分析
+3. [Accelerating HEVC Intra Partitioning via a CNN-Hierarchical Attention Transformer Hybrid](/202606/03/2605.29063v1-accelerating-hevc-intra-partitioning-via-a-cnn-hierarchical-attention-transformer-hybrid)  
    标签：评分：8.0/10、query:vcodec
-   evidence：视频扩散模型中量化KV缓存的偏差校正，与扩散式视频压缩相关
-2. [PARE: Pruning and Adaptive Routing for Efficient Video Generation](/202606/02/2605.27336v1-pare-pruning-and-adaptive-routing-for-efficient-video-generation)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：针对视频扩散变压器的结构感知剪枝与自适应路由
-3. [ChWDTA: Channel-wise Wavelet-Domain Transformer Attention and Entropy Modeling for Learned Image Compression](/202606/02/2606.00111v1-chwdta-channel-wise-wavelet-domain-transformer-attention-and-entropy-modeling-for-learned-image-compression)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：通道级小波域注意力与熵建模的端到端图像压缩方法
-4. [How Neural Losses Shape VAE Latents](/202606/02/2606.00635v1-how-neural-losses-shape-vae-latents)  
-   标签：评分：8.0/10、query:entropy-coding
-   evidence：神经损失重塑VAE潜在空间的率失真问题
-5. [AdaCodec: A Predictive Visual Code for Video MLLMs](/202606/02/2606.02569v1-adacodec-a-predictive-visual-code-for-video-mllms)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：利用帧间变化的预测性视觉码
+   evidence：深度学习加速HEVC帧内划分预测，与帧内预测网络设计和优化相关
 
 ### 速读区论文标签
-1. [Boundary-Protection W8A8 HiFloat8 Quantization for Large-Scale Text-to-Video Diffusion Transformers](/202606/02/2606.00957v1-boundary-protection-w8a8-hifloat8-quantization-for-large-scale-text-to-video-diffusion-transformers)  
+1. [Sequential Neural Probabilistic Amplitude Shaping: Learning the Channel's Language](/202606/03/2605.28143v1-sequential-neural-probabilistic-amplitude-shaping-learning-the-channels-language)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：神经网络概率幅度整形与算术分布匹配，降低率损失
+2. [How Neural Losses Shape VAE Latents](/202606/03/2606.00635v1-how-neural-losses-shape-vae-latents)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：感知损失影响VAE隐空间和率失真权衡
+3. [Collaborative Few-Step Distillation and Low-Bit Quantization for Wan2.2 Dual-Expert Video Diffusion Models](/202606/03/2606.00658v1-collaborative-few-step-distillation-and-low-bit-quantization-for-wan22-dual-expert-video-diffusion-models)  
    标签：评分：7.0/10、query:train-trick
-   evidence：针对视频扩散变压器的边界保护量化策略，识别不均匀激活分布
-2. [Exploiting Semantic and Pixel Representations for Ultra-Low Bitrate Image Compression](/202606/02/2606.01608v1-exploiting-semantic-and-pixel-representations-for-ultra-low-bitrate-image-compression)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：基于扩散的超低比特率图像压缩，优化感知率失真
-3. [Real-Time Generation of Streamable Talking Portrait Video with Reference-Guided Deep Compression VAEs](/202606/02/2606.01620v1-real-time-generation-of-streamable-talking-portrait-video-with-reference-guided-deep-compression-vaes)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：生成式视频压缩，包含因果VAE和自回归去噪
-4. [Teaching Video Generators to Remember: Eliciting Dynamic Memory for Out-of-Sight State Evolution](/202606/02/2605.25333v1-teaching-video-generators-to-remember-eliciting-dynamic-memory-for-out-of-sight-state-evolution)  
+   evidence：视频扩散模型的少步蒸馏与低比特量化，与高效编解码器训练技巧相关
+4. [Boundary-Protection W8A8 HiFloat8 Quantization for Large-Scale Text-to-Video Diffusion Transformers](/202606/03/2606.00957v1-boundary-protection-w8a8-hifloat8-quantization-for-large-scale-text-to-video-diffusion-transformers)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：视频扩散模型的边界保护量化，与模型压缩训练技巧相关
+5. [HiTokSR: A Coarse-to-Fine Tokenizer with Hierarchical Codebooks for High-Fidelity Real-World Image Super-Resolution](/202606/03/2606.01157v1-hitoksr-a-coarse-to-fine-tokenizer-with-hierarchical-codebooks-for-high-fidelity-real-world-image-super-resolution)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：频率感知的层次化码本量化
+6. [Structure over Pixels: Learning Variable-Length Visual Programs](/202606/03/2605.27696v1-structure-over-pixels-learning-variable-length-visual-programs)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：使用率失真探针学习可变长令牌化
+7. [TunerDiT: Training-free Progressive Steering of Diffusion Transformer for Multi-Event Video Generation](/202606/03/2605.31590v1-tunerdit-training-free-progressive-steering-of-diffusion-transformer-for-multi-event-video-generation)  
    标签：评分：6.0/10、query:vcodec
-   evidence：视频扩散Transformer记忆机制，与基于扩散的视频压缩相关
-5. [Accelerating HEVC Intra Partitioning via a CNN-Hierarchical Attention Transformer Hybrid](/202606/02/2605.29063v1-accelerating-hevc-intra-partitioning-via-a-cnn-hierarchical-attention-transformer-hybrid)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通过深度学习加速HEVC帧内划分，降低编码复杂度
-6. [Decoupled Residual Denoising Diffusion Models for Unified and Data Efficient Image-to-Image Translation](/202606/02/2606.01048v1-decoupled-residual-denoising-diffusion-models-for-unified-and-data-efficient-image-to-image-translation)  
+   evidence：使用扩散Transformer进行多事件视频生成
+8. [Training-Free Continuous Bitrate Control for Scalable Image Coding for Humans and Machines](/202606/03/2606.00158v1-training-free-continuous-bitrate-control-for-scalable-image-coding-for-humans-and-machines)  
    标签：评分：6.0/10、query:vcodec
-   evidence：潜在扩散模型用于图像翻译，方法可迁移到视频
-7. [Neural Network Compression by Approximate Differential Equivalence](/202606/02/2606.01402v1-neural-network-compression-by-approximate-differential-equivalence)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通过神经元聚合的模型压缩方法可用于轻量化视频编解码器
-8. [LongLive-RAG: A General Retrieval-Augmented Framework for Long Video Generation](/202606/02/2606.02553v1-longlive-rag-a-general-retrieval-augmented-framework-for-long-video-generation)  
+   evidence：在人类和机器可伸缩图像编码中实现无训练连续比特率控制
+9. [Spatio-Temporal Correlation Guided Geometric Partitioning for Versatile Video Coding](/202606/03/2606.01701v1-spatio-temporal-correlation-guided-geometric-partitioning-for-versatile-video-coding)  
    标签：评分：6.0/10、query:vcodec
-   evidence：自回归视频扩散与检索增强生成框架
+   evidence：通过几何划分优化帧间预测
 
 
 <div class="dpr-home-promo-card">
