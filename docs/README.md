@@ -6,41 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-08
-- 运行时间：2026-06-08 21:40:36 UTC
+- 最新运行日期：2026-06-10
+- 运行时间：2026-06-10 22:47:14 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：1
-- 速读区：6
+- 本次总论文数：12
+- 精读区：2
+- 速读区：10
 
 ### 今日简报（AI）
-今日阅读7篇论文，精读1篇重点加速视频编码的KD-NVC框架，速读深入量化压缩方向。最值得关注的是KD-NVC的搜索与蒸馏优化思路及W8A8 HiFloat8边界保护量化方案。建议优先精读KD-NVC，并留意边界保护量化在文生视频模型的实际效果。
-- 详情：[/202606/08/README](/202606/08/README)
+今日12篇论文聚焦视频编码与生成，精读两篇获高分：9.0分的《KD-NVC》用搜索-蒸馏框架加速神经视频编码，8.0分的《Few-step Generative Models》将生成模型视为有损压缩新范式。最值得关注视频编码加速与生成压缩两个交叉方向，建议普通读者优先阅读这两篇精读，它们分别从工程优化和理论建模提供可落地的技术路线。
+- 详情：[/202606/10/README](/202606/10/README)
 
 ### 精读区论文标签
-1. [KD-NVC: A Search-and-Distill Framework to Accelerate Neural Video Coding](/202606/08/2606.04595v1-kd-nvc-a-search-and-distill-framework-to-accelerate-neural-video-coding)  
+1. [KD-NVC: A Search-and-Distill Framework to Accelerate Neural Video Coding](/202606/10/2606.04595v1-kd-nvc-a-search-and-distill-framework-to-accelerate-neural-video-coding)  
    标签：评分：9.0/10、query:train-trick
-   evidence：知识蒸馏用于视频压缩
+   evidence：搜索与蒸馏框架加速神经视频编码
+2. [Few-step Generative Models as Lossy Compression](/202606/10/2606.10450v1-few-step-generative-models-as-lossy-compression)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：将少步生成模型作为有损压缩编解码器
 
 ### 速读区论文标签
-1. [Boundary-Protection W8A8 HiFloat8 Quantization for Large-Scale Text-to-Video Diffusion Transformers](/202606/08/2606.00957v1-boundary-protection-w8a8-hifloat8-quantization-for-large-scale-text-to-video-diffusion-transformers)  
+1. [AAD-1: Asymmetric Adversarial Distillation for One-Step Autoregressive Video Generation](/202606/10/2606.03972v2-aad-1-asymmetric-adversarial-distillation-for-one-step-autoregressive-video-generation)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：非对称对抗蒸馏用于一步自回归视频生成
+2. [MotionEnhancer: Leveraging Video Diffusion for Motion-Enhanced Vision-Language Models](/202606/10/2606.06853v1-motionenhancer-leveraging-video-diffusion-for-motion-enhanced-vision-language-models)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：利用视频扩散先验增强运动，可迁移至生成式视频压缩中的运动估计与预测
+3. [Beyond Skeletons: Learning Animation Directly from Driving Videos with Same2X Training Strategy](/202606/10/2606.06903v1-beyond-skeletons-learning-animation-directly-from-driving-videos-with-same2x-training-strategy)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：使用扩散模型进行视频生成并融合运动线索
+4. [Understanding Quantization-Aware Training: Gradients at Quantized Weights Bias to the Low-Loss Basin](/202606/10/2606.09012v1-understanding-quantization-aware-training-gradients-at-quantized-weights-bias-to-the-low-loss-basin)  
    标签：评分：7.0/10、query:train-trick
-   evidence：采用边界保护策略的后训练量化方法应用于视频扩散Transformer
-2. [LLM Compression with Jointly Optimizing Architectural and Quantization choices](/202606/08/2606.04063v1-llm-compression-with-jointly-optimizing-architectural-and-quantization-choices)  
+   evidence：揭示了量化感知训练的原理，为视频编码模型的QAT提供理论指导
+5. [FOGO: Forgetting-aware Orthogonalization Optimizer](/202606/10/2606.10406v1-fogo-forgetting-aware-orthogonalization-optimizer)  
    标签：评分：7.0/10、query:train-trick
-   evidence：可微NAS框架联合优化架构和混合精度量化，可用于视频编码模型压缩
-3. [Neural Network Compression by Approximate Differential Equivalence](/202606/08/2606.01402v1-neural-network-compression-by-approximate-differential-equivalence)  
+   evidence：通用的训练优化器，解决梯度干扰
+6. [Knowledge Distillation for Visual Autoregressive Models](/202606/10/2606.06078v1-knowledge-distillation-for-visual-autoregressive-models)  
    标签：评分：6.0/10、query:train-trick
-   evidence：通过聚合功能相似神经元压缩神经网络，可直接用于视频编解码模型剪枝
-4. [Mamba-Enhanced Implicit Motion Learning for Audio-Driven Portrait Animation](/202606/08/2606.03402v2-mamba-enhanced-implicit-motion-learning-for-audio-driven-portrait-animation)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：隐式运动学习框架采用两阶段流水线，与运动估计和生成视频相关
-5. [Selective Coupling of Decoupled Informative Regions: Masked Attention Alignment for Data-Free Quantization of Vision Transformers](/202606/08/2606.04373v2-selective-coupling-of-decoupled-informative-regions-masked-attention-alignment-for-data-free-quantization-of-vision-transformers)  
+   evidence：面向视觉自回归模型的知识蒸馏
+7. [RAPID: Layer-Wise Redundancy-Aware Pruning and Importance-Driven Token Merging for Efficient ViT](/202606/10/2606.08156v1-rapid-layer-wise-redundancy-aware-pruning-and-importance-driven-token-merging-for-efficient-vit)  
    标签：评分：6.0/10、query:train-trick
-   evidence：视觉Transformer的无数据量化
-6. [AsyncPatch Diffusion: spatially-flexible image generation](/202606/08/2606.07079v1-asyncpatch-diffusion-spatially-flexible-image-generation)  
+   evidence：令牌剪枝与合并方法，可加速视频编解码
+8. [MilliVid: Hierarchical Latents for Long-Range Consistency in Video Generation](/202606/10/2606.09056v1-millivid-hierarchical-latents-for-long-range-consistency-in-video-generation)  
    标签：评分：6.0/10、query:vcodec
-   evidence：具有异质噪声水平的扩散模型用于潜在生成
+   evidence：层次化隐空间视频扩散模型
+9. [Latent Spatial Memory for Video World Models](/202606/10/2606.09828v1-latent-spatial-memory-for-video-world-models)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：在视频世界模型中使用潜在扩散
+10. [TENP: Trapezoidal Expert Neuron Pruning For Mixture-of-Experts](/202606/10/2606.09885v1-tenp-trapezoidal-expert-neuron-pruning-for-mixture-of-experts)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：结构化剪枝框架，可迁移至轻量视频编解码
 
 
 <div class="dpr-home-promo-card">
