@@ -6,40 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-11
-- 运行时间：2026-06-11 22:39:42 UTC
+- 最新运行日期：2026-06-12
+- 运行时间：2026-06-12 22:13:41 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：2
-- 速读区：4
+- 本次总论文数：7
+- 精读区：1
+- 速读区：6
 
 ### 今日简报（AI）
-今日日报聚焦视频编码加速与长视频理解，精读两篇高分工作。  
-最值得关注的是KD-NVC（9.0/10）的搜索-蒸馏框架，以及GOPAgen（8.0/10）的运动感知与层级推理方法。  
-如果关注效率提升，可尝试复现KD-NVC的蒸馏流程；若需长视频分析，GOPAgen的结构记忆思路具有借鉴价值。
-- 详情：[/202606/11/README](/202606/11/README)
+1) 今日精读一篇知识蒸馏与视觉自回归模型研究，速读三篇涵盖LLM压缩与动态推理。
+2) 最值得关注的是知识蒸馏提升视觉自回归模型性能的方法（精读论文8.0分）。
+3) 建议重点研读精读论文，并留意模型压缩技术（如结构剪枝与混合精度量化）在LLM上的实际效果。
+- 详情：[/202606/12/README](/202606/12/README)
 
 ### 精读区论文标签
-1. [KD-NVC: A Search-and-Distill Framework to Accelerate Neural Video Coding](/202606/11/2606.04595v1-kd-nvc-a-search-and-distill-framework-to-accelerate-neural-video-coding)  
-   标签：评分：9.0/10、query:train-trick
-   evidence：知识蒸馏与架构搜索用于神经视频编码加速
-2. [GOPAgen: Motion-Aware and Efficient Agentic Long-Video Understanding with Structural Memory and Hierarchical Reasoning](/202606/11/2606.06532v1-gopagen-motion-aware-and-efficient-agentic-long-video-understanding-with-structural-memory-and-hierarchical-reasoning)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：将视频编解码GOP集成到运动智能体中用于长视频理解；与帧间预测和运动补偿相关
+1. [Knowledge Distillation for Visual Autoregressive Models](/202606/12/2606.06078v1-knowledge-distillation-for-visual-autoregressive-models)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：面向视觉自回归图像模型的知识蒸馏策略
 
 ### 速读区论文标签
-1. [Echo-Infinity: Learning Evolving Memory for Real-Time Infinite Video Generation](/202606/11/2606.04527v1-echo-infinity-learning-evolving-memory-for-real-time-infinite-video-generation)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：视频生成中的记忆压缩机制，与潜在扩散和生成式视频压缩相关
-2. [MotionEnhancer: Leveraging Video Diffusion for Motion-Enhanced Vision-Language Models](/202606/11/2606.06853v1-motionenhancer-leveraging-video-diffusion-for-motion-enhanced-vision-language-models)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：利用视频扩散模型运动先验增强VLM运动理解；与潜扩散和运动补偿相关
-3. [NSVQ: Mitigating Codebook Collapse by Stabilizing Encoder Drift in Vector Quantization](/202606/11/2606.11363v1-nsvq-mitigating-codebook-collapse-by-stabilizing-encoder-drift-in-vector-quantization)  
+1. [PivCo-Huffman](/202606/12/2606.05765v1-pivco-huffman)  
+   标签：评分：7.0/10、query:entropy-coding
+   evidence：提出了一种新的哈夫曼编解码器，具有SIMD友好操作，优化了熵编码
+2. [Joint Structural Pruning and Mixed-Precision Quantization for LLM Compression](/202606/12/2606.07819v1-joint-structural-pruning-and-mixed-precision-quantization-for-llm-compression)  
    标签：评分：7.0/10、query:train-trick
-   evidence：非平稳感知的矢量量化训练策略，用于缓解码本崩塌，可应用于视频压缩中的潜在量化
-4. [Toward Multi-Domain and Long-Tailed Quantization via Feature Alignment and Scaling](/202606/11/2606.04920v1-toward-multi-domain-and-long-tailed-quantization-via-feature-alignment-and-scaling)  
+   evidence：联合剪枝与量化用于压缩，可迁移至视频编解码训练技巧
+3. [Sigma-Branch: Hierarchical Single-Path Network Reconstruction for Dynamic Inference with Reduced Active Parameters](/202606/12/2606.09924v1-sigma-branch-hierarchical-single-path-network-reconstruction-for-dynamic-inference-with-reduced-active-parameters)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：通过层次化重构和动态推理实现模型压缩
+4. [SwiftVR: Real-Time One-Step Generative Video Restoration](/202606/12/2606.09516v1-swiftvr-real-time-one-step-generative-video-restoration)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：使用扩散模型的生成式视频恢复，与生成式视频压缩相关
+5. [NSVQ: Mitigating Codebook Collapse by Stabilizing Encoder Drift in Vector Quantization](/202606/12/2606.11363v1-nsvq-mitigating-codebook-collapse-by-stabilizing-encoder-drift-in-vector-quantization)  
    标签：评分：6.0/10、query:train-trick
-   evidence：提出多域长尾量化方法，可迁移至视频编码模型的量化感知训练
+   evidence：针对码本崩溃的非平稳感知VQ训练策略
+6. [Benchmarking Neural Speech Compression from a Rate-Distortion Perspective](/202606/12/2606.11631v1-benchmarking-neural-speech-compression-from-a-rate-distortion-perspective)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：神经语音编解码器的率失真基准测试及熵约束编码
 
 
 <div class="dpr-home-promo-card">
