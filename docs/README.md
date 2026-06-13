@@ -6,43 +6,36 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-12
-- 运行时间：2026-06-12 22:13:41 UTC
+- 最新运行日期：2026-06-13
+- 运行时间：2026-06-13 21:26:51 UTC
 - 运行状态：成功
-- 本次总论文数：7
+- 本次总论文数：4
 - 精读区：1
-- 速读区：6
+- 速读区：3
 
 ### 今日简报（AI）
-1) 今日精读一篇知识蒸馏与视觉自回归模型研究，速读三篇涵盖LLM压缩与动态推理。
-2) 最值得关注的是知识蒸馏提升视觉自回归模型性能的方法（精读论文8.0分）。
-3) 建议重点研读精读论文，并留意模型压缩技术（如结构剪枝与混合精度量化）在LLM上的实际效果。
-- 详情：[/202606/12/README](/202606/12/README)
+今日精读1篇向量量化研究，速读3项覆盖3D流媒体、KV缓存压缩及视频世界模型，整体质量中等。
+
+最值得关注的是向量量化中缓解码本坍塌的NSVQ方法（8分），以及低秩KV缓存压缩STAR-KV的软阈值自适应控制。
+
+建议优先精读NSVQ理解编码器稳定策略，可辅助关注STAR-KV在长文本推理中的压缩潜力。
+- 详情：[/202606/13/README](/202606/13/README)
 
 ### 精读区论文标签
-1. [Knowledge Distillation for Visual Autoregressive Models](/202606/12/2606.06078v1-knowledge-distillation-for-visual-autoregressive-models)  
+1. [NSVQ: Mitigating Codebook Collapse by Stabilizing Encoder Drift in Vector Quantization](/202606/13/2606.11363v1-nsvq-mitigating-codebook-collapse-by-stabilizing-encoder-drift-in-vector-quantization)  
    标签：评分：8.0/10、query:train-trick
-   evidence：面向视觉自回归图像模型的知识蒸馏策略
+   evidence：通过分阶段编码器冻结和非平稳嵌入损失缓解码本坍塌
 
 ### 速读区论文标签
-1. [PivCo-Huffman](/202606/12/2606.05765v1-pivco-huffman)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：提出了一种新的哈夫曼编解码器，具有SIMD友好操作，优化了熵编码
-2. [Joint Structural Pruning and Mixed-Precision Quantization for LLM Compression](/202606/12/2606.07819v1-joint-structural-pruning-and-mixed-precision-quantization-for-llm-compression)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：联合剪枝与量化用于压缩，可迁移至视频编解码训练技巧
-3. [Sigma-Branch: Hierarchical Single-Path Network Reconstruction for Dynamic Inference with Reduced Active Parameters](/202606/12/2606.09924v1-sigma-branch-hierarchical-single-path-network-reconstruction-for-dynamic-inference-with-reduced-active-parameters)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：通过层次化重构和动态推理实现模型压缩
-4. [SwiftVR: Real-Time One-Step Generative Video Restoration](/202606/12/2606.09516v1-swiftvr-real-time-one-step-generative-video-restoration)  
+1. [EvoGS: Constructing Continuous-Layered Gaussian Splatting with Evolution Tree for Scalable 3D Streaming](/202606/13/2606.07179v1-evogs-constructing-continuous-layered-gaussian-splatting-with-evolution-tree-for-scalable-3d-streaming)  
    标签：评分：6.0/10、query:vcodec
-   evidence：使用扩散模型的生成式视频恢复，与生成式视频压缩相关
-5. [NSVQ: Mitigating Codebook Collapse by Stabilizing Encoder Drift in Vector Quantization](/202606/12/2606.11363v1-nsvq-mitigating-codebook-collapse-by-stabilizing-encoder-drift-in-vector-quantization)  
+   evidence：连续层级表示用于可扩展3D流，直接关联可扩展神经视频编码
+2. [STAR-KV: Low-Rank KV Cache Compression via Soft Thresholding for Adaptive Rank Control](/202606/13/2606.08382v1-star-kv-low-rank-kv-cache-compression-via-soft-thresholding-for-adaptive-rank-control)  
    标签：评分：6.0/10、query:train-trick
-   evidence：针对码本崩溃的非平稳感知VQ训练策略
-6. [Benchmarking Neural Speech Compression from a Rate-Distortion Perspective](/202606/12/2606.11631v1-benchmarking-neural-speech-compression-from-a-rate-distortion-perspective)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：神经语音编解码器的率失真基准测试及熵约束编码
+   evidence：KV缓存压缩中的低秩与量化训练技巧
+3. [BiWM: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression](/202606/13/2606.10135v1-biwm-advancing-open-source-interactive-video-world-models-with-bidirectional-autoregression)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：双向视频扩散用于交互世界模型，与生成式视频压缩相关
 
 
 <div class="dpr-home-promo-card">
