@@ -1,0 +1,1429 @@
+Title: JOMP: Jointly-Optimized Mixed-Precision Quantization Across Neural Video Coding Frameworks and Buffering Strategies
+
+URL Source: https://arxiv.org/pdf/2606.13110v1
+
+Published Time: Fri, 12 Jun 2026 01:00:04 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+> 1
+
+# JOMP: Jointly-Optimized Mixed-Precision Quantization Across Neural Video Coding Frameworks and Buffering Strategies 
+
+Yu-Hsiang Lin, Ruhan Conceic ¸ ˜ ao, Student Member, IEEE , Chun-Hung Wu, Huu-Tai Phung, Tzu-Hsiang Chou, Marcelo Porto, Senior Member, IEEE ,Luciano Volcan Agostini, Senior Member, IEEE , Wen-Hsiao Peng, Fellow, IEEE 
+
+Abstract —Variational autoencoder-based neural video coding has demonstrated impressive rate-distortion performance. How-ever, its adoption in real-world applications remains hindered by challenges, such as prohibitively high computational complexity and limited cross-platform interoperability. These issues are often overlooked, as most neural video codecs rely on floating-point arithmetic to fully explore their rate-distortion potential. Practi-cal deployment, however, requires integer-based implementations. Converting floating-point implementations into integer-based net-works is non-trivial, since it involves quantizing inter-dependent coding components, whose sensitivity to precision may vary across codec designs. This paper introduces a Jointly-Optimized Mixed-Precision (JOMP) framework, in which both quantization parameters and bit widths are treated as learnable variables during training. This enables different codec modules to operate at varying precision levels, thereby jointly optimizing the rate-distortion-complexity trade-off. To the best of our knowledge, JOMP is the first mixed-precision quantization framework for neural video codecs. Its effectiveness is validated through asystematic investigation of quantization across different coding frameworks and temporal buffering strategies. Our study marks the first attempt to a unified understanding of the combined effects of modern coding frameworks and temporal buffering strategies, with the aim of informing future development of neural video codecs from a practicality perspective. In addition, we de-velop a complete integerization pipeline to achieve deterministic decoding. Overall, when applied to our best-performing model, JOMP enables end-to-end mixed-precision learning for integer neural video codecs, achieving rate-distortion performance com-parable to that of the state-of-the-art DCVC-FM while reducing bit operations by 87.6%. 
+
+Index Terms —Neural Video Coding, Integer Networks, Mixed-Precision Network Quantization 
+
+I. I NTRODUCTION 
+
+# CURRENT variational autoencoder-based neural video coding (NVC) [1]–[9] has been demonstrating superior rate-distortion efficiency in comparison to traditional codecs, highlighting its potential as a next-generation video cod-ing paradigm. However, they typically rely on floating-point arithmetic, which hinders deployment in real-world scenar-ios. Due to the round-off error, floating-point computations may produce slightly different decoder-side outputs across devices that affect probability estimation used by entropy coding in NVC, resulting in decoding failure, as illustrated in 
+
+Yu-Hsiang Lin, Chun-Hung Wu, Huu-Tai Phung, Tzu-Hsiang Chou, and Wen-Hsiao Peng are affiliated with the Department of Computer Science, National Yang Ming Chiao Tung University, Hsinchu, Taiwan (e-mail: wpeng@cs.nctu.edu.tw). Ruhan Conceic ¸ ˜ ao, Marcelo Porto, and Luciano Volcan Agostini are affili-ated with the Graduate Program in Computing, Federal University of Pelotas, Brazil. Platform A Platform B 
+
+AD 
+
+AD 
+
+> NaN occurred!
+
+(a) Better 
+
+(b) 
+
+Fig. 1. Motivation and overview of our work. (a) Floating-point decoding may suffer from cross-platform numerical inconsistency, where small differences can lead to inaccurate probability estimation and eventually decoding failure. (b) Jointly-Optimized Mixed-Precision (JOMP) quantization significantly re-duces decoding complexity (BitOPs) while maintaining comparable BD-rate performance, achieving a favorable trade-off between coding efficiency and computational cost. 
+
+Fig. 1(a). Furthermore, floating-point arithmetic generally con-sumes more energy than fixed-point arithmetic at comparable bit width, making them less attractive from an implementation perspective [10]–[12]. These limitations have motivated recent efforts towards integer/fixed-point NVC decoders as a means to mitigate cross-platform reconstruction mismatch [7], [13]. This emerging direction broadens the design objectives of NVC beyond rate-distortion optimization by incorporating practical concerns, such as reproducibility, energy efficiency, computational complexity, and storage footprint. Despite this motivation, integerizing NVCs remains a non-trivial problem. For example, prior work [7], [13] apply uniform-precision quantization schemes to a specific NVC model, making it unclear which codec components can be aggressively quantized and which require higher precision to preserve coding efficiency. Moreover, since these studies are limited to a single codec design, the extent to which their conclusions generalize across different coding frameworks remains underexplored. Motivated by these gaps, this paper aims to advance in-tegerized NVC design beyond prior works with a focus on key aspects that are critical for practical deployment. Specif-
+
+> arXiv:2606.13110v1 [eess.IV] 11 Jun 2026 2
+
+ically, we jointly optimize rate-distortion performance and computational complexity through a Jointly-Optimized Mixed-Precision (JOMP) quantization-aware training (QAT) frame-work. We use the number of bit operations (BitOPs) [14], [15] as an indicator of platform-agnostic intrinsic computational complexity 1. Since a video is typically encoded once but de-coded many times, and because cross-platform inconsistencies arise from mismatches in the decoder path, we apply JOMP to the decoder side only. This choice directly targets the most critical stage for practical deployment, where deterministic reconstructions and reduced complexity are essential. Still, the proposed JOMP framework is not restricted to decoder-side optimization and could be applied end-to-end to the entire codec. Rather than applying uniform bit width to the entire de-coder, the JOMP framework accounts for how bit-precision reduction in each individual coding component affects both the overall platform-agnostic intrinsic complexity and the resulting rate-distortion performance. This enables the development of mixed-precision integer NVCs that better balances coding efficiency and complexity, as illustrated in Fig. 1(b). The resulting codec achieves rate-distortion performance compa-rable to DCVC-FM [6] while offering substantially lower complexity. It is worth emphasizing that the proposed JOMP generalizes across distinct coding frameworks and temporal buffering strategies. This is particularly important because the impact of precision reduction depends strongly on the underlying codec design, since different coding schemes and buffering mechanisms induce varying trade-offs among reconstruction quality, temporal robustness, and computational complexity. This broad applicability across distinct NVC enables a sys-tematic investigation across multiple coding frameworks and buffering strategies, allowing us to identify how precision sensitivity varies across diverse NVC design choices. Such an analysis provides insights that extend beyond a single codec configuration and is therefore essential for advancing the development of practical and deployable integer NVCs. Our main contributions are summarized as follows:  
+
+> •
+
+We develop a Jointly-Optimized Mixed-Precision (JOMP) quantization-aware training framework for neural video codecs (NVCs), enabling joint optimization of coding efficiency and computational complexity in an end-to-end manner.  
+
+> •
+
+We present the first systematic study of integerized neural video codecs across multiple coding frameworks and temporal buffering strategies, providing new insights into precision sensitivity and their rate-distortion-complexity trade-offs. This broad applicability is enabled by the generality of JOMP.  
+
+> •
+
+We design a complete integerization pipeline for neural video codecs, including integer convolution and integer implementations of key modules, enabling bit-exact and cross-platform consistent decoding.              
+
+> 1Here, intrinsic computational complexity refers to the number of bit oper-ations that is inherent to the algorithm and is independent of the underlying software or hardware platform. Temporal Buffer
+> ENC DEC ENC DEC
+> RC CC MCR
+> (a)
+> DEC
+> Temporal Buffer
+> DEC
+> Temporal Buffer
+> DEC
+> Explicit Implicit Hybrid
+> (b)
+> ENC DEC
+> Fig. 2. Overview of NVC design variants considered in this work. (a) Dif-ferent coding frameworks for inter-frame compression. (b) Different temporal buffering strategies used to propagate past information across frames.
+> •
+
+We demonstrate that the proposed framework achieves competitive coding performance while significantly re-ducing decoding complexity, contributing toward the practicality of neural video codec deployment. II. B ACKGROUND 
+
+This section addresses the fundamentals of neural video coding and neural network quantization, offering the necessary background to facilitate comprehension of our work. 
+
+A. Neural Video Coding 
+
+Modern NVCs vary substantially in both their coding frame-works and temporal buffering strategies. Fig. 2 provides an overview of these two design dimensions, where Fig. 2(a) illustrates different coding frameworks and Fig. 2(b) presents different temporal buffering strategies. In the figure, xt denotes the current frame to be compressed, and ˆxt represents its reconstructed version at the decoder. The variable xc is the motion-compensated reference (or its corresponding features), which serves as a prediction signal to facilitate compression of the current frame. In masked conditional residual coding (MCR), a spatial mask m is further introduced to modulate the contribution of the reference. Additionally, ft denotes the learned feature representation of the current frame, which can be stored in a temporal buffer to assist the decoding of subsequent frames. 
+
+1) Coding frameworks: Existing inter-frame coding frame-works can be broadly categorized into three types: Residual Coding (RC), Conditional Coding (CC), and Masked Condi-tional Residual Coding (MCR) (see Fig. 2(a)). 
+
+Residual Coding (RC) [16]–[20] directly encodes the dif-ferences xt − xc between the current frame xt and its motion-compensated prediction xc, following the classical paradigm established in traditional video codecs. Despite its conceptual simplicity, RC provides a strong and interpretable baseline. 
+
+Conditional Coding (CC) [1]–[7] departs from the residual paradigm by treating the predicted frame or its extracted features as conditioning signals that jointly guide both the encoder and decoder. This formulation enables richer temporal modeling and has become the dominant approach in recent high-performance neural video codecs. 3
+
+Masked Conditional Residual Coding (MCR) [8], [9], inspired by Brand et al. [21], further extends CC by introduc-ing a spatial mask m that adaptively subtracts the reference prediction xc from the original frame xt at the sub-frame level before passing the resulting signal xt − m ⊙ xc through a conditional inter-frame codec. This mechanism helps alleviate the information bottleneck [21] in CC and improves coding efficiency. 
+
+2) Temporal buffering strategies: To propagate temporal information across frames, neural video codecs maintain inter-mediate states in a temporal buffer. Existing approaches can be grouped into three types [9] (see Fig. 2(b)). 
+
+Explicit buffering [1], [2], [8], [16]–[20] stores previously reconstructed frames and reuses them as references for future frames. This approach aligns closely with traditional codecs and offers strong interpretability, but may propagate recon-struction artifacts over time. 
+
+Implicit buffering [3]–[7] propagates learned latent fea-tures across frames, bypassing the need to store reconstructed frames. While this enables expressive temporal modeling, it introduces greater sensitivity to quantization errors, as learned features are often not regularized to be compact and robust to quantization. 
+
+Hybrid buffering [9] combines reconstructed frames with learned latent features, aiming to leverage the complementary strengths of both strategies. This design has demonstrated strong empirical performance. 
+
+3) Model variants: Coding frameworks and temporal buffering strategies are treated as orthogonal design dimen-sions in this work. Each of the three coding frameworks can, in principle, be paired with any of the three buffering strate-gies, yielding nine distinct model variants. We systematically analyze all nine configurations to understand how quantiza-tion affects rate-distortion-complexity trade-offs across diverse codec designs. 
+
+B. Neural Network Quantization 
+
+Quantization is the process of mapping a large, potentially infinite, uncountable set of continuous values to a finite, count-able set of discrete values. In the context of neural networks, it has become an important technique because it reduces memory footprint and computational cost by representing weights, activations, and other model parameters using low-precision formats. As a result, quantized models can achieve smaller model sizes, faster inference, and lower energy consumption, all of which are critical in latency-sensitive and resource-constrained applications. Quantization can be categorized in several ways based on: (i) the spacing of its quantization levels (uniform or non-uniform), (ii) how the input data are processed (scalar or vector quantization), and (iii) whether real-valued inputs are mapped to discrete integer values centered around zero (symmetric) or with an offset (asymmetric). This work, as the following discussion, focuses on symmetric, uniform, and scalar quantization. Given a real-valued input v ∈ R, quantization maps it to the quantization-index domain u via a scale factor s, as v
+
+P(v)
+
+vqb      
+
+> 21012QbQ+
+> b
+
+v = vqb s  
+
+> vv+
+> Clipping
+> Error
+> Granular
+> Error
+
+s
+
+s = v +
+
+Q +             
+
+> b
+> Fig. 3. Illustration of a symmetric, uniform, and scalar quantization scheme along with a data distribution P(v). The input value vis quantized to the index
+> ¯vqbusing the step size s, with clipping bounds v−, v +and corresponding quantization indices Q−
+> b, Q +
+> b. The reconstructed value is denoted by ˆv.Quantization introduces granular errors for values within the clipping range and clipping errors for values outside.
+
+demonstrated in (1). This value is then clipped to the range determined by the bit width b and rounded to obtain an integer index. We formalize this operation as an integerization function Ib (·) in (2), where Q− 
+
+> b
+
+= −2b−1 and Q+ 
+
+> b
+
+= 2 b−1 −1.Accordingly, the quantization index ¯vqb of v is given in (3). From the scale s and quantization index ¯vqb , one can obtain the reconstructed ˆv value, as shown in (4). 
+
+u = vs (1) 
+
+Ib (u) ≜ clip( u, Q − 
+
+> b
+
+, Q + 
+
+> b
+
+) (2) 
+
+¯vqb = Ib (u) (3) 
+
+ˆv = ¯ vqb × s (4) From (1), (2), (3), and (4), the reconstructed value ˆv
+
+can be directly obtained from v once s, b are defined. For this, we define the quantization-dequantization function Q(·)
+
+in (5), which is commonly referred to as fake (or simulated) quantization because both s and ˆv remain floating-point values. In practical fixed-point implementations, however, both must be represented in integer form. 
+
+Q(v; s, b ) ≜ Ib (v/s ) × s = ˆ v (5) The scale factor s can be defined by a clipping bound v+
+
+as in (6), where v+ controls the representable dynamic range. Notably, this quantity is not necessarily equal to the maximum value attained by v, since outlier values may be intentionally clipped. 
+
+s = v+
+
+Q+
+
+> b
+
+, (6) It can be observed that learning any two among v+, s, and 
+
+Q+ 
+
+> b
+
+automatically determines the third. Thus, for a fixed bit width, s governs the granular quantization error, which arises from the finite spacing between adjacent quantization levels; whereas v+ controls the clipping error, which arises when values exceed the representable range and are truncated to the nearest boundary. Their relationship is illustrated in Fig. 3. In conventional fixed-bit-width quantization approaches, as discussed next, the quantization process must define either 
+
+v+ or s, with the other being inferred accordingly, thereby determining the trade-off between granular and clipping errors. 4
+
+Nevertheless, this process may still rely on a bit-width choice that could be itself overestimated or underestimated. Quantization in neural networks is commonly realized through two main approaches: Post-Training Quantization 
+
+(PTQ) and Quantization-Aware Training (QAT) [22], in both of which the bit width b (or, equivalently, Q+ 
+
+> b
+
+) is treated as a predefined hyperparameter. As the name suggests, PTQ determines the quantization scale factor sv after training by minimizing the mean-squared reconstruction error, without modifying the model parameters. Equation (7) illustrates this process, where v denotes either activations or network weights, and bv is the predefined bit width assigned to v. For activa-tions, a small calibration dataset is typically used to evaluate the mean-squared reconstruction error and estimate sv .
+
+s∗ 
+
+> v
+
+= arg min 
+
+> sv
+
+MSE( v, Q(v; sv , b v )) , (7) In contrast, QAT incorporates quantization effects during training by jointly optimizing the model parameters θ together with the quantization scale factors sa and sw for activations and weights, respectively. Specifically, training is performed using the fake-quantized activation ˆa = Q(a; sa, b a), the fake-quantized weight ˆw = Q(w; sw, b w), and the ground-truth target y, as demonstrated in (8) and (9). The fake-quantized activations ˆa and weights ˆw assume discrete real-valued levels, although they are still represented in floating-point precision. In (9), M may represent an entire model, an individual layer, or a component of an NVC, while J denotes the training objective. The bias term in (8) is typically retained in high or full precision and is therefore not associated with quantization parameters. 
+
+ˆθ = { ˆw, bias }, (8) 
+
+(ˆθ∗, s ∗
+
+> a
+
+, s ∗
+
+> w
+
+) = arg min 
+
+> ˆθ,s a,s w
+
+J
+
+
+
+y, M(ˆ a; ˆθ)
+
+
+
+. (9) Although QAT incorporates quantization effects during opti-mization, both PTQ and QAT typically assume fixed bit widths 
+
+ba and bw. As a result, Q+ 
+
+> b
+
+is predefined rather than learned, and the learned scale factor s directly determines the clipping bound v+, as shown in (6). This reduction in the degrees of freedom from two to one introduces an undesirable trade-off between granular and clipping errors, as previously discussed. III. R ELATED WORKS 
+
+This section reviews prior work on the quantization of neural image and video compression models, and also dis-cusses previous studies focused on mixed-precision quantiza-tion strategies for neural networks in a broader context. 
+
+A. Quantized Neural Image and Video Codecs 
+
+Regarding variational autoencoder-based neural image codecs, the prior work [23], [25] shows that quantizing weights and activations in hyperprior components can mitigate cross-platform inconsistencies, while [26], [29], [30] apply quanti-zation to the entire decoder. Beyond these approaches, mixed-precision methods [14], [27] have been proposed to better bal-ance compression performance and computational complexity.                                         
+
+> TABLE I COMPARISON WITH QUANTIZATION METHODS IN NEURAL IMAGE CODECS .Methods Precision Bit-width Assignment Learnable Bit-widths JPEG AI [23] W8A8 Manual ×
+> FPX-NIC [24] W8A8 Manual ×
+> Koyuncu et al. [25] W16A16 Manual ×
+> Q-LIC [26] W8A8 Manual ×
+> MP-PTQ [14] MP Search-based ×
+> FMPQ [27] MP Search-based ×
+> Ours MP Optimization-based ✓
+> TABLE II COMPARISON WITH QUANTIZATION METHODS IN NEURAL VIDEO CODECS .Methods Precision Frameworks Buffer MobileCodec [28] W8A8 RC Explicit MobileNVC [13] W8A8 RC Explicit DCVC-RT [7] W16A16 CC Implicit Ours MP RC/CC/MCR Exp./Imp./Hybrid
+
+Toward practical deployment, [24] further demonstrates an FPGA implementation of a neural image codec based on uniform symmetric quantization. As summarized in Table I, most existing approaches for neural image codecs either rely on fixed-precision quantization (e.g., W8A8, where W and A denote the bit widths of weights and activations, respectively) or adopt mixed-precision (MP) quantization using search-based strategies to assign bit widths for various components. In contrast, quantization in variational autoencoder-based NVCs remains relatively underexplored. As summarized in Table II, existing approaches mostly adopt uniform precision across components or apply quantization in a limited scope. For example, MobileCodec [28] and MobileNVC [13] employ W8A8 quantization using a PTQ+QAT pipeline, while DCVC-RT [7] adopts W16A16 quantization to ensure deterministic inference. Other works investigate partial quantization, such as applying 8-bit quantization to the hyperprior decoder [31]. However, these methods do not consider the heterogeneous nature of NVC components, where different components may exhibit distinct sensitivity to quantization. Quantization has also been explored in implicit neural representation-based image and video codecs [32], [33]. How-ever, their primary objective is bitrate reduction through net-work weight compression, rather than deterministic decoding or cross-platform interoperability. Motivated by these limitations in the literature on varia-tional autoencoder-based neural video codecs, we investigate quantization in NVCs from a broader perspective through the proposed JOMP framework. JOMP adaptively allocates bit widths across codec components to achieve improved rate-distortion-complexity trade-offs, as presented in Sec. IV, with the goal of enabling deployment-oriented integer inference. 
+
+B. Mixed-Precision Quantization 
+
+In mixed-precision quantization, a key design problem is how to assign different bit widths to network components while balancing model performance and computational cost. Existing approaches can be broadly categorized into two classes: search-based and optimization-based methods. 5Conv        
+
+> Weights Input
+> Fake Quantize Fake Quantize
+> Bias
+> Output
+> Conv
+> Weights Input
+> Quantize Quantize
+> Bias
+> Output
+> Quantize
+> Rescale
+> FP FP FP FP FP FP FP INT FP FP INT INT INT INT INT INT Offline (a) (b)
+> Fig. 4. Comparison between fake-quantization and fully integerized convolu-tion. (a) Fake quantization emulates low precision while computations remain in floating point. (b) Fully integerized convolution performs all operations in integer arithmetic.
+
+In search-based methods, e.g., MP-PTQ [14] and FMPQ [27], bit-width assignments are typically determined through iterative evaluation of candidate bit-width configurations, where each bit-width configuration is trained or partially evaluated to estimate the resulting model performance and complexity cost. In these methods, the update of model weights is generally performed as a separate task and is independent of the bit-width assignment. In contrast, optimization-based methods treat bit widths as learnable parameters and jointly optimize bit-width as-signments together with network weights during training, enabling a more direct and fine-grained exploration of the performance-complexity trade-off. Because the loss function is non-differentiable with respect to integer bit widths, ex-isting optimization-based approaches address this challenge through various relaxations. Uhlich et al. [34] enable gradient-based optimization by parameterizing quantization step sizes and clipping bounds as optimization variables. FracBits [15] introduces fractional bit widths with linear interpolation, while SDQ [35] models bit-width allocation as a stochastic pro-cess using differentiable sampling (e.g., Gumbel-softmax). DDQ [36] further proposes a differentiable formulation by rep-resenting quantization as a learnable matrix-vector operation. IV. J OINTLY -O PTIMIZED MIXED -P RECISION QAT NVC integerization process used in this work consists of two stages: (i) Jointly-Optimized Mixed-Precision (JOMP) quantization-aware training (QAT), in which the clipping bounds, component-wise bit widths, and network weights are jointly optimized through fake-quantization (see Fig. 4(a)), as described in this section; and (ii) the conversion of the fake-quantized NVC into an actual integer NVC (see Fig. 4(b)), as described in Sec. V, enabling deterministic and consistent deployment across heterogeneous platforms. The same frame-work is applied to the nine variants described in Sec. II-A, spanning three coding frameworks and three temporal buffer-ing strategies. As shown in Fig. 5(a), NVC consists of four main compo-nents: (i) the inter-frame main codec (Ienc /Idec ), responsible for encoding and decoding the target frame based on predicted signals; (ii) the hyperprior codec (Henc /Hdec ), which models the latent distribution for entropy coding; (iii) the motion codec (Menc /Mdec ), which compresses the motion information between frames; and (iv) the prediction network (Pred.), which generates the predicted signals based on temporal context and motion information. Our quantization and integerization processes focus exclu-sively on the decoding components (Fig. 5(a)), where bit-exact reconstruction across different deployment platforms is essential to prevent temporal drift. Reducing the complexity of these decoding components is crucial for practical deployment, since decoding is often executed repeatedly and efficiently across diverse devices under constraints of latency, energy consumption, and memory footprint. By contrast, encoding-only components remain in full floating-point precision, since they do not affect cross-platform consistency and a video is generally encoded once but decoded multiple times. As discussed in Sec. II-B, conventional QAT treats bit widths as predefined design choices rather than learnable parameters. In the context of NVC, which consists of multiple deep neural network components, QAT typically leads to either uniform precision across all components or empirically-designed mixed-precision assignments. To overcome this lim-itation, our JOMP framework jointly optimizes not only the scale factors (or clipping bounds) and network weights, as in conventional QAT, but also the bit width associated with each component. However, without additional constraints in the loss function, such optimization would naturally favor higher quantization precision, since larger bit widths reduce quantization errors. This motivates the use of a complexity-aware regularization term, enabling learnable precision while avoiding trivial high-precision solutions. In our design, all layers within a given NVC component share the same bit width, whereas the corresponding quan-tization clipping bounds are learned independently for each convolutional layer to better adapt to their distinct activation and weight dynamic ranges. In this way, JOMP establishes a component-wise mixed-precision formulation for integerized NVCs, where precision assignment is optimized jointly with coding performance and complexity. The component-wise bit-width constraint may allow the re-use of the same hardware adders and multipliers across convolutional layers in the same component. However, it is important to mention that this constraint can be adjusted to better accommodate specific application requirements. It is worth mentioning that we adopt a uniform, symmetric quantization framework due to its hardware efficiency and con-sistency across modules. From a system perspective, uniform quantization enables efficient integer arithmetic with a single scale factor, which simplifies deployment and reduces imple-mentation overhead. The symmetric design [14], [24], [25] further eliminates zero-point offsets, leading to more efficient computation and easier accumulation in integer pipelines. 6Q AE AD 
+
+ME 
+
+Pred. Buffer 
+
+> Jointly-Optimized Mixed-Precision Quantization
+
+Pred. Learnable Bit Widths 
+
+> W
+> A
+> 10.45
+> 15.68
+> W
+> A
+> 11.56
+> 15.34
+> W
+> A
+> 9.87
+> 12.21
+> W
+> A
+> 11.12
+> 14.35
+> W10A16
+
+Rounding 
+
+> W12A15
+> W10A12
+> W11A14
+> Decoding Components (Fixed-point Arithmetic) Encoding-only Components (Floating-point Arithmetic)
+
+(a) (b)       
+
+> Fig. 5. Overview of the quantization framework. (a) Decoder-side quantization architecture based on the MCR Hybrid framework. We apply quantization only to the decoder and decompose it into four components: the inter-frame main decoder Idec , the prediction network Pred ., the motion decoder Mdec ,and the hyperprior decoder Hdec . (b) Jointly-Optimized Mixed-Precision quantization. Bit widths are treated as learnable parameters and jointly optimized during training, enabling automatic bit-width assignment for different decoder components.
+
+A. JOMP Loss Function 
+
+To formalize the trade-off between coding efficiency and complexity, we start from the conventional rate-distortion objective described in (10), where R and D denote the bitrate and distortion terms, respectively, and λD controls the rate-distortion trade-off. Building upon this formulation, we further incorporate computational complexity into the training objec-tive through a BitOPs regularization term, as demonstrated in (11), where LBitOPs directly reflects decoding complexity in a normalized form, while λC controls the trade-off between coding performance and computational cost. The complexity loss LBitOPs is defined in (12), where m(k)px denotes the number of per-pixel multiply-accumulate operations associated with component k. The variables b(k) 
+
+> w
+
+and b(k) 
+
+> a
+
+denote the corre-sponding weight and activation bit widths of component k,respectively. Since all layers within a given component share the same bit width, complexity is assessed at the component level. The multiplication by 10 −9 converts the BitOPs count per pixel into giga-BitOPs per pixel (G/pixel). 
+
+LRD = R + λDD (10) 
+
+LJOMP = LRD + λCLBitOPs (11) 
+
+LBitOPs = 10 −9 X
+
+> k
+
+m(k)px b(k) 
+
+> w
+
+b(k) 
+
+> a
+
+(12) 
+
+B. Learning Quantization Parameters and Bit Widths 
+
+In this subsection we adopt the same notation introduced in Sec. II-B to derive the gradients of the loss function in (11) with respect to quantization parameters for gradient-based optimization. 
+
+1) Problem Formulation: Let v ∈ R denote a real-valued input to be quantized, which, in our case, corresponds to a model weight or an activation. The goal is to learn both the clipping bound v+ ∈ [0 , +∞) and the continuous bit-width parameter ˜b ∈ [8 , 16] . Notably, from the clipping bound and bit width, the quantization scale s can be derived according to (6). Since non-integer bit widths are not valid in practice, we project the continuous learnable bit-width ˜b onto a discrete finite interval: 
+
+b =
+
+j
+
+clip( ˜b, B −, B +)
+
+m
+
+, (13) where we set B− = 8 and B+ = 16 in our implementation. Therefore, the actual bit width b assigned to any module is an integer from 8 to 16 inclusive. As shown in Fig. 5(b), assuming that a given NVC decoder has k components, we define the set of bit widths for weights and activations as 
+
+β ≜
+
+n ˜b(1)  
+
+> w
+
+, ˜b(1) 
+
+> a
+
+
+
+, · · · ,
+
+˜b(k) 
+
+> w
+
+, ˜b(k)
+
+> a
+
+o 
+
+. (14) Additionally, let l denote the total number of layers in the decoder across all components of the model. Since each layer has its own pair of clipping bounds, or equivalently, its own pair of quantization scales for weights and activations, we define the set V of all clipping bounds as 
+
+V ≜
+
+n 
+
+w+[1] , a +[1] 
+
+, · · · ,
+
+
+
+w+[ l], a +[ l]o 
+
+. (15) Therefore, the objective of JOMP is to minimize the loss function in (11) through a gradient-descent optimization pro-cess, as formalized in (16). 
+
+(ˆθ∗, V ∗, β ∗) = arg min 
+
+> ˆθ,V,β
+
+LJOMP (16) In terms of the quantizer design, the key distinction of JOMP from (9), which represents conventional QAT in its typical form, is that most QAT methods learn only quantization scales under fixed bit widths. According to (6), once the bit width b is specified and Q+ 
+
+> b
+
+is determined, learning the quantization scale s reduces to learning only the clipping bound v+. In contrast, JOMP jointly learns both bit widths and clipping bounds during optimization. As illustrated in Fig. 3, the clipping bounds govern clipping errors while the bit widths 7
+
+control granular errors within those clipping bounds. Conse-quently, with fixed bit widths in conventional QAT, one must trade off between these two types of errors, whereas JOMP mitigates both simultaneously under a complexity constraint. 
+
+2) Gradient-Based Optimization: Building on the quan-tization formulation in Sec. II-B, we derive the gradient expressions of the quantized value ˆv with respect to the real-valued input v, the clipping bound v+, and the bit-width parameter ˜b, as presented in (17), (18), and (19), respectively. These gradients enable end-to-end optimization of the net-work weights together with v+ and ˜b via backpropagation. The resulting expressions are piecewise-defined depending on whether the value u in (1) lies inside or outside the clipping range in (2). To handle the rounding operation in the backprop-agation, we adopt the straight-through estimation (STE) [37] approximation. The detailed derivations are provided in the appendix. 
+
+Gradient w.r.t. Input v:
+
+∂ˆv∂v =
+
+(
+
+1, Q− 
+
+> b
+
+< u < Q +
+
+> b
+
+0, otherwise. (17) 
+
+Gradient w.r.t. Clipping Bound v+:
+
+∂ˆv∂v + =
+
+
+
+> ⌊u⌉− uQ+
+> b
+
+, Q− 
+
+> b
+
+< u < Q +
+
+> bQ−
+> b
+> Q+
+> b
+
+, u ≤ Q−
+
+> b
+
+1, u ≥ Q+ 
+
+> b
+
+.
+
+(18) 
+
+Gradient w.r.t. Continuous Bit Width ˜b:
+
+∂ˆv∂˜b =
+
+
+
+(v − ˆv) × 2˜b−1 ln 2 
+
+> Q+
+> b
+
+, Q− 
+
+> b
+
+< u < Q +
+
+> b
+
+v+ × 2˜b−1 ln 2 (Q+  
+
+> b)2
+
+, u ≤ Q−
+
+> b
+
+0, u ≥ Q+ 
+
+> b
+
+.
+
+(19) V. N EURAL VIDEO COMPRESSION INTEGERIZATION 
+
+JOMP relies on fake-quantized convolutions during training to enable gradient-based optimization. However, for practical deployment, these simulated operations must be converted into true integer operations, since fake quantization is still performed using floating-point arithmetic. This conversion is particularly important because most NVC components are dominated by convolution operations. Moreover, convolution is the main operation from the perspectives of both com-putational complexity and cross-platform interoperability for NVCs. As shown in Fig. 4(b), all operations and operands are converted into integers at this stage, where no training or learning takes place except integer conversion. Although floating-point and integer convolution are concep-tually similar, deploying integer convolution in practice poses additional challenges. Generally, activations and weights are quantized with different scales, namely sa and sw. The key challenges are: (i) how to efficiently perform convolution when both activations and weights are represented in integer form but correspond to distinct quantization scales, and (ii) how to propagate results across convolutional layers with varying quantization parameters. To address these challenges, Sec. V-A presents the Deployment-Aware Integer Convolution Block, 
+
+Algorithm 1 Deployment-Aware Integer Convolution Block  
+
+> 1:
+
+Input: Input feature ¯x; Weight ¯wqbw ; Bias bias ; Scale factors ¯sin and ¯sout ; Hyperparameters na, nin , and nout . 
+
+> 2:
+
+Output: ¯y 
+
+> 3:
+
+¯xqba ← I ba ((¯ x × ¯sin ) ≫ (na + nin )) ▷ Input quant.  
+
+> 4:
+
+¯¯aq ← IntConv  ¯xqba , ¯wqbw
+
+ ▷ Integer convolution  
+
+> 5:
+
+¯¯a ← (¯ ¯aq × ¯sout ) ≫ (nout − na) ▷ Output rescaling  
+
+> 6:
+
+¯¯y ← ¯¯a + bias ▷ Add bias  
+
+> 7:
+
+¯y ← clip  ¯¯y, −231 , 231 − 1 ▷ Return which efficiently handles pre- and post-processing required for integer convolution. Sec. V-B then describes the integerization procedure for the remaining non-convolutional layers. 
+
+A. Deployment-Aware Integer Convolution Block 
+
+We introduce the Deployment-Aware Integer Convolution Block, described in Algorithm 1, which is more suitable for hardware deployment than floating-point or fake-quantized convolution, since all operations are implemented using integer arithmetic and bit-shift operations, thereby reducing hardware implementation cost and power dissipation. Notably, the con-volution itself is performed at the reduced precision specified by the learned bit widths for activations and weights. 
+
+1) Notation: vb denotes any variable represented with bit width b. Integer variables are indicated by an overbar (e.g., ¯v), denoting the int32 precision, while double overbars (e.g., ¯¯v)denote double-precision ( int64 ) representations. Moreover, whenever applicable, the superscript q denotes variables that are quantized with learned scales and bit widths. 
+
+2) Data format for inter-layer communications: Since quantization parameters (e.g. bit widths, clipping bounds and scale factors) vary across convolutional layers, we adopt a 32-bit integer with na bits for the fractional part as the data format for inter-layer data exchange. 
+
+3) Offline weight and bias quantization: Since weights and biases are fixed after QAT or PTQ training, their fixed-point representations can be precomputed and stored. The quantized weights are obtained by (2) as 
+
+¯wqbw = Ibw
+
+ wsw
+
+
+
+, (20) where both the bit width bw and scale factor sw are learned by JOMP. In contrast, the bias, usually retained in high precision, is converted into the same data format for inter-layer communications, with na fractional bits, so that it can be directly added to obtain the layer output without additional conversion: 
+
+bias = I32 (bias × 2na ) . (21) 
+
+4) Online activation quantization: Unlike weight and bias quantization, activation quantization must be performed online with integer arithmetic because the activation value ¯x (repre-sented as a 32-bit integer with na fractional bits) is content-dependent. 8
+
+To quantize further ¯x with the learned sa using integer arithmetic, we precompute an integer approximation of 1/s a:
+
+¯sin = I32 
+
+ 1
+
+sa
+
+× 2nin 
+
+
+
+, (22) so that the quantized activation ¯xqba can be obtained in Line 3 of Algorithm 1 via integer multiplication, followed by bit-shift and clipping operations. 
+
+5) Integer convolution: In our implementation, convolution multiplications are executed at the precision specified by the learned ba and bw. The convolution accumulation results are stored in a 64-bit variable ¯¯aq (Line 4 in Algorithm 1) to prevent overflow under our current hardware-platform con-straints, since the upper bounds of both ba and bw are currently set to 16. Note, however, that customized lower-precision accumulators are feasible when reduced-precision ba and bw
+
+are actually employed. 
+
+6) Output rescaling and generation: The output rescaling serves as inverse quantization, compensating for the combined quantization effects of weights and activations in the current layer. This step allows the subsequent layer to adopt a different quantization scheme than the present one. Specifically, the integer convolution result ¯¯a is rescaled using a precomputed 32-bit scale factor ¯sout with nout fractional bits: 
+
+¯sout = I32 (sa × sw × 2nout ) . (23) Finally, the bias bias is added and the output is clipped to conform to the data format for inter-layer communications. Sec. VIII provides further details on how the hyperparame-ters na, nin , and nout , which govern the fractional part of the fixed-point representations at different stages, are determined after JOMP has jointly learned bit widths, clipping bounds and model weights to ensure a balance between numerical precision and overflow safety. 
+
+B. Non-convolutional Layers 
+
+Beyond convolution, all remaining layers are implemented in integer arithmetic to ensure deterministic inference. All inputs and outputs of these non-convolutional layers adopt the same data format used for inter-layer communications. Moreover, the division in this section is implemented using 
+
+integer arithmetic with rounding to the nearest integer to ensure a close approximation to the floating-point operation. 
+
+1) LeakyReLU activation function: In our setting, the slope 
+
+α of LeakyReLU in the negative domain takes on either 0.1 or 0.01, which rounds to 0 when directly converted into an in-teger. This degeneration reduces LeakyReLU to ReLU, which is undesirable. To address this, we evaluate γ = round(1 /α ),which is either 10 or 100, and implement LeakyReLU as follows: 
+
+¯y =
+
+(
+
+¯x, ¯x > 0, 
+
+> ¯xγ
+
+, ¯x ≤ 0, (24) where ¯x is the input to the LeakyReLU. 
+
+2) Non-linear activation functions via lookup tables: For non-linear functions, such as sigmoid σ(·), we adopt lookup-table approximations over an input range [x−, x +] with N
+
+uniformly sampled entries (e.g., x− = −16 , x+ = 16 , N =8192 ). In practice, inputs are represented in the fixed-point domain scaled by 2na , such that the corresponding integer range becomes 
+
+¯x− = x− × 2na , ¯x+ = x+ × 2na . (25) Given an integer input ¯x, the lookup-table index is computed as idx = clip 
+
+ (¯ x − ¯x−)( N − 1) ¯x+ − ¯x− , 0, N − 1
+
+
+
+. (26) The lookup-table entries LUT [i] are precomputed as 32-bit integers with na fractional bits: LUT [i] = I32 (σ(xi) × 2na ) , (27) where 
+
+xi = x− + i(x+ − x−)
+
+N − 1 , i = 0 , . . . , N − 1. (28) VI. E XPERIMENTAL SETUP 
+
+A. Training details 
+
+All codecs are trained on the Vimeo90k [38] and BVI-DVC [39] datasets following a consistent training protocol [9] across all variants to ensure fair comparisons. To construct the performance-complexity trade-off curve, each variant is trained with 4 points, λC ∈ {0.008 , 0.032 , 0.128 , 0.512 }.Our best-performing variant, MCR-Hybrid, is trained with 6 points, λC ∈ { 0.008 , 0.032 , 0.128 , 0.512 , 1.024 , 2.048 }, for comparison against state-of-the-art methods. All learnable bit-width parameters are initialized to 16 bits, corresponding to the highest precision in our search space. We start from a high-precision configuration that stabilizes early stage of training and prevents premature performance degradation caused by aggressive quantization. We then perform a joint end-to-end optimization over network weights, clipping bounds V in (15), and bit-width parameters β in (14). During training, the bit-width parameters are maintained as continuous variables to enable gradient-based optimization, as mentioned in Sec. IV-B. After each iteration, a clipping operation is applied to constrain them to the valid range [8 , 16] . In practice, the bit-width parameters gradually decrease from the initial 16-bit configu-ration toward lower-precision regimes due to the BitOPs regu-larization term. For the temporal buffer, we adopt a fixed 8-bit quantization to simulate practical deployment scenarios with limited external memory bandwidth and storage. Specifically, the buffer content is quantized to 8 bits to reduce external memory access, while only the dynamic range parameter is learned and the bit width remains fixed. 
+
+B. Testing details 
+
+To evaluate rate-distortion performance, we employ the Bjontegaard Delta-rate (BD-rate) [40] metric. The evaluation is conducted on four widely used benchmark datasets, in-cluding UVG [41], MCL-JCV [42], HEVC Class B–E [43], 9            
+
+> TABLE III SUMMARY OF COMPLEXITY METRICS PRIMARILY FOR DECODING .Metric Description Platform-Agnostic Dec. BitOPs Number of bit operations ✓
+> Dec. WPM Peak memory usage ✓
+> Dec. Buffer Size Temporal buffer size ✓
+> Codec Model Size Codec parameter size ✓
+> Dec. FPS Frames per second ×
+
+and HEVC-RGB [44]. For each test sequence, the first 96 frames are encoded using an intra period of 32. Following common practice, we adopt BT.601 for color space conversion between YUV420 and RGB444, with all evaluated codecs operating in the RGB domain. To avoid padding and ensure fair comparisons, each frame is cropped so that its width and height are multiples of 64. Intra coding is applied at scene cuts across all methods. We report PSNR in the RGB domain and bitrate in bits per pixel (bpp). The BD-rate is computed by averaging per-frame PSNR-RGB and bpp across all frames to generate a dataset-specific rate-distortion point. 
+
+C. Complexity metrics 
+
+As shown in Table III, we primarily adopt platform-agnostic intrinsic complexity metrics, including (i) BitOPs, (ii) weighted peak memory (WPM), (iii) buffer size, (iv) model size, alongside the platform-dependent (v) frames per second (FPS). Our analysis focuses on decoding complexity. The use of BitOPs is motivated by the fact that although the number of multiply-accumulate operations (MACs) provides a useful estimate of algorithmic complexity, it remains un-changed when the arithmetic precision is varied. For example, two implementations may have the same MAC count, but their hardware characteristics can differ substantially if their modules operate at different bit widths. For implementations targeting ASICs or FPGAs, this distinction is critical, since lower-precision arithmetic units can reduce power dissipation, on-chip area, and even latency by shortening the critical path [12], [45]. As such, BitOPs is a more appropriate proxy that reflects both the operation count and the arithmetic preci-sion, which together have a direct impact on implementation cost, especially hardware cost. In comparisons that involve both FP models and integer models, we adopt the expedient assumption that FP16 and FP32 models have the same BitOPs as their INT16 and INT32 counterparts, respectively. It should be noted, however, that floating-point and integer arithmetic are not directly equivalent. At the same bit-width, floating-point operations incur substantially higher hardware cost, power consumption, and computational complexity than their integer counterparts. WPM quantifies the peak memory usage as the maximum equivalent number of input-resolution feature channels pro-duced by a convolutional layer during decoding. It character-izes the peak memory footprint of the decoder. Note that a high WPM may require larger on-chip memory capacity or more frequent accesses to off-chip memory. Buffer size denotes the capacity of the temporal buffer, representing the equivalent number of input-resolution feature channels that must be loaded from external memory when                                                                                         
+
+> TABLE IV LEARNED BIT -WIDTH ALLOCATION (WEIGHTS W / ACTIVATIONS A)
+> ACROSS DIFFERENT CODING COMPONENTS UNDER THE JOMP
+> FRAMEWORK WITH λC= 0 .512 .Scheme Component Explicit Implicit Hybrid WAWAWARC Inter-frame main dec. 913 10 13 910 Hyperprior dec. 12 14 14 16 12 15 Prediction network 10 13 10 14 10 15 Motion dec. 10 14 10 14 10 16 CC Inter-frame main dec. 10 14 10 14 10 15 Hyperprior dec. 11 12 11 15 11 15 Prediction network 10 12 10 13 10 13 Motion dec. 10 12 10 13 10 12 MCR Inter-frame main dec. 10 14 915 915 Hyperprior dec. 11 13 11 16 12 16 Prediction network 10 12 10 13 10 14 Motion dec. 10 13 10 14 10 14
+
+encoding or decoding each frame. A large temporal buffer increases storage cost and memory-bandwidth demands. To-gether, WPM and buffer size reveal the memory-side cost of a neural video codec, which is a critical factor for its practicality. Codec model size indicates the total number of network parameters of the entire codec (including both the encoder and decoder). Smaller models are generally more suitable for deployment on memory- and resource-constrained devices. When network parameters must be fetched from memory during inference, larger models increase bandwidth demands and energy consumption due to data movement. In contrast, for fully hardwired or on-chip implementations, this cost is not expressed as runtime loading overhead but rather as requirements on silicon area and storage capacity. Finally, we report decoding frames-per-second (FPS), fol-lowing common practice. However, FPS alone is not a suffi-ciently reliable metric, since it depends not only on the codec design but on numerous implementation- and platform-specific factors. For example, FPS can be influenced by code-level optimization, function-call overhead, memory management, operational complexity, and the interaction with operating system [7], [46]. As a result, two implementations with com-parable computational complexity may exhibit substantially different FPS values. VII. JOMP E XPERIMENTAL RESULTS AND DISCUSSIONS 
+
+This section demonstrates the effectiveness of JOMP. Dur-ing training, JOMP learns and assigns precision levels for all the decoding components through fake-quantization, allowing us to examine the impact of integerization across all variants presented in Sec. II-A3. The results regarding the actual integer NVC are presented in Sec. VIII. 
+
+A. Bit-width Allocation 
+
+Firstly, Table IV presents the bit width allocated for both weights (W) and activations (A) of each NVC component spanning across the nine variants and four complexity points. 
+
+Bit-width allocation varies across different coding com-ponents. In Table IV, the learned bit widths differ signifi-cantly across components, indicating that the model adaptively 10 0 100 200 300 400 500 600 700 800         
+
+> Component Complexity (kMACs/pixel)
+> 120
+> 140
+> 160
+> 180
+> 200
+> 220
+> 240
+> Precision ( bw × ba)
+> I
+> H
+> PM
+> I
+> H
+> P
+> MI
+> H
+> P
+> M
+> I
+> H
+> P
+> MI
+> H
+> PMI
+> H
+> PMIH
+> P
+> M
+> I
+> H
+> PMI
+> H
+> P
+> M
+> I: Inter-frame main dec.
+> P: Prediction network
+> M: Motion dec.
+> H: Hyperprior dec.
+> RC
+> CC
+> MCR
+> Linear Fit (r=-0.55)
+> Explicit
+> Implicit
+> Hybrid
+> Fig. 6. Complexity-precision relationship across all model variants at λC=0.512 . The x-axis shows the original FP32 component-wise complexity, while the y-axis represents the learned precision measured.
+
+assigns precision rather than relying on a uniform configura-tion. In Fig. 6, this variation shows a clear correlation with component-wise computational complexity. Different compo-nents contribute unequally to the overall complexity, which in turn influences the learned bit-width allocation. In the figure, the learned bit widths ( bw × ba) are plotted against the original FP32 component-wise complexity across all model variants. A clear negative correlation (r = −0.55 ) between component-wise complexity and learned bit width is observed, indicating that components with higher computational cost tend to be assigned lower precision. In contrast, components with relatively low complexity, such as the hyperprior decoder (H), are typically assigned higher precision, since reducing their bit width yields only marginal gains in overall com-plexity reduction. These results show that JOMP adapts bit-width allocation according to the complexity of each decoding component. 
+
+B. Rate-Distortion and Complexity Results 
+
+Fig. 7 presents the BD-rate increase due to quantization. The anchor is the respective FP32 NVC variant, which allows us to highlight the JOMP impact over the nine variants. The explicit buffering strategy appears most sensitive to quantization. Nev-ertheless, aside from “Explicit + JOMP” in the CC framework, the BD-rate increase remains below 10%, underscoring the efficiency of JOMP. 
+
+Hybrid buffering demonstrates efficiency under quanti-zation. As shown in Fig. 7, this is evidenced by the minimal BD-rate increase compared with the other two buffering strate-gies in MCR and CC. Although implicit buffering exhibits a smaller BD-rate increase in RC, RC variants typically deliver much worse overall rate-distortion performance than MCR and CC variants (see Fig. 8). 
+
+MCR variants demonstrate superior efficiency in bal-ancing coding performance and complexity. Fig. 8 illustrates the coding performance of different variants under quantiza-tion. A clear trend emerges: the integer implementations of MCR variants (MCR Hybrid, MCR Implicit, and MCR Ex-plicit) consistently achieve better rate-distortion performance as compared to the other competing schemes. In contrast, the implicit buffer combined with residual coding (RC) leads to severely degraded rate-distortion performance. Generally, the RC variants under-perform relative to the other schemes, particularly in RC-Implicit, where adopting the implicit buffer with residual coding results in pronounced performance degra-dation. This outcome can be explained by two facts. First, implicit buffering is purely data-driven, and devising an ef-fective training strategy to formulate an effective temporal predictor under this setting remains challenging. Second, with RC (Fig. 5(a)), the implicit buffer contains only residual information Ft; it is difficult to construct a good temporal predictor based merely on residuals. 
+
+C. Comparison with State-of-the-Art NVCs 
+
+Table V compares the complexity and coding performance of our MCR Hybrid model with recent state-of-the-art learned video codecs. We choose MCR Hybrid because it is the strongest among the competing variants. Its implementation is based on a fully integer codec optimized by JOMP rather than fake quantization, ensuring that all reported results reflect practical deployment. Compared with the FP32 version of MCR Hybrid, JOMP significantly reduces computational complexity while main-taining competitive coding efficiency. With λC = 1 .024 , the decoder BitOPs decrease from 0.95 G/pixel to 0.12 G/pixel (a reduction of 87.4%), while achieving a BD-rate of -21.5%, which is only 4.1 percentage points higher than the FP32 counterpart (-25.6%). Direct comparisons with the integer versions of MobileNVC and DCVC-RT are not included, since these implementations are not publicly available. Therefore, we compare our ap-proach (i) against our own codec under the quantization set-tings adopted by these methods, and (ii) against the strongest accessible floating-point NVC baselines from related work, namely DCVC-FM and DCVC-RT. This allows us to conduct a fair and reproducible evaluation. Under the quantization settings adopted in MobileNVC (W8A8), our codec achieves very low complexity (0.06 G/pixel BitOPs), but suffers from severely degraded rate-distortion performance (549.5% BD-rate). This result indicates that aggressive uniform quantization is insufficient for high-quality neural video coding. In contrast, under the quanti-zation settings adopted in DCVC-RT (W16A16), our model maintains coding performance more effectively (-23.6% BD-rate) than its W8A8 variant, but with higher complexity (0.24 G/pixel BitOPs). However, comparable rate-distortion performance (-23.0% BD-rate at λC = 0 .512 ) can be achieved by our JOMP-based model with substantially lower complexity (0.13 G/pixel BitOPs). This suggests that JOMP can discover more efficient precision configurations than those selected manually. When compared with floating-point models, our method also demonstrates favorable performance. Relative to the lightweight DCVC-RT (FP16), it achieves substantially better coding efficiency (-21.2% vs. 5.0%) while maintaining moder-ate computational complexity. Relative to DCVC-FM (FP32), it achieves superior rate-distortion performance while signifi-cantly reducing platform-independent complexity metrics. In terms of decoding throughput, DCVC-RT achieves nearly 200 FPS, whereas the FPS of our current integerized imple-mentation is even lower than that of its FP32 variant. This is 11 0.11 0.13 0.15 0.17 0.19                       
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> 0.85 0.85 0.85 0.11 0.13 0.15 0.17 0.19
+> 0
+> 5
+> 10
+> 15
+> 20
+> 0.88 0.88 0.88 0.11 0.13 0.15 0.17 0.19
+> 0
+> 5
+> 10
+> 15
+> 20
+> 0.94 0.94 0.94 0.0 0.2 0.4 0.6 0.8 1.0
+> Dec. BitOPs (G/pixel)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> BD-rate (%)  RC CC MCR
+> Explicit FP32 Implicit FP32 Hybrid FP32 Explicit + JOMP Implicit + JOMP Hybrid + JOMP
+
+Fig. 7. BD-rate increase (%) versus decoder complexity (BitOPs) introduced by JOMP for different model variants. Each point represents the performance gap between the mixed-precision model and its corresponding FP32 baseline, which is used as the anchor for BD-rate evaluation. Pareto Front Better 
+
+*RC Implicit omitted: 
+
+BD-rate exceeds  200% in all scenarios. 
+
+Fig. 8. BD-rate (%) versus decoder complexity (BitOPs) for all model variants, including both FP32 and JOMP configurations. The Pareto frontier is highlighted to illustrate the optimal trade-offs. All BD-rate values are computed with respect to the MCR-Hybrid FP32 model as the anchor. TABLE V COMPARISON OF COMPLEXITY AND CODING PERFORMANCE AGAINST STATE -OF -THE -ART NVC METHODS . T HE ANCHOR IS VTM 17.0 IN LOW -DELAY 
+
+B MODE . FPS IS MEASURED ON AN H100 GPU AT A RESOLUTION OF 1920 × 1024 .Methods Dec. BitOPs (G/pixel) Dec. WPM (Channels) Dec. Buffer size (Channels) Codec Model Size (MB) Dec. FPS ∗
+
+(on H100) BD-rate (%) DCVC-FM (FP32) 0.89 192 51.750 69.95 6.99 -19.1 DCVC-RT (FP16) 0.04 20 2.000 39.32 195.47 5.0 MCR Hybrid (FP32) 0.95 192 7.875 65.06 2.54 -25.6 MCR Hybrid (QAT, W8A8) 0.06 48 4.125 25.43 0.43 549.5 MCR Hybrid (QAT, W16A16) 0.24 96 4.125 38.64 0.43 -23.6 MCR Hybrid (JOMP, λC = 0 .512 ) 0.13 84 4.125 30.59 0.43 -23.0 MCR Hybrid (JOMP, λC = 1 .024 ) 0.12 78 4.125 30.27 0.43 -21.5 MCR Hybrid (JOMP, λC = 2 .048 ) 0.11 78 4.125 28.94 0.43 -21.2 
+
+> ∗
+
+FPS depends on implementation and hardware-specific optimizations. Reported for reference only. 
+
+because convolution operations are still executed using int16 
+
+arithmetic on general-purpose GPUs, regardless of the learned bit-widths. Lower-precision computations, such as 10-bit or 12-bit operations, are emulated rather than mapped to native low-precision execution units, which limits the achievable la-tency gains on current GPU platforms. A similar phenomenon was also reported in [7]. As noted in Sec. VI-C, FPS is not a sufficient metric in isolation. It depends not only on the codec design but also on a variety of implementation- and platform-specific factors. DCVC-RT was developed specifically for runtime efficiency, emphasizing the reduction of operational overheads. In contrast, our work is primarily motivated by deployment scenarios that may eventually target dedicated hardware, such as ASICs or FPGAs, rather than by maximizing throughput on general-purpose GPUs. Therefore, complexity efficiency is more effectively evaluated through platform-independent metrics, which reflects the computational implications across different compute platforms. Overall, these results demonstrate that JOMP provides a unified framework for jointly optimizing decoder computa-tion, model size, and memory footprint, enabling favorable performance-complexity trade-offs when integrated into state-of-the-art learned video codecs. 
+
+D. Comparison with MP Quantization Frameworks 
+
+This section compares JOMP with FMPQ [27], a recent mixed-precision quantization method originally proposed for neural image codecs. FMPQ is a two-stage, search-based approach: in the first stage, it iteratively applies PTQ to deter-mine the bit width of each module, and in the second stage, it performs QAT to refine both the quantization parameters 12                                                                     
+
+> TABLE VI PERFORMANCE COMPARISON BETWEEN THE FAKE -QUANTIZED MODEL AND THE INTEGERIZED MODEL . R ESULTS ARE REPORTED IN BD-RATE (%) OF
+> MCR H YBRID WITH λC= 2 .048 ,USING VTM 17.0 (L OW -DELAY B) AS THE ANCHOR .Dataset UVG HEVC-B HEVC-C HEVC-D HEVC-E HEVC-RGB MCL-JCV Average Fake-Quantized Model -29.7 -19.0 -13.0 -33.6 -12.6 -20.7 -21.6 -21.5 Integerized Model -29.3 -18.9 -13.0 -33.5 -12.2 -20.5 -21.2 -21.2 TABLE VII CROSS -PLATFORM CONSISTENCY VALIDATION . R ESULTS ARE OBTAINED FROM THE UVG AND HEVC-B DATASETS .Model Floating-point Model Integerized JOMP-QAT Model Encoding Platform H100 H100 H100 H100 H100 H100 H100 H100 Decoding Platform H100 RTX 4090 H100 RTX 4090 Tesla V100 Xeon 8480C Xeon W-2255 Xeon 6154 Reconstruction Consistency ✓×✓✓✓✓✓✓0.12 0.14 0.16 0.18 0.20
+> Dec. BitOPs (G/pixel)
+> 22
+> 20
+> BD-rate (%)
+> MCR Hybrid + JOMP
+> MCR Hybrid + FMPQ
+> Fig. 9. Rate-distortion-complexity trade-off curves comparing the JOMP and FMPQ [27] on all datasets. BD-rate is computed relative to the VTM 17.0 (Low-delay B). JOMP achieves superior trade-off solutions, with the performance advantage being most pronounced in the low-complexity regime.
+
+and the model weights. In contrast, JOMP jointly optimizes bit widths, model weights, and quantization parameters within a single QAT run. For comparison purposes, we apply FMPQ to the MCR-Hybrid model under the same mixed-precision setting. To ensure fairness, both methods are evaluated over the same per-component bit-width search space, namely [8 , 16] .From Fig. 9, it is possible to note that our method results in a better Pareto front in the rate-distortion-complexity space compared to FMPQ. Its benefits are particularly evident in the low-BitOPs regime, where our approach yields more favorable trade-offs between coding efficiency and computational cost. This suggests that JOMP is more effective in allocating bit widths under tight compute budgets. VIII. NVC I NTEGERIZATION RESULTS AND DISCUSSIONS 
+
+After training with fake (or simulated) quantization, the model is converted into an integer network for practical deployment. The hyperparameters nin , nout , and na are deter-mined from the observed dynamic ranges of the corresponding floating-point quantities, in order to maximize precision while avoiding overflow. For example, na is selected by analyz-ing the dynamic range of inter-layer data communications within the NVC. In our current implementation, we adopt 32-bit integers ( int32 ) as the format for inter-layer data exchange, where activation values typically fall between −211 
+
+and 211 . Since na controls the fractional precision, setting 
+
+na = 32 − 12 = 20 allows us to fully utilize the available 32 bits without clipping. The same principle applies to nin and 
+
+nout ; that is, their values are selected to be as large as possible to preserve numerical precision while remaining within the 32-bit range. In summary, the current settings are na = 20 ,
+
+nin = 4 , and nout = 40 .
+
+A. Fake-Quantized Model vs. Integerized Model 
+
+Table VI compares the coding performance of MCR Hybrid between the fake-quantized model and the corresponding in-tegerized model, with JOMP adopting λC = 2 .048 . As shown, the performance gap is negligible across all datasets, with only a 0.3 percentage points difference in the average BD-rate. This result indicates that our fake-quantized model is a reliable proxy for the final integerized implementation. 
+
+B. Cross-platform Consistency Test 
+
+To verify the correctness and determinism of the fully inte-gerized model, we conduct cross-platform experiments, where encoding is performed on NVIDIA H100, while decoding is executed across a diverse set of hardware platforms, including different GPUs and CPUs. Table VII summarizes the results for cross-platform reconstruction consistency. Floating-point implementations may introduce reconstruction discrepancies due to platform-dependent numerical behavior. In contrast, our integerized model consistently achieves bit-exact reconstruction across all tested devices. This demonstrates the effectiveness of the proposed integerization method in eliminating cross-platform inconsistencies, making it a suitable solution for practical NVC deployment. IX. C ONCLUSION 
+
+In this paper, we introduced a Jointly-Optimized Mixed-Precision (JOMP) quantization-aware training framework for neural video codecs. Unlike conventional quantization meth-ods that rely on uniform or heuristic precision settings, JOMP jointly optimizes network weights, quantization scales, and component-wise bit widths under a unified rate-distortion-complexity objective and in an end-to-end manner. Extensive experiments across multiple coding frameworks (RC, CC, and MCR) and temporal buffering strategies (Ex-plicit, Implicit, and Hybrid) demonstrate that adaptive preci-sion allocation is crucial for balancing coding efficiency and computational cost. We observe that high-complexity compo-nents tend to favor lower precision, while lightweight compo-nents benefit from higher precision to preserve rate-distortion performance. Overall, JOMP achieves favorable trade-offs between coding performance and decoding complexity by significantly reducing BitOPs while maintaining competitive BD-rate compared to strong floating-point baselines. Notably, 13 
+
+when applied to the MCR Hybrid model, JOMP achieves rate-distortion performance comparable with the current state-of-the-art DCVC-FM, while requiring substantially lower decod-ing complexity. Moreover, the fully integerized implementa-tion enables bit-exact cross-platform inference, addressing a key limitation of existing floating-point NVCs. This work bridges the gap between neural video coding and practical deployment by introducing a unified, complexity-aware optimization framework. Future directions include ex-tending the proposed approach to transformer-based codecs, exploring more advanced quantization methods, and investi-gating hardware-specific optimizations for further efficiency gains in real-world deployment. REFERENCES [1] J. Li, B. Li, and Y. Lu, “Deep contextual video compression,” in 
+
+Advances in Neural Information Processing Systems , vol. 34, 2021, pp. 18 114–18 125. [2] Y.-H. Ho, C.-P. Chang, P.-Y. Chen, A. Gnutti, and W.-H. Peng, “Canf-vc: Conditional augmented normalizing flows for video compression,” in European Conference on Computer Vision , 2022, pp. 207–223. [3] X. Sheng, J. Li, B. Li, L. Li, D. Liu, and Y. Lu, “Temporal context min-ing for learned video compression,” IEEE Transactions on Multimedia ,vol. 25, pp. 7311–7322, 2023. [4] J. Li, B. Li, and Y. Lu, “Hybrid spatial-temporal entropy modelling for neural video compression,” in Proceedings of the 30th ACM Interna-tional Conference on Multimedia (ACM MM) , 2022, pp. 1503–1511. [5] J. Li, B. Li, and Y. Lu, “Neural video compression with diverse contexts,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2023, pp. 22 616–22 626. [6] J. Li, B. Li, and Y. Lu, “Neural video compression with feature modulation,” in 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2024, pp. 26 099–26 108. [7] Z. Jia, B. Li, J. Li, W. Xie, L. Qi, H. Li, and Y. Lu, “Towards practical real-time neural video compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 12 543–12 552. [8] Y.-H. Chen, H.-S. Xie, C.-W. Chen, Z.-L. Gao, M. Benjak, W.-H. Peng, and J. Ostermann, “Maskcrt: Masked conditional residual transformer for learned video compression,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 11, pp. 11 980–11 992, 2024. [9] Y.-H. Chen, Y.-C. Yao, K.-W. Ho, C.-H. Wu, H.-T. Phung, M. Benjak, J. Ostermann, and W.-H. Peng, “Hytip: Hybrid temporal information propagation for masked conditional residual video coding,” in 2025 IEEE/CVF International Conference on Computer Vision (ICCV) , 2025, pp. 17 889–17 898. [10] J. Dotzel, G. Wu, A. Li, M. Umar, Y. Ni, M. S. Abdelfattah, Z. Zhang, L. Cheng, M. G. Dixon, N. P. Jouppi, Q. V. Le, and S. Li, “Fliqs: One-shot mixed-precision floating-point and integer quantization search,” in Proceedings of the Third International Conference on Automated Machine Learning , ser. Proceedings of Machine Learning Research, vol. 256. PMLR, 2024, pp. 6/1–6/26. [11] N. P. Jouppi, D. Hyun Yoon, M. Ashcraft, M. Gottscho, T. B. Jablin, G. Kurian, J. Laudon, S. Li, P. Ma, X. Ma, T. Norrie, N. Patil, S. Prasad, C. Young, Z. Zhou, and D. Patterson, “Ten lessons from three genera-tions shaped google’s tpuv4i : Industrial product,” in 2021 ACM/IEEE 48th Annual International Symposium on Computer Architecture (ISCA) ,2021, pp. 1–14. [12] M. Horowitz, “1.1 computing’s energy problem (and what we can do about it),” in 2014 IEEE International Solid-State Circuits Conference Digest of Technical Papers (ISSCC) , 2014, pp. 10–14. [13] T. van Rozendaal, T. Singhal, H. Le, G. Sautiere, A. Said, K. Buska, A. Raha, D. Kalatzis, H. Mehta, F. Mayer, L. Zhang, M. Nagel, and A. Wiggers, “Mobilenvc: Real-time 1080p neural video compression on a mobile device,” in 2024 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , 2024, pp. 4311–4321. [14] J. Yu, S. Mai, P. Zhang, Y. Jiang, and J. Cheng, “Mixed-precision post-training quantization for learned image compression,” IEEE Internet of Things Journal , vol. 12, no. 16, pp. 34 392–34 405, 2025. [15] L. Yang and Q. Jin, “Fracbits: Mixed precision quantization via frac-tional bit-widths,” in AAAI Conference on Artificial Intelligence , 2020. [16] G. Lu, W. Ouyang, D. Xu, X. Zhang, C. Cai, and Z. Gao, “Dvc: An end-to-end deep video compression framework,” in 2019 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2019, pp. 10 998–11 007. [17] J. Lin, D. Liu, H. Li, and F. Wu, “M-lvc: Multiple frames prediction for learned video compression,” in 2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020, pp. 3543– 3551. [18] H. Liu, M. Lu, Z. Ma, F. Wang, Z. Xie, X. Cao, and Y. Wang, “Neural video coding using multiscale motion compensation and spatiotemporal context model,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 8, pp. 3182–3196, 2021. [19] E. Agustsson, D. Minnen, N. Johnston, J. Ball´ e, S. J. Hwang, and G. Toderici, “Scale-space flow for end-to-end optimized video compres-sion,” in 2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020, pp. 8500–8509. [20] Z. Hu, G. Lu, and D. Xu, “Fvc: A new framework towards deep video compression in feature space,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2021, pp. 1502–1511. [21] F. Brand, J. Seiler, and A. Kaup, “Conditional residual coding: A remedy for bottleneck problems in conditional inter frame coding,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 7, pp. 6445–6459, 2024. [22] M. Nagel, M. Fournarakis, R. A. Amjad, Y. Bondarenko, M. van Baalen, and T. Blankevoort, “A white paper on neural network quantization,” 
+
+arXiv preprint arXiv:2106.08295 , 2021. [23] S. Esenlik, Y. Wu, Z. Zhang, Y.-K. Wang, K. Zhang, L. Zhang, J. Ascenso, and S. Liu, “An overview of the jpeg ai learning-based image coding standard,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 36, no. 2, pp. 2520–2537, 2026. [24] C. Jia, X. Hang, S. Wang, Y. Wu, S. Ma, and W. Gao, “Fpx-nic: An fpga-accelerated 4k ultra-high-definition neural video coding system,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 32, no. 9, pp. 6385–6399, 2022. [25] E. Koyuncu, T. Solovyev, E. Alshina, and A. Kaup, “Device interop-erability for learned image compression with weights and activations quantization,” in 2022 Picture Coding Symposium (PCS) . IEEE, 2022, pp. 151–155. [26] H. Sun, L. Yu, and J. Katto, “Q-lic: Quantizing learned image compres-sion with channel splitting,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 35, no. 4, pp. 3798–3811, 2025. [27] M. A. Faisal Hossain, Z. Duan, and F. Zhu, “Flexible mixed precision quantization for learned image compression,” in 2024 IEEE Interna-tional Conference on Multimedia and Expo (ICME) , 2024, pp. 1–8. [28] H. Le, L. Zhang, A. Said, G. Sautiere, Y. Yang, P. Shrestha, F. Yin, R. Pourreza, and A. Wiggers, “Mobilecodec: neural inter-frame video compression on mobile devices,” in Proceedings of the 13th ACM Multimedia Systems Conference , 2022, pp. 324–330. [29] J. Ball´ e, N. Johnston, and D. Minnen, “Integer networks for data compression with latent-variable models,” in International Conference on Learning Representations , 2019. [30] E. Koyuncu, T. Solovyev, J. Sauer, E. Alshina, and A. Kaup, “Quantized decoder in learned image compression for deterministic reconstruction,” in 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2024, pp. 3985–3989. [31] R. Conceic ¸ ˜ ao, M. Porto, W.-H. Peng, and L. Agostini, “Cross-platform neural video coding: A case study,” in 2025 IEEE International Sympo-sium on Circuits and Systems (ISCAS) , 2025, pp. 1–5. [32] H. Kim, M. Bauer, L. Theis, J. R. Schwarz, and E. Dupont, “C3: High-performance and low-complexity neural compression from a single image or video,” in 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2024, pp. 9347–9358. [33] H. M. Kwan, G. Gao, F. Zhang, A. Gower, and D. Bull, “Hinerv: Video compression with hierarchical encoding-based neural representation,” in 
+
+Advances in Neural Information Processing Systems , vol. 36, 2023, pp. 72 692–72 704. [34] S. Uhlich, L. Mauch, F. Cardinaux, K. Yoshiyama, J. A. Garcia, S. Tiedemann, T. Kemp, and A. Nakamura, “Mixed precision dnns: All you need is a good parametrization,” in International Conference on Learning Representations , 2020. [35] X. Huang, Z. Shen, S. Li, Z. Liu, X. Hu, J. Wicaksana, E. P. Xing, and K.-T. Cheng, “Sdq: Stochastic differentiable quantization with mixed precision,” in Proceedings of the 39th International Conference on Machine Learning , vol. 162, 2022, pp. 9295–9309. [36] Z. Zhang, W. Shao, J. Gu, X. Wang, and P. Luo, “Differentiable dynamic quantization with mixed precision and adaptive resolution,” in 14 
+
+Proceedings of the 38th International Conference on Machine Learning ,ser. Proceedings of Machine Learning Research, M. Meila and T. Zhang, Eds., vol. 139. PMLR, 18–24 Jul 2021, pp. 12 546–12 556. [37] Y. Bengio, N. L´ eonard, and A. Courville, “Estimating or propagating gradients through stochastic neurons for conditional computation,” arXiv preprint arXiv:1308.3432 , 2013. [38] T. Xue, B. Chen, J. Wu, D. Wei, and W. T. Freeman, “Video enhance-ment with task-oriented flow,” International Journal of Computer Vision ,vol. 127, no. 8, pp. 1106–1125, 2019. [39] D. Ma, F. Zhang, and D. R. Bull, “Bvi-dvc: A training database for deep video compression,” IEEE Transactions on Multimedia , vol. 24, pp. 3847–3858, 2022. [40] “Working practices using objective metrics for evaluation of video cod-ing efficiency experiments,” July 2020, iSO/IEC TR 23002-8, ISO/IEC JTC 1. [41] A. Mercat, M. Viitanen, and J. Vanne, “Uvg dataset: 50/120fps 4k sequences for video codec analysis and development,” in Proceedings of the 11th ACM Multimedia Systems Conference , 2020, p. 297–302. [42] H. Wang, W. Gan, S. Hu, J. Y. Lin, L. Jin, L. Song, P. Wang, I. Katsavounidis, A. Aaron, and C.-C. J. Kuo, “MCL-JCV: a jnd-based h. 264/avc video quality assessment dataset,” in IEEE International Conference on Image Processing (ICIP) , 2016, pp. 1509–1513. [43] F. Bossen et al. , “Common test conditions and software reference configurations,” 2013, jCTVC-L1100. [44] D. Flynn et al. , “Common test conditions and software reference configurations for hevc range extensions,” 2013, jCTVC-N1006. [45] W. Mao, K. Li, Q. Cheng, L. Dai, B. Li, X. Xie, H. Li, L. Lin, and H. Yu, “A configurable floating-point multiple-precision processing element for hpc and ai converged computing,” IEEE Transactions on Very Large Scale Integration Systems , vol. 30, no. 2, pp. 213–226, 2022. [46] K. Georgiou, C. Blackmore, S. Xavier-de Souza, and K. Eder, “Less is more: Exploiting the standard compiler optimization levels for better performance and energy consumption,” in Proceedings of the 21st Inter-national Workshop on Software and Compilers for Embedded Systems ,New York, NY, USA, 2018, p. 35–42. 
+
+Yu-Hsiang Lin received his B.S. degree in ap-plied Computer Science and Information Engineer-ing from National Chung Cheng University (CCU), Taiwan, in 2024. He is currently pursuing his M.S. degree in Computer Science, National Yang Ming Chiao Tung University (NYCU), Taiwan. His re-search interests include learning-based image/video coding, computer vision, and deep learning. 
+
+Ruhan Conceic ¸ ˜ ao holds a Master’s degree in Com-puter Science (2015) and a Bachelor’s degree in Computer Engineering (2014) from the Federal Uni-versity of Pelotas, Brazil, and is currently pursuing a Ph.D. in Computer Science at the same institution. In 2024, he was a visiting Ph.D. researcher at National Yang Ming Chiao Tung University, Taiwan. He is a Professor at the Federal Institute of Education, Science, and Technology Sul-rio-grandense, where he coordinated the Integrated Technical Program in Internet Informatics from 2019 to 2022. His research interests include hardware design and complexity-aware software solutions for traditional video codecs, light-field imaging, and neural network-based video codecs. 
+
+Chun-Hung Wu received his B.S. degree in applied compute science from National Yang Ming Chiao Tung University (NYCU), Taiwan, in 2024. He is currently pursuing his M.S. degree in Computer Science at National Yang Ming Chiao Tung Univer-sity (NYCU), Taiwan. His research interests include image/video compression, computer vision. 
+
+Huu-Tai Phung is currently pursuing a Ph.D. in Computer Science at National Yang Ming Chiao Tung University, Taiwan. He received his Mas-ter’s degree in Electrical Engineering from National Chung Cheng University, Taiwan, and his Bachelor’s degree in Software Engineering from the University of Danang, Vietnam, in 2021. His research interests include neural image and video compression, vision foundation models, and visual quality enhancement. 
+
+Tzu-Hsiang Chou received his B.S. degree in Com-puter Science from National Yang Ming Chiao Tung University (NYCU), Taiwan, in 2025. He is currently pursuing his M.S. degree in Computer Science at NYCU, Taiwan. His research interests include im-age/video compression and physics-informed artifi-cial intelligence (physics AI). 
+
+Marcelo Porto (Senior Member, IEEE) received the M.S. and Ph.D. degrees in computer science from Federal University of Rio Grande do Sul (UFRGS), Brazil, in 2008 and 2012, respectively. He is currently a Professor with the Federal University of Pelotas (UFPel), Brazil, and a member of the Video Technology Research Group (ViTech). He is a permanent member of the Graduate Program in Computing (PPGC) of UFPel. Dr. Porto is a Senior Member of IEEE, and a Member of SBC and SBMicro Brazilian societies. He holds the status of CNPq (National Council for Scientific and Technological Development) Brazilian Distinguished Researcher through a PQ-1D grant. His research interests include video coding, motion estimation algorithms, point cloud compression, coding complexity reduction, and energy-efficient VLSI design for video coding. 
+
+Luciano Volcan Agostini (Senior Member, IEEE) received his M.S. and Ph.D. degrees in Computer Science from the Federal University of Rio Grande do Sul, Brazil, in 2002 and 2007, respectively. Since 2002, he has been a professor at the Federal Univer-sity of Pelotas (UFPel), Brazil, where he is currently a Full Professor. Since 2013, he has held the status of CNPq Productivity Research Fellow. He is also the Vice President of the Brazilian Microelectronics Society (SBMicro) and leads the Video Technology Research Group at UFPel. From 2013 to 2017, he served as Vice President for Research and Graduate Studies at UFPel. Additionally, he is a member of the Advisory Committees of CNPq and FAPERGS, two of Brazil’s leading research funding agencies. Dr. Agostini has authored over 300 papers published in prestigious international journals and conferences. He is an Associate Editor for IEEE TCSVT and IEEE OJCS. He is also a Senior Member of ACM and a member of the SBC and SBMicro societies in Brazil. 
+
+Wen-Hsiao Peng (M’09-SM’13-F’25) received his Ph.D. degree from National Chiao Tung University (NCTU), Taiwan, in 2005. He was with the Intel Microprocessor Research Laboratory, USA, from 2000 to 2001. Since 2003, he has actively par-ticipated in the ISO/IEC and ITU-T video cod-ing standardization process and contributed to the development of H.264/AVC Scalable Amendment, H.265/HEVC, H.265/HEVC Screen Content Coding Extensions (SCC), H.266/VVC, and JPEG AI. He was a Visiting Scholar with the IBM Thomas J. Watson Research Center, USA, from 2015 to 2016. He has authored over 120 journal/conference papers and over 60 ISO/IEC and ITU-T standards contributions. Dr. Peng was Chair of the IEEE Circuits and Systems Society (CASS) Visual Signal Processing (VSPC) Technical Committee from 2020 to 2022. He was Distinguished Lecturer of IEEE CASS (2022-2023) and of APSIPA (2017-2018). He was appointed Editor-in-Chief of the IEEE Journal on Emerging and Selected Topics in Circuits and Systems (JETCAS) for 2024-2025. Dr. Peng is a Fellow of the Higher Education Academy (FHEA), and a Fellow of the IEEE. 15 
+
+# JOMP: Jointly-Optimized Mixed-Precision Quantization Across Neural Video Coding Frameworks and Buffering Strategies 
+
+Supplementary Material X. D ERIVATION OF GRADIENTS 
+
+This section provides the detailed derivation of the gradients used in the optimization framework. During forward propagation, the corresponding equations are given by 
+
+b =
+
+j˜b
+
+m
+
+Q− 
+
+> b
+
+, Q + 
+
+> b
+
+= −2b−1, 2b−1 − 1
+
+s = v+
+
+Q+
+
+> b
+
+ˆv =
+
+j
+
+clip( vs , Q − 
+
+> b
+
+, Q + 
+
+> b
+
+)
+
+m
+
+× s = clip( u, Q − 
+
+> b
+
+, Q + 
+
+> b
+
+) × s
+
+A. Gradient w.r.t. Continuous Clipping Bound v+
+
+1) Case 1: Q− 
+
+> b
+
+< u < Q + 
+
+> b
+
+:
+
+ˆv = ⌊u⌉ · s∂ˆv∂v + = ⌊u⌉ · ∂s ∂v + + s · ∂ ⌊u⌉
+
+∂v +
+
+= ⌊u⌉ · ∂∂v +
+
+ v+
+
+Q+
+
+> b
+
+
+
++ s · ∂∂v +
+
+
+
+v · Q+
+
+> b
+
+v+
+
+
+
+= ⌊u⌉ · 1
+
+Q+
+
+> b
+
+− s · v · Q+
+
+> b
+
+(v+)2
+
+= ⌊u⌉
+
+Q+
+
+> b
+
+− uQ+
+
+> b
+
+= ⌊u⌉ − uQ+
+
+> b
+
+2) Case 2: u ≤ Q− 
+
+> b
+
+:
+
+ˆv = Q− 
+
+> b
+
+· s = Q− 
+
+> b
+
+· v+
+
+Q+
+
+> b
+
+∂ˆv∂v + = Q−
+
+> b
+
+Q+
+
+> b
+
+3) Case 3: u ≥ Q+ 
+
+> b
+
+:
+
+ˆv = Q+ 
+
+> b
+
+· s = Q+ 
+
+> b
+
+· v+
+
+Q+
+
+> b
+
+= v+
+
+∂ˆv∂v + = 1 
+
+B. Gradient w.r.t. Continuous Bit Width ˜b
+
+1) Case 1: Q− 
+
+> b
+
+< u < Q + 
+
+> b
+
+:
+
+ˆv = ⌊u⌉ · s∂ˆv∂˜b = ⌊u⌉ · ∂s ∂˜b + s · ∂ ⌊u⌉
+
+∂˜b
+
+= ( v − ˆv) × 2˜b−1 ln 2 
+
+Q+
+
+> b
+
+where 
+
+⌊u⌉ · ∂s ∂˜b = ⌊u⌉ · ∂∂˜b
+
+ v+
+
+Q+
+
+> b
+
+
+
+= ⌊u⌉ · v+ · (−1)( Q+ 
+
+> b
+
+)−2 · ∂Q +
+
+> b
+
+∂˜b
+
+= ⌊u⌉ · v+
+
+Q+
+
+> b
+
+· −1
+
+Q+
+
+> b
+
+· ∂Q +
+
+> b
+
+∂˜b
+
+= −ˆvQ+
+
+> b
+
+· ∂Q +
+
+> b
+
+∂˜b ,s · ∂ ⌊u⌉
+
+∂˜b = v+
+
+Q+
+
+> b
+
+· ∂∂˜b
+
+
+
+v · Q+
+
+> b
+
+v+
+
+
+
+= vQ+
+
+> b
+
+· ∂Q +
+
+> b
+
+∂˜b ,
+
+and 
+
+∂Q +
+
+> b
+
+∂˜b = 2 ˜b−1 ln 2 .
+
+2) Case 2: u ≤ Q− 
+
+> b
+
+:
+
+ˆv = Q− 
+
+> b
+
+· s = Q− 
+
+> b
+
+· v+
+
+Q+
+
+> b
+
+∂ˆv∂˜b = ∂∂˜b
+
+
+
+v+ Q−
+
+> b
+
+Q+
+
+> b
+
+
+
+= v+ · Q+ 
+
+> b
+
+· ∂Q − 
+
+> b
+> ∂˜b
+
+− Q− 
+
+> b
+
+· ∂Q +
+
+> b
+> ∂˜b
+
+(Q+ 
+
+> b
+
+)2
+
+= v+ · Q+ 
+
+> b
+
+· (−2˜b−1 ln 2) − Q− 
+
+> b
+
+· (2 ˜b−1 ln 2) (Q+ 
+
+> b
+
+)2
+
+= v+ · (−Q+ 
+
+> b
+
+− Q− 
+
+> b
+
+) · 2˜b−1 ln 2 (Q+ 
+
+> b
+
+)2
+
+= v+ · 2˜b−1 ln 2 (Q+ 
+
+> b
+
+)216 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 
+
+Bit-rate (bpp) 
+
+34 
+
+35 
+
+36 
+
+37 
+
+38 
+
+> PSNR (dB)
+
+UVG 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-23.72%) 
+
+DCVC-RT FP16 (-12.56%) 
+
+MCR Hybrid FP32 (-33.72%) 
+
+MCR Hybrid JOMP C=0.512 (-30.70%) 
+
+MCR Hybrid JOMP C=2.048 (-29.31%) 
+
+0.04 0.06 0.08 0.10 0.12 0.14 
+
+Bit-rate (bpp) 
+
+31 
+
+32 
+
+33 
+
+34 
+
+35 
+
+36 
+
+> PSNR (dB)
+
+HEVC-B 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-10.18%) 
+
+DCVC-RT FP16 (+9.53%) 
+
+MCR Hybrid FP32 (-21.76%) 
+
+MCR Hybrid JOMP C=0.512 (-20.15%) 
+
+MCR Hybrid JOMP C=2.048 (-18.94%) 
+
+0.075 0.100 0.125 0.150 0.175 0.200 0.225 0.250 0.275 
+
+Bit-rate (bpp) 
+
+29 
+
+30 
+
+31 
+
+32 
+
+33 
+
+34 
+
+35 
+
+> PSNR (dB)
+
+HEVC-C 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-5.26%) 
+
+DCVC-RT FP16 (+31.32%) 
+
+MCR Hybrid FP32 (-14.91%) 
+
+MCR Hybrid JOMP C=0.512 (-13.88%) 
+
+MCR Hybrid JOMP C=2.048 (-13.03%) 
+
+0.075 0.100 0.125 0.150 0.175 0.200 0.225 0.250 
+
+Bit-rate (bpp) 
+
+29 
+
+30 
+
+31 
+
+32 
+
+33 
+
+34 
+
+35 
+
+36 
+
+> PSNR (dB)
+
+HEVC-D 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-26.87%) 
+
+DCVC-RT FP16 (+8.99%) 
+
+MCR Hybrid FP32 (-35.20%) 
+
+MCR Hybrid JOMP C=0.512 (-34.47%) 
+
+MCR Hybrid JOMP C=2.048 (-33.52%) 
+
+0.010 0.015 0.020 0.025 0.030 0.035 0.040 
+
+Bit-rate (bpp) 
+
+36 
+
+37 
+
+38 
+
+39 
+
+40 
+
+> PSNR (dB)
+
+HEVC-E 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-29.39%) 
+
+DCVC-RT FP16 (-11.30%) 
+
+MCR Hybrid FP32 (-20.14%) 
+
+MCR Hybrid JOMP C=0.512 (-17.03%) 
+
+MCR Hybrid JOMP C=2.048 (-12.15%) 
+
+0.02 0.04 0.06 0.08 0.10 0.12 
+
+Bit-rate (bpp) 
+
+31 
+
+32 
+
+33 
+
+34 
+
+35 
+
+> PSNR (dB)
+
+HEVC-RGB 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-18.42%) 
+
+DCVC-RT FP16 (-5.39%) 
+
+MCR Hybrid FP32 (-25.10%) 
+
+MCR Hybrid JOMP C=0.512 (-22.22%) 
+
+MCR Hybrid JOMP C=2.048 (-20.50%) 
+
+0.02 0.04 0.06 0.08 0.10 0.12 
+
+Bit-rate (bpp) 
+
+34 
+
+35 
+
+36 
+
+37 
+
+38 
+
+39 
+
+> PSNR (dB)
+
+MCL-JCV 
+
+VTM 17.0 LDB (anchor) 
+
+DCVC-FM FP32 (-19.74%) 
+
+DCVC-RT FP16 (+14.76%) 
+
+MCR Hybrid FP32 (-28.24%) 
+
+MCR Hybrid JOMP C=0.512 (-22.72%) 
+
+MCR Hybrid JOMP C=2.048 (-21.25%) 
+
+Fig. 10. Rate-distortion comparison with the state-of-the-art NVCs. The anchor is VTM 17.0 (Low-delay B). 
+
+3) Case 3: u ≥ Q+
+
+b :
+
+ˆv = Q+
+
+b · s = Q+
+
+b · v+
+
+Q+
+
+b
+
+= v+
+
+∂ˆv∂˜b = 0 
+
+XI. A DDITIONAL RATE -D ISTORTION CURVES 
+
+For completeness, Fig. 10 presents the full rate-distortion curves of the evaluated methods. XII. V ISUALIZATION FOR CROSS -PLATFORM 
+
+CONSISTENCY 
+
+Fig. 11 further provides a visual comparison using se-lected frames from the BasketballDrive sequence, showing the reconstructed outputs from both floating-point and integer models. The floating-point model fails to reconstruct the input sequence properly. Fig. 12 shows a case where the first frame is recon-structed correctly. Nevertheless, small cross-platform numer-ical discrepancies accumulate through temporal prediction and buffered references, leading to progressively increasing reconstruction errors in subsequent frames. 17 Floating-point Model Integer Model 
+
+Fig. 11. Visual comparison of reconstructed frames from the BasketballDrive 
+
+sequence under floating-point and integer implementations. The sequence is encoded on an NVIDIA H100 and decoded on an NVIDIA RTX 4090. Floating-point Model Integer Model 
+
+Fig. 12. Visual comparison of reconstructed frames from the BasketballDrive 
+
+sequence under floating-point and integer implementations. Unlike Fig. 11, the first frame is correctly reconstructed in this example, allowing the temporal accumulation of cross-platform numerical discrepancies to be more clearly observed. The sequence is encoded on an NVIDIA H100 and decoded on an NVIDIA RTX 4090.
