@@ -1,0 +1,381 @@
+Title: Beyond Layer Importance in Layer-wise Sparsity: An Inter-Layer Perturbation-Absorption Perspective
+
+URL Source: https://arxiv.org/pdf/2606.15161v1
+
+Published Time: Tue, 16 Jun 2026 00:30:48 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Beyond Layer Importance in Layer-wise Sparsity: An Inter-Layer Perturbation-Absorption Perspective 
+
+Tao Jing, Ningxin Wu, Chen Kang, Dong Yu, Changliang Li, Pengyuan Liu Abstract 
+
+The considerable layer-wise redundancy in large language models (LLMs) has established non-uniform sparsity allocation across lay-ers as the standard pruning approach for ef-ficient compression. Existing layer-wise allo-cation methods that estimate allocation strat-egy from local signals such as activation out-liers or weight spectra mainly derive from lo-cal layer importance, whereas the final post-pruning performance is also influenced by the network’s subsequent compensatory capacity. In this paper, we directly characterize this property through controlled perturbation ex-periments. We make the following empiri-cal findings. First, layers exhibit highly het-erogeneous responses to pruning-scale pertur-bations. In most cases, early layers amplify perturbations, while middle and late layers ac-tively absorb them, with relative L2 drift de-creasing monotonically across depth and direc-tion realigning toward the unperturbed hidden-state trajectory. Second, absorption is a large-perturbation phenomenon. Under small per-turbations the network exhibits amplification across all layers, and the transition to absorp-tion occurs smoothly as perturbation magni-tude grows to pruning scale. This enriches the linearized accumulation theory underlying re-lated works. Building on these findings, we de-fine an absorption coefficient per layer and pro-pose absorption-aware correction, an orthogo-nal augmentation that improves OWL and Al-phaPruning by reducing perplexity by 7.13% and boosting zero-shot accuracy by 1.02% across multiple model families at 70% sparsity. 
+
+1 Introduction 
+
+Large Language Models (LLMs) have achieved re-markable capabilities in various natural language processing tasks (Liu et al., 2024; Touvron et al., 2023a; Achiam et al., 2023). Scaling up model pa-rameters consistently brings performance improve-ments (Wei et al., 2022), yet their massive compu-tational and memory footprint present substantial obstacles to model deployment, inhibiting wider applicability(Wang et al., 2024). Pruning has emerged as a key approach for com-pressing large language models (LLMs) without re-training, with methods such as SparseGPT (Frantar and Alistarh, 2023) and Wanda (Sun et al., 2024). A central design choice in post-training pruning is layer-wise sparsity allocation: how to distribute a global sparsity budget across the layers of the network. Uniform allocation discards the fact that layers differ in their sensitivity to pruning, and a growing line of work has therefore proposed non-uniform allocation strategies. Existing approaches can be organized into three families. Metric-based methods estimate a per-layer importance score from a hand-crafted signal and allocate sparsity inversely to importance. OWL (Yin et al., 2024) uses activation outlier ratios, Al-phaPruning (Lu et al., 2024) uses heavy-tailed self-regularization theory applied to weight spectra, and ALS (Li et al., 2024b) uses mutual information between layer activations. Search-based methods instead treat allocation as an optimization prob-lem, where DSA (Li et al., 2024a) and EvoPress (Sieberling et al.) both use evolutionary search over allocation expressions. A third family explic-itly considers inter-layer coupling. ATP (Huang et al., 2025) derives a layer-wise allocation from a theoretical analysis of how reconstruction error propagates forward through the network, proving that increasing the sparsity of an earlier layer raises the lower bound on the reconstruction error of all subsequent layers, and prescribing a monotonically increasing arithmetic progression as the remedy. Metric-based methods mainly rely on layer-intrinsic signals and therefore overlook inter-layer coupling. ATP incorporates such coupling by mod-eling how pruning a layer affects downstream be-havior through the linear propagation of reconstruc-tion error. However, this formulation neglects the 1
+
+> arXiv:2606.15161v1 [cs.CL] 13 Jun 2026
+
+network’s actual response to pruning-induced per-turbations. Since pruning a layer introduces pertur-bations that propagate through downstream layers and may be either amplified or absorbed, layer-wise pruning should account for how the downstream network processes the perturbation caused by each pruned layer. In this paper, we directly study this downstream response by using controlled layer-wise perturba-tion injection to trace how perturbations evolve across depth in a transformer, yielding insights that motivate a new view of layer-wise allocation. 
+
+Layer-dependent response. Under pruning-scale perturbations, layers exhibit highly heteroge-neous responses. Typically, perturbations injected into early layers are commonly amplified by subse-quent layers; perturbations injected into middle and late layers are actively absorbed, and their direc-tion realigns toward the unperturbed hidden-state trajectory. The strength of absorption varies sub-stantially across layers and is not well predicted by depth alone. 
+
+Scale-dependent response. Absorption is a large-perturbation phenomenon. Under small per-turbations, all layers exhibit accumulation: relative drift grows monotonically with depth regardless of injection point. As the perturbation magnitude increases toward the scale produced by actual prun-ing, middle and late layers smoothly transition into the absorbing regime. The transition is continuous, ruling out numerical artifacts. Taken together, these findings do not contradict the observations of reconstruction error accumula-tion in prior work. The growth of total error along depth is the cumulative superposition of many lo-cal perturbations, and the error induced by each local perturbation may be absorbed or amplified as it propagates through the rest of the network. Our results identify this downstream response as a missing dimension of layer importance. To verify that this dimension is practically use-ful, we propose a simple operationalization. We define a per-layer drift ratio and use it as an additive correction on top of metric-based allocation meth-ods, redistributing a small fraction of the sparsity budget while keeping the global budget fixed. Our intent is not to claim a new state-of-the-art method but to demonstrate that the absorption dimension translates into measurable gains. The results of ex-periments show that the correction improves OWL and AlphaPruning in most settings. The central contributions of this paper can be summarized as follows. • We establish that pruning-induced perturba-tions are subject to partial absorption by the rest of the network. We further show that absorption is layer-dependent and scale-dependent. • We provide a precise relationship between our findings and the linearized accumulation the-ory. The depth-wise growth of total error un-der whole-model pruning is the cumulative effect of many partially-absorbed local pertur-bations, not the amplification of every single one. • We define a per-layer drift ratio and use it as a correction on top of metric-based allocation methods, showing improvements across sev-eral models as our analysis predicts. 
+
+2 Related Work 
+
+LLM Pruning. Pruning has long been used to com-press neural networks, dating back to magnitude-based and second-order criteria such as OBD (Le-Cun et al., 1989) and OBS (Hassibi and Stork, 1992). For LLMs, the prohibitive cost of retraining has motivated post-training unstructured pruning, where weights are removed in a single pass with only a small calibration set. SparseGPT (Fran-tar and Alistarh, 2023) selects masks and updates weights using inverse-Hessian information; Wanda (Sun et al., 2024) prunes weights with the lowest product of magnitude and input activation norm; further refinements include ALPS (Meng et al., 2024a). These methods determine which weights to remove within each layer but typically apply a uniform sparsity rate across layers, leaving the question of how to allocate sparsity across layers untouched. Our work focuses on this layer-wise allocation problem and is compatible with any of the underlying pruning methods above. 
+
+Non-Uniform Sparsity. Recent work allocates sparsity non-uniformly across layers, motivated by the observation that layers contribute unequally to model performance (Frankle and Carbin, 2018). These methods fall into three families. Metric-based methods assign each layer an importance score from a hand-crafted signal. OWL (Yin et al., 2024) and MRP (Gao et al., 2025) uses activation outliers, AlphaPruning (Lu et al., 2024) uses heavy-tailed weight spectra, and LSA (Yang et al., 2026) 2uses each layer’s minimal linear reconstruction er-ror. Search-based methods such as DSA (Li et al., 2024a) instead optimize allocation directly at the cost of repeated trial prunings. Methods consider-ing inter-layer coupling: ATP (Huang et al., 2025) is a prior method that explicitly models how prun-ing at one layer affects others, deriving a mono-tonically increasing arithmetic progression from a linearized analysis of reconstruction error propaga-tion. None of the above directly characterizes how a pruning-induced perturbation propagates through downstream layers in the regime where pruning actually operates, a dimension we identify in Sec-tion 3 as the key missing factor. 
+
+Reconstruction Error in Pruning. Reconstruc-tion error has long served as both an objective and a signal in LLM compression, and lower reconstruc-tion error typically indicates that the compressed network retains the performance of the original net-work more faithfully (Yun and Wong, 2021; Luo et al., 2017; He et al., 2017; Zhuang et al., 2018; Meng et al., 2024b). SparseGPT (Frantar and Al-istarh, 2023) selects masks and updates weights to minimize per-layer reconstruction error; LSA (Yang et al., 2026) uses the minimal linear recon-struction error of each layer as an importance sig-nal; ATP (Huang et al., 2025) builds its alloca-tion theory on the propagation of reconstruction error across depth. In this paper, we explore the reconstruction error compensation phenomenon in LLMs. Specifically, the reconstruction error is con-tinuously repaired during propagation through sub-sequent layers, and different layers exhibit vary-ing perturbation recovery capabilities. The non-uniform pruning of the model should take this dif-ference into account and accordingly adjust the sparsity rate allocation for each layer. Therefore, we propose a reconstruction error compensation factor to quantify the perturbation recovery capa-bility of different layers. 
+
+3 Layer-Dependent Reconstruction Error Compensation 
+
+In this section, we design a controlled perturba-tion injection programme that isolates how a single layer’s perturbation propagates through the rest of the network, then use it to arrive our findings about how downstream transformer layers respond to per-turbations. 
+
+3.1 Preliminaries 
+
+We treat each layer of a large language model (LLM) as the elementary unit of study. Given an LLM with L layers, the reconstruction error of the 
+
+ℓ-th layer ( l = 1 , 2, . . . , L ) is formulated as 
+
+Rabs  
+
+> ℓ
+
+= WℓXTℓ − (M ⊙ Wℓ)XTℓ 
+
+> 2
+> F
+
+(1) where Wℓ ∈ Rcout ×cin and Xℓ ∈ RN ×cin denote the weight matrix and calibration inputs of layer ℓ,respectively. Here N is the number of calibration tokens, M ∈ { 0, 1}cout ×cin is the pruning mask, 
+
+M ⊙ Wℓ denotes the pruned weight matrix, and 
+
+∥ · ∥ F stands for the Frobenius norm. Existing post-training sparsity methods (e.g., SparseGPT) and non-uniform pruning strategies (e.g., LSA) commonly aim to minimize the re-construction error of the pruned LLM. Despite its prevalent use, this metric carries an inherent limitation: it is scale-sensitive. The magnitude of Rabs  
+
+> ℓ
+
+is directly influenced by the norm of hid-den states, which grow substantially with depth in trained transformers. Prior diagnostic studies have offered indirect evidence of this issue, observing that layers in depthwise-separable convolutional networks exhibit dramatically fluctuating dynamic ranges (Yun and Wong, 2021). To mitigate this, this work adopts a scale-invariant alternative. Let hℓ ∈ Rd×n denote the original output of layer ℓ on a batch of n tokens, and ehℓ the corresponding output under intervention. We define the relative reconstruction error of the layer ℓ as: 
+
+Rℓ = ∥ehℓ − hℓ∥F
+
+∥hℓ∥F
+
+. (2) We use it together with the cosine distance 1 −
+
+cos( ehℓ, h ℓ) as a directional companion. With this metric modification, we further study the overall evolutionary characteristics of error propagation in pruned large language models and reveal the phenomenon of reconstruction error absorption 
+
+in the next section. 
+
+3.2 Perturbation Injection. 
+
+The reconstruction error has two sources, includ-ing the local error introduced by pruning a given layer, and the propagated error inherited from ear-lier pruned layers. To isolate propagation, we adopt layer-wise perturbation injection: at a chosen injec-tion layer ℓ, we replace its output with ehℓ = hℓ +δℓ,3Figure 1: Inter-layer perturbation absorption and the absorption-aware correction it enables. (a) a perturbation                          
+
+> δℓinjected at layer ℓpropagates through downstream layers, and in most cases its magnitude ∥∆hk∥decays along depth at pruning scale. This is the inter-layer absorption phenomenon we identify in Section 3.3. The end-to-end drift ratio rℓ=Ex
+> hRL
+> Rℓ
+> i
+> summarizes this per-layer behavior. (b) Measured on LLaMA-2-7B after AlphaPruning at 70% sparsity (Gaussian probe η= 10 −2, 5 seeds), the figure shows the layer-wise drift ratio. (c) Algorithm 1 converts rℓinto an additive correction on top of the AlphaPruning base allocation, strictly preserving the global sparsity budget. Sparsity is shifted away from layers with rℓ>1(amplification, dangerous to prune) toward layers with rℓ<1(absorption, safer to prune).
+
+leave all upstream layers untouched, and let the perturbed activation flow through the remaining layers k > ℓ . We then record Rk at every sub-sequent layer. Two natural choices of injected δℓ
+
+exist. Isotropic Gaussian noise scaled to a target relative magnitude, and the actual activation dif-ference produced by pruning the layer’s weights. The two probes serve different purposes, and we use Gaussian noise scaled to match a target rela-tive magnitude η: δℓ = η · ∥ hℓ∥F · ξ, where ξ is a unit-norm Gaussian tensor. 
+
+3.3 Layer-Dependent Response. 
+
+We inject Gaussian perturbations of relative mag-nitude η = 0 .01 at different layers and trace Rk
+
+across all subsequent layers k > ℓ . The magnitude is chosen to match the scale produced by actual pruning. Figure 2 presents the result for LLaMA-2-7B with injection at representative layers (full coverage of all 32 layers and additional models is provided in Appendix ?? ). As is shown, perturbations injected at some lay-ers are amplified, while those injected at other lay-ers are absorbed. Absorption capacity is hetero-geneous across layers at similar depths. Layers separated by only a few positions in the middle of the network can exhibit substantially different absorption ratios. This rules out the possibility that absorption is captured by depth alone. Furthermore, the cosine trajectory shows that absorbing layers do not merely shrink the norm of the perturbation, but also actively rotate it back toward the unperturbed hidden state. The network is not passively damping a disturbance but re-mapping perturbed states onto trajectories close to its original behavior. Since the perturbations caused by Gaussian noise differ from those produced by real pruning, there is a risk that the observed layer-dependent response is an artifact of probing with random directions. We address this concern in Appendix ?? , demonstrat-ing that the Gaussian probe is adequate for studying perturbation absorption. 
+
+3.4 Absorption Is a Large-Perturbation Phenomenon. 
+
+We next ask whether the layer-dependent response is a generic property of trained transformers, or whether it emerges only at certain perturbation magnitudes. Holding the injection layer and the random direction fixed, we sweep the relative mag-nitude η across multiple orders of magnitude and re-measure Rk along depth. Figure 3 presents the result for LLaMA-2-7B with injection at layers 1, 12, and 24 for η = 10 −4.The two regimes, η = 10 −2 and η = 10 −4, are sharply distinct. At η = 10 −2, early-layer injec-tion amplifies, middle and late-layer injection is absorbed, with Rk decreasing monotonically along 4Figure 2: Layer-dependent response of LLaMA-2-7B to perturbations. (Top) L2 relative drift Rk along depth, for Gaussian probes ( η = 10 −2) injected at represen-tative early, middle, and late layers. (Bottom) Cosine distance between the perturbed and unperturbed hidden states for the same injections. 
+
+depth. At η = 10 −4, every injection layer, includ-ing those that absorbed at pruning scale, instead exhibits that Rk grows monotonically along depth. The same network, the same direction, the same in-jection layer, and the qualitative behavior reverses with magnitude.    
+
+> Figure 3: Layer-dependent response of LLaMA-2-7B to perturbations. L2 relative drift Rkalong depth, for Gaussian probes ( η= 10 −4) injected at representative early, middle, and late layers.
+
+What remains as the most plausible mechanism is the nonlinear structure of the network. At small perturbation magnitudes, the network operates in its linearized regime, where each layer’s effect on the perturbation is governed by its local Jacobian, and products of Jacobians with spectral norm ex-ceeding one accumulate. At pruning scale, pertur-bations are large enough to engage the network’s nonlinear components, namely LayerNorm normal-ization across features, attention softmax redistri-bution, and activation function saturation, which actively re-map perturbed states toward the man-ifold of hidden states the network was trained to produce. 
+
+> Figure 4: Layer-dependent response across model fami-lies.
+
+3.5 Absorption Coefficient. 
+
+For a layer ℓ, we define the absorption coefficient as the ratio of final-layer relative drift to the relative drift at the injection point, averaged over a small calibration set: 
+
+rℓ = Ex
+
+ RL
+
+Rℓ
+
+
+
+,
+
+where L denotes the final transformer layer. Val-ues rℓ < 1 indicate absorption; values rℓ > 1
+
+indicate amplification. Figure 4 visualizes the layer-wise absorption co-efficient for multiple models. All these models ex-hibit the same overall layer-wise structure, and the magnitude and layer-wise smoothness of absorp-tion differ noticeably across models. It indicates that rℓ captures architecture- and training-specific information that depth alone cannot. This cross-model consistency in structure, combined with model-specific variation in magnitude, is exactly the profile required of a useful allocation signal. 
+
+4 Inter-Layer Coupling-Aware Allocation Correction. 
+
+Layer-wise allocation faces an inter-layer coupling problem, where the cost of pruning a layer depends not only on the layer’s own properties, but also on how subsequent parts of the network process the perturbation introduced by pruning, a problem that metric-based methods cannot address. Per-layer importance computed in isolation lacks considera-tion of inter-layer coupling. We therefore propose 5a correction method applied on top of metric-based methods, based on the drift ratio rℓ defined in Sec-tion 3.5, to adjust the sparsity allocation of the metric-based approach. 
+
+4.1 From Drift Ratio to Correction Signal. 
+
+We now use the drift ratio {rℓ} to improve existing allocation methods. Given a profile {sbase  
+
+> ℓ
+
+} pro-duced by an existing method (OWL, AlphaPrun-ing), we redistribute a portion of the sparsity budget across layers based on {rℓ}, while strictly preserv-ing the global budget P 
+
+> ℓ
+
+sℓ = P 
+
+> ℓ
+
+sbase  
+
+> ℓ
+
+.The raw drift ratio rℓ has three properties that make it unsuitable for direct use as an additive correction. It is multiplicatively scaled, it is non-negative but unbounded above, and it is contam-inated by boundary effects. We address all three with a log-clip-center transformation: 
+
+uℓ = clip  log rℓ, −L0, +L0
+
+,
+
+∆ℓ = − uℓ − ¯u, (3) where L0 = log 3 and ¯u = 1
+
+> L
+
+P 
+
+> ℓ
+
+uℓ is the mean of the clipped log-ratios. 
+
+4.2 Applying the Correction. 
+
+A naive choice for the correction strength would fix a scalar λ and apply snew  
+
+> ℓ
+
+= sbase  
+
+> ℓ
+
++ λ∆ℓ. The difficulty is that different base methods produce profiles with different magnitudes of departure from uniformity, so a λ that meaningfully cor-rects one base may either over- or under-correct another. This makes cross-method comparison of the hyperparameter unreliable. We adopt in-stead a magnitude-normalized parameterization. Let ¯sbase = 1
+
+> L
+
+P 
+
+> ℓ
+
+sbase  
+
+> ℓ
+
+denote the base profile’s mean and ∥sbase − ¯sbase ∥2 its centered ℓ2 norm (the energy by which the base profile departs from a uni-form allocation at the same total sparsity). Given a hyperparameter β ≥ 0, we set 
+
+λ = β · ∥sbase − ¯sbase ∥2
+
+∥∆∥2
+
+, (4) where β is the ratio of correction energy to the base profile’s non-uniformity energy, and is therefore directly comparable across base methods. Given ∆ℓ and λ, we form ˜sℓ = sbase  
+
+> ℓ
+
++ λ∆ℓ,clip to [0 , 1] , and iteratively redistribute any clip-ping residual across layers that still have head-room until the total matches P 
+
+> ℓ
+
+sbase  
+
+> ℓ
+
+exactly, as detailed in Algorithm 1. We grid-search β ∈{0.05 , 0.10 , 0.20 , 0.50 } on WikiText-2 perplexity. 
+
+Algorithm 1 Inter-Layer Coupling-Aware Correc-tion. 
+
+Require: base profile {sbase  
+
+> l
+
+} summing to S; drift ratios {rl} from Section 3.5; strength β.
+
+Ensure: corrected profile {snew  
+
+> l
+
+} with P 
+
+> l
+
+snew  
+
+> l
+
+=
+
+S. 
+
+> 1:
+
+ul ← clip  log rl, − log 3 , + log 3  
+
+> 2:
+
+¯u ← 1
+
+> L
+
+P 
+
+> l
+
+ul 
+
+> 3:
+
+∆l ← − (ul − ¯u) ▷ zero-mean correction signal  
+
+> 4:
+
+λ ← β · ∥sbase −¯sbase ∥2 
+
+> ∥∆∥2
+
+▷ magnitude-normalized  
+
+> 5:
+
+˜sl ← sbase  
+
+> l
+
++ λ∆l 
+
+> 6:
+
+ˆsl ← clip(˜ sl, 0, 1)  
+
+> 7:
+
+while | P 
+
+> l
+
+ˆsl − S| > ϵ do  
+
+> 8:
+
+res ← S − P 
+
+> l
+
+ˆsl 
+
+> 9:
+
+F ← { l :ˆsl has headroom in the sign of res } 
+
+> 10:
+
+ˆsl ← clip 
+
+
+
+ˆsl + res   
+
+> |F|
+
+· 1[l ∈ F ], 0, 1
+
+ 
+
+> 11:
+
+end while  
+
+> 12:
+
+return {ˆsl}
+
+5 Experiments 
+
+5.1 Experimental Settings. Models. We evaluate our method across various LLMs, including LLaMA2 (7B/13B) (Touvron et al., 2023b), LLaMA3.2-3B (Grattafiori et al., 2024), OPT-6.7B (Zhang et al., 2022), Vicuna-7B (Chiang et al., 2023), Mistral-7B (Jiang et al., 2023), and Qwen3-8B (Yang et al., 2025). Lim-ited by available compute, we cap model sizes at 13B parameters, use FP16 arithmetic, and set the sequence length to 2048. All experiments were con-ducted on a single NVIDIA L40S GPU (48GB). 
+
+Evaluation. We evaluate language modeling per-formance via perplexity on the validation sets of WikiText-2 (Merity et al., 2016), and evalu-ate zero-shot performance on seven downstream tasks, including RTE (Wang et al., 2018), Wino-Grande (Sakaguchi et al., 2021), BoolQ (Clark et al., 2019), OpenBookQA (Mihaylov et al., 2018), ARC-Easy/Challenge (Clark et al., 2018), and Hel-laSwag (Zellers et al., 2019) from EleutherAI LM Harness (Gao et al., 2023). 
+
+Pruning methods. We use Wanda (Sun et al., 2024) and SparseGPT (Frantar and Alistarh, 2023) as the underlying pruning procedures. We apply absorption-aware correction on top of two metric-based allocation methods: OWL (Yin et al., 2024) and AlphaPruning (Lu et al., 2024). These methods 6Method LLaMA-2-7B LLaMA-2-13B LLaMA-3.2-3B OPT-6.7B Mistral-7B Vicuna-7B Qwen3-8B Dense 5.12 4.88 7.78 10.81 5.25 6.34 9.72 Wanda 72.90 46.61 134.55 160.00 60.34 59.47 82.53 Wanda w. OWL 30.55 16.69 122.42 44.16 38.17 31.62 66.40 Wanda w. OWL+abs 23.19 (↓24.09%) 16.73 (↑0.24%) 120.68 (↓1.42%) 43.03 (↓2.56%) 32.91 (↓13.78%) 31.26 (↓1.14%) 64.38 (↓3.04%)                                                                              
+
+> Wanda w. AlphaPruning 31.76 15.20 172.95 98.08 39.54 37.62 49.94 Wanda w. AlphaPruning+abs 29.98 (↓5.60%) 15.49 (↑1.91%) 166.19 (↓3.91%) 94.70 (↓3.45%) 33.89 (↓14.29%) 28.11 (↓25.28%) 47.10 (↓5.69%)
+> Wanda w. MRP 26.77 16.70 101.20 180.46 35.04 38.71 57.17 Wanda w. ATP 22.00 16.94 103.81 43.69 29.00 28.13 47.22 SparseGPT 23.69 18.39 66.57 20.78 23.12 30.48 107.59 SparseGPT w. OWL 19.72 13.99 53.61 22.59 18.54 24.58 32.12 SparseGPT w. OWL+abs 18.27 (↓7.35%) 13.59 (↓2.86%) 52.71 (↓1.68%) 21.78 (↓3.59%) 17.40 (↓6.15%) 23.78 (↓3.25%) 29.68 (↓7.60%)
+> SparseGPT w. AlphaPruning 21.06 13.49 74.10 76.33 20.58 26.85 33.08 SparseGPT w. AlphaPruning+abs 19.93 (↓5.37%) 13.86 (↑2.74%) 72.32 (↓2.40%) 54.36 (↓28.78%) 19.63 (↓4.62%) 22.12 (↓17.62%) 29.80 (↓9.92%)
+> SparseGPT w. MRP 20.13 13.99 53.45 35.47 18.96 25.83 26.95
+> SparseGPT w. ATP 18.28 13.58 53.22 24.27 17.42 23.23 29.77
+
+Table 1: WikiText-2 perplexity ( ↓) of pruned models across architectures at 70% sparsity. Bold marks the best result within each base-method block; underline marks the second best. Lower is better. 
+
+score each layer from local channel-level signals, activation outliers and heavy-tailed weight spectra respectively, and are silent about inter-layer cou-pling, making them the natural targets for a cor-rection that supplies this missing dimension. In addition, they themselves have good performance. For broader comparison, we additionally report results from a Uniform baseline and two repre-sentative non-uniform methods: MRP (Gao et al., 2025), which discovers allocations by iteratively pruning to balance layerwise redundancy; ATP (Huang et al., 2025), which scores layers via an increasing arithmetic progression. 
+
+Implementation Details. For calibration, we use 128 calibration samples from C4 (Raffel et al., 2020) with sequence length 2048 as calibration dataset. All methods are evaluated with this identi-cal dataset, the same pruning backbones, and com-parable hyperparameters. 
+
+5.2 Main Results. Correction improves metric-based baselines. Ta-ble 1 presents the perplexity of several LLM prun-ing methods and model families at 70% sparsity on the WikiText-2 dataset, and additional results across different sparsity ratios are reported in Ap-pendix ?? . The results show that absorption-aware correction reduces perplexity of OWL and AlphaPruning on most model-sparsity combina-tions. Moreover, methods with absorption-aware correction achieve lower perplexity in most cases. 
+
+Zero-Shot Evaluation. Table 2 presents accu-racy results obtained from seven zero-shot tasks at 70% sparsity. Aligned with perplexity result, meth-ods with absorption-aware correction regularly de-liver the best or second-best performance among non - uniform pruning alternatives when paired with identical base pruning algorithms across diverse model architectures. 
+
+Computational Overhead of Absorption Coef-ficient Estimation. Because the gains reported above come from a signal that requires forward passes beyond what baseline allocation methods need, we report the additional computational cost incurred by absorption-aware correction. Table 3 reports wall-clock time on a single NVIDIA L40S GPU (48GB). Absorption estima-tion takes 1.90 minutes per 7B model, which rep-resents 27.7% of the sparsegpt pruning time. We conclude that absorption-aware correction is prac-tical to add to existing pruning pipelines without substantially increasing the computational cost. 
+
+5.3 Ablation Studies 
+
+To verify that the improvement does not merely come from introducing an additional searchable correction direction, we replace the absorption-derived correction vector with a random Gaussian vector. For each seed, we sample zℓ ∼ N (0 , 1) 
+
+and construct a centered random correction direc-tion which is then normalized following the same procedure used for the real absorption-based cor-rection vector. We search its correction strength over the same range. The resulting sparsity profile is processed with the same clipping and budget-preserving redistribution procedure, ensuring an unchanged global sparsity budget. We repeat this experiment over multiple random seeds and report the mean in Table 4. As shown in the table, the random correction vector does not provide improve-ments comparable to the absorption-derived correc-tion, indicating that the gains are attributable to the 7Method LLaMA-2-7B LLaMA-2-13B LLaMA-3.2-3B OPT-6.7B Mistral-7B Vicuna-7B Qwen3-8B Dense 59.69 63.05 57.24 51.58 64.37 60.36 65.74 Wanda 33.43 37.44 34.13 36.72 36.85 36.96 43.03                                                                                            
+
+> Wanda w. OWL 40.50 47.44 36.60 39.34 39.25 44.08 38.82 Wanda w. OWL+abs 42.78 (↑5.63%) 39.24 (↓17.28%) 36.99 (↑1.07%) 40.73 (↑3.53%) 39.57 (↑0.82%) 44.91 (↑1.88%) 39.24 (↑1.08%)
+> Wanda w. AlphaPruning 42.06 47.30 33.06 39.39 38.96 43.33 40.27 Wanda w. AlphaPruning+abs 42.56 (↑1.19%) 47.55 (↑0.53%) 33.61 (↑1.66%) 40.27 (↑2.23%) 39.79 (↑2.13%) 47.37 (↑9.32%) 41.00 (↑1.81%)
+> Wanda w. MRP 43.45 50.08 37.07 39.29 40.74 45.53 38.54 Wanda w. ATP 43.81 48.62 36.54 40.66 41.08 46.01 42.10 SparseGPT 41.99 45.28 38.36 44.37 44.02 43.19 39.48 SparseGPT w. OWL 45.28 49.75 39.21 43.77 45.49 46.93 44.43 SparseGPT w. OWL+abs 45.57 (↑0.64%) 49.67 (↓0.16%) 39.40 (↑0.48%) 44.77 (↑2.28%) 45.23 (↓0.57%) 44.60 (↓4.96%) 46.74 (↑5.20%)
+> SparseGPT w. AlphaPruning 44.68 49.10 37.80 41.20 43.12 46.37 44.19 SparseGPT w. AlphaPruning+abs 44.89 (↑0.47%) 48.97 (↓0.26%) 38.03 (↑0.61%) 42.55 (↑3.28%) 42.82 (↓0.70%) 47.22 (↑1.83%) 47.79 (↑8.15%)
+> SparseGPT w. MRP 45.41 51.87 40.24 42.59 46.10 45.64 45.01 SparseGPT w. ATP 46.03 50.25 39.76 43.35 46.47 46.80 47.85
+
+Table 2: Seven zero-shot tasks’ average accuracy ( ↑) of pruned models across architectures at 70% sparsity. Bold 
+
+marks the best result within each base-method block; underline marks the second best. Higher is better. Table 3: Computational overhead of absorption coef-ficient estimation on LLaMA-2 models. Tprune and 
+
+Tabs denote the wall-clock time, in minutes, of base sparseGPT pruning and absorption coefficient estima-tion, respectively. 
+
+Model Tprune Tabs Tabs /T prune 
+
+LLaMA-2-7B 6.85 1.90 27.7% LLaMA-2-13B 11.47 4.08 35.6% 
+
+Table 4: WikiText-2 perplexity of Gaussian random correction ablation on LLaMA-2-7B with Wanda under different pruning ratios. 
+
+Method 60% 70% OWL 9.18 30.55 OWL+abs 9.02 23.19 OWL+Gaussian 9.17 36.72 AlphaPruning 9.81 31.76 AlphaPruning+abs 9.18 29.98 AlphaPruning+Gaussian 9.90 32.96 layer-specific absorption information encoded in the proposed correction direction rather than to the extra searchable degree of freedom introduced by the correction framework. 
+
+6 Conclusion 
+
+We studied layer-wise sparsity allocation through a perturbation-response perspective, asking not which layers are intrinsically important but how the rest of the network responds to the perturba-tions that pruning introduces. Through controlled injection experiments, we found that transformer layers exhibit highly heterogeneous responses to pruning-scale perturbations and that this absorption is a nonlinear, large-perturbation phenomenon that emerges at the scale of actual pruning. Building on these findings, we defined an absorption coefficient that measures this property directly, and showed that applying absorption-aware correction to OWL and AlphaPruning improves their performance in most settings and yields clear average gains. We hope these findings encourage a shift in layer-wise pruning research toward direct characterization of how pruning perturbations propagate, rather than further refinement of proxy signals for layer impor-tance. 
+
+References 
+
+Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, and 1 others. 2023. Gpt-4 techni-cal report. arXiv preprint arXiv:2303.08774 .Wei-Lin Chiang, Zhuohan Li, Ziqing Lin, Ying Sheng, Zhanghao Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E Gonzalez, and 1 others. 2023. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt quality. See https://vicuna. lmsys. org (accessed 14 April 2023) ,2(3):6. Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael Collins, and Kristina Toutanova. 2019. Boolq: Exploring the surprising difficulty of natural yes/no questions. In Proceedings of the 2019 conference of the north American chap-ter of the association for computational linguistics: Human language technologies, volume 1 (long and short papers) , pages 2924–2936. Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa Schoenick, and Oyvind 
+
+8Tafjord. 2018. Think you have solved question an-swering? try arc, the ai2 reasoning challenge. arXiv preprint arXiv:1803.05457 .Jonathan Frankle and Michael Carbin. 2018. The lottery ticket hypothesis: Finding sparse, trainable neural networks. arXiv preprint arXiv:1803.03635 .Elias Frantar and Dan Alistarh. 2023. Sparsegpt: Mas-sive language models can be accurately pruned in one-shot. In International conference on machine learning , pages 10323–10337. PMLR. Chang Gao, Kang Zhao, Runqi Wang, Jianfei Chen, and Liping Jing. 2025. Maximum redundancy pruning: A principle-driven layerwise sparsity allocation for llms. In Proceedings of the 33rd ACM International Conference on Multimedia , pages 11062–11070. Leo Gao, Jonathan Tow, Baber Abbasi, Stella Bider-man, Sid Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h, Haonan Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria Reynolds, Hailey Schoelkopf, Aviya Skowron, Lintang Sutawika, and 5 others. 2023. A framework for few-shot language model evaluation. Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, and 1 others. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Babak Hassibi and David Stork. 1992. Second order derivatives for network pruning: Optimal brain sur-geon. Advances in neural information processing systems , 5. Yihui He, Xiangyu Zhang, and Jian Sun. 2017. Channel pruning for accelerating very deep neural networks. In Proceedings of the IEEE international conference on computer vision , pages 1389–1397. Weizhong Huang, Yuxin Zhang, Xiawu Zheng, Fei Chao, and Rongrong Ji. 2025. Determining layer-wise sparsity for large language models through a theoretical perspective. In International Conference on Machine Learning , pages 26175–26201. PMLR. Albert Q. Jiang, Alexandre Sablayrolles, Arthur Men-sch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guil-laume Lample, Lucile Saulnier, Lélio Renard Lavaud, Marie-Anne Lachaux, Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2023. Mistral 7b. Yann LeCun, John Denker, and Sara Solla. 1989. Opti-mal brain damage. Advances in neural information processing systems , 2. Lujun Li, Peijie Dong, Zhenheng Tang, Xiang Liu, Qiang Wang, Wenhan Luo, Wei Xue, Qifeng Liu, Xiaowen Chu, and Yike Guo. 2024a. Discovering sparsity allocation for layer-wise pruning of large language models. Advances in Neural Information Processing Systems , 37:141292–141317. Wei Li, Lujun Li, Mark Lee, and Shengjie Sun. 2024b. Adaptive layer sparsity for large language models via activation correlation assessment. Advances in Neural Information Processing Systems , 37:109350– 109380. Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, and 1 others. 2024. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 .Haiquan Lu, Yefan Zhou, Shiwei Liu, Zhangyang Wang, Michael W Mahoney, and Yaoqing Yang. 2024. Al-phapruning: Using heavy-tailed self regularization theory for improved layer-wise pruning of large lan-guage models. Advances in neural information pro-cessing systems , 37:9117–9152. Jian-Hao Luo, Jianxin Wu, and Weiyao Lin. 2017. Thinet: A filter level pruning method for deep neural network compression. In Proceedings of the IEEE international conference on computer vision , pages 5058–5066. Xiang Meng, Kayhan Behdin, Haoyue Wang, and Rahul Mazumder. 2024a. Alps: Improved optimization for highly sparse one-shot pruning for large language models. Advances in Neural Information Processing Systems , 37:37594–37625. Xiang Meng, Shibal Ibrahim, Kayhan Behdin, Hussein Hazimeh, Natalia Ponomareva, and Rahul Mazumder. 2024b. Osscar: one-shot structured pruning in vision and language models with combinatorial optimiza-tion. In Proceedings of the 41st International Con-ference on Machine Learning , pages 35354–35377. Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. 2016. Pointer sentinel mixture mod-els. arXiv preprint arXiv:1609.07843 .Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. 2018. Can a suit of armor conduct elec-tricity? a new dataset for open book question an-swering. In Proceedings of the 2018 conference on empirical methods in natural language processing ,pages 2381–2391. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. 2020. Exploring the lim-its of transfer learning with a unified text-to-text transformer. Journal of machine learning research ,21(140):1–67. Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavat-ula, and Yejin Choi. 2021. Winogrande: An adver-sarial winograd schema challenge at scale. Commu-nications of the ACM , 64(9):99–106. 
+
+9Oliver Sieberling, Denis Kuznedelev, Eldar Kurtic, and Dan Alistarh. Evopress: Accurate dynamic model compression via evolutionary search. In Forty-second International Conference on Machine Learn-ing .Mingjie Sun, Zhuang Liu, Anna Bair, and Zico Kolter. 2024. A simple and effective pruning approach for large language models. In International Conference on Learning Representations , volume 2024, pages 4942–4964. Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, and 1 others. 2023a. Llama: Open and ef-ficient foundation language models. arXiv preprint arXiv:2302.13971 .Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-bert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, and 1 others. 2023b. Llama 2: Open foun-dation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 .Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel Bowman. 2018. Glue: A multi-task benchmark and analysis platform for natural language understanding. In Proceedings of the 2018 EMNLP workshop BlackboxNLP: Analyzing and interpreting neural networks for NLP , pages 353– 355. Wenxiao Wang, Wei Chen, Yicong Luo, Yongliu Long, Zhengkai Lin, Liye Zhang, Binbin Lin, Deng Cai, and Xiaofei He. 2024. Model compression and effi-cient inference for large language models: A survey. 
+
+arXiv preprint arXiv:2402.09748 .Jason Wei, Yi Tay, Rishi Bommasani, Colin Raffel, Barret Zoph, Sebastian Borgeaud, Dani Yogatama, Maarten Bosma, Denny Zhou, Donald Metzler, and 1 others. 2022. Emergent abilities of large language models. arXiv preprint arXiv:2206.07682 .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .Zhiguo Yang, Changjian Deng, Qinke Chen, Zijing Zhou, and Jian Cheng. 2026. Lsa: Layer-wise spar-sity allocation for large language model pruning based on minimal linear reconstruction error. In 
+
+The Fourteenth International Conference on Learn-ing Representations .Lu Yin, You Wu, Zhenyu Zhang, Cheng-Yu Hsieh, Yaqing Wang, Yiling Jia, Gen Li, Ajay Jaiswal, Mykola Pechenizkiy, Yi Liang, and 1 others. 2024. Outlier weighed layerwise sparsity (owl) a missing secret sauce for pruning llms to high sparsity. In 
+
+Proceedings of the 41st International Conference on Machine Learning , pages 57101–57115. Stone Yun and Alexander Wong. 2021. Do all mo-bilenets quantize poorly? gaining insights into the ef-fect of quantization on depthwise separable convolu-tional networks through the eyes of multi-scale distri-butional dynamics. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition , pages 2447–2456. Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. 2019. Hellaswag: Can a machine really finish your sentence? In Proceed-ings of the 57th annual meeting of the association for computational linguistics , pages 4791–4800. Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christopher De-wan, Mona Diab, Xian Li, Xi Victoria Lin, and 1 others. 2022. Opt: Open pre-trained transformer language models. arXiv preprint arXiv:2205.01068 .Zhuangwei Zhuang, Mingkui Tan, Bohan Zhuang, Jing Liu, Yong Guo, Qingyao Wu, Junzhou Huang, and Jinhui Zhu. 2018. Discrimination-aware channel pruning for deep neural networks. Advances in neu-ral information processing systems , 31. 
+
+10

@@ -1,0 +1,569 @@
+Title: Learned JPEG Compression for DNN Vision
+
+URL Source: https://arxiv.org/pdf/2606.16185v1
+
+Published Time: Tue, 16 Jun 2026 02:08:34 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Learned JPEG Compression for DNN Vision 
+
+## Kaixiang Zheng * Ahmed H. Salamah * Siyu Chen * En-Hui Yang Department of Electrical and Computer Engineering, University of Waterloo 
+
+{k56zheng, ahamsalamah, s875chen, ehyang }@uwaterloo.ca 
+
+## Abstract 
+
+JPEG, a lossy image compression technique designed for human viewers, has maintained its dominance for decades. However, in the era of artificial intelligence (AI), a substan-tial portion of image data, often compressed by JPEG, is and will continue to be consumed by deep neural networks (DNNs) instead of humans, thus creating a need to optimize JPEG for DNN inference performance. To this end, we pro-pose learned JPEG compression for DNN vision (J4D), a novel training framework for determining JPEG encoding parameters to minimize compression rate while maximizing DNN inference performance. The major challenge of solv-ing this optimization problem lies in representing the JPEG codec and compression rate in closed form. By incorpo-rating a differentiable soft quantizer based on a probabilis-tic quantization scheme, we not only obtain a differentiable proxy for the JPEG codec, but are also able to compute the entropy of the coded source analytically, which is a close estimate of the actual compression rate. Equipped with both the differentiable JPEG codec and the information-theoretic rate estimator, we are then able to solve the afore-mentioned optimization problem with backpropagation. Af-ter training, the learned encoding parameters will be subse-quently used in actual JPEG encoding based on probabilis-tic quantization. Extensive experimental results across mul-tiple datasets and DNN architectures demonstrate that J4D consistently and significantly outperforms the default JPEG and other competitive JPEG codecs optimized for DNNs. Notably, compared to the default JPEG, J4D achieves an increase in accuracy by as much as 11.60% at the same rate, or a reduction of compression rate up to 80.05% at the same accuracy. Additionally, with the help of J4D, we show the potential to design universal JPEG encoding parame-ters for various DNN architectures for the first time. 
+
+Figure 1. The overall training framework of J4D is illustrated, whose major components are a differentiable JPEG codec and an information-theoretic rate estimator. Note that the quantization ta-bles Q and α tables α, shown in red, are the only trainable param-eters, whereas the pre-trained DNN f is always frozen. 
+
+## 1. Introduction 
+
+Image compression is a fundamental aspect of image pro-cessing and computer vision (CV). For decades, JPEG [18] has stood out and become the de facto choice among vari-ous image compression techniques, due to its efficacy and simplicity in reducing image size while maintaining visual quality for human perception. As a lossy compression tech-nique, JPEG exploits the characteristics of the human visual system to discard information which is typically impercep-tible to the human eye. However, with the rise of deep learning (DL), there has been a significant shift in the way image data is consumed. In the past decade, deep neural networks (DNNs) have be-come central to numerous CV tasks, including image clas-sification [6, 10, 23], semantic segmentation [7, 15, 19], etc. Consequently, an increasing number of images, potentially 
+
+> *Equal contribution.
+
+1
+
+> arXiv:2606.16185v1 [cs.CV] 15 Jun 2026
+
+compressed by JPEG, are now processed by DNNs with minimal human intervention. Since DNNs perceive images differently from humans, JPEG compression designed for human vision often leads to significant performance degra-dation for DNN-based applications [2, 12, 27]. As a result, given the predominance of JPEG in image compression and the ubiquity of DNNs in CV applications, there is a pressing need to develop JPEG-compatible compression that better aligns with DNN vision. To address the above issue, existing works such as [21, 27, 31] promote two-step methods, where one first extracts the sensitivity of DNNs with respect to different Discrete Cosine Transform (DCT) frequencies, and then re-casts the conventional rate-distortion optimization problem for human vision into rate-accuracy optimization problems for DNN vision based on the sensitivity, whose solutions are the designed JPEG encoding parameters for DNNs. How-ever, these methods rely on a first-order Taylor approxi-mation of DNN loss functions, which becomes inaccurate when the quantization error is large, leading to unsatisfac-tory performance at a low compression rate where com-pressed images are highly distorted. On the other hand, trainable JPEG approaches such as [16, 28] approximate the JPEG codec with differentiable proxies and estimate the compression rate using either a small neural network or straight-through estimators (STEs), and then train JPEG by optimizing objectives involving both DNN inference perfor-mance and compression rate using backpropagation. How-ever, due to their suboptimal approximation of the JPEG codec and reliance on rough rate estimators, they cannot consistently outperform the default JPEG. In addition, none of the above methods manages to design universal JPEG encoding parameters for various DNN architectures. To address the limitation of existing methods, this pa-per introduces a novel trainable JPEG solution, dubbed J4D, based on a probabilistic quantization quantizer, from which both a differentiable JPEG codec and an analytical rate esti-mate can be derived. By taking the conditional expectation of the probabilistic quantizer, we obtain a differentiable soft quantizer, which substitutes the non-differentiable uniform quantizer in the default JPEG to enable gradient update for JPEG encoding parameters. The compression rate, on the other hand, can be closely estimated by the sum of entropies of quantized DCT coefficients from different frequencies, whose marginal probability mass functions (MPMFs) re-sult directly from the probabilistic quantizers. Given these differentiable JPEG codec and information theory-based rate estimator, we then train JPEG to determine encod-ing parameters for DNN vision through backpropagation. After training, the probabilistic quantizer equipped with the learned encoding parameters will be subsequently used in actual JPEG encoding. As a result, during the actual JPEG encoding phase, J4D has roughly the same compu-tation complexity as the default JPEG. Extensive experi-ments on three datasets, covering both image classification and semantic segmentation tasks, and seven DNN architec-tures validate the effectiveness of J4D, showing consistent and significant improvements over the default JPEG and other JPEG codecs designed in the literature specifically for DNNs. Specifically, on a fine-grained classification dataset, J4D improves the Top-1 accuracy of the default JPEG by up to 11.60% at the same rate, or reduces the compression rate of the default JPEG by 80.05% at the same accuracy. Moreover, to the best of our knowledge, we are the first to design universal JPEG encoding parameters for a group of DNNs with distinct architectures, which deliver compara-ble rate-accuracy (R-A) performances to those achieved by customized parameters for individual DNNs. The main contributions of this paper are as follows: • Exploiting probabilistic quantization, we develop a novel rate estimator for JPEG compression with a nice analyti-cal formula. • Based on the new rate estimator and a differentiable JPEG codec, we propose a new training framework to optimize JPEG encoding parameters for DNN vision, dubbed J4D. • The outstanding performance of J4D is validated by com-prehensive experiments on multiple CV tasks, datasets, and DNN architectures. • It is shown for the first time that it is possible to design, within J4D, universal JPEG encoding parameters for mul-tiple DNN architectures. 
+
+## 2. Related Work 
+
+In the literature, there are several lines of research works on JPEG compression for DNN vision. The first line is known as DNN-friendly JPEG compression, as exemplified in [11, 12]. For example, DeepN-JPEG [12] claims that the standard deviation of DCT coefficients at each frequency position determines the importance of this frequency to DNN inference performance. Therefore, DeepN-JPEG uses a heuristic, piece-wise linear function to map those standard deviations to quantization step sizes for corresponding DCT frequencies, resulting in DNN-oriented JPEG quantization tables. Li et al . [11] recommend a sorted random search algorithm over the entire quantization table space to find better quantization tables for DNN vision than those used in the default JPEG. However, these approaches purely rely on heuristic algorithms without solid justifications, and they also fail to leverage any characteristics of target DNN mod-els, thus yielding suboptimal performance. The second line promotes sensitivity-based methods. GRACE [27] evaluates DNN perceptual sensitivity by an-alyzing the gradient magnitude of its training loss function with respect to different DCT frequencies and color chan-nels, and then uses the sensitivity to guide the optimiza-tion of JPEG quantization tables and color space conver-2sion. Zheng et al . [31] and Salamah et al . [21], on the other hand, propose a new distortion measure for DNN vi-sion built upon DNN’s sensitivity to perturbations at differ-ent DCT frequencies, based on which they recast existing quantization table design algorithms for human vision into those for DNN vision. However, both of the above methods rely heavily on a first-order Taylor approximation of DNN loss functions, which may not be valid in the case of a low compression rate due to large quantization steps. The third line focuses on training JPEG encoding for DNN vision through backpropagation. To realize this, two fundamental problems have to be addressed properly. The first problem is how to convert the non-differentiable JPEG codec into a differentiable one before it can be prepended to DNNs for gradient update. The second problem, which is more challenging, is how to represent the compression rate of JPEG analytically so that it can be minimized using gradient-based methods as well. The approach described in [16], dubbed Google throughout this paper (since it’s pro-posed by Google Research), employs a third-order poly-nomial approximation of the rounding function to make JPEG differentiable and uses a 3-layer neural network to estimate the compression rate. AutoJPEG [28] adopts a tanh-based approximation of the rounding operation to con-struct a differentiable JPEG codec and builds a rate estima-tor based on the run-length encoding (RLE) mechanism. To enable gradient propagation during training from the rate estimate back to JPEG encoding parameters, AutoJPEG re-peatedly uses STEs and other approximations to bypass non-differentiability. Although both approaches indeed pro-vide trainable JPEG frameworks, they rely on rough ap-proximations extensively, hence leading to unsatisfactory performance inevitably. Nonetheless, trainable JPEG ap-proaches generally outperform methods in the previous two categories, since they successfully leverage online gradient descent for solving the optimization problem. More related work is discussed in Sec. 17 in the supplementary material. Our proposed method falls into the trainable JPEG cate-gory but solves the two fundamental problems mentioned above analytically. First, to break through all the con-straints imposed by the conventional non-differentiable uni-form quantization used in JPEG, we use probabilistic quan-tization, which in turn leads to differentiable soft quantizers. Second, with the help of probabilistic quantization, we in-troduce a neat analytical rate estimator. Furthermore, J4D is able to integrate the resulting differentiable JPEG codec and the rate estimator into a cohesive system, instead of piecing ad hoc approximation modules together. Since all compo-nents within the pipeline are now analytical, J4D can fully unleash the potential of gradient-based optimization to get the optimal solution for JPEG encoding parameters. Addi-tionally, in actual JPEG encoding, J4D has roughly the same computation complexity as the default JPEG. It should be noted that differentiable soft quantizers used in J4D have been employed in [20] recently. However, the problem addressed in this paper is different from that in [20]. In their case, the differentiable JPEG codec is used to improve DNN generalization performance without con-sidering compression rate at all, whereas we care about the R-A trade-off rather than accuracy alone, and rate estima-tion is a big issue. 
+
+## 3. Problem Formation 
+
+We denote a raw RGB image as x ∈ R3×W ×H , where 
+
+W and H correspond to the width and height of the in-put image. In the JPEG pipeline, x is first converted into the YCbCr color space followed by non-overlapping par-titioning into N blocks with size 8 × 8 for each channel. Then, DCT is applied to each block to obtain the corre-sponding DCT coefficients. After flattening the DCT co-efficients in zig-zag order, we obtain M = 64 sequences of DCT coefficients ordered from low to high frequency. We denote these DCT coefficients as C = [Clm,n ], where 
+
+l = 1 , 2, 3 correspond to color channels Y, Cb and Cr re-spectively, 1 ≤ m ≤ M is the frequency position in-dex, and 1 ≤ n ≤ N is the block index. Note that all operations involved so far are differentiable. The next step is quantization. Let QY = [q1, q 2, . . . , q M ] and QC
+
+= [qM +1 , q M +2 , . . . , q 2M ] denote the quantization tables used for the luminance (Y) and chrominance (CbCr) chan-nels respectively. In the default JPEG, each DCT coeffi-cient Clm,n is quantized by the uniform quantization fol-lowing Qu(Clm,n ; qm) = ⌊Clm,n /q m⌉ × qm for l = 1 and 
+
+Qu(Clm,n ; qM +m) = ⌊Clm,n /q M +m⌉ × qM +m for l = 2 , 3,where Qu denotes the uniform quantizer. Note that with respect to the quantization step size q, uniform quantiza-tion is either non-differentiable at each jump point, or has a zero derivative, making it unsuitable for gradient updation. After that, lossless coding including RLE and entropy cod-ing, e.g ., Huffman coding, is used to encode the quantized DCT coefficients into a bit stream, whose complexity is of-ten measured by the compression rate R(x; Q) in bit-per-pixel (bpp), where Q = ( QY , Q C ). In the reconstruction stage, the bit stream is decoded back to the quantized DCT coefficients, after which inverse operations including block-wise inverse DCT (IDCT) and YCbCr-to-RGB color space conversion are conducted to get the reconstructed RGB im-age ˆx. For simplicity, we denote the entire JPEG codec as 
+
+Ju, where the subscript indicates the application of the uni-form quantizer Qu, hence ˆx = Ju(x; Q).Given a pre-trained DNN model f , we aim to design quantization tables to maximize its inference accuracy on 
+
+ˆx = Ju(x; Q) subject to a constraint over the compression rate. This can be achieved by minimizing the Lagrangian composed of the training loss function of f and the com-3pression rate, formalized as 
+
+min  
+
+> Q
+
+E [L(f (Ju(x; Q)) , y ) + λR(x; Q)] , (1) 
+
+where L denotes the loss function used to train f , y is the ground truth label of x, and λ is a tunable hyper-parameter that controls the trade-off between compression rate and DNN performance. However, to solve the above optimization problem with gradient descent, two key challenges are (1) the non-differentiability within Ju due to uniform quantization, and (2) the need for an analytical representation of R(x; Q), the solutions to which will be discussed in the next section. 
+
+## 4. Methodology 
+
+In the first part of this section, we first invoke two types of quantizers from [29] and then discuss how to incorporate them into the JPEG pipeline to construct a differentiable JPEG codec. In the second part of this section, we present our information-theoretic rate estimator ˆR(·) and then sum-marize the overall J4D framework. 
+
+4.1. Probabilistic and Differentiable Soft Quantizer 
+
+Denote a symmetric index set of uniform quantization with length 2L + 1 as: 
+
+A = {− L, −L + 1 , . . . , 0, . . . , L − 1, L }. (2) 
+
+For convenience, A is also regarded as a vector. Multiplying 
+
+A by a quantization step size q, we get the corresponding reconstruction space: 
+
+ˆA = [ −L, −L + 1 , . . . , 0, . . . , L − 1, L ] × q. (3) 
+
+We again regard ˆA as both a vector and a set. Let C represent a DCT coefficient. To quantize C ran-domly to some ˆC = iq ∈ ˆA with i ∈ A , we invoke from [29] a probabilistic quantizer Qp. As described in [29], a conditional probability mass function (CPMF) over the re-construction space ˆA or, equivalently, the index set A given 
+
+C is defined as 
+
+Pα( ˆC|C) = e−α(C− ˆC)2
+
+P 
+
+> j∈A
+
+e−α(C−jq )2 , ∀ ˆC ∈ ˆA, (4) 
+
+where α > 0 is a trainable scaling factor. Define C 
+
+> 2L+1
+
+= [  
+
+> 2L+ 1 times
+
+z }| {
+
+C, . . . , C ]. Then, the CPMF 
+
+Pα(·| C), as a probability vector with dimension 2L + 1 ,can be easily computed using the softmax operation σ(·):
+
+Pα(·| C) = σ
+
+
+
+−α
+
+C 
+
+> 2L+1
+
+− ˆA
+
+2
+
+. (5) 
+
+With the CPMF, C is now quantized to each ˆC ∈ ˆA with probability Pα( ˆC|C), and this random mapping is referred to as the probabilistic quantizer Qp. Note that given C,
+
+Qp(C; q, α ) is a random variable with distribution Pα(·| C)
+
+over the alphabet ˆA.Due to the random jump, Qp is non-differentiable. How-ever, taking the conditional expectation of Qp(C) given C,we then get a differentiable soft quantizer 
+
+Qd(C) = E[Qp(C)|C] = X 
+
+> ˆC∈ˆA
+
+ˆC · Pα( ˆC|C). (6) 
+
+As α → ∞ , Qd approaches Qu, as shown in Fig. 11 in supplementary materials. 
+
+4.2. Differentiable JPEG Codec 
+
+As shown in Eq. (3), given a predetermined index set, the re-construction space solely depends on the quantization step size. In JPEG, there are in total 2M quantization steps, so the corresponding reconstruction spaces are 
+
+ˆAk = [ −L, −L + 1 , . . . , 0, . . . , L − 1, L ] × qk , (7) 
+
+where 1 ≤ k ≤ 2M . Then, we can incorporate 2M
+
+probabilistic quantizers, i.e ., Qp(Clm,n ; qm, α m) ∈ ˆAm
+
+for l = 1 and Qp(Clm,n ; qM +m, α M +m) ∈ ˆAM +m for 
+
+l = 2 , 3, into JPEG to replace uniform quantizers, thereby creating a probabilistic JPEG codec Jp(x; Q, α), where 
+
+α = (αY , αC ), αY = [α1, α 2, . . . , α M ] and αC =[αM +1 , α M +2 , . . . , α 2M ] are α tables for the Y and CbCr channels, respectively. Further applying Eq. (6), we get 2M differentiable soft quantizers accordingly, i.e ., Qd(Clm,n ; qm, α m) for l = 1 
+
+and Qd(Clm,n ; qM +m, α M +m) for l = 2 , 3. The resulting JPEG codec Jd(x; Q, α), where Qu’s in the default JPEG are substituted by Qd’s, is differentiable everywhere, effec-tively enabling gradient propagation. 
+
+4.3. Entropy-based Rate Estimation 
+
+Thanks to Qp, we can provide an estimate ˆR of the actual compression rate R based on the Shannon entropy of the randomly quantized DCT coefficients, as detailed below. Given any DCT coefficient Clm,n and the Qp associated with it, we immediately get the CPMF of the quantized DCT coefficient following Eq. (5). For any m, note that 
+
+Qp(C1
+
+> m,n
+
+; qm, α m) (Qp(Clm,n ; qM +m, α M +m), l = 2 , 3,resp.), 1 ≤ n ≤ N , are independent random variables. It can be shown that the expectations of the empirical distribu-tions of randomly quantized DCT coefficients in frequency 
+
+m of Y or CbCr channel are given by the marginal proba-bility mass functions (MPMFs) of the quantized DCT coef-ficients: 
+
+Pαm ( ˆC) = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+Pαm ( ˆC|C1
+
+> m,n
+
+), ∀ ˆC ∈ ˆAm, (8) 
+
+PαM +m ( ˆC) = 12N
+
+> 3
+
+X
+
+> l=2
+> N
+
+X
+
+> n=1
+
+PαM +m ( ˆC|Clm,n ), ∀ ˆC ∈ ˆAM +m,
+
+(9) 
+
+4where 2 ≤ m ≤ M . Note that two DC frequencies are left out for special treatment. When entropy coding, e.g ., Huffman coding, is adopted to encode the quantized DCT coefficients, the average code-word length (in bits) per coefficient can be closely approx-imated by the Shannon entropy H(·) of the probability dis-tributions of the quantized DCT coefficients. As a result, for AC frequencies, we have our rate estimates (in bits): 
+
+ˆRm = N · H (Pαm (·)) , ˆRM +m = 2 N · H (PαM +m (·)) , (10) 
+
+where 2 ≤ m ≤ M .For DC frequencies, differential pulse code modulation (DPCM) is applied in the JPEG pipeline to encode the dif-ferences between the quantized DC coefficients of adjacent blocks rather than the quantized coefficients themselves. This leads to a distinct rate estimation for the DC frequen-cies, as discussed below. Given two adjacent DC coefficients, we first compute the respective CPMFs of the differentially encoded quantized DC coefficients by applying Eq. (5) twice. Then, by convo-lution, the CPMFs of differentially encoded quantized DC coefficients ˆD are given by 
+
+Pα1 ( ˆD|C11,n −1, C 11,n )= X 
+
+> ˆC∈ˆA1
+
+Pα1 ( ˆC|C11,n ) · Pα1 ( ˆC − ˆD|C11,n −1),
+
+∀ ˆD ∈ { a − b|a, b ∈ ˆA1}, (11) 
+
+for the luminance channel, and 
+
+PαM +1 ( ˆD|Cl
+
+> 1,n −1
+
+, C l
+
+> 1,n
+
+)= X  
+
+> ˆC∈ˆAM+1
+
+PαM +1 ( ˆC|Cl
+
+> 1,n
+
+) · PαM +1 ( ˆC − ˆD|Cl
+
+> 1,n −1
+
+),
+
+∀ ˆD ∈ { a − b|a, b ∈ ˆAM +1 }, l = 2 , 3, (12) 
+
+for chrominance channels, where 1 ≤ n ≤ N , and note that Cl 
+
+> 1,0
+
+:= 0 for all l. Once again, it can be shown that the expectations of the empirical distributions of differen-tially encoded quantized DC coefficients are given by the following MPMFs: 
+
+Pα1 (·) = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+Pα1 (·| C11,n −1, C 11,n ), (13) 
+
+PαM +1 (·) = 12N
+
+> 3
+
+X
+
+> l=2
+> N
+
+X
+
+> n=1
+
+PαM +1 (·| Cl
+
+> 1,n −1
+
+, C l
+
+> 1,n
+
+). (14) 
+
+Similar to Eq. (10), we obtain rate estimates for DC fre-quencies as 
+
+ˆR1 = N · H (Pα1 (·)) , ˆRM +1 = 2 N · H (PαM +1 (·)) . (15) 
+
+Finally, combining Eqs. (10) and (15), the rate estimate of a whole image (in bpp) can be computed by 
+
+ˆR(x; Q, α) = 1
+
+W H 
+
+> 2M
+
+X
+
+> k=1
+
+ˆRk . (16) 
+
+4.4. Overall Framework of J4D 
+
+Equipped with the differentiable JPEG codec Jd and the entropy-based rate estimate ˆR, we can now rewrite the op-timization problem Eq. (1) into 
+
+min  
+
+> Q, α
+
+E
+
+h
+
+L(f (Jd(x; Q, α)) , y ) + λ ˆR(x; Q, α)
+
+i
+
+, (17) 
+
+where the expectation is approximated by the empirical mean over a mini-batch during training. This resulting min-imization problem can be solved by gradient descent based on backpropagation since all gradient calculations can be done analytically. Note that Jd is only used during training to ensure dif-ferentiability, while we switch to Jp during the validation stage (parameterized by the pre-trained quantization and 
+
+α tables) to randomly quantize DCT coefficients to better leverage the power of entropy coding. To summarize this section, we refer readers to Fig. 1 for an illustration of the overall training framework of J4D. 
+
+## 5. Experiments 
+
+5.1. Experimental Settings 
+
+Benchmarks . We compare J4D with the default JPEG and two state-of-the-art (SOTA) trainable JPEG frameworks: Google [16] and AutoJPEG [28], as discussed in Sec. 2. Since neither framework has publicly released code, we im-plement Google’s framework based on the rate estimator de-scribed in [1] and independently reimplement AutoJPEG. We adhere to the hyperparameter values specified in their respective papers to cover the same rate ranges addressed therein, but we perform additional tuning to extend their coverage to rate ranges not addressed in the original works. Notably, in the original AutoJPEG paper, three quantiza-tion tables are jointly trained with color space conversion parameters while DNN weights are fine-tuned. To ensure a fair comparison and maintain JPEG compliance, we opti-mize only the luminance and chrominance quantization ta-bles within the AutoJPEG framework while keeping other components frozen. Additionally, we include a sensitivity-based method, OptS [21, 31], for comparison in the supple-mentary material (Sec. 13). 
+
+Datasets and DNN models . We evaluate the R-A per-formance of two computer vision tasks: image classifi-cation and semantic segmentation. For image classifica-tion, we adopt two datasets: a fine-grained classification dataset, CUB-200-2011 (CUB200) [25], and a large-scale dataset, ImageNet-1K [9]. For semantic segmentation, we adopt the Pascal VOC 2012 dataset. For image classi-fication, the tested DNN architectures include ResNet18 [6], MobileNetV2 [22], MNasNet [24], ConvNeXt-tiny [14], and Swin-T [13], covering both convolution-based and transformer-based models; for semantic segmentation, we 5use DeepLabv3-MobileNet and DeepLabv3-ResNet50 [3]. For CUB200, the pre-trained models are obtained follow-ing the training setup outlined in [30]; for ImageNet-1K, we adopt the pre-trained models from PyTorch [17]; for Pascal VOC 2012, the pre-trained models are obtained from [5]. 
+
+Initialization of Encoding Parameters . A key feature of Qd is its variable softness based on the trainable α. How-ever, the gradient behavior of Qd with respect to α reveals that when α is sufficiently large, the gradient magnitude for 
+
+α becomes negligible, as presented in [20]. This implies that α will not be effectively updated during training if ini-tialized with sufficiently large values. Nonetheless, we do need α to be sufficiently large, since if α decreases, both the quantization error, thus the inference loss, and the com-pression rate will increase during validation, resulting in a strictly worse performance in the R-A sense. Consequently, in all our experiments, we directly initialize all entries of 
+
+α to a sufficiently large constant, i.e ., 100, and exclude α
+
+from the training process (see Sec. 9 in the supplementary material for more discussion about α initialization). As for quantization tables, it’s observed that the R-A per-formance of J4D is sensitive to their initialization. There-fore, instead of sticking to a fixed initialization, we initial-ize quantization tables differently for different rate ranges. Concretely, scaled versions of the default JPEG quanti-zation tables are used as initialization in the low-rate re-gion, corresponding to quality factors (QFs) in the range [5, 90]. For the high-rate region, we leverage the pre-trained model’s sensitivity as derived in [21, 31] to initialize quan-tization tables, thereby favoring a smaller quantization step for a more sensitive frequency to limit the distortion amount on it. Specifically, each quantization table entry is initial-ized with the reciprocal of its sensitivity and then scaled by a factor β within [5, 50] to control the R-A trade-off (see Sec. 11 in the supplementary material for more details). As discussed in Sec. 2, the sensitivity measure is valid only for small distortions, limiting its application to the high-rate re-gion. 
+
+Training Settings . We use the Adam optimizer [8] with a learning rate of 1 × 10 −2 for our training. The training setup varies by dataset: for CUB200, quantization tables are trained for 100 epochs on a single GPU with a batch size of 32; for ImageNet-1K, they are trained for 20 epochs using 4 GPUs with a batch size of 64 on each GPU ( i.e ., 256 in total); for Pascal VOC 2012, training runs for 10000 iterations on a single GPU with a batch size of 16. We vary the R-A trade-off for J4D for each distinct quantization ta-ble initialization by setting different λ in Eq. (17). Partic-ularly, λ ∈ [0 .1, 50] for the low-rate region, where we use QF-based quantization table initialization, and λ ∈ [0 , 5] for the high-rate region, where sensitivity-based initialization is adopted. Our final R-A performance, which will be shown in the next subsection, reflects the Pareto frontier of all re-sults we get from different pairs of initial quantization tables and λ. Note that we clip every quantization step to the range [1, 255] before any forward pass and set L = 1023 follow-ing the conventions adopted in the default JPEG. Moreover, to reduce the additional training complexity introduced by 
+
+Qd, we constrain the support of every CPMF to be the Top-5 closest points in ˆA to the coefficient C being quantized (see Sec. 12 in the supplementary material for more details). 
+
+Compression Settings . For all experiments, input im-ages are preprocessed by resizing and center cropping be-fore being fed into DNNs. For CUB200 and ImageNet-1K, the size of preprocessed images is 224 × 224, while for Pas-cal VOC 2012, the size is 513 × 513. Notably, for J4D and all compared methods, compression is applied to these pre-processed images, treating them as raw inputs. We employ the 4:4:4 chroma subsampling mode, which means there’s no chroma subsampling 1. For each dataset, the reported compression rate is computed by averaging the image-wise bpp over the entire validation set. Also, note that we use customized Huffman tables in Huffman coding. Our source code is provided in the supplementary material. 
+
+5.2. Experimental Results 
+
+Results on CUB200 . Fig. 2 compares the R-A performance of various compression methods across three pre-trained DNN models. The results demonstrate that J4D consistently outperforms all benchmarks across all tested models and over the entire rate range. Compared to the default JPEG, J4D achieves up to an 80.05% reduction in compression rate without accuracy loss or up to an 11.60% increase in Top-1 accuracy at a fixed rate. 
+
+Results on ImageNet-1K . Fig. 3 demonstrates the con-sistent superiority of J4D in R-A performance across three convolution-based models and one transformer-based model. Compared to the default JPEG, J4D achieves up to a 59.71% reduction in rate without accuracy loss or up to a 2.21% increase in Top-1 accuracy at a fixed rate. 
+
+Results on Pascal VOC 2012 . Fig. 4 illustrates the supe-rior R-A performance of J4D across two DNNs. Compared to the default JPEG, J4D achieves up to a 79.07% reduction in rate without accuracy loss or up to a 6.35% increase in mean intersection-over-union (mIoU) at a fixed rate. For further comparison, Tabs. 1 to 3 in the supplementary material (Sec. 8) provide numerical summaries of the results presented in the R-A curves, offering a detailed analysis of the performance differences among methods. 
+
+5.3. Analysis 
+
+Evaluating Quantization Table Transferability . Fig. 5 examines the transferability of our optimized quantization tables on CUB200, evaluating the performance of one DNN 
+
+> 1We stick to no chroma subsampling since it’s shown in [27] that chroma subsampling typically hurts R-A performance.
+
+6(a) ResNet18 (b) MobileNetV2 (c) MnasNet 
+
+Figure 2. R-A performance on CUB200 for three pre-trained image classification models with architectures (a) ResNet18, (b) Mo-bileNetV2, and (c) MnasNet. Note that the R-A curves are truncated on the right at a rate at which J4D already achieves almost the same level of accuracy as the default accuracy of each model on the original uncompressed dataset.    
+
+> (a) MobileNetV2 (b) MnasNet (c) ConvNeXt-tiny (d) Swin-T
+
+Figure 3. R-A performance on ImageNet-1K for four pre-trained image classification models with architectures (a) MobileNetV2, (b) MnasNet, (c) ConvNeXt-tiny, and (d) Swin-T.  
+
+> (a) DeepLabv3-MobileNet (b) DeepLabv3-ResNet50
+
+Figure 4. R-A performance on Pascal VOC 2012 for two pre-trained semantic segmentation models with architectures (a) DeepLabv3-MobileNet and (b) DeepLabv3-ResNet50. 
+
+model when using quantization tables optimized for other DNNs. For instance, Fig. 5a compares the R-A performance of ResNet18 using its own customized quantization table versus tables optimized for MnasNet and MobileNetV2. Overall, the transferred quantization tables deliver decent results, outperforming JPEG in most cases. Other interesting aspects of transferability are investi-gated in Fig. 6. In Fig. 6a, we evaluate the performance of ConvNeXt-tiny on ImageNet-1K when using quanti-zation tables optimized for Swin-T, demonstrating quan-tization table transferability between convolution-based (ConvNeXt-tiny) and transformer-based (Swin-T) models. In Fig. 6b, we evaluate the performance of ConvNeXt-tiny with weight w2 when using quantization tables optimized for ConvNeXt-tiny with weight w1, demonstrating quan-tization table transferability between different pre-trained weights for the same model architecture 2. In both cases, the transferred quantization tables achieve satisfactory re-sults, outperforming JPEG consistently across the entire rate range. 
+
+Training Universal Quantization Tables . While the transferred quantization tables achieve competitive results, the customized tables still demonstrate a nontrivial advan-tage in R-A performance compared to the transferred ones. To address the limitation of transferring the optimized quan-tization tables between models, we optimize a set of univer-sal quantization tables for all 3 tested models on CUB200. This is done by replacing the inference loss L in Eq. (17) of a single DNN model with the average inference loss of 3 tested DNN models so that the trained quantization tables take care of the DNN vision for all 3 models. As illus-trated in Fig. 5, the universal quantization tables generally achieve comparable R-A performance to that of customized quantization tables for each individual model, showing their strong generalization to different DNNs.     
+
+> 2Weight w2from timm [26] is only used in Fig. 6b. For all other ex-periments, ConvNeXt-tiny uses weight w1from PyTorch.
+
+7(a) ResNet18 (b) MobileNetV2 (c) MnasNet    
+
+> Figure 5. R-A performance analysis on CUB200 for quantization table transferability and universality.
+> (a) ConvNeXt-tiny (b) ConvNeXt-tiny ( w2)
+> Figure 6. More analysis on quantization table transferability.
+> (a) Luminance (b) Chrominance
+> Figure 7. The optimized luminance and chrominance quantiza-tion tables on CUB200, flattened in the zigzag order, are shown in Figs. 7a and 7b, respectively, at the same rate of 0.3 bpp.
+
+Comparison of Rate Estimators . We compare the per-formance of our rate estimator to those of Google and Au-toJPEG using the Pearson correlation coefficient and mean squared error (MSE) between actual compression rates and rate estimates. To conduct this evaluation, in Fig. 8, we randomly sampled 100 images from the ImageNet-1K val-idation set and generated the actual rates using the default JPEG quantization tables with various quality factors rang-ing from 1 to 100. From Fig. 8, it’s clear that the (R, ˆR)
+
+pairs resulting from J4D shows a stronger linear behavior than the other two methods, and they are significantly closer to the diagonal (shown as a red dashed line) than those of the other two methods. These visual impressions are further quantified by the correlation and MSE values shown in the legend of Fig. 8. Both the largest correlation and the small-est MSE are achieved by J4D, validating that our rate esti-mator provides a more accurate approximation of the actual rate compared to the benchmark methods.    
+
+> Figure 8. Comparison of (R,ˆR)pairs for different rate estimators, including those used in J4D, Google, and AutoJPEG.
+
+Comparison of Quantization Tables . In Figs. 7a and 7b, we compare the universal and customized quanti-zation tables for 3 models used on CUB200 together with those in the default JPEG at a fixed rate. The analysis re-veals that DNN models show different perceptions com-pared to humans, favoring the fidelity of higher frequen-cies while allowing lower frequencies to be compressed more aggressively, reflected by generally smaller quantiza-tion steps at high frequencies and larger quantization steps at low frequencies of the DNN-oriented quantization tables compared to the default JPEG ones. Besides, the figures also show that the universal quantization tables, designed to accommodate the characteristics of all three models, gener-ally take quantization step sizes less extreme than those of customized quantization tables. Please refer to the supplementary material (Secs. 7 and 14 to 16) for more analysis on visual quality of images compressed by JPEG and J4D, quantization table transfer-ability between datasets, and the rate-distortion (R-D) per-formance of J4D, etc. 
+
+## 6. Conclusion 
+
+This paper introduces J4D, a novel approach to optimize JPEG compression specifically for DNN inference. By in-troducing a differentiable JPEG codec and an entropy-based 8rate estimator, J4D effectively solves the rate-accuracy op-timization problem by backpropagation-based gradient de-scent. Extensive experiments demonstrate that J4D outper-forms the default JPEG for human vision and other DNN-oriented JPEG codecs in the R-A sense, making it the SOTA JPEG compression for DNN vision. Moreover, the study, for the first time, highlights the potential for designing uni-versal JPEG quantization tables suitable for all kinds of DNN architectures. 
+
+## References 
+
+[1] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja. Compressai: a pytorch library and evalua-tion platform for end-to-end compression research. arXiv preprint arXiv:2011.03029 , 2020. 5 [2] Neelanjan Bhowmik, Jack W Barker, Yona Falinie A Gaus, and Toby P Breckon. Lost in compression: the impact of lossy image compression on variable size object detection within infrared imagery. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 369–378, 2022. 2 [3] Liang-Chieh Chen, George Papandreou, Florian Schroff, and Hartwig Adam. Rethinking atrous convolution for semantic image segmentation, 2017. 6 [4] Jinyoung Choi and Bohyung Han. Task-aware quantization network for jpeg image compression. In Computer Vision– ECCV 2020: 16th European Conference, Glasgow, UK, Au-gust 23–28, 2020, Proceedings, Part XX 16 , pages 309–324. Springer, 2020. 5 [5] Gongfan Fang. Deeplabv3plus-pytorch. https : / / github . com / VainF / DeepLabV3Plus - Pytorch ,2019. 6 [6] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceed-ings of the IEEE conference on computer vision and pattern recognition , pages 770–778, 2016. 1, 5 [7] Kaiming He, Georgia Gkioxari, Piotr Doll´ ar, and Ross Gir-shick. Mask r-cnn. In Proceedings of the IEEE international conference on computer vision , pages 2961–2969, 2017. 1 [8] Diederik Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International Conference on Learning Representations (ICLR) , San Diega, CA, USA, 2015. 6 [9] Alex Krizhevsky, Geoffrey Hinton, et al. Learning multiple layers of features from tiny images. 2009. 5 [10] Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. ImageNet classification with deep convolutional neural net-works. In Advances in neural information processing sys-tems , pages 1097–1105, 2012. 1 [11] Zhijing Li, Christopher De Sa, and Adrian Sampson. Opti-mizing jpeg quantization for classification networks. arXiv preprint arXiv:2003.02874 , 2020. 2 [12] Zihao Liu, Tao Liu, Wujie Wen, Lei Jiang, Jie Xu, Yanzhi Wang, and Gang Quan. DeepN-JPEG: A deep neural net-work favorable JPEG-based image compression framework. In Proceedings of the 55th Annual Design Automation Con-ference , page 18. ACM, 2018. 2 [13] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, and Baining Guo. Swin transformer: Hierarchical vision transformer using shifted windows. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 10012–10022, 2021. 5 [14] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feicht-enhofer, Trevor Darrell, and Saining Xie. A convnet for the 2020s. In 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11966–11976, 2022. 5[15] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully convolutional networks for semantic segmentation. In Pro-ceedings of the IEEE conference on computer vision and pat-tern recognition , pages 3431–3440, 2015. 1 [16] Xiyang Luo, Hossein Talebi, Feng Yang, Michael Elad, and Peyman Milanfar. The Rate-Distortion-Accuracy Tradeoff: JPEG Case Study, 2020. 2, 3, 5 [17] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch: An im-perative style, high-performance deep learning library. Ad-vances in neural information processing systems , 32, 2019. 6[18] William B. Pennebaker and Joan L. Mitchell. JPEG Still Image Data Compression Standard . Kluwer Academic Pub-lishers, Norwell, MA, United States, 1992. 1 [19] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation. 
+
+ArXiv , abs/1505.04597, 2015. 1 [20] Ahmed H. Salamah, Kaixiang Zheng, Yiwen Liu, and En-Hui Yang. Jpeg inspired deep learning. arXiv preprint arXiv:2410.07081 , 2024. 3, 6 [21] Ahmed H. Salamah, Kaixiang Zheng, Linfeng Ye, and En-Hui Yang. Jpeg compliant compression for dnn vision. IEEE Journal on Selected Areas in Information Theory , 5:520– 533, 2024. 2, 3, 5, 6, 4 [22] Mark Sandler, Andrew Howard, Menglong Zhu, Andrey Zh-moginov, and Liang-Chieh Chen. Mobilenetv2: Inverted residuals and linear bottlenecks. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 4510–4520, 2018. 5 [23] Karen Simonyan and Andrew Zisserman. Very deep convo-lutional networks for large-scale image recognition. arXiv preprint arXiv:1409.1556 , 2014. 1 [24] Mingxing Tan, Bo Chen, Ruoming Pang, Vijay Vasudevan, Mark Sandler, Andrew Howard, and Quoc V. Le. MnasNet: Platform-Aware Neural Architecture Search for Mobile . In 
+
+2019 IEEE/CVF Conference on Computer Vision and Pat-tern Recognition (CVPR) , pages 2815–2823, Los Alamitos, CA, USA, 2019. IEEE Computer Society. 5 [25] Catherine Wah, Steve Branson, Peter Welinder, Pietro Per-ona, and Serge Belongie. The caltech-ucsd birds-200-2011 dataset. 2011. 5 [26] Ross Wightman. Pytorch image models. https : //github.com/huggingface/pytorch- image-models , 2019. 7 
+
+9[27] Xiufeng Xie and Kyu-Han Kim. Source compression with bounded dnn perception loss for iot edge computer vision. In 
+
+The 25th Annual International Conference on Mobile Com-puting and Networking , pages 1–16, 2019. 2, 6 [28] Xiufeng Xie, Ning Zhou, Wentao Zhu, and Ji Liu. Bandwidth-aware adaptive codec for dnn inference offload-ing in iot. In European Conference on Computer Vision ,pages 88–104. Springer, 2022. 2, 3, 5 [29] E.-H. Yang and S. M. Hamidi. Systems and Methods for Training Deep Learning Models, 2024. US Patent Applica-tion no. 18/666,958. 4 [30] Sukmin Yun, Jongjin Park, Kimin Lee, and Jinwoo Shin. Regularizing class-wise predictions via self-knowledge dis-tillation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 13876– 13885, 2020. 6 [31] Kaixiang Zheng, Ahmed Salamah, Linfeng Ye, and En-Hui Yang. Jpeg compliant compression for dnn vision. In 2023 IEEE International Conference on Image Processing (ICIP) ,pages 1875–1879, 2023. 2, 3, 5, 6, 4 
+
+10 Learned JPEG Compression for DNN Vision 
+
+# Supplementary Material 
+
+## 7. Visual Comparison of Compressed Images 
+
+In Fig. 9, we illustrate some images compressed by the de-fault JPEG and J4D at the same bit rate, together with the raw images provided as references. In Fig. 9a, we present two examples from the ImageNet-1K validation set. It is clear from Fig. 9a that the images compressed by J4D pre-serve more edge (high frequency) information and/or have better contrast with the background. They are correctly classified by MobileNetV2, whereas images compressed by the default JPEG are misclassified. In Fig. 9b, we show two other examples from the Pascal VOC 2012 validation set, where J4D achieves much better segmentation results than the default JPEG, with DeepLabv3-MobileNet serving as the target DNN. Again, the same observation about the high frequency information preservation can be made as well. 
+
+## 8. Numerical Result Comparison 
+
+Corresponding to Fig. 2, Fig. 3, and Fig. 4, Tabs. 1 to 3 show some specific numerical results for CUB200, ImageNet-1K, and Pascal VOC 2012, respectively. For all tested pre-trained models, these tables show a more detailed analysis of the performance differences between each DNN-oriented JPEG codec and the default JPEG at a fixed rate or a fixed accuracy. Again, the performance gains provided by J4D are significant and consistent across datasets, models, and tasks. 
+
+## 9. Discussion on the Initialization of α Tables 
+
+When using a smaller α value, the CPMF of a probabilistic quantizer is smoother, so there will be a higher probability for a DCT coefficient to be quantized by Qp to a reconstruc-tion level further to the right or left, leading to a larger quan-tization error. Moreover, since the CPMF, thus the MPMF, becomes smoother, the entropy of quantized DCT coeffi-cients gets larger, and so is the actual compression rate. As a result, using a smaller α in Qp gives strictly worse R-A performance. This is also verified by our experiments. As shown in Fig. 10, the R-A performance resulting from our training framework with α = 1 is consistently worse than that with α = 100 . Therefore, we prefer to initialize α ta-bles with sufficiently large values to guarantee good R-A performance. 
+
+## 10. Asymptotic Convergence of Differentiable Soft Quantizers to the Uniform Quantizer 
+
+As illustrated in Fig. 11, Qd converges to Qu as α increases. 
+
+> (a) MobileNetV2 (ImageNet-1K)
+> (b) DeepLabv3-MobileNet (Pascal VOC 2012)
+> Figure 9. Visual comparison of compressed images resulting from the default JPEG and J4D.
+
+1Pre-Trained Model JPEG J4D Google AutoJPEG Rate (bpp) Acc (%) Rate (bpp) Acc (%) Rate (bpp) Acc (%) Rate (bpp) Acc (%) ResNet18 0.22 34.92 0.21 45.96 (+11.05) 0.22 36.04 (+1.12) 0.24 27.17 (-7.75) 8.74 55.23 1.74 (-80.05%) 55.25 4.75 (-45.63%) 55.26 7.29 (-16.63%) 55.23 MobileNetV2 0.25 40.85 0.24 52.45 (+11.60) 0.25 39.92 (-0.93) 0.24 27.48 (-13.38) 8.74 63.40 2.62 (-69.97%) 63.95 4.78 (-45.34%) 63.92 6.80 (-22.20%) 64.01 MnasNet 0.25 40.97 0.25 49.95 (+8.97) 0.24 39.85 (-1.12) 0.27 31.05 (-9.92) 8.74 65.83 1.75 (-79.94%) 65.83 4.73 (-45.86%) 65.91 7.38 (-15.60%) 65.81 
+
+Table 1. R-A performance summary, derived from Fig. 2, enables a numerical comparison between all tested methods, covering both the same rate and the same accuracy comparison. The values shown in parentheses represent the gain in accuracy at a fixed rate or the percentage of reduction in rate at fixed accuracy in comparison to the default JPEG. 
+
+Pre-Trained Model JPEG J4D Google AutoJPEG Rate (bpp) Acc (%) Rate (bpp) Acc (%) Rate (bpp) Acc (%) Rate (bpp) Acc (%) MobileNetV2 2.02 69.54 2.00 70.42 (+0.88) 1.95 69.81 (+0.27) 1.93 67.47 (-2.07) 10.10 71.86 5.15 (-49.02%) 71.86 6.65 (-34.18%) 71.88 6.78 (-32.91%) 71.80 MnasNet 1.93 71.20 1.92 71.98 (+0.79) 1.96 71.65 (+0.46) 2.00 69.10 (-2.09) 10.10 73.41 4.07 (-59.71%) 73.42 6.71 (-33.60%) 73.37 7.78 (-23.03%) 73.39 ConvNeXt-tiny 1.86 78.16 1.88 79.54 (+1.38) 1.88 79.04 (+0.88) 1.93 78.93 (+0.77) 10.10 82.14 5.88 (-41.77%) 82.17 6.56 (-35.06%) 82.04 7.21 (-28.64%) 82.12 Swin-T 1.99 75.61 1.96 77.82 (+2.21) 1.92 76.78 (+1.17) 2.00 76.17 (+0.55) 10.10 81.13 5.04 (-50.13%) 81.14 6.60 (-34.64%) 81.07 8.47 (-16.16%) 81.10 
+
+Table 2. R-A performance summary, derived from Fig. 3. 
+
+Pre-Trained Model JPEG J4D Google AutoJPEG Rate (bpp) mIoU (%) Rate (bpp) mIoU (%) Rate (bpp) mIoU (%) Rate (bpp) mIoU (%) DeepLabv3-MobileNet 0.26 39.86 0.27 46.21 (+6.35) 0.27 36.41 (-3.45) 0.29 23.43 (-16.43) 7.55 70.07 1.58 (-79.07%) 70.08 2.83 (-62.52%) 70.11 6.19 (-18.01%) 70.00 DeepLabv3-ResNet50 0.26 46.99 0.27 52.73 (+5.74) 0.26 44.26 (-2.73) 0.33 36.80 (-10.19) 7.55 76.91 2.27 (-69.93%) 76.91 3.82 (-49.40%) 76.80 5.72 (-24.24%) 76.75 
+
+Table 3. R-A performance summary, derived from Fig. 4. 
+
+Figure 10. The R-A performance of ResNet18 on compressed CUB200 by J4D with α = 1 vs α = 100 .
+
+## 11. Sensitivity-based Quantization Table Ini-tialization 
+
+Given a pre-trained model, denote Slm as the sensitivity of the model to DCT frequencies as described in [21, 31], 
+
+Figure 11. An illustration of Qu vs . Qd with α =
+
+1, 2, 5, 10 , 20 , 100 , where L and q are set to 2 and 1, respectively. 
+
+where l = 1 , 2, 3 corresponds to the color channels Y, Cb and Cr, respectively, and 1 ≤ m ≤ M represents the fre-quency position. We initialize each quantization step based on the reciprocal of the sensitivity value for each DCT fre-2quency as follows: 
+
+τ = max 
+
+> m
+
+ 1
+
+S1
+
+> m
+
+
+
+, (18) 
+
+qm = βS1 
+
+> m
+
+· τ , (19) 
+
+qM +m = 2β
+
+(S2 
+
+> m
+
++ S3
+
+> m
+
+) · τ , (20) where 1 ≤ m ≤ M , τ is an intermediate variable for normalization, and β is a scaling factor as mentioned in Sec. 5.1. The sensitivity values of the three models used in the CUB200 task are presented in Fig. 12. Similarly, Fig. 13 illustrates the sensitivity values of the four models used in the ImageNet-1K task, along with their corresponding sensitivity-based initial quantization tables using β = 30 as an example.  
+
+> (a) ResNet18
+> (b) MobileNetV2
+> (c) MnasNet
+> Figure 12. The sensitivity values (left) and the corresponding sensitivity-based initial quantization tables (right) on CUB200.
+
+## 12. Treatment of Training Complexity Caused by the Differentiable Soft Quantizer 
+
+As mentioned in Sec. 5.1, we configure the reconstruction space ˆA with L = 1023 , so the total length of the recon- 
+
+> (a) MobileNetV2
+> (b) MnasNet
+> (c) ConvNeXt-tiny
+> (d) Swin-T
+> Figure 13. The sensitivity values (left) and the corresponding sensitivity-based initial quantization tables (right) on ImageNet-1K.
+
+struction space is 2L + 1 = 2047 (see Eq. (3)). Recall that CPMF Pα(·| C) is computed using Eq. (5). However, the high dimensionality of the reconstruction space introduces significant computational complexity during training. To tackle this issue, we constrain the support of every CPMF to be the Top-5 closest points in ˆA to the coefficient C be-ing quantized. The resulting CPMF is termed the masked CPMF, distinguishing it from the original full-space CPMF. The remainder of this section demonstrates that this simpli-fication has a negligible impact on the effectiveness of Qd
+
+while successfully addressing the training complexity issue. Specifically, Fig. 15 illustrates how fast the probabil-ity mass of a reconstruction level ˆC decays in CPMFs as 
+
+ˆC deviates from Qu(C). It’s clear that the set M =
+
+3(a) DeepLabv3-MobileNet 
+
+> (b) DeepLabv3-ResNet50
+
+Figure 14. The sensitivity values (left) and the corresponding sensitivity-based initial quantization tables (right) on Pascal VOC 2012.      
+
+> (a) α= 1 (b) α= 100
+
+Figure 15. Partial visualization of CPMFs Pα(·| C = 0 .5) com-puted by Eq. (5), with L = 1023 , q = 1 : (a) α = 1 ; and (b) 
+
+α = 100 . The reconstruction levels between two red dashed lines compose M.          
+
+> αQd(C= 0 .5)
+> Full Space Masked ∆
+> 10.5 0.5027 0.0027 100 0.5 0.5 0
+
+Table 4. Qd(C = 0 .5; q = 1 , α ) values resulting from the full-space CPMF and the masked CPMF at different α, alongside the absolute difference ∆ between the full-space and masked cases. 
+
+{Q u(C)−2q, Qu(C)−q, Qu(C), Qu(C)+ q, Qu(C)+2 q}
+
+of reconstruction levels retain a total probability mass close to 1, even in an adversarially chosen scenario where both 
+
+q and α are extremely small 3 (i.e ., 1) and the coefficient 
+
+C being quantized lies exactly at a quantization threshold.      
+
+> 3As qand αincrease, the CPMF becomes even sharper, and as a result,
+> Mwill capture increasingly higher probability mass.
+
+Therefore, instead of computing the full-space CPMF with length 2L + 1 following Eq. (5), we only conduct softmax on M to get the masked CPMF with length 5. The error in 
+
+Qd caused by this masking is negligible as shown in Tab. 4, especially in the high α case. Therefore, it’s totally justified to simplify the full-space CPMF to the masked CPMF in our implementation. On the other hand, we present the training throughput and memory footprint of J4D in Tab. 5. Compared to the vanilla training of a DNN model, training quantization ta-bles within the J4D framework incurs only a slight increase in time and space complexity, given the adoption of the masked CPMF. Model (Training Setting) Training Peak Memory Throughput (img/s) Usage (MB/GPU) Swin-T (Vanilla) 217 7106 Swin-T (J4D with Masked CPMFs) 188 8218 ConvNeXt-tiny (Vanilla) 208 9427 ConvNeXt-tiny (J4D with Masked CPMFs) 179 10725 
+
+Table 5. Comparison of training throughput and memory foot-print between different training settings measured with Swin-T and ConvNeXt-tiny on ImageNet-1K, following the configuration specified in Sec. 5.1. The evaluation is conducted on 4 NVIDIA RTX A5000 GPUs. Note that the vanilla training refers to the stan-dard process of training a DNN model (solely for accuracy) using backpropagation, without prepending a trainable JPEG codec. 
+
+In conclusion, thanks to the use of the masked CPMF, we effectively control the computational complexity of the J4D training framework while preserving its performance. 
+
+## 13. Comparison with the Sensitivity-based Method 
+
+Using MobileNetV2 on ImageNet-1K as an example, we compare a sensitivity-based method, named OptS [21, 31], with our proposed method, shown in Fig. 16a. The result shows that OptS achieves comparable performance as J4D at high rate; however, in the low rate case, OptS is much worse than J4D and ultimately becomes worse than the de-fault JPEG as the rate approaches 1 bpp. This is consistent with our discussion in Sec. 2, where we mention that OptS, or sensitivity-based methods in general, may not do well in the low rate case due to the reliance on a first-order Taylor approximation of DNN loss functions. 
+
+## 14. Using Uniform Quantization During the Actual JPEG Encoding Phase 
+
+For consistency and coherence of the proposed method, we choose to use the probabilistic quantization during actual JPEG encoding, i.e ., Jp, for the validation set in the main paper. However, once quantization tables are learned, to fa-cilitate deployment within the conventional JPEG pipeline, 4(a) MobileNetV2 (ImageNet-1K) (b) MobileNetV2 (ImageNet-1K)      
+
+> (c) MobileNetV2 (CUB200) (d) MobileNetV2 (ImageNet-1K)
+> Figure 16. (a) Comparison with a sensitivity-based method dubbed OptS. (b) Comparison of Jpand Juduring validation. (c) Eval-uation of quantization table transferability from ImageNet-1K to CUB200 given the same DNN architecture. (d) R-D performance evaluation for J4D and JPEG.
+
+Jp can be replaced with the uniform quantizer Ju pa-rameterized by the learned quantization tables. As shown in Fig. 16b, the performances of Ju and Jp, both with the learned quantization tables, are almost identical since 
+
+α = 100 makes Qp equivalent to Qu with high probability. This confirms that the quantization tables learned using J4D can be seamlessly integrated into the conventional JPEG-based systems, since Ju can be used in place of Jp without degrading R-A performance. 
+
+## 15. Quantization Table Transferability Across Datasets 
+
+In the main body of the paper, we evaluate the transfer-ability of optimized quantization tables among DNN mod-els on the same dataset. In this section, we further extend our investigation to quantization table transferability across different datasets. In particular, we transfer the optimized quantization tables for MobileNetV2 on ImageNet-1K to MobileNetV2 on CUB200 and evaluate the resulting R-A performance. As shown in Fig. 16c, quantization tables obtained by J4D demonstrate decent dataset transferabil-ity, outperforming the default JPEG, whereas those obtained by Google and AutoJPEG lead to suboptimal performance when transferred from ImageNet-1K to CUB200. 
+
+## 16. Rate-Distortion Performance 
+
+Although the main target of J4D is to learn quantization tables suitable for DNN vision, we also analyze its rate-distortion (R-D) performance for human vision. As shown in Fig. 16d, the R-D performance of quantization tables op-timized for MobileNetV2 on ImageNet-1K is better than that of the default JPEG. This highlights a promising prop-erty of J4D that it not only improves the image quality for DNN vision, but also improves the image quality in human eyes as a beneficial by-product. 
+
+## 17. Additional Discussion on Related Work 
+
+Another related work [4] also adopts a backpropagation-based training framework to address JPEG compression for DNN vision. However, our approach is fundamentally dif-ferent and based on information theory. Specifically, the method in [4] relies on (1) two auxiliary DNNs on the JPEG encoding side to provide image-adaptive quantization tables and (2) three DNNs to estimate the rate. In contrast, no aux-iliary DNN is required in our case; once the learned quan-tization tables are obtained, there is no change to the JPEG encoding side. Unfortunately, due to the absence of publicly available source code or pre-trained models from [4], we are unable to reproduce their results for direct benchmarking. 5
