@@ -6,51 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-18
-- 运行时间：2026-06-18 22:37:55 UTC
+- 最新运行日期：2026-06-20
+- 运行时间：2026-06-20 21:31:47 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：12
+- 精读区：3
+- 速读区：9
 
 ### 今日简报（AI）
-今日共处理9篇论文，精读1篇、速读8篇，覆盖视频语义通信与AI压缩技术前沿。
-
-最值得关注的是生成式视频语义通信框架（LGVSC，8.0分）及混合精度量化联合优化（JOMP，7.0分），前者突破传统编解码效率，后者提升视频编码硬件适配性。
-
-建议优先精读LGVSC，再速读JOMP和剪枝方法（Squeeze-Release），以把握模型压缩与语义通信的交叉趋势。
-- 详情：[/202606/18/README](/202606/18/README)
+今日阅读12篇论文，精读3篇，重点关注隐扩散模型的细节瓶颈与精确结构化剪枝。最值得看的是RGB到SWIR图像翻译的细节瓶颈解决方案，以及Squeeze-Release迭代剪枝方法。建议进一步了解低秩自适应图像压缩与动态高斯泼溅的渲染表示进展。
+- 详情：[/202606/20/README](/202606/20/README)
 
 ### 精读区论文标签
-1. [LGVSC: A Large-Model-Driven Generative Video Semantic Communication Framework](/202606/18/2606.12899v2-lgvsc-a-large-model-driven-generative-video-semantic-communication-framework)  
+1. [Addressing Detail Bottlenecks in Latent Diffusion for RGB-to-SWIR Image Translation](/202606/20/2606.19961v1-addressing-detail-bottlenecks-in-latent-diffusion-for-rgb-to-swir-image-translation)  
+   标签：评分：9.0/10、query:vcodec
+   evidence：潜在扩散模型细节瓶颈分析
+2. [Squeeze-Release: Iterative Pruning with Exact Structural Minimization](/202606/20/2606.14346v1-squeeze-release-iterative-pruning-with-exact-structural-minimization)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：迭代剪枝与精确结构最小化用于模型压缩
+3. [Triangular Consistency as a Universal Constraint for Learning Optical Flow](/202606/20/2606.19938v1-triangular-consistency-as-a-universal-constraint-for-learning-optical-flow)  
    标签：评分：8.0/10、query:vcodec
-   evidence：大模型驱动的生成式视频语义通信框架，实现极低带宽下的高效视频传输
+   evidence：提出三角一致性约束用于光流学习，可直接应用于视频编解码中运动估计与压缩的联合训练
 
 ### 速读区论文标签
-1. [Benchmarking Neural Speech Compression from a Rate-Distortion Perspective](/202606/18/2606.11631v1-benchmarking-neural-speech-compression-from-a-rate-distortion-perspective)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：对神经语音编解码器进行率失真基准测试，涉及显式概率建模和熵约束编码
-2. [JOMP: Jointly-Optimized Mixed-Precision Quantization Across Neural Video Coding Frameworks and Buffering Strategies](/202606/18/2606.13110v1-jomp-jointly-optimized-mixed-precision-quantization-across-neural-video-coding-frameworks-and-buffering-strategies)  
+1. [VideoWeave: Unlocking Geometric Consistency in Video Generation via Joint Geometry-Video Modeling](/202606/20/2606.14162v1-videoweave-unlocking-geometric-consistency-in-video-generation-via-joint-geometry-video-modeling)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：隐空间视频扩散模型实现几何一致性
+2. [Variable-Rate Deep Image Compression based on Low-Rank Adaptation by Progressive Learning](/202606/20/2606.16107v1-variable-rate-deep-image-compression-based-on-low-rank-adaptation-by-progressive-learning)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：使用低秩适应和渐进学习的可变率深度图像压缩，可迁移至视频编码
+3. [Renderable Partial Representations for Dynamic Gaussian Splatting under Incomplete Delivery](/202606/20/2606.17212v1-renderable-partial-representations-for-dynamic-gaussian-splatting-under-incomplete-delivery)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：动态高斯压缩与部分传输和率失真优化
+4. [SpectralDiT: Timestep-Conditioned Spectral Residual Correction for Flow-Matching DiTs](/202606/20/2606.18765v1-spectraldit-timestep-conditioned-spectral-residual-correction-for-flow-matching-dits)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：通过谱残差校正改进潜在扩散模型，以极小开销提升生成质量
+5. [Pulse: Training Acceleration for Large Diffusion Models with Automatic Pipeline Parallelism](/202606/20/2606.19163v1-pulse-training-acceleration-for-large-diffusion-models-with-automatic-pipeline-parallelism)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：大扩散模型的流水线并行训练加速
+6. [Flow Map Denoisers: Traversing the Distortion-Perception Plane for Inverse Problems](/202606/20/2606.19802v1-flow-map-denoisers-traversing-the-distortion-perception-plane-for-inverse-problems)  
+   标签：评分：7.0/10、query:vcodec
+   evidence：流图去噪器可遍历失真-感知平面，直接关联感知率失真优化
+7. [StreamKL: Fast and Memory-Efficient KL Divergence for Boosting Attention Distillation](/202606/20/2606.20005v1-streamkl-fast-and-memory-efficient-kl-divergence-for-boosting-attention-distillation)  
    标签：评分：7.0/10、query:train-trick
-   evidence：联合优化混合精度量化用于神经视频编码
-3. [Squeeze-Release: Iterative Pruning with Exact Structural Minimization](/202606/18/2606.14346v1-squeeze-release-iterative-pruning-with-exact-structural-minimization)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：可用于轻量视频编解码器的模型剪枝方法
-4. [Beyond Layer Importance in Layer-wise Sparsity: An Inter-Layer Perturbation-Absorption Perspective](/202606/18/2606.15161v1-beyond-layer-importance-in-layer-wise-sparsity-an-inter-layer-perturbation-absorption-perspective)  
+   evidence：高效KL散度的注意力蒸馏方法，可支持知识蒸馏策略
+8. [Temporal Difference Learning for Diffusion Models](/202606/20/2606.15048v1-temporal-difference-learning-for-diffusion-models)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：时间差分学习改进扩散模型训练，可应用于基于扩散的视频压缩
+9. [From Compression to Deployment: Real-Time and Energy-Efficient FastGRNN on Ultra-Constrained Microcontrollers](/202606/20/2606.17249v1-from-compression-to-deployment-real-time-and-energy-efficient-fastgrnn-on-ultra-constrained-microcontrollers)  
    标签：评分：6.0/10、query:train-trick
-   evidence：基于层重要性剪枝的大型语言模型压缩
-5. [Learned JPEG Compression for DNN Vision](/202606/18/2606.16185v1-learned-jpeg-compression-for-dnn-vision)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：可微软量化器用于JPEG压缩优化
-6. [An affordable hardware-aware neural architecture search for deploying convolutional neural networks on ultra-low-power computing platforms](/202606/18/2606.16290v1-an-affordable-hardware-aware-neural-architecture-search-for-deploying-convolutional-neural-networks-on-ultra-low-power-computing-platforms)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：面向超低功耗微控制器的硬件感知神经架构搜索
-7. [ConSA: Controllable Sparsity in Hybrid Attention via Learnable Allocation](/202606/18/2606.18056v1-consa-controllable-sparsity-in-hybrid-attention-via-learnable-allocation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通过学习分配实现混合注意力中的可控稀疏性
-8. [Complementary Attention Head Pruning for Efficient Transformers](/202606/18/2606.19150v1-complementary-attention-head-pruning-for-efficient-transformers)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：注意力头剪枝用于高效Transformer
+   evidence：低复杂度编解码器在微控制器上的部署
 
 
 <div class="dpr-home-promo-card">
