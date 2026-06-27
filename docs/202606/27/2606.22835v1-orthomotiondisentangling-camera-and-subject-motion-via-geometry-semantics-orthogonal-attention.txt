@@ -1,0 +1,454 @@
+Title: OrthoMotion:Disentangling Camera and Subject Motion via Geometry Semantics Orthogonal Attention
+
+URL Source: https://arxiv.org/pdf/2606.22835v1
+
+Published Time: Tue, 23 Jun 2026 02:38:36 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# OrthoMotion: Disentangling Camera and Subject Motion via Geometry–Semantics Orthogonal Attention 
+
+## Zijie Meng Peking University, China 
+
+ymlf@stu.pku.edu.cn 
+
+# Abstract 
+
+Controllable video generation demands independent com-mand of the camera and the subject, yet 2D conditioning entangles them: camera- and object-induced optical flow share the same inverse-depth ( 1/Z ) scaling and cannot be separated from image evidence alone. We first prove that this entanglement is representational , not architectural— the 2D camera/object split is a non-identifiable inverse problem—and therefore reframe decoupling as a question of operator design. We resolve it at the level of the at-tention operator. OrthoMotion routes camera motion into a geometric channel, a norm-preserving rotation of the rotary position embedding (RoPE) phase, and subject motion into a semantic channel, a gated value injection in cross-attention. Because these sub-operators are alge-braically complementary—a rotation versus a translation of the affine action on tokens—a lightweight decoupling regularizer provably drives their response subspaces to or-thogonality, so the two controls stop interfering. To our knowledge OrthoMotion is the first method to guarantee 
+
+disentanglement by construction rather than hope for it to emerge. It attains state-of-the-art camera and subject accuracy at once while minimizing cross-talk, which we quantify with a new Cross-Talk Error (CTE) metric, cut-ting cross-talk by > 2.4× with no loss in fidelity and gen-eralizing across backbones. 
+
+# 1 Introduction 
+
+Cinematic creation needs to steer where the camera goes 
+
+and where the subject goes as two separate dials [1–6]. Recent controllers master each axis in isolation—camera control via Plücker conditioning [7] or relative pose en-codings [8, 9], and subject control via trajectory injec-tion [10–12]—and some target both [13, 14], yet the dials stay coupled: an orbit drags the subject off its path, and moving the subject perturbs the recovered camera. De-coupled camera–subject control is the open problem we attack. 
+
+Why are they entangled? The confound is represen-tational, not merely architectural. For a scene point at depth Z under camera linear velocity T and angular ve-locity ω, with object self-velocity inducing Vo, the instan-taneous image motion is 
+
+u(x) = 1
+
+> Z
+
+[xT z − f T x
+
+yT z − f T y
+
+]︸ ︷︷ ︸  
+
+> camera transl. ∝1/Z
+
++ B(x) ω
+
+︸ ︷︷ ︸
+
+> rotation, depth-free
+
++ 1 
+
+> Z
+
+Vo(x)
+
+︸ ︷︷ ︸  
+
+> object ∝1/Z
+
+,
+
+(1) with focal length f and the depth-independent rota-tional generator B(x) = [ xy/f −(f +x2/f ) yf +y2/f −xy/f −x
+
+]. Camera-translational and object flow share the same 1/Z factor, so from the 2D field alone the split u = ucam + uobj is fixed only up to a depth-scaled gauge; a 2D-conditioned controller thus solves an ill-posed inverse and inherits its ambiguity as entanglement (formalized in Sec. 3). 
+
+Our idea. Equation (1) prescribes the cure: lift the camera into a depth-independent geometric representa-tion, so it can never be confused with the per-pixel ob-ject term, and keep the subject semantic , carrying each in a distinct, algebraically complementary operator. In-side Wan2.1 [15] this is Geometry–Semantics Orthogonal 
+
+(GSO) attention. While prior work hosts the camera in the RoPE phase [8, 9, 16] or drives a DiT with tra-jectories [11], none routes both into complementary sub-operators and enforces their orthogonality, turning de-coupling from an emergent hope into a design guarantee. 
+
+Contributions. 
+
+• A representational diagnosis. We show camera– subject entanglement stems from the shared 1/Z 
+
+scaling in Eq. (1) and prove the 2D camera/object split is non-identifiable, recasting decoupling as an operator-design problem rather than a data or archi-tecture one. 
+
+• GSO attention with a decoupling regularizer. 
+
+We propose a norm-preserving geometric channel and a gated semantic channel whose response Jaco-bians are driven to orthogonality by L⊥; we prove this bounds first-order cross-talk, the first method to guarantee (not hope for) disentanglement, and we introduce the Cross-Talk Error (CTE) protocol. 
+
+• Empirical validation. OrthoMotion attains state-of-the-art camera and subject accuracy simulta-neously, cutting cross-talk by > 2.4× over the regularizer-free variant with no fidelity loss, and 1
+
+> arXiv:2606.22835v1 [cs.CV] 22 Jun 2026 Self -
+> Attention
+> LoRA
+> RoPE
+> Cross -
+> Attention
+> LoRA
+
+𝝓 𝒈 
+
+𝝓 𝒔 
+
+𝐎 
+
+col( 𝓙 𝝉 )
+
+⊥
+
+col( 𝓙 𝒈 )
+
+𝛀 (𝒈 𝒕 )
+
+𝐙 𝝉 
+
+𝐗 𝒕  ℒ⊥ = 𝓙 𝒈  
+
+> ⊺
+
+𝓙 𝝉 𝐹   
+
+> 2
+> 𝐐 𝐐
+> 𝐊
+> 𝐕
+> Text Embeddings
+> Gate
+> 𝑴 𝒕 (𝐱 )
+> Gated Value
+> Injection
+> (Additive)
+
+Element -wise sum 
+
+Hadamard product      
+
+> Decoupling Regularizer (ℒ⊥)
+> Subject Response
+> Subspace
+> Camera Response
+> Subspace
+> Wan2.1 DiT Block
+> Phase Modulation
+> (Norm -preserving)
+> Geometric Channel (Blue)
+> Semantic Channel (Orange)
+> 3D Camera Path
+> Subject Trajectory Trajectory Tokens
+
+Figure 1: Overview of OrthoMotion. The geometric channel ϕg injects a norm-preserving phase Ω( gt) ∈ SO (dh)
+
+into RoPE, while the semantic channel ϕs fuses subject-trajectory tokens Zτ , gated by Mt(x), into cross-attention values. A regularizer L⊥ = ∥̂J⊤
+
+> g
+
+̂ Jτ ∥2 
+
+> F
+
+enforces orthogonal camera/subject response subspaces. Decoupled Regime      
+
+> Static Camera Strong Camera Orbit
+> 20
+> 30
+> 40
+> 50
+> 60
+> Subject ObjMC (Lower is better)
+> Steep slope
+> (Entangled)
+> Flat slope
+> (Decoupled)
+> MotionCtrl
+> + 33 px
+> MotionPro
+> + 26 px
+> Tora+ReRoPE
+> + 25 px
+> OrthoMotion
+> (Ours)
+> + 2 px
+
+Figure 2: Decoupling at a glance. Subject error (ObjMC) vs. camera-motion magnitude; OrthoMotion stays nearly flat ( ∆ ≈ +2 px) while baselines entangle (∆ ≥ +25 px). generalizing across multiple pose-conditioned back-bones. 
+
+# 2 Related Work 
+
+Motion control in video generation. Camera and subject control have largely evolved on separate tracks [17–22]. On the camera side, CameraCtrl conditions a frozen diffusion model on per-pixel Plücker maps via a trainable encoder [7], while a newer line injects pose rel-atively inside attention: ReRoPE repurposes the redun-dant low-frequency RoPE bands for relative camera con-trol [8], and PRoPE encodes full camera frustums as a rel-ative positional encoding [9]. On the subject side, Drag-NUWA [10] and Tora [11] drive generation with object trajectories, the latter inside a Diffusion Transformer [23]. MotionCtrl [13] and MotionPro [14] target both axes, but                                
+
+> Method RotErr ↓TransErr ↓ObjMC ↓FVD ↓CLIP ↑
+> MotionCtrl [13] 1.92 0.74 38.6 198 .305 MotionPro [14] 1.54 0.61 31.2 176 .312 Tora ⊕ReRoPE [8, 11] 1.31 0.55 27.4 169 .314
+> ★OrthoMotion (Ours) 1.02 0.43 19.8 142 .327
+
+Table 1: Joint camera + subject control on the Wan2.1-1.3B backbone (lower is better except CLIP-SIM). Best in bold .through separate modules or shared trajectory conditions without any mechanism that prevents the two controls from interfering. We differ on two counts: (i) we iden-tify the entanglement as a representational ambiguity in Eq. (1) and (ii) we co-design two complementary attention sub-operators whose orthogonality we explicitly enforce. 
+
+Positional encodings and the norm-preservation gap. RoPE encodes position by a norm-preserving ro-tation of query/key features, so the logit depends only on relative position [24]. Camera-as-RoPE methods [25–28] inherit the rotary machinery but break its key invariant: ReRoPE’s projective embedding is explicitly non -norm-preserving and “requires careful stabilization” [8], and PRoPE injects 4×4 projective matrices [9]. OrthoMotion instead keeps the camera strictly inside SO (dh), recover-ing RoPE’s norm preservation (Sec. 4.1) and, crucially, extending the design to simultaneously host a seman-tic subject channel. Our backbone is the flow-matching Wan2.1 diffusion transformer [15, 23, 29]. 23 Preliminaries: The Geometry of Entanglement 
+
+We make the entanglement claim precise. Decompose Eq. (1) as u = uT + uR + uO with 
+
+uT = 1 
+
+> Z
+
+M(x)T , uR = B(x)ω, uO = 1 
+
+> Z
+
+Vo(x), (2) where M(x) = [ −f 0 x 
+
+> 0−f y
+
+] maps the camera baseline to image displacement and Vo(x) = [ f V x −xV z , f V y −yV z ]⊤
+
+collects the object’s self-velocity (derivation: differentiate 
+
+x = ( f X/Z, f Y /Z ) along the object trajectory). 
+
+Lemma 1 (Shared inverse-depth scaling) . uT and uO
+
+are each homogeneous of degree −1 in Z, whereas uR is independent of Z. Hence the camera-translational and object contributions are indistinguishable by their depth signature; only rotation is depth-free. Proof. Immediate from Eq. (2): uT , uO ∝ 1/Z while uR
+
+has no Z dependence. 
+
+Theorem 1 (Non-identifiability of the camera/object split) . Fix the rotational component and let r(x) := 
+
+u(x)−B(x)ω be the observed translational residual. Then for every camera baseline T ∈ R3 and every positive depth field Z(·), the object field Vo(x) := Z(x) r(x) −
+
+M(x)T reproduces r exactly. Consequently T is uncon-strained by r alone, the decomposition lies in a ≥ 3-parameter gauge, and any 2D-conditioned model must re-solve it by prior—incurring cross-talk wherever the prior is wrong. Proof. By construction 1 
+
+> Z
+
+(MT + Vo) = 1 
+
+> Z
+
+(MT + Zr −
+
+MT ) = r for all (T , Z ). The map (T , Z ) 7 → Vo is sur-jective onto valid object fields, so the preimage of any observed r is a family of mutually consistent (camera, object, depth) explanations. Theorem 1 is the formal statement of “2D conditioning entangles them”: the leakage is not a training artifact but the model’s forced choice within an equivalence class. The remedy is to represent the camera so that it can-not masquerade as the per-pixel object term—a global, depth-free, norm-preserving operator—which is exactly the geometric channel below. 
+
+# 4 The OrthoMotion Framework 
+
+We build on Wan2.1 [15], a flow-matching diffusion trans-former [23, 29] whose blocks interleave RoPE-equipped self-attention, text cross-attention, and an MLP. A vi-sual token i sits at index pi = ( ti, h i, w i); the camera is a pose sequence gt ∈ SE (3) and the subject a path 
+
+τ = {(ct, M t)} of centroids with a soft mask. We seek an operator in which g and τ never collide (Fig. 1). 
+
+## 4.1 Geometric channel: camera → phase 
+
+Standard RoPE rotates queries/keys by a position-dependent R(p) ∈ SO (dh), so the logit ˜q⊤ 
+
+> i
+
+˜kj =
+
+q⊤ 
+
+> i
+
+R(pi)⊤R(pj )kj depends only on the relative in-dex [24]. Because camera motion is a global geometric warp, we compose an extra orthogonal factor onto this rotation, 
+
+˜qi = Ω( gti ) R(pi) qi, Ω( g) = exp 
+
+( ∑ 
+
+> l
+
+al(g) Gl
+
+)
+
+,
+
+(3) with skew-symmetric generators G⊤ 
+
+> l
+
+= −Gl and al =
+
+ϕg (g) (and likewise ˜kj ). The logit is then modulated by the relative view transform Φij = Ω( gti )⊤Ω( gtj ).
+
+Proposition 1 (Norm preservation) . Ω( g) ∈ SO (dh) and 
+
+∥Ωq∥ = ∥q∥ for all q; moreover Φij ∈ SO (dh) and the modulated logit equals q⊤ 
+
+> i
+
+R(pi)⊤Φij R(pj )kj .Proof. The exponential of a skew-symmetric matrix is or-thogonal with unit determinant, so Ω⊤Ω = I; products and transposes of such matrices stay in SO (dh), and or-thogonal maps preserve the Euclidean norm. 
+
+Proposition 2 (Relative-pose dependence) . If al(g) = 
+
+⟨Al, ξ (g)⟩ is linear in the Lie coordinates ξ(g) ∈ R6 of g ∈
+
+SE (3) and the activated generators commute on the rele-vant subspace, then Φij = exp ( ∑ 
+
+> l
+
+⟨Al, ξ (gtj ) − ξ(gti )⟩Gl
+
+)
+
+depends only on the relative pose; in particular Φii = I.Proof. For commuting skew generators, Ω( g)⊤ =exp( − ∑
+
+> l
+
+⟨Al, ξ ⟩Gl), whence Ω( gti )⊤Ω( gtj ) =exp( ∑
+
+> l
+
+⟨Al, ξ j − ξi⟩Gl).
+
+Theorem 2 (Generative-prior preservation) . Among re-alizations of a prescribed relative modulation Φij , the orthogonal (norm-preserving) choice acting on q, k and leaving v untouched is the unique one that preserves (i) every token norm, (ii) the softmax temperature/partition geometry, and (iii) the output magnitude. Equivalently, it is the minimal-distortion injection: orthogonal maps are exactly the isometries of the inner product that defines the logit, so any non-orthogonal realization strictly alters 
+
+∥q∥, ∥k∥ and hence the effective temperature. Proof. Logits are inner products ⟨q, k⟩; the isometry group of this form is O(dh), and only its elements leave all norms and pairwise angles fixed while inducing a prescribed relative rotation. A realization that scales magnitudes changes ⟨q, k⟩ by the same factor, rescal-ing the softmax temperature; acting as identity on v
+
+keeps the attention output a convex combination of the original values. Thus the orthogonal map is the unique norm/temperature/output-preserving realization. Theorem 2 is precisely where we depart from prior camera-in-RoPE designs: ReRoPE’s projective embed-ding is non-norm-preserving and needs explicit stabiliza-tion [8], and additive Plücker injection [7] perturbs to-ken magnitudes; our SO (dh) phase frees the camera from 3the 1/Z gauge of Eq. (1) without disturbing the frozen model’s attention statistics. 
+
+## 4.2 Semantic channel: subject → content 
+
+Matching the bias of cross-attention content, we encode 
+
+τ into tokens Zτ = ϕs(τ ), append them to the textual keys/values, and gate them to the subject region: 
+
+oi = ∑
+
+> j∈T
+
+αij vj + ∑
+
+> k∈τ
+
+βik vτk , βik ∝ Mti (xi) e⟨qi,kτk ⟩/√d.
+
+(4) 
+
+Proposition 3 (Additivity and locality) . The update (4) 
+
+is an additive translation in value space: ∂oi/∂ vτk = βik is independent of the camera phase Ω, and βik is supported on {i : Mti (xi) > 0}. Hence subject control neither al-ters the query/key geometry (it cannot move the camera phase) nor leaks outside the subject mask. Proof. Differentiate (4); the injected term enters linearly through values only, and the gate Mti multiplies βik , van-ishing off-support. 
+
+## 4.3 Complementarity and the decoupling regularizer 
+
+The two channels act on complementary parts of the affine action on tokens: the camera uses the rotational 
+
+part ( Ω, Prop. 1), the subject the translational part (ad-ditive vτ , Prop. 3). They are linked only through the residual stream. Let ̂ Jg = ∂O/∂g and ̂ Jτ = ∂O/∂τ be the column-normalized response Jacobians (estimated by stochastic finite differences), and define 
+
+L⊥ = ∥̂J⊤
+
+> g
+
+̂ Jτ ∥2 
+
+> F
+
+. (5) 
+
+Theorem 3 (Cross-talk bound) . To first order δO =̂
+
+Jg δg +̂ Jτ δτ . The leakage of a subject edit into the camera-response subspace, Ls→c = ∥Pĝ Jτ δτ ∥ with Pg the orthogonal projector onto col( ̂Jg ), satisfies 
+
+∥Pĝ Jτ ∥F = √L⊥ (orthonormal columns) ,
+
+∥Pĝ Jτ ∥F ≤√L⊥
+
+σmin (̂ Jg ) (general) .
+
+The symmetric bound holds for Lc→s. Hence L⊥ → 0
+
+drives first-order cross-talk to 0 in both directions. Proof. Pg =̂ Jg (̂ J⊤
+
+> g
+
+̂ Jg )−1̂ J⊤ 
+
+> g
+
+; with orthonormal columns 
+
+Pg =̂ Jĝ J⊤ 
+
+> g
+
+and ∥Pĝ Jτ ∥F = ∥̂J⊤
+
+> g
+
+̂ Jτ ∥F = √L⊥.In general, writing ̂ Jg = U ΣV ⊤,̂ Jg (̂ J⊤
+
+> g
+
+̂ Jg )−1 =
+
+U Σ−1V ⊤ has spectral norm 1/σ min (̂ Jg ), so ∥Pĝ Jτ ∥F ≤∥̂J⊤
+
+> g
+
+̂ Jτ ∥F /σ min (̂Jg ).
+
+Corollary 1 (Guaranteed decoupling) . Because the channels excite complementary affine generators, the de-sign point L⊥ = 0 is attainable; the regularizer drives the                           
+
+> Variant CTE c→s↓CTE s→c↓RotErr ↓ObjMC ↓
+> shared channel (both via KV) 24.1 1.45 1.61 30.5 both via RoPE phase 18.7 1.22 1.28 34.0 Ours w/o L⊥11.3 0.74 1.09 22.6
+> ★OrthoMotion (full) 4.6 0.29 1.02 19.8
+
+Table 2: Decoupling ablation. CTE c→s: subject drift (px) when sweeping the camera; CTE s→c: camera drift (◦) when sweeping the subject. Orthogonal routing and 
+
+L⊥ are both needed to suppress cross-talk (Thm. 3). 
+
+model to it. Disentanglement is therefore enforced by con-struction rather than left to emerge—in contrast to prior controllers that share a conditioning pathway. 
+
+We train under L = LFM + λ L⊥, with Wan2.1 frozen, learning only ϕg , ϕs, the gate, and attention LoRA. 
+
+# 5 Experiments 
+
+Setup and metrics. We deploy on Wan2.1-1.3B with all baselines re-implemented on the same backbone for a controlled comparison. RotErr/TransErr are rota-tion/translation errors of the camera recovered from the output by SfM (similarity-aligned); ObjMC is the ℓ2
+
+distance between target and realized object trajectories, following MotionCtrl/DragAnything [10, 13]; FVD and CLIP-SIM are standard [30, 31]. We further define the 
+
+Cross-Talk Error : CTE c→s is the subject drift (px) induced by sweeping the camera with the subject com-mand fixed, and CTE s→c the camera drift ( ◦) induced by sweeping the subject with the camera fixed—direct, oper-ational measures of the leakage that Theorem 1 predicts and Theorem 3 bounds. 
+
+Results echo every claim. OrthoMotion is the only method strong on both axes (Table 1), leading on camera and subject accuracy while improving FVD and CLIP-SIM. Ablations (Table 2) credit the orthogonality pre-dicted by Corollary 1: full GSO collapses CTE c→s by 
+
+> 2.4× (11 .3 → 4.6 px) over the L⊥-free variant with single-axis accuracy preserved, and subject error stays flat as camera magnitude grows (Fig. 2), the visual sig-nature of the entanglement we formalized. Table 3 con-firms the decoupling costs nothing: under single-axis control OrthoMotion already matches or beats camera-and subject-specialists, and its joint numbers (Table 1) barely differ from these isolated ones—there is no joint-control penalty. Table 4 traces λ: cross-talk drops sharply then plateaus while over-regularization eventu-ally erodes single-axis accuracy and FVD, locating the optimum at λ = 0 .1 exactly as the bound in Theo-rem 3 (a trade-off against expressivity) suggests. Ta-ble 5 shows the same ∼ 5× cross-talk reduction across Wan2.1-1.3B, Wan2.1-14B and CogVideoX-2B, evidenc-ing generator-agnosticism. Finally Table 6 isolates the norm-preservation claim of Theorem 2: our SO (d) phase 4Axis Method RotErr/ObjMC ↓ TransErr ↓ FVD ↓                    
+
+> Cam.  MotionCtrl [13] 1.90 0.73 196 CameraCtrl [7] 1.12 0.49 152
+> ★OrthoMotion 1.01 0.42 140
+> Subj.  DragNUWA [10] 30.1 –179 Tora [11] 24.8 –164
+> ★OrthoMotion 19.6 –139
+
+Table 3: Single-axis isolation. With only one axis ac-tive, OrthoMotion beats specialists; its joint figures (Ta-ble 1: 1.02 /19 .8) match these isolated ones ( 1.01 /19 .6)— no joint-control penalty.                                          
+
+> λCTE c→s↓CTE s→c↓RotErr ↓ObjMC ↓FVD ↓
+> 0.0 11.3 0.74 1.09 22.6 150 0.05 7.1 0.46 1.05 21.0 146
+> ★0.1 4.6 0.29 1.02 19.8 142
+> 0.5 4.2 0.27 1.07 20.9 147 1.0 4.0 0.26 1.14 22.8 153 2.0 3.9 0.25 1.27 25.6 161
+
+Table 4: Decoupling weight λ. Cross-talk falls then plateaus; over-regularization ( λ ≥ 1) erodes single-axis ac-curacy and FVD. Optimum at λ = 0 .1.yields the best fidelity (FVD) and the lowest cross-talk, beating additive-Plücker and non-norm-preserving projective-RoPE injections. 
+
+# 6 Conclusion 
+
+We showed that camera–subject entanglement in control-lable video generation is a representational ambiguity— both motions share the 1/Z scaling of Eq. (1), making the 2D split non-identifiable (Thm. 1)—and resolved it inside the attention operator. OrthoMotion routes the camera into a norm-preserving SO (d) phase (Thm. 2) and the subject into a gated value injection, two comple-mentary affine sub-operators whose response subspaces a decoupling regularizer provably orthogonalizes (Thm. 3, Cor. 1). The result is the first controller to guarantee dis-entanglement, reaching state-of-the-art accuracy on both axes at once, cutting cross-talk by > 2.4× at no fidelity cost, and generalizing across backbones. Limitations in-clude reliance on first-order Jacobian estimates for L⊥
+
+and the rigid-scene assumption behind Eq. (1); extend-ing GSO to deformable subjects and multi-object scenes is future work. 
+
+# References 
+
+[1] B. Wei, H. Liu, C. Qian, Z. Li, W. Wu, and Z. Meng, “Robust single image sand removal by leveraging uncertainty-aware sam priors and prompt learning with refined perceptual loss,” in Proceedings of the                     
+
+> Backbone CTE base
+> c→s↓CTE Ours
+> c→s↓ObjMC ↓FVD ↓
+> Wan2.1-1.3B 24.1 4.6 19.8 142 Wan2.1-14B 22.8 4.1 17.9 121 CogVideoX-2B 25.3 5.2 21.4 151
+
+Table 5: Generator-agnostic. GSO yields a consistent 
+
+∼ 5× cross-talk reduction (shaded = ours) across Plücker-and trajectory-conditioned backbones.                      
+
+> Geometric injection norm-pres. RotErr ↓CTE c→s↓FVD ↓
+> additive Plücker [7] ✗1.18 9.8 160 projective RoPE [8, 9] ✗1.09 7.4 154
+> ★SO (d)phase (Ours) ✓1.02 4.6 142
+
+Table 6: Norm preservation matters (Thm. 2). The 
+
+SO (d) phase preserves the frozen model’s attention statis-tics, giving the best FVD and the lowest cross-talk. 
+
+33rd ACM International Conference on Multimedia ,pp. 4932–4941, 2025. [2] B. Wei, H. Liu, C. Qian, Z. Li, and Z. Meng, “Rusid: Robust uncertainty-aware single image deraining be-yond certainty,” [3] Y. Liu, H. Xiao, J. Chai, Y. Zhang, R. Wang, Z. Meng, and Z. Luo, “Synpo: Boosting training-free few-shot medical segmentation via high-quality neg-ative prompts,” in International Conference on Med-ical Image Computing and Computer-Assisted Inter-vention , pp. 594–603, Springer, 2025. [4] Z. Meng, Y. Zeng, X. Chang, T. Xu, F. Chao, X. Cao, C. Shang, and Q. Shen, “Orpaint: a zero-shot inpainting model for oracle bone inscription rubbings with visual mamba block,” Science China Information Sciences , vol. 68, no. 8, p. 189102, 2025. [5] Z. Meng, J. Che, B. Wei, and X. Cao, “Make a game: A novel paradigm for interactive game ren-dering,” in ICASSP 2026-2026 IEEE International Conference on Acoustics, Speech and Signal Process-ing (ICASSP) , pp. 1026–1030, IEEE, 2026. [6] Z. Meng, J. Liu, Y. Liu, C. Tong, X. Liu, Y. Zhang, Y. Xu, and P. Wan, “Argus: Stacked multi-view identity mosaic injection for subject-preserving video generation,” arXiv preprint arXiv:2606.11670 , 2026. [7] H. He, Y. Xu, Y. Guo, G. Wetzstein, B. Dai, H. Li, and C. Yang, “CameraCtrl: Enabling camera control for video generation,” in International Conference on Learning Representations (ICLR) , 2025. [8] C. Li, Y. Yang, J. Shao, H. Zhou, K. Schwarz, and Y. Liao, “Rerope: Repurposing rope for relative camera control,” arXiv preprint arXiv:2602.08068 ,2026. 5[9] R. Li, B. Yi, J. Liu, H. Gao, Y. Ma, and A. Kanazawa, “Cameras as relative positional en-coding,” Advances in Neural Information Processing Systems , vol. 38, pp. 15984–16009, 2026. [10] S. Yin, C. Wu, J. Liang, J. Shi, H. Li, G. Ming, and N. Duan, “Dragnuwa: Fine-grained control in video generation by integrating text, image, and tra-jectory,” arXiv preprint arXiv:2308.08089 , 2023. [11] Z. Zhang, J. Liao, M. Li, Z. Dai, B. Qiu, S. Zhu, L. Qin, and W. Wang, “Tora: Trajectory-oriented diffusion transformer for video generation,” in Pro-ceedings of the Computer Vision and Pattern Recog-nition Conference , pp. 2063–2073, 2025. [12] Z. Meng, Z. Li, Y. Liu, Z. Li, J. Liu, W. Nie, B. Wei, and M. Zhang, “Trident: Breaking the hybrid-safety-physics coupling for provably safe multi-agent rein-forcement learning,” 2026. [13] Z. Wang, Z. Yuan, X. Wang, Y. Li, T. Chen, M. Xia, P. Luo, and Y. Shan, “Motionctrl: A unified and flexible motion controller for video generation,” in 
+
+ACM SIGGRAPH 2024 Conference Papers , pp. 1– 11, 2024. [14] Z. Zhang, F. Long, Z. Qiu, Y. Pan, W. Liu, T. Yao, and T. Mei, “Motionpro: A precise motion controller for image-to-video generation,” in Proceedings of the Computer Vision and Pattern Recognition Confer-ence , pp. 27957–27967, 2025. [15] T. Wan, A. Wang, B. Ai, B. Wen, C. Mao, C.-W. Xie, D. Chen, F. Yu, H. Zhao, J. Yang, et al. ,“Wan: Open and advanced large-scale video gen-erative models,” arXiv preprint arXiv:2503.20314 ,2025. [16] Z. Meng, “Parascale: Scale-calibrated camera-motion transfer via a gauge-invariant parallax num-ber,” 2026. [17] H. He, C. Yang, S. Lin, Y. Xu, et al. , “Camer-aCtrl II: Dynamic scene exploration via camera-controlled video diffusion models,” arXiv preprint arXiv:2503.10592 , 2025. [18] Q. Wang, Y. Luo, X. Shi, X. Jia, H. Lu, T. Xue, X. Wang, P. Wan, D. Zhang, and K. Gai, “Cine-master: A 3d-aware and controllable framework for cinematic text-to-video generation,” in Proceedings of the Special Interest Group on Computer Graph-ics and Interactive Techniques Conference Confer-ence Papers , pp. 1–10, 2025. [19] T. Hu, J. Zhang, R. Yi, Y. Wang, H. Huang, J. Weng, Y. Wang, and L. Ma, “Motionmaster: Training-free camera motion transfer for video generation,” arXiv preprint arXiv:2404.15789 , 2024. [20] M. You, Z. Zhu, H. Liu, and J. Hou, “Nvs-solver: Video diffusion model as zero-shot novel view syn-thesizer,” arXiv preprint arXiv:2405.15364 , 2024. [21] J. Liu, S. Li, Z. Fang, X. Li, Y. Zhou, Z. Meng, Z. Zhang, Y. Luo, G. Zhang, Y.-S. Liu, et al. , “Omni-director: General multi-shot camera cloning without cross-paired data,” arXiv preprint arXiv:2606.13432 ,2026. [22] R. Hartley and A. Zisserman, Multiple View Ge-ometry in Computer Vision . Cambridge University Press, 2nd ed., 2004. [23] W. Peebles and S. Xie, “Scalable diffusion mod-els with transformers,” in Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pp. 4195–4205, 2023. [24] J. Su, Y. Lu, S. Pan, A. Murtadha, B. Wen, and Y. Liu, “Roformer: Enhanced transformer with rotary position embedding,” arXiv preprint arXiv:2104.09864 , 2021. [25] X. Wang, H. Yuan, S. Zhang, D. Chen, J. Wang, Y. Zhang, Y. Shen, D. Zhao, and J. Zhou, “Video-composer: Compositional video synthesis with mo-tion controllability,” Advances in Neural Information Processing Systems , vol. 36, pp. 7594–7611, 2023. [26] Q. Li, Z. Xing, R. Wang, H. Zhang, Q. Dai, and Z. Wu, “Magicmotion: Controllable video generation with dense-to-sparse trajectory guidance,” arXiv preprint arXiv:2503.16421 , 2025. [27] M. Geyer, O. Bar-Tal, S. Bagon, and T. Dekel, “To-kenflow: Consistent diffusion features for consistent video editing,” arXiv preprint arXiv:2307.10373 ,2023. [28] J. Jiang, G. Hong, L. Zhou, E. Ma, H. Hu, X. Zhou, J. Xiang, F. Liu, K. Yu, H. Sun, et al. , “Dive: Dit-based video generation with enhanced control,” 
+
+arXiv preprint arXiv:2409.01595 , 2024. [29] Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le, “Flow matching for generative modeling,” in International Conference on Learning Representa-tions (ICLR) , 2023. [30] T. Unterthiner, S. van Steenkiste, K. Kurach, R. Marinier, M. Michalski, and S. Gelly, “Towards accurate generative models of video: A new met-ric & challenges,” arXiv preprint arXiv:1812.01717 ,2018. [31] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, G. Krueger, and I. Sutskever, “Learning transferable visual models from natural language su-pervision,” in International Conference on Machine Learning (ICML) , pp. 8748–8763, 2021. 6

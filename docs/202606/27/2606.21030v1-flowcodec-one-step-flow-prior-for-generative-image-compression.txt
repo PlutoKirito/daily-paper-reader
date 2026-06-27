@@ -1,0 +1,929 @@
+Title: FlowCodec: One-Step Flow Prior for Generative Image Compression
+
+URL Source: https://arxiv.org/pdf/2606.21030v1
+
+Published Time: Tue, 23 Jun 2026 00:32:30 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# FlowCodec: One-Step Flow Prior for Generative Image Compression 
+
+## Yinhuan Huang * Hao Cao Pu chen Wenqi Guo Zhijin Qin Tsinghua University 
+
+huangyh24@mails.tsinghua.edu.cn qinzhijin@tsinghua.edu.cn BPP ↓/DISTS ↓                    
+
+> Original DCVC -RT GLC OneDC StableCodec FlowCodec (Ours)
+> 0.015/0.232 0.021/0.071 0.009/0.069 0.011/0.085 0.008 /0.068
+> BPP ↓/DISTS ↓0.038/0.220 0.037/0.058 0.032 /0.061 0.035/0.063 0.032 /0.050
+> BPP ↓/DISTS ↓0.025/0.300 0.024/ 0.080 0.011/0.094 0.012/0.092 0.011 /0.080
+
+Figure 1. Visual comparison of different image compression methods. DCVC-RT [23] is designed for MSE-based rate-distortion optimiza-tion, GLC [22] emphasizes perceptual quality through LPIPS [66] and adversarial training [17], and OneDC [61], StableCodec [50], and FlowCodec are diffusion-based methods. As shown, the proposed FlowCodec more faithfully preserves human and animal subjects, along with structural and textural details, while achieving the lowest bitrate. Zoom in for a better view. 
+
+## Abstract 
+
+Diffusion-based image compression methods, leveraging powerful generative priors, have demonstrated remarkable perceptual quality at ultra-low bitrates. However, adapt-ing modern generative models to image compression of-ten relies on carefully engineered conditioning or auxiliary branches, together with substantial retraining, and these costs grow as the models scale. This motivates an open question: Can stronger generative priors be integrated into compression through a simpler, more extensible design? To answer this, we propose FlowCodec, a streamlined frame-work that plugs pretrained large-scale text-to-image pri-ors ( e.g ., Qwen-image-2512 and FLUX.1-dev) into ultra-low-bitrate codecs. FlowCodec decomposes the pipeline into two decoupled stages: (1) Latent Compression , which maps clean latents to bitrate-constrained noisy latents; and (2) Latent Transport , which leverages the pretrained prior to refine the noisy latents toward the clean ones in a sin-gle step. Notably, FlowCodec requires neither additional conditioning signals nor auxiliary networks. Furthermore, 
+
+> *Corresponding author.
+
+with lightweight adaptation, it can flexibly support multi-ple bitrates while keeping the number of trainable parame-ters below 0.54% of the generative backbone. Experiments show that FlowCodec preserves high visual quality at bi-trates below 0.05 bits per pixel. The Qwen-image vari-ant significantly outperforms existing methods in terms of LPIPS and DISTS, while both variants deliver higher PSNR and clearly faster encoding than existing one-step diffusion-based methods, with the FLUX variant also maintaining competitive decoding speed. 
+
+## 1. Introduction 
+
+Lossy image compression aims to minimize bitrate while preserving high reconstruction quality. At ultra-low bi-trates, the severely limited bit budget sharply intensifies the perception-distortion tradeoff [7, 8], making it difficult to preserve both distortion fidelity and perceptual realism. When optimization is dominated by pixel-wise distortion objectives ( e.g ., MSE), models tend to average over uncer-tain details, resulting in blur and texture loss [18, 22, 50]. To mitigate this, recent learned image compression meth-1
+
+> arXiv:2606.21030v1 [eess.IV] 19 Jun 2026
+
+Stronger Priors, but Larger Models 
+
+Desired Proper6es 
+
+for Compression 
+
+Fast Encoding and One -Step Decoding 
+
+LoRA 
+
+# 🔥 
+
+MMDiT ❄
+
+Decoded 
+
+Latent 
+
+Prompt, Sketch, 
+
+Hyperprior, etc. 
+
+# 🔥 
+
+LoRA 
+
+# 🔥 
+
+U-Net 
+
+> ❄
+
+Control 
+
+Net 
+
+Decoded 
+
+Latent 
+
+Refined Image 
+
+LoRA 
+
+# 🔥 
+
+U-Net 
+
+> ❄
+
+Decoded 
+
+Latent 
+
+Auxiliary 
+
+Dec 
+
+# 🔥 
+
+(b) Reliance on Auxiliary Branches (a) Reliance on Condi@onal Signals (c) Single -Path Design (Ours) 
+
+Obviated by 
+
+Stronger Priors 
+
+VAE Dec 
+
+Refined Image 
+
+VAE Dec 
+
+VAE Dec 
+
+Refined Image 
+
+# 🔥 
+
+# 🔥 
+
+> ❄
+
+: Trainable 
+
+: Frozen ❄
+
+🔥 
+
+Lightweight Adapta@on Cost 
+
+Flexible Mul@ -Bitrate Support Figure 2. Motivation of FlowCodec. Existing diffusion-based image compression methods often rely on task-specific components, such as auxiliary conditioning signals or extra branches, to activate generative priors. As generative priors become stronger and larger, a simpler single-path design with lightweight adaptation becomes increasingly feasible, reducing the need for such components. Such a design is better suited to support one-step decoding and flexible multi-bitrate control for ultra-low-bitrate image compression. 
+
+ods [41, 43, 63] have incorporated perceptual metrics ( e.g ., LPIPS [66] and DISTS [13]) and adversarial training [17], yielding clear gains in perceptual quality. Nevertheless, as shown in Fig. 9, under extreme bitrate constraints, key se-mantic and structural cues, including facial identity, fine textures, and text, can be lost or may drift. These observa-tions underscore that metric-driven optimization alone may be insufficient to achieve a desirable perception-distortion tradeoff under severe information bottlenecks. Recent advances in generative models have fundamen-tally reshaped the landscape of computer vision [9, 16, 31, 44, 46, 49, 54, 58, 59]. Even in zero-shot settings, these models can address a wide range of low-level vision tasks with superior perceptual quality [67], such as denoising and super-resolution. A key reason is their powerful genera-tive priors, learned through large-scale data-driven training with high-capacity models. Despite these promising results, a core challenge remains: the objectives of generation and compression are not naturally aligned. Generation favors output diversity, whereas compression requires faithful re-construction without semantic drift. To bridge this gap, a growing body of research [10, 18, 24, 32, 33, 36, 37, 50, 61, 64] explores generative models in the decoder for ultra-low-bitrate image compression. As shown in Fig. 2, one promi-nent line of research compresses additional conditioning signals ( e.g ., prompts [10, 32], sketches [32], or hyperpri-ors [61]) to guide the generative model in recovering miss-ing structures and textures. Another line of work introduces auxiliary branches for this adaptation. However, both strate-gies require extensive retraining. As modern generative models continue to scale, adapting them for compression through these designs becomes increasingly costly. More-over, their original training data and optimization recipes are often unavailable to the public. Beyond these adaptation challenges, image compression is also expected to achieve reasonable inference latency and flexible multi-bitrate con-trol. Together, these considerations raise a key question: 
+
+Can stronger generative priors be integrated into compres-sion through a simpler, more extensible design? 
+
+Motivated by this, we explore the lightweight adap-tation of modern large-scale flow-matching text-to-image models for ultra-low-bitrate image compression, using two representative open-source models: Qwen-image-2512 (20B) [59] and FLUX.1-dev (12B) [30]. Our design is 2guided by two key insights: (1) a stronger decoder-side prior allows the rest of the codec to be simpler and more tolerant to information loss at ultra-low bitrates, while still maintaining reasonable reconstruction quality; and (2) gen-eration and compression can be coupled at the mechanism level. Specifically, a generative model maps a noise dis-tribution to the data distribution in latent space, whereas a compression model maps data to a latent distribution per-turbed by quantization and the information bottleneck. In this view, integrating a generative prior into compression can be cast as a latent transport problem: transporting the distorted noisy-latent distribution toward the clean latent distribution before decoding it back to pixel space. Building on these intuitions, we propose FlowCodec , a streamlined framework that plugs pretrained generative pri-ors into ultra-low-bitrate codecs. FlowCodec consists of two decoupled stages: Latent Compression and Latent Transport . This design removes the need for additional conditioning signals and auxiliary networks, while naturally supporting lightweight adaptation, one-step decoding, and flexible multi-bitrate control. 
+
+Latent Compression . This stage maps the clean latent, extracted by a frozen VAE [27], to a noisy latent that can be represented at ultra-low bitrates. It is optimized inde-pendently to minimize the discrepancy between noisy and clean latents, providing an informative initialization for the subsequent stage. 
+
+Latent Transport . This stage leverages the pretrained flow-matching prior to transport noisy latents toward clean latents. Instead of distilling the generative model [45, 50] or introducing an ODE-based sampling acceleration [18], we inject the noisy latents near the terminal step of the text-to-image sampling trajectory to realize one-step refine-ment. The pretrained backbone is adapted with lightweight LoRA [21], and a single set of parameters supports multi-bitrate transport by adjusting the refinement strength. Extensive experiments show that FlowCodec achieves superior perceptual quality in the ultra-low-bitrate regime. We hope this perspective offers a promising route for inte-grating ever-stronger generative priors into image codecs, enabling compression to benefit more directly from rapid advances in generative models. Our contributions are sum-marized as follows: 1. We present FlowCodec, a streamlined framework that plugs pretrained large-scale generative priors into ultra-low-bitrate image compression. FlowCodec eliminates the need for additional conditioning signals and auxil-iary branches, and formulates latent compression and la-tent transport as two decoupled stages. 2. We introduce a latent transport mechanism that injects noisy latents near the terminal step of the generative trajectory, enabling single-step refinement and flexible multi-bitrate control. This design reuses the pretrained generative backbone without architectural modification and activates its prior with only lightweight adaptation. 3. Experiments demonstrate that FlowCodec achieves su-perior rate-distortion-perception performance in the ultra-low-bitrate regime. The Qwen-image variant achieves SOTA LPIPS and DISTS on the Kodak, Tec-nick, DIV2K, and CLIC 2020 datasets, while both vari-ants deliver higher PSNR and faster encoding than ex-isting one-step diffusion-based codecs, with the FLUX variant also maintaining competitive decoding speed. 
+
+## 2. Related Work 
+
+2.1. Image Compression 
+
+2.1.1. Rate-Distortion-Optimized Compression. 
+
+Traditional codecs such as JPEG [53] and VTM [52] op-timize rate-distortion objectives primarily using pixel-wise distortion ( e.g ., MSE and MS-SSIM [57]). Following this pipeline, learned image codecs [4, 15, 19, 23, 39, 65] re-place hand-crafted components with neural networks for end-to-end nonlinear transform coding and entropy estima-tion, leveraging hyperpriors and rich context models. This paradigm achieves high compression ratios with practical computational complexity [19, 23]. However, at extremely low bitrates ( e.g ., ≤ 0.05 bits per pixel), optimizing only distortion metrics makes it difficult to reconcile pixel-level fidelity with human perceptual quality. 
+
+2.1.2. Perceptual Image Compression. 
+
+To move beyond purely distortion-driven optimization, per-ceptual image compression adds perceptual losses ( e.g ., LPIPS) and often uses GAN-based training to balance the rate-distortion-perception tradeoff [41, 63]. Recent work further refines discriminators [43] and explores codebook-based representations [22, 62], leveraging nonlinear model-ing capacity for clear perceptual gains at high compression ratios. Nevertheless, in the ultra-low-bitrate regime, faith-fully preserving fine-grained semantics and structure ( e.g ., facial identity, building geometry, and text) remains chal-lenging. Some methods therefore adopt data curation [22] or structural priors [48, 56], at the cost of added system complexity or engineering effort. 
+
+2.1.3. Diffusion-based Image Compression. 
+
+Recently, diffusion-based codecs [10, 18, 24, 32, 33, 36, 37, 50, 61, 64] have emerged as promising solutions for extreme compression, often producing more realistic reconstruc-tions. Most existing methods build on Stable Diffusion [44] and mainly explore two directions, which are often com-bined in practice. One direction focuses on better exploit-ing the generative priors via encoded conditional signals or auxiliary branches [10, 24, 32, 33, 36, 37, 50, 64]. The other direction targets faster decoding by using distilled one-step generators or explicit rate-to-sampling mappings ( e.g ., 3Entropy 
+
+Model 
+
+𝑔 !
+
+𝑥 𝑥 "!𝑙 
+
+bitstream  
+
+> Q
+
+𝑔 "
+
+𝑙 $" 𝑙 $!🔥 
+
+🔥 
+
+🔥 
+
+❄ ❄
+
+MMDiT 
+
+Model 
+
+LoRA 
+
+🔥  
+
+> AE AD
+
+𝑦 𝑦 "
+
+𝑤 #
+
+𝑤 $
+
+𝑞 # 𝑞 $
+
+Q Quan8za8on AE Arithme8c Encoding AD Arithme8c Decoding Frozen ❄Trainable 🔥 
+
+Latent Compression Latent Transport 
+
+VAE 
+
+Encoder 
+
+VAE 
+
+Decoder 
+
+𝜇 , 𝜎 Figure 3. The framework of FlowCodec. We perform both Latent Compression and Latent Transport in the latent space of a frozen VAE. Given an input image x, the VAE encoder maps it to a clean latent l, which is compressed into a bitrate-constrained noisy latent ˆl0 by a learned latent codec. A pretrained flow-matching prior (MMDiT model) then performs one-step latent transport to obtain a refined latent 
+
+ˆl1 before VAE decoding. Compression                                           
+
+> Quan-za-on + Informa-on Bo4leneck
+> Mul--bitrate One -step Latent Transport
+> 𝑙 "!=𝑙 ""+𝛽 #$%& ∆𝑡 ⋅𝜈 '𝑙 "",𝑡 =1−𝜀 ,𝑐 =∅
+> Mapping
+> Clean Latent 𝑙 Noisy latent 𝑙 ""Refined Latent 𝑙 "!
+> 𝑡 =0(Noise) 𝑡 =1
+> Genera-ve Flow trajectory (𝑡 =0to 𝑡 =1−𝜀 ,𝜀 ≪1)
+> Refinement
+> Intrinsic Genera-ve Priors
+
+Figure 4. Illustration of Latent Transport. The clean latent l is compressed into ˆl0 and then refined into ˆl1. The pretrained prior is applied near the terminal step ( t ≈ 1) with an empty prompt ( c = ∅), and βrate controls the strength for multi-bitrate decoding. 
+
+bitrate-to-timestep) to reduce denoising steps [18, 50, 61]. Overall, these efforts highlight the value of strong genera-tive priors for ultra-low-bitrate reconstruction. 
+
+2.2. Diffusion Models 
+
+Diffusion models [9, 16, 31, 44, 46, 49, 54, 58, 59] learn mappings between data and noise distributions and remain a central paradigm in generative modeling, evolving from DDPM [20] and LDM [44] to flow matching [38] and rec-tified flow [40]. Architectures have evolved from U-Net backbones [44] to large transformer-based designs such as MMDiT [9, 14, 16, 59]. Trained on massive image-text corpora, these models offer strong semantic alignment and high visual fidelity, making them appealing decoder-side priors for extreme compression. However, integrat-ing such large models into compression systems also in-troduces challenges. An effective design is better suited to enable lightweight adaptation, one-step decoding, and flexible multi-bitrate operation. These directly motivate our method, which aims to leverage powerful pretrained priors through efficient mechanisms. 
+
+## 3. Methodology 
+
+As illustrated in Fig. 3, FlowCodec consists of two stages: (1) Latent Compression , where the input image x is en-coded by the VAE encoder Ee(·) into a clean latent l, which is then compressed into a noisy latent ˆl0 at ultra-low bi-trates; and (2) Latent Transport , where the MMDiT model performs one-step denoising refinement to transport ˆl0 to-ward l, yielding a refined latent ˆl1. Finally, the VAE de-coder Ed(·) maps ˆl1 back to pixel space and reconstructs the image ˆx1 with high fidelity and realism. 
+
+3.1. Latent Compression 
+
+The first step of our framework is to build an efficient la-tent codec that supports multiple bitrates. Before invok-ing the generative prior, this stage aims to reconstruct a noisy latent that is already close to the clean latent, thereby 4providing a strong initialization for the subsequent latent transport stage. To achieve this, we build upon established rate-distortion-optimized codec designs. Specifically, we adopt depthwise convolutions [23] to improve parameter ef-ficiency while preserving nonlinear capacity, and employ a 4-step autoregressive entropy model ϕ(·) with quadtree par-titioning [34] for efficient entropy estimation. To support multiple bitrates within a single model, we introduce learn-able per-channel scaling vectors (qe, q d) for the analysis and synthesis transforms, ga(·) and gs(·) [35], thus avoiding the need to train separate models for different bitrate levels. These scaling vectors are applied to intermediate represen-tations during coding, together with the quantization steps 
+
+(we, w d) predicted by ϕ(·). Additional architectural details are provided in the supplementary material. Given an input image x, we extract its clean latent repre-sentation l using the frozen VAE encoder Ee(·) and obtain a compact representation y via ga(·). We quantize y to ˆy and entropy-code it under a Gaussian model parameterized by 
+
+(μ, σ ). During decoding, we reconstruct the noisy latent ˆl0
+
+via gs(·). The overall process is formulated as follows: Latent extraction: l = Ee(x), (1) Latent encoding: y = ga(l, q e), (2) Entropy estimation: (μ, σ, w e, w d) = ϕ(y), (3) Quantization: ˆy =
+
+
+
+round( y ⊙ we − μ) + μ
+
+
+
+⊙ wd,
+
+(4) Latent decoding: ˆl0 = gs(ˆ y, q d). (5) 
+
+3.2. Latent Transport 
+
+After Latent Compression, we obtain a noisy latent ˆl0
+
+that is perturbed by quantization noise and the informa-tion bottleneck. Although ˆl0 preserves the main seman-tic and layout cues, it may still exhibit structural errors (e.g ., facial identity drift or geometric distortion) and lose high-frequency textures. To address this issue, we lever-age a pretrained MMDiT model (Qwen-image-2512 [59] or FLUX.1-dev [30]) as a latent refiner. We view clean-image latents as concentrating in a struc-tured region of latent space. Latent Compression perturbs a clean latent l to a nearby point ˆl0 that may deviate slightly from this region. The pretrained flow-matching model serves as a natural prior over clean-image latents: near the terminal stage ( t ≈ 1), its vector field can be regarded as making local corrections that steer ˆl0 toward higher-density regions of the clean-latent distribution, rather than introduc-ing new semantic content. Motivated by this intuition, and as illustrated in Fig. 4, we apply the generative prior only near the terminal stage, mapping ˆl0 to a refined latent ˆl1 in a single step. Since ˆl0 already preserves most of the relevant information, we use an empty prompt to avoid conflicting semantics and the additional overhead of processing side information. Let c denote the text condition (prompt), and let vθ (·)
+
+denote the pretrained flow-matching velocity field in latent space. We perform latent transport with an empty prompt: 
+
+ˆl1 = ˆl0 + βrate ∆t · vθ
+
+ ˆl0, t = 1 − ϵ, c = ∅, ϵ ≪ 1,
+
+(6) where ∆t is a small step size and βrate is a scalar that con-trols the refinement strength. Unlike prior work [18], which achieves multi-rate one-step decoding by mapping bitrates to pseudo-timesteps and deriving the corresponding noise levels via ODE analysis, we support multiple bitrates by modulating βrate : larger βrate applies stronger correction at lower bitrates, while smaller βrate yields more conservative refinement at higher bitrates. This enables multi-bitrate de-coding without retraining and naturally couples the prior with the latent codec. 
+
+3.3. Decoupled Stage-wise Training 
+
+We adopt a decoupled, stage-wise training procedure for Latent Compression and Latent Transport. The VAE en-coder Ee(·) and decoder Ed(·) are kept frozen throughout training. We first optimize the latent codec components, including the analysis and synthesis transforms ga(·) and 
+
+gs(·) as well as the entropy model ϕ(·), in two stages. In Stage 1, we optimize a latent-space rate-distortion objec-tive: 
+
+L(1) LC = λrate MSE 
+
+
+
+l, ˆl0
+
+
+
++ R(y), (7) where l is the clean latent from the frozen VAE encoder, 
+
+ˆl0 is the decoded noisy latent, R(y) is the estimated rate from the ϕ(·), and λrate controls the rate-distortion tradeoff. This stage does not use the VAE decoder, which allows fast iteration and stable convergence of the latent codec. In Stage 2, we decode ˆl0 into a coarse reconstruction 
+
+ˆx0 = Ed(ˆl0) and optimize an image-level objective: 
+
+L(2) LC = λrate 
+
+
+
+L1(x, ˆx0) + Lper (x, ˆx0)+ Ladv (x, ˆx0)
+
+
+
++ R(y).
+
+(8) where L1(·) is the L1 reconstruction loss, Lper (·) is a per-ceptual loss [66], and Ladv (·) is an adversarial loss [17]. Latent-space MSE alone is insufficient to capture the per-ceptual consequences of latent distortion after decoding. Therefore, we introduce pixel-level supervision via ˆx0 to encourage perceptually faithful reconstructions and better align noisy and clean latents at ultra-low bitrates. After Latent Compression, we freeze the entire latent codec and finetune only lightweight LoRA adapters on the pretrained MMDiT backbone for latent transport. We opti-mize the following objective: 
+
+LLT = L1(x, ˆx1) + Lper (x, ˆx1) + Ladv (x, ˆx1), (9) 50.01 0.02 0.03 0.04 0.05 0.06                                                       
+
+> 20
+> 21
+> 22
+> 23
+> 24
+> 25
+> PSNR  ↑
+> Kodak
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> 21
+> 22
+> 23
+> 24
+> 25
+> 26
+> 27 Tecnick
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> 20
+> 21
+> 22
+> 23
+> 24
+> 25
+> DIV2K
+> 0.01 0.02 0.03 0.04 0.05
+> 23
+> 24
+> 25
+> 26
+> 27
+> 28
+> 29 CLIC 2020
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> LPIPS  ↓
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> 0.200
+> 0.225
+> 0.250
+> 0.275
+> 0.300
+> 0.325
+> 0.350
+> 0.375
+> 0.400
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.01 0.02 0.03 0.04 0.05
+> 0.200
+> 0.225
+> 0.250
+> 0.275
+> 0.300
+> 0.325
+> 0.350
+> 0.375
+> 0.400
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> BPP
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> DISTS  ↓
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> BPP
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> BPP
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.01 0.02 0.03 0.04 0.05
+> BPP
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> VTM-23.10 (H.266)
+> DCVC-RT (CVPR'25)
+> Control-GIC (ICLR'25)
+> MS-ILLM (ICML'23)
+> DiffEIC (TCSVT'25)
+> OSCAR (NeurIPS'25)
+> RDEIC (TCSVT'25)
+> ResULIC (ICML'25)
+> GLC (CVPR'24)
+> DLF (ICCV'25)
+> StableCodec (ICCV'25)
+> OneDC (NeurIPS'25)
+> FlowCodec-FLUX (Ours)
+> FlowCodec-Qwen (Ours)
+
+Figure 5. Rate-distortion and rate-perception curves on Kodak, Tecnick, DIV2K, and CLIC 2020. We report distortion fidelity using PSNR (higher is better) and perceptual similarity using LPIPS and DISTS (lower is better) across bitrates. 
+
+where ˆx1 = Ed(ˆl1) is decoded from the refined latent ˆl1 af-ter one-step transport. We train a single adapter at the lowest bitrate operating point. For other bitrates, we reuse the same adapter weights and control the refinement strength via βrate 
+
+in Eq. (6), avoiding separate adapters per bitrate. 
+
+## 4. Experiments 
+
+4.1. Implementation 
+
+4.1.1. Training Details. 
+
+We construct the training set by sampling a subset of images from ImageNet [11] and OpenImages [29]. All training ex-periments are conducted on two NVIDIA A6000 Pro GPUs. We optimize all models with Adam [26] using a batch size of 16. For Latent Compression, we train the latent codec (including ga(·), gs(·), and ϕ(·)) following standard learned image codec training protocols [5, 19, 43]. Training is per-formed on random 256 ×256 crops. To support multi-bitrate operation within a single model, we adopt the approach of prior work [35]: at each iteration, we sample a quantiza-tion parameter qp ∈ { 0, 1, 2, 3, 4}, where each value cor-responds to a bitrate operating point, and interpolate the corresponding λrate over the range [0 .1, 1.0] . For Latent Transport, we freeze both the latent codec and the VAE, and finetune only LoRA adapters on the attention layers of the pretrained MMDiT backbone. The training configuration is identical for FlowCodec-FLUX (using FLUX.1-dev [30]) and FlowCodec-Qwen (using Qwen-image-2512 [59]). We train on random 512 × 512 crops, using LoRA adapters with rank 16, scaling factor 32, and dropout set to 0.0. We train the adapter at qp = 0 for 100,000 iterations, with a learning rate initialized at 10 −4 and decayed over train-6Original OneDC StableCodec FlowCodec -FLUX OSCAR RDEIC FlowCodec -Qwen DiffEIC                             
+
+> BPP ↓/DISTS ↓0.019 /0.138 0.021/0.092 0.043/0.096 0.019 /0.058 0.029/0.061 0.022/0.061 0.019 /0.057
+> BPP ↓/DISTS ↓0.026/0.116 0.018/0.127 0.031/0.125 0.016 /0.081 0.016 /0.082 0.021/0.093 0.016 /0.067
+> BPP ↓/DISTS ↓0.012 /0.158 0.014/0.115 0.031/0.103 0.012 /0.062 0.015/0.062 0.013/0.068 0.012 /0.051
+> BPP ↓/DISTS ↓0.034/0.094 0.041/0.095 0.043/0.092 0.034/0.053 0.032 /0.068 0.035/0.072 0.032 /0.045
+
+Figure 6. Visual comparison of diffusion-based methods. Zoom in for a better view. 
+
+ing, and reuse it for other qp values by tuning the refine-ment strength βrate (e.g ., for FlowCodec-Qwen, βrate is set to {0.99 , 0.85 , 0.55 , 0.45 , 0.30 } for each qp ). More details on the hyperparameter settings within the MMDiT model are provided in the supplementary material. 
+
+4.1.2. Test Setting. 
+
+We evaluate on four standard benchmarks: Kodak [28] (24 images, 768 ×512 ), Tecnick [2] (100 images, 1200 ×1200 ), DIV2K [1] (100 images, ∼2K resolution), and CLIC 2020 Professional [51] (250 images, up to 2K resolution). We report bitrate in bits per pixel (bpp) and use BD-rate [6] to quantify relative compression efficiency, where negative values indicate bitrate savings and positive values indicate bitrate increases. We use PSNR to evaluate reconstruction fidelity. For perceptual quality, we report LPIPS [66] (com-puted with VGG [47] features) and DISTS [13]. 
+
+4.1.3. Compared Methods. 
+
+We compare with representative methods from three cate-gories. We include a traditional codec, VTM-23.10 [52], evaluated in intra mode for image compression. We include a neural codec targeting pixel-level reconstruc-tion, DCVC-RT [23], also evaluated in intra mode. We further compare with generative codecs, including GAN-based methods (MS-ILLM [43], Control-GIC [33], GLC [22], DLF [62]), and diffusion-based approaches (Dif-fEIC [36], OSCAR [18], RDEIC [37], ResULIC [24], Sta-bleCodec [50], OneDC [61]). 
+
+4.2. Main Results 
+
+4.2.1. Rate-Distortion-Perception Performance. 
+
+Figure 5 compares the rate-distortion and rate-perception curves across methods, while Table 1 summarizes quan-titative results on four datasets. At ultra-low bitrates, FlowCodec-Qwen achieves the best LPIPS and DISTS, while reducing bitrate by 73.7% relative to MS-ILLM on average across the four benchmarks. Meanwhile, Flow-Codec maintains strong pixel fidelity, evidenced by higher PSNR than existing diffusion-based methods. Overall, FlowCodec-FLUX performs slightly below FlowCodec-Qwen, yet remains competitive: it outperforms several diffusion-based baselines ( e.g ., OSCAR and RDEIC) and achieves LPIPS and DISTS on par with StableCodec on the Kodak and Tecnick datasets. Additional metrics are pro-vided in the supplementary material. 
+
+4.2.2. Qualitative Comparisons. 
+
+We present visual examples on the evaluation benchmarks. For clearer comparison, we zoom in on representative re-7Table 1. BD-rate (%) on Kodak, Tecnick, DIV2K, and CLIC 2020, computed with respect to the MS-ILLM anchor. More negative BD-rate indicates a lower bitrate at the same distortion. Best re-sults are in bold and second best are underlined.                                                                                                                            
+
+> Method LPIPS ↓DISTS ↓
+> Kod. Tec. DIV2K CLIC Kod. Tec. DIV2K CLIC VTM-23.10 313.84 295.19 285.10 498.64 480.92 515.25 543.48 724.83 DCVC-RT 244.62 237.52 230.70 538.81 504.80 586.05 636.97 960.16 Control-GIC 81.53 105.80 123.97 173.71 106.71 146.01 148.67 212.59 MS-ILLM 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 GLC -67.89 -57.51 -62.38 -61.02 -67.83 -48.98 -62.16 -45.58 DLF -72.82 -61.64 -64.75 -64.50 -75.74 -58.99 -66.00 -54.48 DiffEIC -37.92 -8.98 -14.92 6.66 -33.60 23.07 15.00 59.58 OSCAR -39.41 -5.39 -14.51 18.76 -49.05 -4.96 -20.57 36.02 RDEIC -52.02 -31.46 -35.33 -19.05 -39.56 -3.22 -4.34 13.63 ResULIC -41.10 -41.43 -41.51 -35.27 -38.59 -32.76 -20.39 -12.42 OneDC -71.19 -66.67 -67.94 -69.79 -76.40 -65.09 -70.05 -64.72 StableCodec -74.45 -65.50 -68.08 -65.90 -78.20 -65.03 -74.75 -64.13 FlowCodec-FLUX -69.78 -62.03 -50.64 -42.01 -76.96 -64.13 -60.85 -43.63 FlowCodec-Qwen -75.84 -69.25 -72.21 -70.48 -81.21 -71.18 -79.00 -70.66
+
+gions of interest. Figure 9 compares the outputs of different codec families, while Figure 6 focuses on diffusion-based codecs. At ultra-low bitrates, FlowCodec reconstructs more realistic and coherent details with higher texture fidelity. This advantage is especially visible for portraits, text, and architectural structures: DCVC-RT tends to produce blurry results, GLC often introduces structural inconsistencies, and diffusion-based baselines such as OSCAR and Stable-Codec may exhibit artifacts that deviate from the source im-age in fine details. More visual results and user-study results are provided in the supplementary material. 
+
+4.2.3. Complexity Analysis. 
+
+Table 2 reports the inference latency and trainable param-eter counts of individual FlowCodec components. Flow-Codec adds only a negligible number of trainable param-eters compared with its generative backbones (0.54% for FLUX.1-dev and 0.35% for Qwen-image-2512). Its la-tency is mainly dominated by the MMDiT module and can be further reduced as deployment optimizations ma-ture. Table 3 summarizes the computational complexity of diffusion-based methods on the Kodak dataset. De-spite its large-scale backbones and the lack of specialized deployment optimizations for the MMDiT and VAE mod-ules, FlowCodec already achieves favorable end-to-end en-coding and decoding efficiency. Compared with Stable-Codec, FlowCodec-Qwen and FlowCodec-FLUX deliver 
+
+4.4× and 4.8× encoding speedups, respectively. Mean-while, FlowCodec-FLUX maintains a comparable decoding speed, whereas FlowCodec-Qwen trades off some decoding efficiency. Additional analysis across image resolutions is provided in the supplementary material. 
+
+Table 2. Average inference latency (ms/image) and parameter counts (Params) for different modules on Kodak, measured on an NVIDIA A100 GPU. Parameter counts are reported as total (train-able), in M by default, with values in B explicitly marked.                 
+
+> Method VAE Latent Codec MMDiT Enc. Dec. Params. Enc. Dec. Params. Trans. Params. FlowCodec-FLUX 17.38 33.69 126.89 (0) 4.45 6.22 46.65 (46.65) 153.67 12.0B (18.68) FlowCodec-Qwen 19.44 31.67 126.89 (0) 4.61 6.08 46.65 (46.65) 317.36 20.5B (23.59)
+
+Table 3. Computational complexity of diffusion-based methods, averaged over Kodak. We report denoising steps, encoder/decoder complexity in MMAC/pixel, runtime (ms/image), and model size. Runtime is measured on an NVIDIA A100 GPU. Best results are in bold and second best are underlined. 
+
+Method Steps Enc. Dec. Params MMAC Time MMAC Time DiffEIC 50 2.24 210.18 70.61 4661.74 1.38B RDEIC 2 2.26 157.25 7.60 426.68 1.38B ResULIC 3 2.08 96.24 8.79 428.32 1.39B OSCAR 1 2.11 65.13 6.07 163.77 1.01 BOneDC 1 2.62 100.50 6.46 235.03 1.41B StableCodec 1 2.54 105.18 6.19 200.03 1.07B FC-FLUX 1 2.33 21.82 38.83 193.58 12.17B FC-Qwen 1 3.59 24.05 59.96 355.11 20.64B 
+
+## 5. Ablation Study and Analysis 
+
+To validate the proposed method, we conduct ablation stud-ies on generative-prior components, LoRA-based prior acti-vation, backbone generality, injection position, and prompt conditioning. We report BD-rate on the Kodak dataset com-puted with respect to PSNR, MS-SSIM, LPIPS, and DISTS, together with qualitative results. 
+
+5.1. Generative-Prior Components. 
+
+Based on the pipeline shown in Fig. 3, we conduct component-wise ablations of the generative prior, with the results summarized in Tab. 4. We start from a pixel-level image codec baseline by removing both the VAE and the MMDiT module. Adding a frozen VAE alone substan-tially degrades perceptual quality, as indicated by increased LPIPS and DISTS. Introducing the MMDiT module allevi-ates this degradation and further improves both perceptual quality and pixel fidelity. As shown in Fig. 7, although the 
+
+pixel-level image codec baseline achieves favorable LPIPS and DISTS, it can still exhibit semantic drift from the input, particularly for structured content such as human faces, an-imal faces, and text, which is further corroborated by lower PSNR and MS-SSIM. Moreover, Figure 7 shows that la-tent transport induced by the generative prior can effectively correct such semantic drift, instead of only yielding better quantitative metrics. 80.043/ 0.043 BPP ↓/DISTS ↓ 0.038 /0.068 0.038 /0.062 0.039/0.055 0.039/0.046 0.039/0.055 
+
+0.012/0.082 BPP ↓/DISTS ↓ 0.011 /0.136 0.011 /0.081 0.011 /0.154 0.011 /0.067 0.011 /0.154 
+
+0.012/ 0.053 BPP ↓/DISTS ↓ 0.009/0.107 0.009/0.082 0.008 /0.098 0.008 /0.069 0.008 /0.098          
+
+> Original Base (Pixel Codec) Base + VAE (FLUX) Base + VAE ( Qwen )Base + VAE + MMDiT
+> (FLUX w/ LoRA )
+> Base + VAE + MMDiT
+> (Qwen w/ LoRA )
+
+0.014/ 0.066 BPP ↓/DISTS ↓ 0.011 /0.112 0.011 /0.104 0.012/0.088 0.012/0.072    
+
+> Base + VAE + MMDiT
+> (Qwen w/o LoRA )
+
+0.012/0.088 Figure 7. Visual ablation of generative-prior components. Variants are obtained by removing different modules. Zoom in for a better view. Table 4. Ablation results on Kodak for generative-prior compo-nents. BD-rate (%) is reported in terms of PSNR, MS-SSIM, LPIPS, and DISTS; lower is better. 
+
+BD-rate (%) ↓
+
+Model variant PSNR MS-SSIM LPIPS DISTS Base (Only pixel-level codec) 0.00 0.00 0.00 0.00 + VAE (FLUX) -7.35 -0.54 87.27 136.52 + VAE (Qwen) 15.79 13.77 57.90 78.32 + VAE & MMDiT (FLUX) -12.50 -9.21 19.13 33.08 + VAE & MMDiT (Qwen) -12.93 -6.79 -4.74 7.14 
+
+5.2. Prior Activation via LoRA. 
+
+We evaluate LoRA as a mechanism for activating the gen-erative prior for compression in Tab. 5, considering LoRA on/off and rank sensitivity. Using FlowCodec-Qwen as an example, introducing MMDiT without LoRA adaptation yields only marginal gains. In contrast, enabling LoRA leads to substantial improvements, and this trend is evi-dent in Fig. 7, which visualizes the qualitative gains brought by LoRA. Overall, the results are largely insensitive to the LoRA rank (8/16/32), indicating that low-rank adaptation is 
+
+Table 5. Ablation results on Kodak for LoRA adaptation. BD-rate (%) is reported in terms of PSNR, MS-SSIM, LPIPS, and DISTS; lower is better. 
+
+BD-rate (%) ↓
+
+LoRA setting PSNR MS-SSIM LPIPS DISTS Latent Codec + VAE 0.00 0.00 0.00 0.00 + MMDiT w/o LoRA -0.85 -0.72 -0.46 -0.81 + MMDiT w/ LoRA ( r = 8 ) -23.65 -18.02 -37.75 -38.09 + MMDiT w/ LoRA ( r = 16 ) -25.37 -18.79 -41.89 -43.13 + MMDiT w/ LoRA ( r = 32 ) -24.69 -18.25 -39.92 -40.16 
+
+sufficient in our setting. 
+
+5.3. Generality Across Generative Priors. 
+
+We replace the FlowCodec prior with SD-2.1 [44] (used in OSCAR/StableCodec), SANA-1.5 [60], FLUX.1-dev, and Qwen-Image-2512. All variants use the same single-path, one-step transport design, without auxiliary branches, side information, ControlNet-style modules, distillation, or multi-step sampling. We report BD-rate on Kodak and Tec-nick using OSCAR as the anchor, and measure complexity on Kodak. As shown in Tab. 6, all variants outperform OS-9Table 6. Backbone generalization and complexity comparison. Top: BD-rate (%) with OSCAR as the anchor on Kodak and Tecnick. Bottom: complexity on Kodak, where Comp. is measured in MMAC/pixel, runtime is measured in ms/image on an NVIDIA A100 GPU, and memory denotes peak GPU memory. FlowCodec is instantiated with SD-2.1 as in OSCAR/StableCodec, SANA-1.5, FLUX.1-dev, and Qwen-image-2512. Lower BD-rate, Comp., runtime, parameters, and memory are better. 
+
+Method LPIPS ↓ DISTS ↓ PSNR ↓ Enc. Comp. Enc. Time Dec. Comp. Dec. Time Params Memory Kodak Tecnick Kodak Tecnick Kodak Tecnick OSCAR 0.00 0.00 0.00 0.00 0.00 0.00 2.11 65.13 6.07 163.77 1.01B 4.74GiB StableCodec -59.36 -65.40 -62.50 -71.81 -72.62 -59.70 2.54 105.18 6.19 200.03 1.07B 6.70GiB FlowCodec-SD -55.07 -61.26 -61.81 -64.30 -64.33 -69.82 2.32 27.87 6.39 103.05 1.00 B 2.70 GiB FlowCodec-SANA -58.99 -60.13 -63.04 -64.93 -56.81 -59.57 2.51 31.75 5.54 102.75 1.98B 8.19GiB FlowCodec-FLUX -54.06 -70.01 -63.50 -71.85 -74.46 -77.52 2.33 21.82 38.83 193.58 12.17B 32.75GiB FlowCodec-Qwen -68.50 -73.24 -70.37 -75.29 -73.26 -76.04 3.59 24.05 59.96 355.11 20.64B 56.40GiB 
+
+CAR, demonstrating the generality of our one-step latent transport. FlowCodec-SD uses the same SD-2.1 prior fam-ily as OSCAR/StableCodec, isolating the effect of our trans-port design. The other variants show a clear scaling trend: SANA provides an efficient operating point, while FLUX and Qwen improve perceptual quality with extra decoder cost. Additional metrics in the supplementary material fur-ther show that stronger priors better preserve text, identity, and high-level visual content. 
+
+5.4. Near-Terminal Injection. 
+
+We study the injection position using FlowCodec-Qwen on Kodak at qp = 0 . Here, tinj is the timestep where the decoded noisy latent is injected into the 50-step genera-tive trajectory. We sweep tinj and choose the best trans-port strength β at each position, reporting DISTS for both a frozen prior and a LoRA-adapted prior after 100 updates. As shown in Tab. 7, later injection consistently improves DISTS, with the best result at tinj = 50 . This supports our near-terminal design: since the decoded latent already pre-serves the main structure, the prior works better as a local one-step refiner than as a long generative sampler. 
+
+Table 7. Injection timestep scan on Kodak for FlowCodec-Qwen at qp = 0 . DISTS ↓ is reported. The index tinj = 50 corresponds to the near-terminal injection used by FlowCodec.                                             
+
+> tinj 1510 15 20 25 30 35 40 45 50
+> βbest .01 .01 .05 .05 .05 .05 .15 .25 .45 .80 .99 w/o LoRA .1941 .1919 .1890 .1858 .1827 .1793 .1768 .1743 .1728 .1722 .1716 100-updates LoRA .1847 .1812 .1765 .1748 .1737 .1720 .1711 .1696 .1668 .1577 .1427
+
+5.5. Prompt Conditioning. 
+
+We further evaluate the impact of prompts on the one-step latent transport in Eq. (6). We consider three prompt modes: (i) an empty prompt, relying solely on the intrinsic gener-ative prior; (ii) a generic generation prompt that describes the source image content; and (iii) a compression-oriented prompt that describes the discrepancy between the source image and a degraded preview rendered from the noisy la-tent. For (ii) and (iii), Qwen3-VL [3] generates the prompts. Table 8 summarizes the results. In general, the addition of prompts does not yield performance gains. We attribute this to two factors: (1) the noisy latent already provides a strong, task-aligned conditioning signal for one-step refine-ment, leaving limited room for additional text guidance; and (2) transmitting prompts as side information introduces ex-tra overhead, which can offset the potential benefit. 
+
+Table 8. Prompt conditioning as side information on Kodak. We report BD-rate (%) in terms of PSNR, MS-SSIM, LPIPS, and DISTS; lower is better. Results are shown for both an unadapted prior without LoRA and a LoRA-adapted prior. Empty , Generic ,and Comp. denote the empty prompt, generic generation prompt, and compression-oriented prompt, respectively.                          
+
+> w/o LoRA w/ LoRA Prompt PSNR MS-SSIM LPIPS DISTS PSNR MS-SSIM LPIPS DISTS Empty 0.00 0.00 0.00 0.00 -24.75 -18.15 -41.42 -42.49 Generic 8.34 8.82 8.76 9.00 -13.49 -7.74 -23.27 -19.02 Comp. 10.67 11.44 11.35 11.82 -8.01 -2.26 -13.34 -7.04
+
+## 6. Conclusion 
+
+We present FlowCodec, a streamlined framework for gen-erative image compression that decouples efficient latent compression from one-step latent transport. FlowCodec refines the decoded noisy latent with a pretrained gener-ative prior, without prompts, side information, auxiliary branches, distillation, or multi-step sampling. It supports fast encoding and multi-bitrate compression with a sin-gle parameter set. Experiments across SD-2.1, SANA-1.5, FLUX.1-dev, and Qwen-Image-2512 show the generality of our design: lightweight priors offer efficient operating points, while stronger priors improve perceptual and seman-tic quality at higher decoder cost. These results provide a practical path for using modern generative priors in ultra-low-bitrate image compression. 10 FlowCodec: One-Step Flow Prior for Generative Image Compression 
+
+# Supplementary Material 
+
+## 7. Experimental Details 
+
+7.1. VTM Configuration 
+
+VTM [52], under the all-intra setting, is one of the strongest conventional image compression baselines. To ensure a fair comparison, we use the relatively recent VTM-23.10 re-lease in all experiments. We build VTM on Linux and run encoding with the following command: 
+
+EncoderApp -i [input.yuv] -c encoder_intra_vtm.cfg -o [output.yuv] -b [output.bin] --wdt [width] --hgt [height] -q [QP] --InputBitDepth=8 -fr 1 -f 1 --InputChromaFormat=420 
+
+7.2. Complexity and BD-Rate 
+
+MACs. We measure MACs using the calflops Python library, adopting the convention that 1 FLOP = 2 MACs. 
+
+BD-rate. BD-rate (Bjøntegaard Delta rate) [6] is a stan-dard metric for comparing the average bitrate difference between two methods over a range of quality levels. It is computed from the area between two rate-distortion (R-D) curves after interpolation with a monotonic piecewise cubic Hermite interpolating polynomial (PCHIP). A negative BD-rate indicates that the compared method achieves the same reconstruction quality at a lower bitrate than the baseline. We use the bjontegaard Python library for all BD-rate computations. 
+
+## 8. Extra Experimental Results 
+
+8.1. Results on PSNR, MS-SSIM 
+
+We report BD-rate results for PSNR and MS-SSIM in Tab. 9, using MS-ILLM [43] as the anchor. Flow-Codec achieves PSNR performance second only to MS-ILLM, while consistently outperforming other diffusion-based codecs. This indicates that our one-step latent trans-port improves perceptual quality without severely sacrific-ing pixel-level fidelity. FlowCodec also obtains strong MS-SSIM results, showing that the reconstructed images pre-serve structural similarity well. 
+
+Table 9. BD-rate (%) in terms of PSNR and MS-SSIM on Ko-dak [28], Tecnick [2], DIV2K [1], and CLIC 2020 [51], computed with respect to the MS-ILLM anchor. More negative BD-rate in-dicates a lower bitrate at the same distortion level. Best results are shown in bold , and second-best results are underlined. 
+
+Method BD-rate (PSNR) ↓ BD-rate (MS-SSIM) ↓
+
+Kodak Tecnick DIV2K CLIC Kodak Tecnick DIV2K CLIC Control-GIC [33] 289.48 358.11 406.68 582.15 153.06 186.61 208.33 242.83 MS-ILLM [43] 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 
+
+GLC [22] 189.71 151.98 223.66 212.87 38.18 38.62 49.24 48.43 DLF [62] 126.24 146.69 223.80 186.51 23.16 59.63 75.67 74.42 DiffEIC [36] 299.18 299.73 396.18 534.07 108.64 117.56 160.20 168.83 OSCAR [18] 426.46 489.42 602.30 839.93 86.08 125.04 132.33 200.28 RDEIC [37] 72.81 82.75 108.09 120.70 35.28 35.96 52.69 53.93 ResULIC [24] 138.75 108.47 195.05 165.24 72.10 43.59 86.47 72.09 OneDC [61] 91.36 50.49 94.83 75.90 6.42 0.98 16.63 5.17 StableCodec [50] 51.47 117.29 212.04 465.22 -0.87 9.69 20.63 15.97 FlowCodec-FLUX 48.50 39.30 91.84 69.67 5.41 11.10 34.45 29.77 FlowCodec-Qwen 44.66 44.23 67.41 46.92 9.05 14.46 23.42 13.88 0.00 0.01 0.02 0.03 0.04 0.05 0.06                                
+
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> Combined | OCR CER ↓
+> 0.00 0.01 0.02 0.03 0.04 0.05 0.06
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> 1.05 Combined | OCR WER ↓
+> 0.00 0.01 0.02 0.03 0.04 0.05 0.06
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Combined | Face ROI Similarity ↑
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> BPP
+> 66
+> 68
+> 70
+> 72
+> 74
+> 76 Kodak | MUSIQ ↑
+> 0.01 0.02 0.03 0.04 0.05 0.06
+> BPP
+> 0.5
+> 0.6
+> 0.7
+> 0.8 Kodak | CLIP-IQA ↑
+> 0.01 0.02 0.03 0.04 0.05
+> BPP
+> 4
+> 5
+> 6
+> 7
+> 8CLIC 2020 | NIQE ↓
+> DCVC-RT (CVPR'25)
+> MS-ILLM (ICML'23)
+> DiffEIC (TCSVT'25)
+> OSCAR (NeurIPS'25)
+> RDEIC (TCSVT'25)
+> ResULIC (ICML'25)
+> GLC (CVPR'24)
+> DLF (ICCV'25)
+> StableCodec (ICCV'25)
+> OneDC (NeurIPS'25)
+> FlowCodec-Base (w/o VAE & MMDiT)
+> FlowCodec-SD (Ours)
+> FlowCodec-SANA (Ours)
+> FlowCodec-FLUX (Ours)
+> FlowCodec-Qwen (Ours)
+
+Figure 8. Additional semantic and perceptual metrics, including OCR CER/WER, face-ROI similarity, MUSIQ, CLIP-IQA, and NIQE. 
+
+8.2. Additional Semantic and Perceptual Metrics 
+
+We further evaluate semantic preservation and no-reference perceptual quality in Fig. 8. For images containing text, we report OCR character error rate (CER) and word error rate (WER). For images containing faces, we use ArcFace-based [12] face-ROI similarity to measure identity preser-vation. We also report MUSIQ [25], CLIP-IQA [55], and NIQE [42] as complementary no-reference percep-tual metrics. The results show that FlowCodec-FLUX and FlowCodec-Qwen better preserve text and face semantics across bitrates, even without explicit text or identity su-pervision. This suggests that stronger generative priors help reduce semantic drift under ultra-low-bitrate compres-sion. Meanwhile, the no-reference perceptual metrics fur-1ther confirm that FlowCodec improves visual realism while maintaining faithful reconstruction. These results comple-ment the PSNR/MS-SSIM analysis and show that Flow-Codec improves both low-level fidelity and high-level se-mantic consistency. 
+
+8.3. User Study 
+
+Following the protocol of StableCodec [50], we conduct a blind randomized user study on Kodak to evaluate human visual preference. Each participant is shown rate-matched reconstructions from different methods in random order and is asked to select the image with the best perceptual quality. We collect responses from 33 participants over 24 test cases, resulting in 792 total votes. As shown in Tab. 10, FlowCodec-Qwen receives the highest top-1 preference, with 268 votes and a preference rate of 33.84%. It clearly outperforms existing diffusion-based and generative codecs, including StableCodec and OneDC. This confirms that the gains of FlowCodec are also perceived by human observers. Together with the seman-tic and perceptual metrics in Fig. 8, the user study further supports the effectiveness of one-step latent transport with strong generative priors. 
+
+Table 10. Top-1 user preference. FC denotes FlowCodec.                            
+
+> Method ResULIC DiffEIC MS-ILLM OSCAR GLC FC-Base StableCodec OneDC FC-Qwen Top-1 Votes 16 27 34 39 71 75 100 162 268
+> Percentage 2.02% 3.41% 4.30% 4.92% 8.96% 9.47% 12.63% 20.45% 33.84%
+
+8.4. Analysis of FlowCodec-Base 
+
+We analyze FlowCodec-Base, which uses only the pixel-level codec without a generative prior. As shown in Tab. 4, FlowCodec-Base performs well on loss-aligned metrics, but is limited in PSNR and MS-SSIM. This limitation is also visible in Fig. 7: FlowCodec-Base can produce plausible lo-cal textures, but often introduces semantic structure shifts, especially on faces and other high-level regions. Fig. 8fur-ther quantifies this issue with OCR errors, face-ROI similar-ity. The user study in Tab. 10 also shows that FlowCodec-Base is less preferred than variants with strong generative priors. These results suggest that the generative prior is not only a perceptual enhancer, but also a key component for re-ducing semantic drift and improving reconstruction quality at ultra-low bitrates. 
+
+8.5. Resource Analysis and Runtime Comparisons 
+
+8.5.1. Peak GPU Memory Usage. 
+
+Table 11 shows that the one-step MMDiT transport stage has the largest peak memory footprint, but only a modest increase with resolution, indicating that its memory usage is dominated by resident backbone parameters. In contrast, the VAE encoding and decoding stages exhibit much larger increases as resolution grows. 
+
+Table 11. Stage-wise GPU memory profiling at different image resolutions. Each entry is reported as Peak / ∆ (GiB), where Peak 
+
+denotes the peak reserved GPU memory during the measured run and ∆ denotes the increase in allocated GPU memory relative to the memory occupied before the run. Measurements are obtained without VAE tiling or slicing, model sharding, or sparse-attention acceleration.                                   
+
+> Backbone Stage 512 ×768 1080 ×1920 1440 ×2560 FlowCodec-FLUX VAE Enc. 1.13 / 0.56 4.64 / 3.00 8.38 / 5.29 Latent Codec Enc. 0.40 / 0.04 0.66 / 0.19 0.92 / 0.34 Latent Codec Dec. 0.38 / 0.03 0.56 / 0.17 0.90 / 0.30 VAE Dec. 1.41 / 0.89 5.89 / 4.73 10.63 / 8.35 MMDiT Transport 37.23 / 0.21 38.77 / 0.91 40.14 / 1.56 FlowCodec-Qwen VAE Enc. 1.51 / 0.99 7.47 / 5.26 12.08 / 9.28 Latent Codec Enc. 0.44 / 0.04 0.72 / 0.19 1.04 / 0.34 Latent Codec Dec. 0.43 / 0.03 0.62 / 0.17 0.84 / 0.30 VAE Dec. 2.21 / 1.55 9.86 / 8.23 17.04 / 14.52 MMDiT Transport 54.94 / 0.17 56.00 / 0.90 56.98 / 1.59
+
+8.5.2. Runtime and Memory Across Image Resolutions. 
+
+Table 12 shows that, among diffusion-based methods, Flow-Codec achieves the fastest encoding across resolutions, while FlowCodec-FLUX also maintains consistently com-petitive decoding speed. The table additionally reports the peak GPU memory usage. 
+
+Table 12. Runtime and memory comparison among diffusion-based image compression methods at different resolutions. Enc./Dec. denote encoding/decoding time (ms), and Mem. denotes peak GPU memory usage (GiB). Best results are in bold ; second-best results are underlined. FlowCodecs are evaluated without deployment-oriented acceleration or library-level optimization for MMDiT or VAE.                                                                                 
+
+> Method 512 ×768 1080 ×1920 1440 ×2560 Enc. Dec. Mem. Enc. Dec. Mem. Enc. Dec. Mem. DiffEIC [36] 210.18 4661.74 6.86 –>10 s––>15 s–OSCAR [18] 65.13 163.77 4.74 857.68 1109.37 23.94 2982.82 2751.47 68.91 RDEIC [37] 157.25 426.68 6.86 683.20 2296.58 13.55 1436.00 5963.77 20.17 ResULIC [24] 96.25 428.32 7.99 481.75 3702.45 20.38 985.24 10028.48 32.15 StableCodec [50] 100.18 200.03 6.70 641.76 1657.43 21.80 1085.39 3161.54 30.65 OneDC [61] 100.50 235.03 8.02 366.32 763.99 19.71 680.47 1452.33 31.37 FlowCodec-FLUX 21.82 193.58 32.75 133.80 923.57 37.55 264.12 1807.57 41.82 FlowCodec-Qwen 24.05 355.11 56.40 130.99 2189.06 64.06 247.65 4956.31 73.34
+
+8.6. Ablation on Prior Activation via LoRA 
+
+Table 13 further evaluates LoRA for prior activation. The comparison includes a variant without MMDiT, a variant with MMDiT-based latent transport but without LoRA, and variants with LoRA enabled at different ranks. For the LoRA variants, the scaling factor is set to twice the rank. The results show that LoRA is crucial for effectively acti-vating the generative prior. The performance is also insen-sitive to the LoRA rank. 2Table 13. BD-rate (%) ablation of prior activation via LoRA in terms of PSNR, LPIPS, and DISTS on Kodak [28], Tecnick [2], DIV2K [1], and CLIC 2020 [51], computed with respect to the MS-ILLM anchor. More negative BD-rate indicates a lower bitrate at the same distortion. For the LoRA variants, the notation r = a/b denotes a LoRA rank of a and a scaling factor of b. Best results are in bold and second best are underlined. 
+
+Method BD-rate (PSNR) ↓ BD-rate (LPIPS) ↓ BD-rate (DISTS) ↓
+
+Kodak Tecnick DIV2K CLIC Kodak Tecnick DIV2K CLIC Kodak Tecnick DIV2K CLIC MS-ILLM [43] (anchor) 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 w/o MMDiT 95.35 95.11 120.19 92.67 -56.57 -44.31 -52.16 -49.12 -65.68 -49.34 -62.61 -47.73 w/o LoRA 87.88 87.40 111.71 84.54 -57.42 -46.04 -53.37 -50.69 -65.16 -49.83 -62.72 -48.13 w/ LoRA ( r = 8 /16 ) 48.77 49.91 73.98 53.64 -74.00 -65.91 -68.94 -66.22 -79.51 -65.94 -75.18 -65.77 w/ LoRA ( r = 16 /32 ) 44.66 44.23 67.41 46.92 -75.84 -69.25 -72.21 -70.48 -81.21 -71.18 -79.00 -70.66 
+
+w/ LoRA ( r = 32 /64 ) 45.89 46.86 70.04 50.08 -75.03 -66.55 -68.58 -66.62 -80.32 -66.10 -73.66 -64.99 
+
+Table 14. BD-rate (%) ablation of prompt modes and LoRA-based prior activation on Kodak, Tecnick, DIV2K, and CLIC 2020, computed with respect to the variant without MMDiT (anchor). More negative BD-rate indicates a lower bitrate at the same distortion. For prompted settings, we consider an empty prompt, a generic prompt, and a compression-oriented prompt. Best results are in bold and second best are underlined.     
+
+> MMDiT LoRA Prompt BD-rate (PSNR)
+
+↓ BD-rate (LPIPS) ↓ BD-rate (DISTS) ↓                                                                                                 
+
+> Kodak Tecnick DIV2K CLIC Kodak Tecnick DIV2K CLIC Kodak Tecnick DIV2K CLIC No No –0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 Yes No Empty -3.89 -3.92 -3.93 -3.92 -1.69 -2.57 -2.05 -2.51 1.06 -0.97 -0.35 -0.79 Generic 7.43 0.90 0.10 0.49 8.28 1.82 0.58 1.42 8.15 1.80 0.98 1.40 Compression 9.66 1.06 0.08 0.49 10.78 2.00 0.56 1.44 10.89 2.01 1.05 1.54 Yes Empty -25.37 -24.44 -22.02 -21.04 -41.89 -43.11 -40.08 -37.73 -43.13 -42.22 -43.49 -40.13
+> Generic -14.19 -22.15 -20.97 -19.21 -23.75 -40.29 -39.83 -35.39 -19.77 -40.01 -45.95 -38.92 Compression -8.82 -19.77 -20.09 -18.49 -13.87 -35.12 -36.68 -32.48 -7.89 -29.62 -38.15 -32.75
+
+8.7. Additional Visual Performance 
+
+All images are selected from Kodak [28] (768 × 512), Tec-nick [2] (1200 × 1200), DIV2K [1] ( ∼2K resolution), and CLIC 2020 Professional [51] (up to 2K resolution). Addi-tional visual results are organized as follows: • Comparison with different methods. Visual compar-isons with different methods are shown in Figs. 9 to 13. Compared with existing methods, our method recon-structs more realistic and coherent details at lower bi-trates, while preserving higher texture fidelity. • Ablation on different modules. Visual ablation results for different modules are provided in Fig. 14. 3GLC 
+
+0.022 BPP 
+
+Original 
+
+BPP ↓
+
+RDEIC 
+
+0.019 BPP 
+
+DiffEIC 
+
+0.014 BPP 
+
+OneDC 
+
+0.011 BPP 
+
+StableCodec 
+
+0.013 BPP 
+
+FlowCodec -Qwen 
+
+0.011 BPP 
+
+FlowCodec -FLUX 
+
+0.011 BPP Figure 9. Visual comparison (1800 ×1200) of diffusion codecs. Zoom in for a better view. 
+
+4DCVC -RT 
+
+0.067 BPP 
+
+Original 
+
+BPP ↓
+
+GLC 
+
+0.039 BPP 
+
+OSCAR 
+
+0.043 BPP 
+
+OneDC 
+
+0.042 BPP 
+
+StableCodec 
+
+0.043 BPP 
+
+FlowCodec -Qwen 
+
+0.038 BPP 
+
+FlowCodec -FLUX 
+
+0.035 BPP Figure 10. Visual comparison (2040 ×1356) of diffusion codecs. Zoom in for a better view. 
+
+5DCVC -RT 
+
+0.029 BPP 
+
+Original 
+
+BPP ↓
+
+GLC 
+
+0.025 BPP 
+
+OSCAR 
+
+0.031 BPP 
+
+OneDC 
+
+0.017 BPP 
+
+StableCodec 
+
+0.020 BPP 
+
+FlowCodec -Qwen 
+
+0.017 BPP 
+
+FlowCodec -FLUX 
+
+0.016 BPP 
+
+DiffEIC 
+
+0.019 BPP Figure 11. Visual comparison (1228 ×1840) of diffusion codecs. Zoom in for a better view. 
+
+6DCVC -RT 
+
+0.033 BPP 
+
+Original 
+
+BPP ↓
+
+GLC 
+
+0.037 BPP 
+
+OSCAR 
+
+0.063 BPP 
+
+OneDC 
+
+0.047 BPP 
+
+StableCodec 
+
+0.034 BPP 
+
+FlowCodec -Qwen 
+
+0.030 BPP 
+
+FlowCodec -FLUX 
+
+0.027 BPP 
+
+DiffEIC 
+
+0.087 BPP Figure 12. Visual comparison (512 ×768) of diffusion codecs. Zoom in for a better view. 
+
+7Original Crop 
+
+BPP ↓
+
+FlowCodec -Qwen 
+
+0.011 BPP 
+
+OneDC 
+
+0.011 BPP 
+
+StableCode c
+
+0.012 BPP 
+
+FlowCodec -FLUX 
+
+0.012 BPP 
+
+GLC 
+
+0.017 BPP 
+
+DCVC -RT 
+
+0.016 BPP 
+
+OSCAR 
+
+0.031 BPP Figure 13. Visual comparison (2048 ×2048) of diffusion codecs. Zoom in for a better view. 
+
+8w/ MMDiT & VAE ( Qwen -image) 
+
+0.009 BPP 
+
+w/ VAE (FLUX.1 -dev) 
+
+0.010 BPP 
+
+Original 
+
+BPP ↓
+
+w/ MMDiT & VAE (FLUX.1 -dev) 
+
+0.010 BPP 
+
+w/ VAE ( Qwen -image) 
+
+0.009 BPP 
+
+w/o MMDiT & VAE 
+
+0.014 BPP 
+
+w/o MMDiT & VAE 
+
+0.048 BPP 
+
+w/ VAE ( Qwen -image) 
+
+0.045 BPP 
+
+w/ MMDiT & VAE ( Qwen -image) 
+
+0.045 BPP 
+
+w/ MMDiT & VAE (FLUX.1 -dev) 
+
+0.032 BPP 
+
+w/ VAE (FLUX.1 -dev) 
+
+0.032 BPP 
+
+w/ MMDiT & VAE ( Qwen -image) 
+
+0.031 BPP Figure 14. Visual ablation (2040 ×1464) of generative-prior components. Zoom in for a better view. 
+
+9References 
+
+[1] Eirikur Agustsson and Radu Timofte. Ntire 2017 challenge on single image super-resolution: Dataset and study. In IEEE Conf. Comput. Vis. Pattern Recog. Worksh. , pages 126–135, 2017. 7, 1, 3 [2] Nicola Asuni, Andrea Giachetti, et al. Testimages: A large-scale archive for testing visual devices and basic image pro-cessing algorithms. In STAG: Smart Tools and Applications in Computer Graphics , pages 63–70, 2014. 7, 1, 3 [3] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et al. Qwen3-VL technical report. arXiv preprint arXiv:2511.21631 , 2025. 10 [4] Johannes Ball´ e, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston. Variational image compression with a scale hyperprior. In Int. Conf. Learn. Represent. , 2018. 3[5] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja. CompressAI: A pytorch library and evalua-tion platform for end-to-end compression research. arXiv preprint arXiv:2011.03029 , 2020. 6 [6] Gisle Bjontegaard. Calculation of average PSNR differences between RD-curves. ITU-T SG16, Doc. VCEG-M33 , 2001. 7, 1 [7] Yochai Blau and Tomer Michaeli. The perception-distortion tradeoff. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 6228–6237, 2018. 1 [8] Yochai Blau and Tomer Michaeli. Rethinking lossy compres-sion: The rate-distortion-perception tradeoff. In Int. Conf. Mach. Learn. , pages 675–685, 2019. 1 [9] Siyu Cao, Hangting Chen, Peng Chen, Yiji Cheng, Yutao Cui, Xinchi Deng, Ying Dong, Kipper Gong, Tianpeng Gu, Xiusen Gu, et al. HunyuanImage 3.0 technical report. arXiv preprint arXiv:2509.23951 , 2025. 2, 4 [10] Marlene Careil, Matthew J Muckley, Jakob Verbeek, and St´ ephane Lathuili` ere. Towards image compression with per-fect realism at ultra-low bitrates. In Int. Conf. Learn. Repre-sent. , 2023. 2, 3 [11] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 248–255. IEEE, 2009. 6 [12] Jiankang Deng, Jia Guo, Niannan Xue, and Stefanos Zafeiriou. Arcface: Additive angular margin loss for deep face recognition. In CVPR , 2019. 1 [13] Keyan Ding, Kede Ma, Shiqi Wang, and Eero P Simoncelli. Image quality assessment: Unifying structure and texture similarity. IEEE Trans. Pattern Anal. Mach. Intell. , 44(5): 2567–2581, 2020. 2, 7 [14] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim Dockhorn, Zion English, and Robin Rombach. Scaling rec-tified flow transformers for high-resolution image synthesis. In Int. Conf. Mach. Learn. , pages 12606–12633, 2024. 4 [15] Donghui Feng, Zhengxue Cheng, Shen Wang, Ronghua Wu, Hongwei Hu, Guo Lu, and Li Song. Linear attention model-ing for learned image compression. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 7623–7632, 2025. 3 [16] Yu Gao, Lixue Gong, Qiushan Guo, Xiaoxia Hou, Zhichao Lai, Fanshi Li, Liang Li, Xiaochen Lian, Chao Liao, Liyang Liu, et al. Seedream 3.0 technical report. arXiv preprint arXiv:2504.11346 , 2025. 2, 4 [17] Ian J Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. In Adv. Neural Inform. Process. Syst. Curran Associates, Inc., 2014. 1, 2, 5 [18] Jinpei Guo, Yifei Ji, Zheng Chen, Kai Liu, Min Liu, Wang Rao, Wenbo Li, Yong Guo, and Yulun Zhang. OSCAR: One-step diffusion codec across multiple bit-rates. In Adv. Neural Inform. Process. Syst. Curran Associates, Inc., 2025. 1, 2, 3, 4, 5, 7 [19] Dailan He, Ziming Yang, Weikun Peng, Rui Ma, Hongwei Qin, and Yan Wang. ELIC: Efficient learned image compres-sion with unevenly grouped space-channel contextual adap-tive coding. In IEEE Conf. Comput. Vis. Pattern Recog. ,pages 5718–5727, 2022. 3, 6 [20] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-fusion probabilistic models. In Adv. Neural Inform. Process. Syst. , pages 6840–6851. Curran Associates, Inc., 2020. 4 [21] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. 
+
+Int. Conf. Learn. Represent. , 1(2):3, 2022. 3 [22] Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu. Generative latent coding for ultra-low bitrate image com-pression. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 26088–26098, 2024. 1, 3, 7 [23] Zhaoyang Jia, Bin Li, Jiahao Li, Wenxuan Xie, Linfeng Qi, Houqiang Li, and Yan Lu. Towards practical real-time neu-ral video compression. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 12543–12552, 2025. 1, 3, 5, 7 [24] Anle Ke, Xu Zhang, Tong Chen, Ming Lu, Chao Zhou, Ji-awen Gu, and Zhan Ma. Ultra lowrate image compression with semantic residual coding and compression-aware diffu-sion. In Int. Conf. Mach. Learn. , pages 29626–29650, 2025. 2, 3, 7, 1 [25] Junjie Ke, Qifei Wang, Yilin Wang, Peyman Milanfar, and Feng Yang. Musiq: Multi-scale image quality transformer. In ICCV , 2021. 1 [26] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. 6 [27] Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. 3 [28] Kodak lossless true color image suite. http://r0k.us/graphics/kodak/, 1993. 7, 1, 3 [29] Alina Kuznetsova, Hassan Rom, Neil Alldrin, Jasper Ui-jlings, Ivan Krasin, Jordi Pont-Tuset, Shahab Kamali, Stefan Popov, Matteo Malloci, Alexander Kolesnikov, et al. The open images dataset v4: Unified image classification, object detection, and visual relationship detection at scale. Interna-tional journal of computer vision , 128(7):1956–1981, 2020. 6
+
+10 [30] Black Forest Labs. Flux. https://github.com/black-forest-labs/flux, 2024. 2, 5, 6 [31] Black Forest Labs, Stephen Batifol, Andreas Blattmann, Frederic Boesel, Saksham Consul, Cyril Diagne, Tim Dock-horn, Jack English, Zion English, Patrick Esser, Sumith Ku-lal, Kyle Lacey, Yam Levi, Cheng Li, Dominik Lorenz, Jonas M¨ uller, Dustin Podell, Robin Rombach, Harry Saini, Axel Sauer, and Luke Smith. Flux.1 kontext: Flow matching for in-context image generation and editing in latent space, 2025. 2, 4 [32] Eric Lei, Yigit Berkay Uslu, Hamed Hassani, and Shirin Saeedi Bidokhti. Text+ sketch: Image compression at ultra low rates. In Int. Conf. Mach. Learn. Worksh. , 2023. 2, 3 [33] Anqi Li, Feng Li, Yuxi Liu, Runmin Cong, Yao Zhao, and Huihui Bai. Once-for-All: Controllable generative image compression with dynamic granularity adaptation. In Int. Conf. Learn. Represent. , 2025. 2, 3, 7, 1 [34] Jiahao Li, Bin Li, and Yan Lu. Neural video compression with diverse contexts. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 22616–22626, 2023. 5 [35] Jiahao Li, Bin Li, and Yan Lu. Neural video compression with feature modulation. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 26099–26108, 2024. 5, 6 [36] Zhiyuan Li, Yanhui Zhou, Hao Wei, Chenyang Ge, and Jing-wen Jiang. Towards extreme image compression with latent feature guidance and diffusion prior. IEEE Trans. Circuit Syst. Video Technol. , 35(1):888–899, 2025. 2, 3, 7, 1 [37] Zhiyuan Li, Yanhui Zhou, Hao Wei, Chenyang Ge, and Aj-mal Mian. RDEIC: Accelerating diffusion-based extreme image compression with relay residual diffusion. IEEE Trans. Circuit Syst. Video Technol. , 35(11):11540–11552, 2025. 2, 3, 7, 1 [38] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matthew Le. Flow matching for generative modeling. In Int. Conf. Learn. Represent. , 2022. 4 [39] Jinming Liu, Heming Sun, and Jiro Katto. Learned im-age compression with mixed transformer-cnn architectures. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 14388– 14397, 2023. 3 [40] Xingchao Liu, Chengyue Gong, et al. Flow straight and fast: Learning to generate and transfer data with rectified flow. In 
+
+Int. Conf. Learn. Represent. , 2023. 4 [41] Fabian Mentzer, George D Toderici, Michael Tschannen, and Eirikur Agustsson. High-fidelity generative image compres-sion. In Adv. Neural Inform. Process. Syst. , pages 11913– 11924. Curran Associates, Inc., 2020. 2, 3 [42] Anish Mittal, Rajiv Soundararajan, and Alan C. Bovik. Mak-ing a “completely blind” image quality analyzer. SPL , 2013. 1[43] Matthew J Muckley, Alaaeldin El-Nouby, Karen Ullrich, Herv´ e J´ egou, and Jakob Verbeek. Improving statistical fi-delity for neural image compression with implicit local like-lihood models. In Int. Conf. Mach. Learn. , pages 25426– 25443. PMLR, 2023. 2, 3, 6, 7, 1 [44] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image syn-thesis with latent diffusion models. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 10684–10695, 2022. 2, 3, 4, 9 [45] Axel Sauer, Dominik Lorenz, Andreas Blattmann, and Robin Rombach. Adversarial diffusion distillation. In Eur. Conf. Comput. Vis. , pages 87–103, 2024. 3 [46] Team Seedance, Heyi Chen, Siyan Chen, Xin Chen, Yan-fei Chen, Ying Chen, Zhuo Chen, Feng Cheng, Tianheng Cheng, Xinqi Cheng, et al. Seedance 1.5 pro: A native audio-visual joint generation foundation model. arXiv preprint arXiv:2512.13507 , 2025. 2, 4 [47] Karen Simonyan and Andrew Zisserman. Very deep convo-lutional networks for large-scale image recognition. arXiv preprint arXiv:1409.1556 , 2014. 7 [48] Anni Tang, Zhiyu Zhang, Chen Zhu, Jun Ling, Rong Xie, and Li Song. A hybrid scheme for face video compres-sion. ACM Trans. Multimedia Comput. Commun. Appl. , 22 (1), 2026. 3 [49] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, Katie Millican, et al. Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805 , 2023. 2, 4 [50] Zhang Tianyu, Luo Xin, Li Li, and Liu Dong. StableCodec: Taming one-step diffusion for extreme image compression. In Int. Conf. Comput. Vis. , 2025. 1, 2, 3, 4, 7 [51] George Toderici, Wenzhe Shi, Radu Timofte, Lucas Theis, Johannes Balle, Eirikur Agustsson, Nick Johnston, and Fabian Mentzer. Workshop and challenge on learned image compression (clic2020). In IEEE Conf. Comput. Vis. Pattern Recog. , 2020. 7, 1, 3 [52] VTM-23.10. https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware VTM/. Accessed: 2026-03-02. 3, 7, 1 [53] G.K. Wallace. The jpeg still picture compression standard. 
+
+IEEE Transactions on Consumer Electronics , 38(1), 1992. 3 [54] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, et al. Wan: Open and advanced large-scale video gen-erative models. arXiv preprint arXiv:2503.20314 , 2025. 2, 4[55] Jianyi Wang, Kelvin CK Chan, and Chen Change Loy. Ex-ploring clip for assessing the look and feel of images. In 
+
+AAAI , 2023. 1 [56] Ting-Chun Wang, Arun Mallya, and Ming-Yu Liu. One-shot free-view neural talking-head synthesis for video con-ferencing. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 10039–10049, 2021. 3 [57] Zhou Wang, Eero P Simoncelli, and Alan C Bovik. Multi-scale structural similarity for image quality assessment. In 
+
+The thirty-seventh Asilomar Conference on Signals, Systems & Computers, 2003 , pages 1398–1402. IEEE, 2003. 3 [58] Bing Wu, Chang Zou, Changlin Li, Duojun Huang, Fang Yang, Hao Tan, Jack Peng, Jianbing Wu, Jiangfeng Xiong, Jie Jiang, et al. Hunyuanvideo 1.5 technical report, 2025. 2, 4[59] Chenfei Wu, Jiahao Li, Jingren Zhou, Junyang Lin, Kaiyuan Gao, Kun Yan, Sheng-ming Yin, Shuai Bai, Xiao Xu, Yilei Chen, et al. Qwen-image technical report, 2025. 2, 4, 5, 6 
+
+11 [60] Enze Xie, Junsong Chen, Yuyang Zhao, Jincheng Yu, Ligeng Zhu, Chengyue Wu, Yujun Lin, Zhekai Zhang, Muyang Li, Junyu Chen, et al. Sana 1.5: Efficient scaling of training-time and inference-time compute in linear diffusion transformer. 
+
+arXiv:2501.18427 , 2025. 9 [61] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Yuan Zhang, and Yan Lu. One-step diffusion-based image compression with semantic distillation. In Adv. Neural Inform. Process. Syst. Curran Associates, Inc., 2025. 1, 2, 3, 4, 7 [62] Naifu Xue, Zhaoyang Jia, Jiahao Li, Bin Li, Yuan Zhang, and Yan Lu. DLF: Extreme image compression with dual-generative latent fusion. In Int. Conf. Comput. Vis. , 2025. 3, 7, 1 [63] Zeyu Yan, Fei Wen, Rendong Ying, Chao Ma, and Peilin Liu. On perceptual lossy compression: The cost of perceptual re-construction and an optimal training framework. In Int. Conf. Mach. Learn. , pages 11682–11692, 2021. 2, 3 [64] Ruihan Yang and Stephan Mandt. Lossy image compression with conditional diffusion models. In Adv. Neural Inform. Process. Syst. , pages 64971–64995. Curran Associates, Inc., 2023. 2, 3 [65] Fanhu Zeng, Hao Tang, Yihua Shao, Siyu Chen, Ling Shao, and Yan Wang. Mambaic: State space models for high-performance learned image compression. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 18041–18050, 2025. 3 [66] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In IEEE Conf. Comput. Vis. Pattern Recog. , pages 586–595, 2018. 1, 2, 5, 7 [67] Jialong Zuo, Haoyou Deng, Hanyu Zhou, Jiaxin Zhu, Yicheng Zhang, Yiwei Zhang, Yongxin Yan, Kaixing Huang, Weisen Chen, Yongtai Deng, et al. Is nano banana pro a low-level vision all-rounder? a comprehensive evaluation on 14 tasks and 40 datasets. arXiv preprint arXiv:2512.15110 ,2025. 2 
+
+12
