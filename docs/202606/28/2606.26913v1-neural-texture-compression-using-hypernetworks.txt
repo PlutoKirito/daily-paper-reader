@@ -1,0 +1,406 @@
+Title: Neural Texture Compression using Hypernetworks
+
+URL Source: https://arxiv.org/pdf/2606.26913v1
+
+Published Time: Fri, 26 Jun 2026 01:06:05 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+Eurographics Symposium on Rendering (2026) I. Gkioulekas and A. Jarabo (Editors) 
+
+# Neural Texture Compression using Hypernetworks 
+
+L. Belcour 
+
+Intel Corporation 
+
+> input texture set
+
+Hypernetwork 
+
+BCF1 
+
+> Reference
+> Reference
+> Ours
+> Ours
+
+Figure 1: We train a single hypernetwork to learn to compress any texture set into a neural compressed representation (BCF1 [BB25]) and still preserve high-frequency details such as scratches or wood grain once decoded (see insets). 
+
+Abstract 
+
+Recent work on neural texture compression has demonstrated that it is possible to learn small, per-material texture representa-tions (composed of latent textures and a small Multi-Layer Perceptron decoder) that can be decoded in real-time during shading to reproduce the input to a physically based shading model. However, existing methods require performing gradient-descent optimization per material for a given MLP and latent configuration. In this work, we train a single hypernetwork that outputs both the latent features and the MLP’s weights and biases. Though the solution space is high-dimensional, this approach pro-duces results comparable in quality to the current reference neural texture compressors. We further extend this approach to infer multiple decoders at once or even produce decoders that learn super-resolution. 
+
+1. Introduction 
+
+Physically based rendering (PBR) has become the standard for gen-erating photorealistic images in computer graphics [PJH23]. A key component of PBR is the use of material models that describe how light interacts with surfaces. These material models often require multiple texture maps (e.g., diffuse, normal, roughness, metallic) to capture the complex appearance of real-world materials (see OpenPBR specification [AEG ∗24] as an example). However, these texture maps can be large and require significant storage and band-width, especially when used in real-time applications such as video games. As an example, developers of Call of Duty could not even store the whole texture atlas on console storage [Fow23]. To mitigate this issue, texture compression algorithms have been developed to reduce the storage and bandwidth requirements of tex-ture maps [Khr25]. Recently, neural material compression meth-ods [VSW ∗23, WdOHN24, FHL ∗24, BB25] have shown promising results by leveraging the correlation between different texture maps of the same material. These methods use a small neural network (e.g., a Multi-Layer Perceptron or MLP) to decode a compressed representation, achieving higher compression ratios than hardware compression methods. However, existing neural material compression methods require a separate optimization process for each material, which can be time-consuming and computationally expensive. In this work, we propose a novel approach that trains a single hypernetwork to out-put both the compressed representation and the decoder’s weights and biases for any given material. This allows us to achieve good compression ratios while significantly reducing the time required for optimization. Furthermore, we show that our hypernetwork can be repurposed for other tasks such as super-resolution, demonstrat-ing the versatility of our approach.  
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics. This is an open access article under the terms of the Creative Commons Attribution License, which permits use, distribution and reproduction in any medium, provided the original work is properly cited.
+> arXiv:2606.26913v1 [cs.GR] 25 Jun 2026 2 of 8 L. Belcour / Hypernetworks for NTC
+> input textures
+> Hypernetwork
+> tokenization
+> N× DiT
+> 4×BC1  
+> lll0
+> lll1
+> lll2
+> lll3
+> 
+> wb
+> MLP
+> output textures
+
+Figure 2: Hypernetwork for neural texture compression. We train a neural network (denoted Hypernetwork) to output the latents, l ll0, .., lll3
+
+and the weights and biases, wb of a neural model that decompresses to the target texture. Contrary to previous work that optimized l ll0, .., lll3, wb 
+
+with gradient descent, we only regress the Hypernetwork’s weights. 
+
+2. Previous Work 2.1. Neural texture and material compression 
+
+Modern real-time renderers rely on hardware block-compressed textures to reduce bandwidth and storage while preserving random access and mipmapping [DM79, FNK94, NLP ∗12]. Using small neural networks, it is possible to further compress these textures while maintaining hardware block-compressed evaluation [FH24]. Neural texture compression extends this idea by learning compact, per-material representations together with lightweight decoders that can be evaluated on demand. Vaidyanathan et al. [VSW ∗23] introduced a random-access neural representation that jointly com-presses multiple material texture maps, while supporting on-demand decoding similar to block texture formats. In parallel, Weinreich et al. [WdOHN24] demonstrated that learned neural materials can be integrated into production pipelines by storing the latent features directly as block-compressed texture mip hierarchies and executing a small decoder MLP in a shader, preserving filtering behavior. Belcour and Benyoub [BB25] ex-tended this idea by leveraging hardware matrix-multiplication sup-port to accelerate the MLP evaluation, enabling fast rendering of compressed texture sets. However, this method introduces an addi-tional pixel classification step to prevent having multiple MLPs in the same workgroup, which can impede performance. Other meth-ods, such as using 2D Gaussian splats [ZLK ∗25], have been pro-posed, but they do not match the adaptation to graphics hardware and locality of evaluation that both NTC and NBC provide. 
+
+2.2. Hypernetworks 
+
+Our work is related to the field of hypernetworks, where a model is trained to produce the weights of another network [HDL16]. Con-volutional hypernetworks have been used to learn the parameters of small MLP decoders to implicitly reproduce textures [KMW ∗19]. In computer graphics, hypernetworks have been used to perform style transfer [CTT ∗22, RGM ∗22], to produce Neural Radiance Fields [SSA ∗23], and even to fit neural BRDF models [GSZ ∗24]. 
+
+2.3. Neural Enhancement of PBR Materials Super-Resolution We show how to retarget our work to increase the resolution of SVBRDFs while maintaining their appearance un-der relighting. MatUp repurposes pretrained RGB upsamplers to guide material upsampling in the radiance domain, optimizing a compact per-material MLP filter that enhances fine detail without requiring paired low/high-resolution SVBRDF datasets [GKL ∗24]. 
+
+3. A Hypernetwork for Material Compression 3.1. Problem Statement Texture Sets A texture set is defined as a collection of m correlated textures (e.g., diffuse, normal, roughness, metallic): 
+
+Ti, j = {T 0 
+
+> i,j
+
+, T 1 
+
+> i,j
+
+, . . . , T mi, j} (1) where i, j ≥ 0 are the pixel coordinates. In the following, we will assume normalized texture values T 0  
+
+> i,j
+
+∈ [0, 1].
+
+Neural Compression The goal of our method is to produce a small neural network mlp (x; wb ) and a set of latent textures llli, i ∈
+
+[0, ..., N] such that: mlp (
+
+h
+
+lll(i, j) 
+
+> 0
+
+, . . . , lll(i, j)
+
+> N
+
+i
+
+; wb ) ≃ T i, j (2) where wb are the weights and biases of mlp. The goal is that the cumulative size of mlp and llli, i ∈ [0, ..., N] is much smaller than the original texture set T .For that, we train a hypernetwork net that takes as input a texture set T and outputs both the latent features llli and the weights and biases wb of the MLP: 
+
+([ lll0, ... lllN ] , wb ) = net (T ) (3) 
+
+3.2. Neural Block Compression 
+
+In this work, we use the neural block compression (NBC) of Wein-reich et al. [WdOHN24] as our neural compression method. Specif-ically, we use the BCF1 variant of Belcour and Benyoub [BB25]. This defines the latent features llli as a set of block-compressed tex-tures (using BC1) and the decoder is a Multi-Layer Perceptron (MLP) with 1 hidden layer of N neurons (typically 16, 32, or 64). Instead of relying on gradient descent to optimize the latent fea-tures and the MLP weights for each texture set, we train a mono-lithic hypernetwork net that takes as input a texture set T and out-puts both the latent features llli and the weights wb of the MLP (see Fig. 2 for an illustration of this pipeline). In the following, we assume that the input texture set is normal-ized: E [T k] = 0 and Var [T k] = 1. Prior to forwarding T to the Hy-pernetwork, we normalize it and later scale and shift the last layer of the generated MLP to include this bias and scale. 
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics.
+
+L. Belcour / Hypernetworks for NTC 3 of 8 
+
+Hypernetwork       
+
+> T
+> t-Encoder
+> tTokenizer
+> 4×4 patches
+> xxx
+> DiT Block
+> DiT Block
+> ×NB
+> Linear
+> wb
+> BC1 Conv.
+> lll0lll1lll2lll3
+
+t-Encoder       
+
+> T
+> ttt0
+> Conv2D
+> Cross Attention QKV
+> Conv2D
+> Cross Attention QKV
+> Conv2D
+> Cross Attention QKV
+> ttt
+
+DiT Block ttt   
+
+> ttt
+> xxx
+> Layer Norm Cross Attention QKVLayer Norm
+> +
+> Layer Norm Feed Forward Layer Norm
+> +
+> xxxttt
+
+BC1 Conversion        
+
+> xxx
+> (B,N,C) →(B,C,H/4,W/4)
+> Conv2D
+> d=22
+> sigmoid offsets quantization
+> lll0
+> Conv2D
+> d=22
+> offsets sigmoid quantization
+> lll1
+> ×2
+> lll2lll3
+
+Figure 3: The Hypernetwork architecture. A DiT-style [DBK ∗21, PX22] architecture processes a normalized input tensor T of shape 
+
+(B, 9, H,W ) to produce 4 latent textures and the weights and biases of an MLP. We decompose it into 3 main blocks: first the input image is fed to the t-Encoder to extract a small set of global tokens t tt; second the DiT Block processes the tokenized input x xx using many cross-attention blocks; last, we project the output of the DiT block into (i) BC1 latents {lllℓ}3 
+
+> ℓ=0
+
+and (ii) the weights wb of the per-material MLP decoder. During that phase, we replicate the differentiable BC1 [BB25] by extracting tensors with 22 dimensions from x, applying to them a sigmoid function along with an offset, and quantizing the result. 
+
+3.3. The Hypernetwork Architecture 
+
+We tested several architectures for the hypernetwork net (U-Net, ConvNext, ...). The architecture working best in this case is a Dif-fusion Transformer architecture [PX22] with cross-attention (see Figure 3-left). In the following, D ∈ N is the network’s inner depth. The overall architecture decomposes into three major sections: 
+
+• First, the input texture set is encoded to a set of tokens ttt ∈ RN×D
+
+using the t-Encoder . We use a number of tokens large enough to represent the MLP (i.e. |ttt| ≥ | wb |). 
+
+• Then, we convert the input texture set into a set of tokens xxx ∈
+
+RM×D by grouping together blocks of 4 × 4 texels and apply-ing several transformer blocks ( DiT blocks ) with cross-attention between the image tokens xxx and the latent tokens ttt. As such, 
+
+M = W ×H 
+
+> 4×4
+
+is fixed. 
+
+• Finally, we decode ttt into wb and lll into llli using a BC1 conver-sion module. 
+
+t-Encoder. We convert the texture set T to a latent representation 
+
+ttt using a mixed convolutional and attention architecture (Figure 3-orange). We downscale the input texture set using several convolu-tional layers and apply a cross-attention block with a learned de-fault token ttt0 as the queries (and outputs) after each convolution. The activations from the texture set are used for the keys and values. At the end of the t-Encoder, we have a set of tokens ttt that contains global information about the input texture set. 
+
+DiT Blocks. The main part of the Hypernetwork (Figure 3-blue and green) follows a standard cross-attention architecture. We ap-ply NB blocks of cross-attention between the image tokens xxx and the latent tokens ttt. We use a sandwiched normalization [KLP ∗25] for both the attention and the feed-forward parts to avoid dead signals. 
+
+BC1 Conversion The last step of the Hypernetwork is to convert the latent tokens ttt into the weights and biases wb of the MLP and the image tokens xxx into the latent textures llli. We use a simple linear layer to convert ttt into wb . For the latent textures, we use the BC1 conversion module (Figure 3-pink). This module reshapes xxx from a set of tokens (N,C) to a 3D tensor (W /4, H/4,C). For each latent texture, a convolution layer changes the C channels into 22 chan-nels that produce a BC1 block: 2 RGB endpoints e0, e1 and a grid of 4 × 4 blending parameters αu,v.Depending on the BCF1 variant used (the VAR A or VAR Bdefined by the BCF1 method [BB25]), the convolutions can have different stride and kernel size. For example, VAR A out-puts latents of [( W, H), (W, H), (W /2, H/2), (W /2, H/2)] resolu-tion resulting in strides of [1, 1, 2, 1]. VAR B outputs latents of 
+
+[( W, H), (W /2, H/2), (W /4, H/4), (W /8, H/8)] resolution result-ing in strides of [1, 2, 2, 2].To avoid collapse of the endpoints of BC blocks, we offset e0 and 
+
+e1 by −3 and 3 respectively before passing them through a sigmoid function and quantization (last block in Fig. 3-pink). Each αu,v is also passed through a sigmoid function and quantized to 2 bits.  
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics. 4 of 8 L. Belcour / Hypernetworks for NTC
+> input textures
+> downscale
+> mip 1
+> Hypernetwork
+> lll0
+> lll1
+> lll2
+> lll3
+> wb
+> output textures
+> ×2 resolution
+> loss
+
+Figure 4: Hypernetwork for super-resolution. We learn to encode neural texture sets with super-resolution capabilities by repurposing the hypernetwork. In practice, it suffices to input a downscaled texture and apply the loss on the full-resolution one. 
+
+3.4. Training The Hypernetwork 
+
+We train the hypernetwork using a dataset of texture sets. For each texture set T , we first evaluate the net 
+
+(lll0,lll1,lll2,lll3, wb ) = net (T ; φ). (4) Using the weights and latents, we can compute the decompressed texture set ˜ T :˜T = mlp ([ lll0, ..., lll3] ; wb ). (5) We can backpropagate the error between ˜ T and T to optimize the parameters φ of the hypernetwork: argmin 
+
+> φ
+
+loss  ˜T , T  (6) We use a blend of the l1 norm and DISTS [DMWS20] using ran-dom permutation of channels [CHB21]: loss  ˜T , T  = ∑ 
+
+> i,j
+
+∥ ˜Ti, j − T i, j∥1 + dists ( ˜T a,b,c, T a,b,c), (7) where a, b, c are random numbers in [0, . . . , 9]. We also apply some random jitter to evaluate the decompressed image ˜ T and use bilin-ear interpolation with the same jitter on the target T .We optimize the Hypernetwork parameters φ using stochastic gradient descent and the A DAM [KB14] optimizer with weight de-cay [LH17]. We set the learning rate to lr = 5 × 10 −5 and kept the other parameters unchanged. We train our network on a dataset composed of crops from tex-tures from diverse sources. We used the Polyhaven Textures (814 unique texture sets), Polyhaven Assets (431 unique texture sets) and random PBR assets from Sketchfab (902 unique texture sets). Most textures in our dataset are 4096 × 4096. During training we randomly crop a batch of texture sets at a random resolution rang-ing from 32 × 32 to 512 × 512. We also apply random color trans-formations to the diffuse texture. We trained our model on a single Nvidia RTX A6000 Ada GPU for 100K iterations with a batch size of 16, taking approximately 10 hours to complete. 
+
+4. Repurposing the Hypernetwork 
+
+In the following, we show how the hypernetwork can be repurposed to accomplish more tasks. For example, we can leverage it to en-code a single MLP for all the compressed texture sets, or output multiple MLPs for a single texture set. We can even extend it for tasks other than compression, such as super-resolution. 
+
+4.1. From Tokens to MLPs 
+
+In BCF1 [BB25], each texture set is compressed along its own MLP. This means that the runtime decompression must account for divergent MLPs in the same workgroup. Also, during opti-mization, the MLP’s hidden depth is fixed. To produce different quality/performance tradeoffs, it is necessary to optimize multi-ple MLPs, which either requires running the optimization multiple times or complicating the optimization routine, negatively impact-ing training time. Using our hypernetwork, it is possible to train it to output a sin-gle MLP for all texture sets. This means that the weights and biases of the MLP are shared across all texture sets, and only the latent textures llli are different. To demonstrate this, we took our hyper-network and fine-tuned it to bypass the t-Encoder step and output jointly t0 in place of t (see Fig. 3). We found that it is better for this unique MLP to work on the normalized values of the texture set and to correct the mean and variance at runtime after decompres-sion. Sharing the MLP weights and biases avoids the necessity of performing tile-based classification at runtime in order to homoge-nize the MLPs per workgroup [BB25]. Similarly, we can also fine-tune multiple heads that convert token 
+
+t to different MLP configurations. For example, we can have a sin-gle network that outputs both 16, 32 and 64 hidden-depth MLPs for the same latent. While it is possible to repurpose BCF1’s gradient descent optimizer, it would have a negative impact on optimization performance. Thanks to the monolithic structure of the hypernet-work, multiple outputs marginally impact its performance. 
+
+4.2. Material Super-Resolution 
+
+To obtain a neural texture set that can evaluate at higher resolution, we train the hypernetwork using a downscaled version of L as input to net (˙) but keep the original texture set to compute the loss (see Figure 4). The optimization of Equation 6 can be written as: argmin 
+
+> φ
+
+loss 
+
+h
+
+mlp 
+
+
+
+net (T h; φ)
+
+
+
+, T l i
+
+(8) where T l is the downscaled version of T h. In our tests, we use mip 1 of the input texture set for T l and mip 0 for T h.As a result, the hypernetwork learns to produce super-resolution texture sets even for texture sets where no higher resolution is known.        
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics. L. Belcour / Hypernetworks for NTC 5 of 8
+> Reference Outputs
+> Albedo ARM Normal
+> Texture set in dataset
+> Albedo ARM Normal
+> Texture set outside of training set
+> Albedo ARM Normal
+> Texture set outside of dataset and training set
+
+Figure 5: Outputs of Hypernetwork after decompression. We show outputs of our Hypernetwork (bottom row), compared to its input (top row). We show that we obtain visually close images whether the input is in the training set, in the test set or outside of the dataset. This demonstrates that our model generalizes to other data than what it has been trained with. 
+
+5. Results 
+
+In this section, we present both qualitative and quantitative re-sults. Unless mentioned, we produced our results on texture sets of 4096 × 4096 resolution. For our results, we set up the Hypernet-work as follows: we use a dimension of 512 for the tokens; the t-Encoder produces 16 tokens for t; x passes through 12 DiT Blocks 
+
+with 32 heads to compute the attention. Unless noted, we trained the Hypernetwork to output an MLP with 32 hidden channels and SILU activation functions [HG16]. This corresponds to the V AR Avariant of Belcour and Benyoub [BB25]. Using those settings, our model’s unquantized weights were 294MB on disk. 
+
+Output of the Hypernetwork. First, we provide qualitative re-sults by showing the decompressed output of our network. With Figures 5 we provide visual examples of outputs (bottom row) of our Hypernetwork after decompression for 512 × 512 texture sets compared to the input of the network (top row). To validate that our model does not overfit the training set, we display texture sets from the dataset, the test set, and a texture set that is neither in the dataset nor the training set. We can see in the images that our model generalizes correctly. We provide more visual results in the supplementary material. With Figure 1 and 8, we show the decompressed texture set after rendering. For that, we rendered assets found in Sketchfab using Mitsuba [JSR ∗22]. We can see with the insets that our compressor preserves the high-frequency visual elements of the original tex-tures such as grain and scratches. 
+
+Ablation Study. We validated that our transformer-based hyper-network performs better than a ConvNext-based or a U-Net-based hypernetwork. We report the PSNR and SSIM metrics for the dif-ferent architectures in Figure 6. We matched all architectures to have an equal number of parameters and trained them on the same dataset with the same hyperparameters. We also tested different configurations for our architecture. We benchmarked the use of different numbers of tokens ttt. We trained multiple Hypernetworks with N ranging from 4 to 64 and found that increasing the number of tokens ttt did not improve quality. We report those statistics in Figure 7. For this test, we use the same training parameters and kept the other hyperparameters constant.   
+
+> Transformer U-Net ConvNext
+> 24
+> 28
+> 32
+> 36
+> 40
+> 44
+> PSNR  (in dB)
+
+Figure 6: Different Architectures. We compared three architec-tures: a Transformer (left), a U-Net (middle), and a ConvNext (right). Using the same training hyper-parameters, we experienced that for roughly the same number of parameters the Transformer architecture provides the best quality.            
+
+> N=4N=16 N=32 N=64
+> 28
+> 30
+> 32
+> 34
+> 36
+> 38
+> 40
+> 42
+> 44
+> PSNR  (in dB)
+
+Figure 7: Number of tokens. Our method does not seem to be highly sensitive to the number of tokens t tt. Between tokens ranging from N = 4 to N = 64 , we see little change in PSNR quantiles. 
+
+> Reference
+> Ours F LIP
+
+Figure 8: Neural texture compression on assets . We show that once applied to assets, BCF1 generated by our method is visually close to the reference. For example, on this violin asset the grain of the wood is still visible in our method. As shown by the F LIP difference image, the difference between renderings is small.  
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics. 6 of 8 L. Belcour / Hypernetworks for NTC
+> Reference Ours
+
+Figure 9: Batching of Neural Compression. We use the Hypernetwork to quickly convert a scene composed of 100 different PBR materials. Including time to load and write files, it took us 8min 32 sec to completely convert this asset to neural texture sets. 
+
+Comparison with BCF1. We compared our Hypernetwork ap-proach with a gradient descent optimizer for BCF1 [BB25]. We applied both methods to a random subset of texture sets from the Polyhaven dataset (including textures and models) and we selected VARIANT A with an MLP of 32 hidden dimensions. We ran the BCF1 method for 40K iterations, which already takes 14 minutes to run per texture set. In comparison, our hypernetwork takes 2 .4s per texture set on the same hardware (Nvidia A6000 Ada). We no-tice that we report an average PSNR for the BCF1 method that is lower than the one reported in the original paper. This is because we use a different dataset. Indeed, we experienced that texture sets from Models (and not stochastic or repetitive textures) are harder to compress. A benefit of using the hypernetwork, is that we can efficiently many compress texture sets. In Figure 9, we show the rendering of a scene composed of hundreds of individual texture sets of 1024 ×
+
+1024 pixels. Our hypernetwork converted this scene in less than 10 minutes. It would take more than half a day to convert the same scene using the original BCF1 optimizer. Our approach permits to avoid long baking times.   
+
+> Albedo ARM Normal
+> Reference Super Resolution
+
+Figure 10: Material Super-Resolution. When the Hypernetwork is targeted for super-resolution, the decoder enhances texture details while preserving the material’s overall appearance. 
+
+In Figure 12, we compare the quality statistics (for both the PSNR and the MS-SSIM metrics) of our method compared to the original BCF1 optimizer [BB25]. Our method produces a lower average PSNR over all texture sets, but has a higher average MS-SSIM. This is expected since the BCF1 optimizer uses an l2 loss but we incorporate a perceptual loss in our training. In the same figure, we also report the statistics of using a single global token for all texture sets (see Sec. 4.1). As expected, we see a degradation in PSNR compared to using one token per texture set. However, this drop in quality is smaller than 1dB in PSNR and 0 .02 in MS-SSIM. 
+
+Material Super-Resolution In Figure 10 we show the results of using our hypernetwork for material super-resolution. For that ex-ample, we trained our model targeting a MLP with an inner dimen-sion of 64. We can see that our method is able to enhance the details of the textures while preserving the overall appearance of the mate-rial. In particular, we can see that our method is able to enhance the grain and scratches of the original textures, which are important for the visual quality of the material.          
+
+> Albedo
+> Dh=16 Dh=32 Dh=64 Reference
+> ARM Normal
+
+Figure 11: Multiple Heads. We use the same inference of our Hy-pernetwork to produce multiple MLP weights and biases for the same latents. For this texture set, we generate D h = 16 , 32 and 64 .
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics.
+
+L. Belcour / Hypernetworks for NTC 7 of 8 
+
+Hypernetwork Ours t 0 (Sec. 4.1) BCF1 [BB25] 28 30 32 34 36 38 40 42 44 46 
+
+> PSNR  (in dB)
+
+Hypernetwork Ours t 0 (Sec. 4.1) BCF1 [BB25] 0.97 0.98 0.99 1
+
+> MS-SSIM
+
+Figure 12: Measured statistics. We report the mean PSNR (left plot) and MS-SSIM for random texture sets from Polyhaven (both Texture and Assets). Each dot corresponds to a single texture set and the bar plots display the statistics. For the PSNR, our method (in purple) matches the overall statistics of the BCF1 optimizer of Belcour and Benyoub [BB25] (in orange) but has a worse average PSNR (over all texture sets). However, our method performs better when looking at the MS-SSIM. It is not surprising, as we include a perceptual loss (DISTS) to train our Hypernetwork. We also report the statistics of using the same token t tt0 for every texture set in blue. As expected, this method has lower quality, but still provides good results. 
+
+Multiple heads. In Figure 11, we show that the Hypernetwork is capable of outputting MLPs of different hidden dimensions (here 
+
+Dh = 16 , 32 and 64) but for the same latent textures. This is inter-esting to provide different quality/performance tradeoffs without increasing the storage space. 
+
+6. Limitations & Conclusion Color consistency. We observed that neural texture compression favors frequency consistency over color consistency. This can lead to global color shift compared to the reference. This is likely due to the hidden dimension of the MLP being too small to encode the full color space of a texture set. Both our Hypernetwork and the BCF1 method of Belcour and Benyoub [BB25] are affected by this issue. We have shown that using a Hypernetwork to compress texture sets is a viable solution. Furthermore, this opens new possibilities for the use of small neural networks for jointly solving different problems (such as texture compression and upscaling). While we use BCF1, it could be retargeted for a different neural texture com-pression format (such as NTC [VSW ∗23]). A future research direc-tion could even be to provide a generic compressor that can target different compression formats from the same internal latent, draw-ing inspiration from meta-learning [FAL17]. 
+
+Acknowledgement 
+
+The author thanks Alban Fichet for technical support and proof-reading, Jonathan Dupuy for his firefighter help, and Marissa Dubois for discussion and proof-reading. The author acknowlege using Creative Common assets from Loïc Norgeot (fruits scene), Robert Lindner (Kabuto scene), and @DailyArt (violin scene) in this paper. 
+
+References 
+
+[AEG ∗24] ANDERSSON Z., EDMONDSON P., GUERTAULT J., HERUBEL A., K ING A., K UTZ P., M ACHIZAUD A., P ORTSMOUTH J., SERVANT F., S TONE J.: OpenPBR Surface Specification . Tech. rep., Academy Software Foundation (ASWF), 2024. 1 [BB25] BELCOUR L., B ENYOUB A.: Hardware accelerated neural block texture compression with cooperative vectors. Computer Graphics Fo-rum 44 , 8 (2025). arXiv:2506.06040 . 1, 2, 3, 4, 5, 6, 7 [CHB21] CHAMBON T., H EITZ E., B ELCOUR L.: Passing multi-channel material textures to a 3-channel loss. In ACM SIGGRAPH 2021 Talks .2021, pp. 1–2. 4 [CTT ∗22] CHIANG P.-Z., T SAI M.-S., T SENG H.-Y., L AI W.-S., C HIU 
+
+W.-C.: Stylizing 3d scene via implicit representation and hypernetwork. In Proceedings of the IEEE/CVF winter conference on applications of computer vision (2022), pp. 1475–1484. 2 [DBK ∗21] DOSOVITSKIY A., B EYER L., K OLESNIKOV A., W EIS - 
+
+> SENBORN
+
+D., Z HAI X., U NTERTHINER T., D EHGHANI M., M IN - 
+
+> DERER
+
+M., H EIGOLD G., G ELLY S., U SZKOREIT J., H OULSBY N.: An image is worth 16x16 words: Transformers for image recognition at scale. ICLR (2021). 3 [DM79] DELP E., M ITCHELL O.: Image compression using block trun-cation coding. IEEE transactions on Communications 27 , 9 (1979), 1335–1342. 2 [DMWS20] DING K., M A K., W ANG S., S IMONCELLI E. P.: Image quality assessment: Unifying structure and texture similarity. CoRR abs/2004.07728 (2020). 4 [FAL17] FINN C., A BBEEL P., L EVINE S.: Model-agnostic meta-learning for fast adaptation of deep networks. In Proceedings of the 34th International Conference on Machine Learning (ICML) (2017). 
+
+arXiv:1703.03400 . 7 [FH24] FUJIEDA S., H ARADA T.: Neural texture block compression, 2024. arXiv:2407.09543 . 2 [FHL ∗24] FARHADZADEH F., H OU Q., L E H., S AID A., R AUWEN - 
+
+> DAAL
+
+R., B OURD A., P ORIKLI F.: Neural graphics texture compression supporting random access. In European Conference on Computer Vision 
+
+(2024), Springer, pp. 412–429. 1 
+
+> © 2026 The Author(s). Proceedings published by Eurographics - The European Association for Computer Graphics.
+
+8 of 8 L. Belcour / Hypernetworks for NTC 
+
+[FNK94] FRÄNTI P., N EVALAINEN O., K AUKORANTA T.: Compression of digital images by block truncation coding: a survey. The Computer Journal 37 , 4 (1994), 308–332. 2 [Fow23] FOWLER C.: Extending in-game textures using cdns for ’call of duty: Modern warfare 2’. GDC’23, 2023. 1 [GKL ∗24] GAUTHIER A., KERBL B., LEVALLOIS J., FAURY R., THIERY J.-M., B OUBEKEUR T.: Matup: Repurposing image upsam-plers for svbrdfs. Computer Graphics Forum 43 , 4 (2024). Proceedings of EGSR 2024. doi:10.1111/cgf.15151 . 2 [GSZ ∗24] GOKBUDAK F., SZTRAJMAN A., ZHOU C., ZHONG F., MANTIUK R., O ZTIRELI C.: Hypernetworks for generalizable brdf representation. In European Conference on Computer Vision (2024), Springer, pp. 73–89. 2 [HDL16] HA D., D AI A., L E Q. V.: Hypernetworks, 2016. arXiv: 1609.09106 . 2 [HG16] HENDRYCKS D., G IMPEL K.: Gaussian error linear units (gelus). arXiv preprint arXiv:1606.08415 (2016). 5 [JSR ∗22] JAKOB W., S PEIERER S., R OUSSEL N., N IMIER -D AVID M., VICINI D., ZELTNER T., NICOLET B., CRESPO M., LEROY V., ZHANG Z.: Mitsuba 3 renderer, 2022. https://mitsuba-renderer.org. 5 [KB14] KINGMA D. P., B A J.: Adam: A method for stochastic optimiza-tion. arXiv preprint arXiv:1412.6980 (2014). 4 [Khr25] KHRONOS : Vulkan documentation: Compressed image formats, 2025. 1 [KLP ∗25] KIM J., L EE B., P ARK C., O H Y., K IM B., Y OO T., S HIN S., HAN D., S HIN J., Y OO K. M.: Peri-ln: Revisiting normalization layer in the transformer architecture. In Proceedings of the 42nd International Conference on Machine Learning, PMLR (2025). 3 [KMW ∗19] KLOCEK S., M AZIARKA Ł., W OŁCZYK M., T ABOR J., NOWAK J., ´ SMIEJA M.: Hypernetwork functional image representa-tion. In International Conference on Artificial Neural Networks (2019), Springer, pp. 496–510. 2 [LH17] LOSHCHILOV I., H UTTER F.: Decoupled weight decay regular-ization. arXiv preprint arXiv:1711.05101 (2017). 4 [NLP ∗12] NYSTAD J., L ASSEN A., P OMIANOWSKI A., E LLIS S., O L- 
+
+> SON
+
+T.: Adaptive scalable texture compression. In Proceedings of the Fourth ACM SIGGRAPH/Eurographics Conference on High-Performance Graphics (2012), pp. 105–114. 2 [PJH23] PHARR M., J AKOB W., H UMPHREYS G.: Physically based ren-dering: From theory to implementation . MIT Press, 2023. 1 [PX22] PEEBLES W., X IE S.: Scalable diffusion models with transform-ers. arXiv preprint arXiv:2212.09748 (2022). 3 [RGM ∗22] RUTA D., G ILBERT A., M OTIIAN S., F AIETA B., L IN Z., COLLOMOSSE J.: Hypernst: Hyper-networks for neural style transfer. In European Conference on Computer Vision (2022), Springer, pp. 201– 217. 2 [SSA ∗23] SEN B., S INGH G., A GARWAL A., A GARAM R., K RISHNA 
+
+M., S RIDHAR S.: Hyp-nerf: Learning improved nerf priors using a hy-pernetwork. Advances in Neural Information Processing Systems 36 
+
+(2023), 51050–51064. 2 [VSW ∗23] VAIDYANATHAN K., S ALVI M., W RONSKI B., A KENINE -MÖLLER T., E BELIN P., L EFOHN A.: Random-access neural compres-sion of material textures. ACM TOG 42 , 4 (2023), 1–25. SIGGRAPH 2023. doi:10.1145/3592407 . 1, 2, 7 [WdOHN24] WEINREICH C., DE OLIVEIRA L., H OUDARD A., N ADER 
+
+G.: Real-time neural materials using block-compressed features. Com-puter Graphics Forum 43 , 2 (2024). Eurographics 2024. 1, 2 [ZLK ∗25] ZHANG Y., L I B., K UZNETSOV A., J INDAL A., D IOLATZIS 
+
+S., C HEN K., S OCHENOV A., K APLANYAN A., S UN Q.: Image-gs: Content-adaptive image representation via 2d gaussians. In Proceed-ings of the Special Interest Group on Computer Graphics and Interactive Techniques Conference Conference Papers (2025), pp. 1–11. 2

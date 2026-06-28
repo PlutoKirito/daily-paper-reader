@@ -1,0 +1,1178 @@
+Title: Neural Network Quantization by Learning Low-Loss Subspaces
+
+URL Source: https://arxiv.org/pdf/2606.25087v1
+
+Published Time: Thu, 25 Jun 2026 00:12:47 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Neural Network Quantization by Learning Low-Loss Subspaces 
+
+Vladimir Protsenko , Mikhalina Kharkevich , Alexander Vashchilko , and Vladimir Kryzhanovskiy 
+
+Huawei, Montreal, Canada 
+
+{protsenko.vladimir1, kryzhanovskiy.vladimir}@huawei.com 
+
+Abstract. Neural network quantization aims to find a discrete repre-sentation of parameters that preserves the performance of a full-precision (FP) model as faithfully as possible. Enforcing discrete constraints per-turbs parameters away from a well-optimized minimum, generally result-ing in performance degradation. Recent studies indicate that low-loss FP solutions are not isolated, but instead belong to connected low-loss sub-spaces of the loss landscape, where the loss maintains nearly the same minimum value. Models sampled from these subspaces are diverse and retain high accuracy. This raises the question: can a quantized model be constructed to lie within a low-loss subspace of the FP model, thereby au-tomatically preserving performance? We address this question by learn-ing quantization-aware linear paths in weight space optimized to mini-mize loss. We demonstrate that the midpoint of the resulting subspace is, by design, quantization-friendly and that its direct quantization yields performance comparable to that of quantization-aware training. The pro-posed procedure offers a novel perspective on weight quantization and, in contrast to conventional methods, neither relies on the straight-through estimator nor involves explicit discretization during training. 
+
+Keywords: Quantization · Efficient inference · Networks acceleration 
+
+## 1 Introduction 
+
+Neural network quantization [17, 26, 39] has become one of the key methods for reducing computational cost and memory footprint of modern deep learn-ing models. It aims to transform full-precision (FP) model parameters and in-ference operations into discrete representations, enabling efficient deployment on resource-constrained hardware platforms. Despite its practical advantages, quantization, particularly in the low-bit regime, remains challenging, since di-rect mapping of continuous FP parameters to a limited set of discrete values perturbs the optimized FP solution. These perturbations shift the model pa-rameters away from well-optimized minima of the loss landscape [7, 34], often resulting in noticeable accuracy degradation. Traditional quantization-aware training (QAT) [8, 22, 26, 39, 55] and post-training quantization (PTQ) [14, 21, 38, 52] methods seek to minimize the per- 
+
+> arXiv:2606.25087v1 [cs.CV] 23 Jun 2026 2V. Protsenko et al.
+
+formance gap between FP and low-precision models by explicitly modeling dis-cretization effects during optimization. In QAT pipelines, quantizers with non-differentiable rounding operations are embedded directly into the training graph to simulate low-precision behavior, while optimization relies on straight-through estimator (STE)–based [4, 54] surrogate gradients to enable backpropagation through discrete operators. Although STE-based training achieves strong empir-ical performance, its approximate gradients can introduce biased updates and unstable convergence [19, 27, 35, 40, 43, 45, 54], especially in low-bit regimes. Consequently, QAT methods are often highly sensitive to initialization [56] and typically require starting from a well-trained FP model, making training quan-tized networks from scratch challenging. Moreover, the resulting models are usually optimized for a specific bit-width configuration, and changes in pre-cision levels or quantization parameters frequently lead to accuracy degrada-tion [6, 41]. These limitations motivate the development of alternative quantiza-tion paradigms [5, 25, 36] capable of producing high-quality quantized solutions without using explicit discretization operators or relying on surrogate-gradient approximations. Recent studies have demonstrated that well-converged deep neural networks are rarely confined to a single isolated minimum of a loss function [7,10,15,16]. In-stead, their weights reside within extended low-loss subspaces [7,10,12,16] – con-tinuous regions of parameter space in which diverse solutions achieve nearly iden-tical performance. These subspaces form smooth, connected manifolds that allow substantial variation in weights along specific directions while preserving low loss and high accuracy. In this context, studies on mode connectivity [7, 13, 16] show that independently trained networks can be connected through simple linear or curved paths that remain entirely within low-loss regions. Furthermore, these continuous low-loss subspaces can be learned within a single training run [48], eliminating the need for multiple independent training procedures. Motivated by these insights, we introduce a novel quantization approach that directly samples quantization-friendly solutions from the low-loss subspace of the FP model. During training, we learn a quantization-aware subspace that is ex-plicitly constrained to remain within a region of low loss and high accuracy. Importantly, the proposed training procedure does not rely on straight-through estimator (STE) approximations and does not incorporate any discretization (e.g ., rounding) operations during the training phase. Due to the design of the training objective, direct quantization of the midpoint of the learned linear sub-space yields a low-precision model that remains within the same low-loss region, resulting in performance that closely matches its FP counterpart. Moreover, in many cases, the midpoint of the subspace achieves higher accuracy than the solution obtained via standard FP training, highlighting that subspace training induces an implicit regularization effect and improves generalization. The main contributions of this work are threefold: (i) Subspace-based reformulation of quantization. We reinterpret neu-ral network quantization from the perspective of low-loss subspace optimization, moving beyond conventional discrete optimization with STE approximations. Neural Network Quantization by Learning Low-Loss Subspaces 3
+
+To this end, we propose the Quantization by Learning Subspaces (QLS) 
+
+algorithm that learns quantization-aware linear paths in the full-precision pa-rameter space and explicitly constructs solutions that are inherently robust to quantization. We demonstrate that QLS achieves performance comparable to, and in most cases exceeding, that of conventional quantization-aware training (QAT). (ii) Cross-bit adaptability. By construction, models quantized with QLS can be directly deployed at higher bit-widths without retraining, consistently yielding monotonic improvements in accuracy. In contrast to conventional QAT, QLS solutions exhibit substantially reduced sensitivity to changes in bit-width and maintain stable performance when quantization scales are constrained to power-of-two values [32, 53]. (iii) Strong initialization for QAT. We show that the subspace-derived solution produced by QLS provides a strong initialization for subsequent QAT, resulting in improved convergence stability and higher final accuracy compared to standard full-precision initialization. We note that the present study primarily focuses on weight-only quantiza-tion. This setting enables a direct validation of the proposed method and clearly illustrates the underlying principle as weight quantization can be naturally ad-dressed by learning a simple linear subspaces in the parameter space. Conceptu-ally, a learned subspace in the weight space induces structured variations in the corresponding activation space, introducing extra degrees of freedom, that can be leveraged to shape the activation distribution toward quantization-friendly representation. Extending the QLS method to joint weight–activation quantiza-tion is feasible and will be the subject of a separate upcoming paper. Here, we empirically demonstrate that the weight-quantized solution obtained with the same training budget as full-precision training provides a strong initialization for subsequent QAT of fully quantized models. 
+
+## 2 Related Work 
+
+Loss Landscape Geometry and Mode Connectivity. As modern neural networks involve increasing degrees of freedom, understanding the geometry of the loss landscape, particularly from the perspective of mode connectivity, has become critical, prompting extensive research in this direction [7,10,12,15,16,18, 48]. Draxler et al . [7] showed that two independently trained low-loss solutions can often be connected by a continuous curve in weight space along which the training loss remains low, even when simple linear interpolation between the solu-tions exhibits a barrier. Garipov et al . [16] proposed explicitly learning such low-loss connecting curves between two independently trained models. Wortsman et al . [48] generalized this idea to learned low-loss subspaces of various geometries. Instead of requiring multiple independently trained endpoints, Ref. [48] shows that a low-loss subspace can be learned within a single training run. Frankle et al . [13] demonstrated that linearly connected solutions are closely related to the lottery ticket phenomenon. An important observation of these studies is that 4 V. Protsenko et al. 
+
+central or averaged points within such low-loss regions often exhibit improved generalization and performance compared to standard (non-subspace) training. Stochastic Weight Averaging (SWA) [20] and followed weight-averaging strate-gies [31,46,49,60] leverage this insight by averaging weights along the late-phase training trajectory to move the model toward flatter regions of the loss land-scape. Foret et al . [11] introduced Sharpness-Aware Minimization (SAM), which jointly minimizes the training loss and its local sharpness by seeking parameters within a low-loss neighborhood, thereby improving generalization performance. 
+
+Loss Landscape Geometry and Quantization. Quantization robustness is closely associated with the geometric structure of the loss landscape [2, 3, 34, 51, 57]. Xia et al . [51] propose a training strategy that explicitly moves opti-mization toward flat minima prior to quantizing by PTQ, arguing that reduced curvature around a converged FP solution reduces PTQ error. Liu et al . [34] ex-tend sharpness-aware optimization to low-bit settings by modeling quantization noise as weight perturbations and optimizing the loss at perturbed weights to en-courage convergence to flatter, quantization-robust minima. Similarly, Wang et al . [47] combine sharpness-aware updates with quantization-aware training in transformer architectures, while Jiang et al . [23] and Ma et al . [37] further ex-plore flatness-oriented QAT strategies for improved out-of-distribution robust-ness and mixed-precision optimization. Shin et al . [44] proposed a quantization training scheme that alternates between high and low precision training stages with a dynamically adjusted learning rate to guide convergence toward flatter minima in the loss surface. Overall, these studies indicate that shaping the local curvature properties near the solution improves robustness to quantization. Despite methodological differences, these approaches remain local, meaning that they modify the optimization objective to bias a single solution toward a region of reduced sharpness, with the expectation that PTQ- or QAT-based quantization will incur lower accuracy degradation. At the intersection of sub-space learning and quantization, Nunez et al . [42] propose the Learning Com-pressible Subspaces training, in which a low-dimensional compressible subspace is optimized to support multiple quantization levels, thereby enabling a control-lable accuracy–efficiency trade-off at inference time. However, to the best of our understanding, the resulting ensemble of models is obtained by incorporating affine quantization [21, 39] during training, and thus rely on quantization-aware optimization. To the best of our knowledge, all prior methods so far do not explicitly construct an extended low-loss subspace that is directly tailored for compatibility with a given discretization scheme. 
+
+## 3 Approach 
+
+3.1 Quantization Preliminaries 
+
+The b-bit uniform fake quantization operator ˆQb(·) can be written as [8, 39] 
+
+Θ(quant) = ˆQb(Θ; s) = s × clip 
+
+
+
+⌊Θ/s ⌉ ; B↓
+
+> b
+
+, B ↑
+
+> b
+
+
+
+, (1) Neural Network Quantization by Learning Low-Loss Subspaces 5
+
+where Θ denotes a full-precision weight or activation, Θ(quant) and s−1 ×Θ(quant) 
+
+are the reconstructed values of Θ and its integer scaled representation, respec-tively. Here, clip( Θ; B↓, B ↑) constrains Θ to [B↓, B ↑], and ⌊Θ⌉ denotes rounding to the nearest integer. Throughout this work, we use the symmetric integer range 
+
+B↑(↓)b = ±(2 b−1 −1) for signed data and (B↓
+
+> b
+
+, B ↑
+
+> b
+
+) = (0 , 2b −1) for unsigned data. The scale factor s in Eq. (1) determines the resolution of quantization grid. During QAT, it is typically treated as a learnable parameter ( e.g ., LSQ [8] ap-proach). A common initialization strategy for the weight scale factor is abs–max calibration [17], defined as 
+
+sam (Θ) = ScaleByAbsMax ( Θ; b) ≡ 2 max ( |Θ|)/(B↑ 
+
+> b
+
+− B↓
+
+> b
+
+). (2) In practice, direct use of sam given by Eq. (2) to quantize FP model, without an additional training process, typically leads to substantial quantization er-rors. In contrast, we demonstrate that our quantization-aware subspace training enables the construction of an FP solution whose high-quality quantized coun-terpart can be obtained directly in a post-training manner by applying Eqs. (1) and (2). 
+
+3.2 Quantization by Learning Subspaces (QLS) Quantization-Aware Subspace Training. Let us consider weight quantiza-tion and denote by Θ = ( Θ1, . . . , Θ N ) the weights of the N layers to be quan-tized. Here Θp ∈ Rcin ,p ×cout ,p ×kp×kp if p-th layer is a convolutional layer and Θp ∈
+
+Rcin ,p ×cout ,p in case of a linear layer. Let ˆQ(Θ; s) ≡   ˆQb(Θ1; s1), . . . , ˆQb(ΘN ; sN )
+
+denotes the quantized weights, where s = ( s1, . . . , s N ) are per-layer scale fac-tors. Without loss of generality, we assume all layers are quantized to the same bitwidth b and apply per-tensor quantization, i.e., sp ∈ R.Standard QAT minimizes the task loss Ltask under simulated quantization 
+
+Θ → ˆQ(Θ; s). For weights this geometrically corresponds to optimizing a single point Θ ∈ RD in a loss landscape of dimension D. Note that the non-quantized parameters are also optimized during training; however, for brevity, we omit them from the notation here and throughout the paper. Instead of optimizing a single point using the STE approximation, we learn a linear low-loss subspace for each weight in a single training run. To this end, following the subspace learning algorithm proposed by Wortsman et al . [48], the weights are parameterized as 
+
+Θ → Θ(ααα) = ( J − ααα) ⊙ Θ(1) + ααα ⊙ Θ(2) , (3) where Θ(1) , Θ(2) ∈ RD are trainable endpoints, ααα = ( α1, . . . , α N ) ∼ U ([0 , 1] D )
+
+are independently sampled from a uniform distribution for each mini-batch, J ∈
+
+RD is the all-ones tensor, and ⊙ denotes element-wise multiplication. We note that, by "linear subspace" we refer to linearity along each individual weight. The midpoint of the resulting subspace of FP models is given as 
+
+Θ(mid) ≡ Θ(ααα=1 /2) = ( Θ(1) + Θ(2) )/2. (4) 6 V. Protsenko et al. 
+
+Our key idea is to dynamically adjust the element-wise L1 distances be-tween the endpoints, d = Θ(1) − Θ(2) ∈ RD , so that the quantized midpoint 
+
+Θ(quant) = ˆQ Θ(mid) ; s = s(mid)  remains within the learned FP low-loss sub-space. Here s(mid) = ( s(mid) 1 , . . . , s (mid)  
+
+> N
+
+), where s(mid) 1...N ∈ R are given by 
+
+s(mid)  
+
+> p
+
+= sam 
+
+> p
+
+
+
+Θ(mid) 
+
+> p
+
+
+
+= ScaleByAbsMax 
+
+
+
+Θ(mid)  
+
+> p
+
+; b
+
+
+
+. (5) For uniform quantization of layer p with step size s(mid)  
+
+> p
+
+, the rounding error 
+
+Ep = s(mid) 
+
+> p
+
+j
+
+Θ(mid)  
+
+> p
+
+/s (mid) 
+
+> p
+
+m
+
+− Θ(mid)  
+
+> p
+
+(6) lies strictly in the interval s(mid)  
+
+> p
+
+× [−1/2, 1/2] . Therefore, if for each layer p, the endpoint separation dp = Θ(1)  
+
+> p
+
+− Θ(2)  
+
+> p
+
+satisfies 
+
+∆p = Jp − dp/s (mid)  
+
+> p
+
+≤ 0, (7) where Jp is the all-ones tensor of the same size as dp, then both the floor and the ceil roundings of the midpoint remain within the learned low-loss linear paths consisting of FP models. To enforce this separation between the endpoints, we introduce the following regularization term into the training objective: 
+
+Rqdist 
+
+
+
+Θ(1) ,(2) ; b
+
+
+
+= 1
+
+N
+
+> N
+
+X
+
+> p=1
+
+1
+
+Dp
+
+X
+
+> all elements
+
+H (∆p) ⊙ ∆2
+
+> p
+
+, (8) where H(·) is the Heaviside step function and Dp = dim( Θp). Rqdist penalizes deviations from the constraint defined by Eq. (7). Rqdist ∈ [0 , 1] and achieves 
+
+Rqdist = 0 when Eq. (7) is strictly satisfied. We evaluated several alternative forms of Rqdist , including linear and exponential variants, and found that the results are robust to its functional form (see Sec. 1 of the Supplemental Material). The overall training objective can be formulated as 
+
+min 
+
+> Θ(1) ,(2)
+
+
+
+E(x,y )∼D train 
+
+h
+
+Eααα∼U ([0 ,1] D )
+
+h
+
+Ltask 
+
+
+
+Θ(ααα)ii 
+
++ λqRqdist 
+
+
+
+Θ(1) ,(2) ; b
+
+ 
+
+, (9) where λq controls the strength of the regularization. For all the experiments, we set λq = 1 .We highlight several key points of the proposed training procedure: (i) al-though the target bitwidth b is included in training loop via Eq. (5), no quan-tization is applied during training ; (ii) as no rounding is involved , op-timization is performed entirely in FP with no STE approximation ; (iii) the scale factors s(mid) are dynamically recomputed during each forward pass ac-cording to Eq. (5). In this sense, s(mid) can be interpreted as implicitly learnable parameters (but not independent parameters, as in the LSQ approach) that co-adapt with the endpoint distance to satisfy Eq. (7). Neural Network Quantization by Learning Low-Loss Subspaces 7100 200 
+
+epoch  
+
+> 00.5 10250
+
+epoch 
+
+> 00.04 00.1 0.2
+> Density
+
+epoch 0     
+
+> 0123404
+> Density
+
+epoch 120  
+
+> 00.5
+
+epoch 30      
+
+> 0123405
+
+epoch 250        
+
+> 1
+> ,Ltask  Ltotal
+> Rqdist
+> |Θ(1)
+> p−Θ(2)
+> p|/s (mid)
+> p|Θ(1)
+> p−Θ(2)
+> p|/s (mid)
+> p
+
+Fig. 1: Left panel: The training loss functions Ltask , Rqdist (b = 4) (inset) and Ltotal =
+
+Ltask + λq Rqdist for ResNet-18 /CIFAR-100 . Right panels: Density KDE-plots of the distribution of distances between the endpoints dp = |Θ(1)  
+
+> p
+
+− Θ(2)  
+
+> p
+
+| in the p =
+
+"layer3.0.conv2" layer for different epochs ( dp, Θ (1) ,(2)  
+
+> p
+
+∈ R256 ×256 ×3×3 and there are 
+
+Dp ≈ 6 × 10 5 values on the "x"-axis). The red vertical line shows distance dp = s(mid)  
+
+> p
+
+.
+
+Quantization. In our pipeline, quantization is performed post-training. Af-ter learning the low-loss linear subspace for each weight, the final quantized model is obtained by directly applying Eq. (1) to the midpoint Θ(mid) of the learned subspace, using the scale factor defined in Eq. (5). The overall QLS pipeline is summarized in Algorithm 1 (see Sec. 2 of the Supplemental Material for the core pseudocode). 
+
+By construction, rounding the midpoint yields a solution that cor-responds to one of the FP models along the low-loss subspace. There-fore, if the subspace consists entirely of low-loss, high-accuracy models (although in practice this assumption may not hold exactly; see Sec. Results), quantization results in no loss of accuracy. Furthermore, since the scale factor is computed using the abs–max strategy, quantized weights for symmetric distributions are confined to the target integer range, thereby effectively eliminating clipping-induced errors. Finally, the bitwidth during training and the bitwidth of the final quantized model are decoupled, meaning that specifying one for training does not require using the same for inference. To make this distinction explicit, we use the no-tation QLS(x-bit train, y-bit inference) , indicating that the subspace is learned to align with x-bit quantization, while the final model is quantized and evaluated at y-bit. 8 V. Protsenko et al. 
+
+Algorithm 1 Quantization by Learning Low-Loss Subspaces (QLS) 
+
+1: Input: Network f (Θ) of N layers with weights Θ = ( Θ1, . . . , Θ N ), train set Dtrain ,bitwidth b, task loss function Ltask , subspace quantization-aware regularization 
+
+λq Rqdist . The weights are parameterized as Θ → Θ(ααα) = ( J − ααα) ⊙ Θ(1) +ααα ⊙ Θ(2) ,where Θ(1 ,2) ∈ RD are trainable parameters, ααα ∼ U  [0 , 1] D .2: Output: Quantized weights Θ(quant) are built based on a trained subspace. 3: # Training of Quantization-Aware Subspaces 4: for (x, y ) ⊆ D train do 
+
+5: for each layer p ∈ { 1 . . . N } in layers do 
+
+6: Sample αp of size Dp = dim( Θ(1) ,(2)  
+
+> p
+
+) from U([0 , 1] Dp )
+
+7: Θ(α) 
+
+> p
+
+= ( Jp − αp) ⊙ Θ(1)  
+
+> p
+
++ αp ⊙ Θ(2) 
+
+> p
+
+8: end for 
+
+9: yout = f
+
+
+
+Θ(ααα)
+
+
+
+.forward ( x)
+
+10: L = Ltask 
+
+ yout , y  + λqRqdist 
+
+
+
+Θ(1) ,(2) ; b
+
+
+
+11: L.backward() 
+
+12: Update 
+
+
+
+Θ(1) , Θ(2) 
+
+
+
+13: end for 
+
+14: # Weight Quantization (after train) 15: for each layer p ∈ { 1 . . . N } in layers do 
+
+16: Θ(mid)  
+
+> p
+
+=
+
+
+
+Θ(1)  
+
+> p
+
++ Θ(2) 
+
+> p
+
+
+
+/2
+
+17: s(mid)  
+
+> p
+
+= ScaleByAbsMax 
+
+
+
+Θ(mid)  
+
+> p
+
+; b
+
+
+
+18: Θ(quant)  
+
+> p
+
+= ˆQb
+
+
+
+Θ(mid)  
+
+> p
+
+; s(mid) 
+
+> p
+
+
+
+19: end for 
+
+20: Θ(quant) =
+
+
+
+Θ(quant) 1 , . . . , Θ (quant) 
+
+> N
+
+
+
+## 4 Results 
+
+In this section, we evaluate the proposed QLS algorithm under various settings. All layers except the first and the last are quantized. Implementation details and training protocols are provided in Secs. 2 and 3 of the Supplemental Material. 
+
+4.1 Training of Quantization-Aware Low-Loss Subspaces 
+
+Figure 1 illustrates the training loss (left) and the evolution of the distribution of distances d = |Θ(1) − Θ(2) | (right). Initially (epoch 0), the endpoints are independently initialized, resulting in a broad distribution of distances. For each layer p, this distribution is characterized by a small fraction of distances below 
+
+s(mid)  
+
+> p
+
+and a predominant contribution from distances exceeding s(mid)  
+
+> p
+
+. Since the regularization Rqdist penalizes only distances below s(mid) , it induces only a minor perturbation to the task loss Ltask even at the beginning of training. As training progresses, the regularization suppresses distances below s(mid) 
+
+while preventing previously distant endpoints from collapsing below this thresh-old. In later stages (e.g., epochs 120 and 250), the distance distribution becomes Neural Network Quantization by Learning Low-Loss Subspaces 90 0.5 1       
+
+> 74
+> 74.5
+> 75
+> 75.5
+> Accuracy (%)
+> FP standard training QLS(4-bit train, FP inference [ no quantization ])
+> layer3.0.conv2
+> <d>/s ª1.5
+> 00.5 1
+> 74
+> 74.5
+> 75
+> 75.5
+> layer4.0.conv1
+> <d>/s ª1.3
+> 00.5 1
+> 74
+> 74.5
+> 75
+> 75.5
+> layer2.0.shortcut.0.conv
+> <d>/s ª1.3
+> (a) (b) (c)
+
+Fig. 2: Test accuracy of ResNet-18 on CIFAR-100 as a function of α for a single selected layer (indicated in each panel). For that layer, Θp → (1 − α) Θp (1) + αΘ (2)  
+
+> p
+
+,with α ∈ [0 , 1] , while for all other layers α = 0 .5.
+
+sharply concentrated around d = s(mid) , with a small residual tail for d > s(mid) ,and Rqdist becomes negligible. This training dynamic is consistent across experi-ments (Tabs. 1 to 3). Despite the regularization constraints, the task loss remains dominant optimization objective and converges to values comparable to or lower than those of standard training. To demonstrate that training yields a high-accuracy subspace between Θ(1) 
+
+> p
+
+(αp = 0) and Θ(2)  
+
+> p
+
+(αp = 1) for layer p, we evaluate model accuracy as a function of αp = α (Fig. 2). For visualization, we constrain all elements within a layer to share a common scalar interpolation coefficient α ∈ R, although in general αp
+
+has the same dimensionality as the corresponding weight tensor Θ(j) 
+
+> p
+
+, (j ∈ 1, 2) .Despite this strong restriction on the degrees of freedom of αp, subspace training outperforms standard FP training over a substantial range of the inter-polation region and, in some cases, across the entire subspace. In the majority of cases, the highest accuracy is achieved near the midpoint Θ(mid)  
+
+> p
+
+(i.e . for 
+
+ααα = 0 .5), in agreement with prior findings by Wortsman et al . [48]. For each layer, the mean distance between endpoints (denoted in Fig. 2 by the double-arrow line) is on the order of the midpoint scale factor s(mid) and is typically slightly larger due to the presence of distances exceeding this scale (see Fig. 1). In Tables 1 and 3, we compare FP models obtained via standard training (hereafter referred to as "standard FP models" ) with the FP models cor-responding to the midpoint of the learned subspace Θ(mid) in QLS(4-, 5-, and 6-bit train, FP inference) settings. In almost all cases, the subspace-based FP model outperforms the counterpart trained with the same pipeline under stan-dard training. 
+
+4.2 Weight Quantization in Linear Subspaces QLS( b-bit train, b-bit inference). After quantization-aware subspace train-ing, we quantize the midpoint Θ(mid) by applying Eqs. (1) and (2) with the 10 V. Protsenko et al. 
+
+Table 1: Average accuracy (%) over 3 runs. For QLS, FP results correspond to QLS( b-bit train, FP inference), while quantized results use matching training and inference bitwidths (i.e., QLS( b-bit train, b-bit inference)). Best results are highlighted in red. Model & Dataset FP training FP model and its direct quantization (→) by Eq. (1) FP → 4-bit FP → 5-bit FP → 6-bit ResNet-18 
+
+CIFAR-10 Standard 93 .75 → 92 .53 93 .75 → 93 .46 93 .75 → 93 .69 
+
+QLS (Ours) 94 .18 → 94 .07 94 .11 → 94 .1 94 .15 → 94 .15 
+
+CIFAR-100 Standard 74 .57 → 66 .73 74 .57 → 73 .49 74 .57 → 74 .23 
+
+QLS (Ours) 75 .14 → 74 .82 75 .13 → 75 .02 75 .24 → 75 .12 
+
+Tiny-ImageNet Standard 65 .77 → 38 .21 65 .77 → 64 .28 65 .77 → 65 .21 
+
+QLS (Ours) 66 .11 → 65 .82 66 .43 → 66 .24 66 .7 → 66 .7
+
+ImageNet Standard 70 .58 → 1.79 70 .58 → 58 .87 70 .58 → 69 .04 
+
+QLS (Ours) 70 .49 → 69 .64 70 .71 → 70 .46 71 .1 → 70 .9
+
+> ResNet-50
+
+Tiny-ImageNet Standard 69 .98 → 35 .94 69 .98 → 67 .69 69 .98 → 69 .18 
+
+QLS (Ours) 70 .1 → 70 .01 70 .28 → 70 .14 70 .31 → 70 .3
+
+ImageNet Standard 76 .81 → 0.13 76 .81 → 54 .64 76 .81 → 74 .73 
+
+QLS (Ours) 76 .43 → 75 .85 76 .77 → 76 .56 76 .85 → 76 .82 
+
+same bitwidth b used during training. As Table 1 shows, Θ(mid) is highly robust to quantization, unlike a standard FP model, which suffers significant degrada-tion. This robustness is especially pronounced on challenging benchmarks ( e.g ., (Tiny-)ImageNet), where direct rounding of standard FP models severely de-grades accuracy, whereas our method preserves performance. Notably, in some cases, selecting the subspace midpoint, which often surpasses the accuracy of standard training, allows models quantized by QLS to outperform their stan-dard FP counterparts. We evaluate whether QLS can achieve the performance of STE-based QAT, where quantization is directly integrated into optimization. Using LSQ [8] as 0 0.5 1                 
+
+> 74
+> 74.5
+> 75
+> Accuracy (%)
+> FP LSQ QLS(X-bit train, Y-bit inference)
+> 4-bit train, 4-bit inference
+> 00.5 1
+> 74
+> 74.5
+> 75
+> 75.5
+> 4-bit train, 5-bit inference
+> 00.5 1
+> 74
+> 74.5
+> 75
+> 75.5
+> 4-bit train, 8-bit inference
+> (a) (b) (c)
+
+Fig. 3: Test accuracy of QLS( 4-bit train, 4, 5, 6-bit inference) quantized ResNet-18 on CIFAR-100 along the “layer3.0.conv2” subspace. All other layers use α = 0 .5.Neural Network Quantization by Learning Low-Loss Subspaces 11 
+
+Table 2: Average accuracy (%) over 3 runs. QLS uses matching training and inference bitwidths (i.e., QLS( b-bit training, b-bit inference)). QLS(LSQ) → LSQ (1 epoch) de-notes one additional LSQ epoch to QLS(LSQ) with lr = 10 −7. FP → LSQ (1 epoch) denotes one LSQ epoch initialized from the standard FP baseline, with the best learning rate selected from lr ∈ { 10 −k }7
+
+> k=2
+
+. Best results are highlighted in red. Model & Dataset (FP baseline) Epochs Method Weight Bitwidth ( b)4 5 6ResNet-18 
+
+CIFAR-10 
+
+(93.75) 150 LSQ [8] 93.71 93.72 93.82 QLS (Ours) 94 .07 94 .1 94 .15 
+
+CIFAR-100 
+
+(74.57) 250 LSQ 74.28 74.25 74.57 QLS (Ours) 74 .82 75 .02 75 .12 
+
+Tiny-ImageNet 100 LSQ QLS (Ours) 65.65 
+
+65 .82 
+
+65.8 
+
+66 .24 
+
+66.2 
+
+66 .7
+
+(65.77) ImageNet (70.58) 
+
+100 LSQ 70 .18 70 .37 70 .6
+
+QLS (Ours) 69 .64 70 .46 70 .9101 LSQ → LSQ(1 epoch) 70 .18 70 .38 70 .58 
+
+QLS → LSQ(1 epoch) 70 .66 70 .7 71 .16 
+
+> ResNet-50
+
+Tiny-ImageNet (69.98) 
+
+100 LSQ 67 .47 69 .14 70 .09 
+
+QLS (Ours) 70 .01 70 .14 70 .3101 LSQ → LSQ(1 epoch) 67 .37 69 .06 69 .95 
+
+QLS → LSQ(1 epoch) 70 .27 70 .26 70 .28 
+
+ImageNet (76.81) 
+
+100 LSQ 76 .1 76 .41 76 .68 
+
+QLS (Ours) 75 .85 76 .56 76 .82 101 
+
+LSQ → LSQ(1 epoch) 76 .12 76 .33 76 .66 
+
+QLS → LSQ(1 epoch) 76 .49 76 .77 76 .87 
+
+FP → LSQ(1 epoch) 74 .03 75 .83 76 .03 
+
+a strong STE-based approach, we train models with both QLS and LSQ from scratch under the same protocol. Results on image classification (Table 2) and super-resolution (Table 3) tasks show that QLS consistently outperforms LSQ across nearly all settings. Fig. 3 (a) shows accuracy when quantized weights are taken from subspace points other than the midpoint Θ(mid) . One can see that across a broad range of αp = α ∈ R[0 , 1] around the midpoint, accuracy exceeds the results of LSQ (and even standard FP training). We find that QLS is particularly effective when model capacity is com-parable to or exceeds dataset size (capacity ≳ data ). This is consistent with prior observations that such regimes exhibit geometrically extended low-loss re-gions [9, 24, 50, 58], whereas data-rich settings (data ≫ capacity ) typically yield minima occupying smaller volumes in the loss landscape of smaller datasets [9]. In low-bit, data-rich scenarios, aligning the scale s(mid) with the underlying sub-12 V. Protsenko et al.                                                  
+
+> Table 3: Average PSNR/SSIM for 3×super-resolution with RFDN [33] trained on DIV2K [1] and tested on Set5, Set14, and Urban100. Notation follows Table 2. bit Method Average PSNR/SSIM Set5 Set14 Urban100 RFDN (44 conv. layers)  FP Standard FP 34.08 / 0.9237 30.17 / 0.838 27.77 / 0.8425 QLS(3, FP) 34.1 / 0.9239 30.15 / 0.8379 27.78 / 0.8431 QLS(4, FP) 34.15 / 0.9242 30.18 / 0.8381 27.79 / 0.8434
+> 3
+> LSQ 33.87 / 0.9219 30.00 / 0.8346 27.39 / 0.8344 QLS (Ours) 33.93 / 0.9225 30.01 / 0.8348 27.56 / 0.8382 LSQ →1% LSQ 33.88 / 0.9220 30.00 / 0.8347 27.42 / 0.8352 QLS →1% LSQ 34.02 / 0.9233 30.08 / 0.8361 27.61 / 0.8391
+> 4
+> LSQ 34.01 / 0.9230 30.10 / 0.8368 27.61 / 0.8396 QLS (Ours) 34.06 / 0.9237 30.09 / 0.8365 27.67 / 0.8408 LSQ →1% LSQ 34.01 / 0.9229 30.09 / 0.8363 27.61 / 0.8395 QLS →1% LSQ 34.10 / 0.9239 30.11 / 0.8369 27.71 / 0.8414
+
+space geometry may require longer optimization compared to LSQ ( e.g ., 4-bit ImageNet). Nevertheless, with sufficient training, QLS outperforms both FP and LSQ baselines, even in these regimes (see Sec. 4 of the Supplemental Material). These findings suggest that QLS can be particularly well suited for over- or balanced-parameterized modern transformer architectures. Recent studies [28– 30, 59] indicate that such models, including LLMs and diffusion models, exhibit pronounced flatness along multiple directions of the loss landscape, making them promising candidates for QLS; an analysis of this is left for future work. As can be seen from Tables 1 and 3, the quantized midpoint, although lo-cated within the trained low-loss subspace, exhibits a slight decrease in accuracy compared to its FP counterpart. We attribute this behavior to the loss surface not being perfectly flat, with subtle local irregularities present. Thus, minor LSQ fine-tuning is expected to adjust the quantized weights away from high-loss local convexities and yield substantial performance improvement. Overall, although QLS does not explicitly simulate quantization during op-timization and follows the same training protocol as the FP baseline, it simul-taneously achieves: (i) the FP model Θ(mid) that generally outperforms the standard FP baseline, and (ii) the quantized model Θ(quant) = ˆQ(Θ(mid) ; s(mid) )
+
+that largely preserves accuracy of Θ(mid) ≳ (standard FP) and, in most cases, outperforms STE-based optimization. 
+
+LSQ Fine-Tuning. To evaluate QLS under subsequent quantization-aware op-timization, we perform brief LSQ fine-tuning with learning rate lr ≪ lr start :one epoch for classification (Table 2) and 1% of full training for super-resolution (Table 3). Fine-tuning of the converged LSQ solution produces only insignificant fluctuation-driven changes, while the QLS solution benefits from local weight Neural Network Quantization by Learning Low-Loss Subspaces 13 4 6 8
+
+Y-bit inference          
+
+> 74
+> 74.5
+> 75
+> 75.5
+> Accuracy (%)
+> FP
+> QLS( 4-bit train, Y-bit inference)
+> LSQ( 4-bit train, Y-bit inference)
+> LSQ[rec.]( 4-bit train, Y-bit inference)
+
+(a) ResNet-18/Cifar-100, s in R +    
+
+> 45678
+
+Y-bit inference 
+
+> 75
+> 75.5
+> 76
+> 76.5
+> 77
+> Accuracy (%)
+
+(b) ResNet-50/ImageNet, s in R +  
+
+> 468
+
+power-of-2 Y-bit inference 
+
+> 72
+> 73
+> 74
+> 75
+> Accuracy (%)
+
+(c) ResNet-18/Cifar-100, s = 2 k    
+
+> 45678
+
+power-of-2 Y-bit inference 
+
+> 71
+> 72
+> 73
+> 74
+> 75
+> 76
+> 77
+> 78
+> Accuracy (%)
+
+(d) ResNet-50/ImageNet, s = 2 k
+
+Fig. 4: Upper panels: Test accuracy at higher bitwidths than training. Lower panels: 
+
+As in Figs. 4a,b, with scale factors directly converted to the powers-of-two. 
+
+adjustments, yielding significant accuracy gains. As a result, the (QLS → LSQ) pipeline consistently outperforms LSQ-based training alone. Notably, this per-formance cannot be achieved by LSQ, which starts from a standard FP model, regardless of the choice of lr (see ResNet-50/ImageNet as a characteristic exam-ple), indicating that QLS provides a superior initialization for LSQ. Finally, we find that QLS model weights are sparser than LSQ-based weights, and this persists after LSQ fine-tuning (see Sec. 5 of the Supplemental Material). 
+
+Cross-Bit QLS( x; y̸ = x) and Power-of-Two Quantization. Decoupling training x and inference y bitwidths in QLS allows direct transfer of a model to bitwidths different from those used in training. As shown in the upper panels of Fig. 4, QLS( x; y > x ) yields monotonic accuracy gains with increasing y.This is a direct result of the subspace training: increasing the inference bitwidth y induces an approximate power-of-two decay of the scale factor, 
+
+s(mid) (b = y) ≈ 2x−y × s(mid) (b = x) ∈ { 12 , 14 , 18 , . . . }s(mid) (b = x). (10) Consequently, higher-bitwidth inference samples exponentially closer to the mid-point, progressively accessing higher-accuracy regions of the subspace (see Fig. 2). 14 V. Protsenko et al.                                
+
+> Table 4: Average PSNR of the W4A4 RFDN model (notation as in Table 3). For (Standard FP →LSQ) the best result across lr ∈ { 5×10 −k}8
+> k=4 is presented. Quantization Setup Epochs Set5 Urban100 (i) Standard FP →LSQ ≡W4 LSQ A4 LSQ 1000 31.01 24.89 (ii) Θ(mid) →W4 QLS (ours) A4 LSQ 10 32.16 26.01 (iii) Θ(mid) →W4 QLS (ours) A4 LSQ 1000 32.85 26.29
+
+Quantization of solutions beyond the midpoint also leads to progressive accu-racy improvement (see Fig. 3) as y increases, and the accuracy– α curve converges toward the FP subspace solution (Fig. 2a). In Fig. 4, we also evaluate adaptation to higher bitwidths for LSQ-based models using two conversion strategies. The first keeps scales obtained by LSQ, 
+
+s(y) = s(x), while expanding the integer range in Eq. (1). The second recalculates the scale factor according to the new granularity, s(y) = s(x) × (2 x − 1) /(2 y − 1) 
+
+(see LSQ[rec.] in Fig. 4). In both cases, clipping/rounding errors lead to accuracy degradation or no improvement (when a model is robust to clipping errors). In the lower panels of Fig. 4, we investigate the robustness of quantized models by directly converting scale factors to a hardware-friendly power-of-two representation without fine-tuning, s → spow2 = 2 ⌈log 2(s)⌉. Both QLS( x; x) and QLS( x; y > x ) models outperform the corresponding LSQ-based models by a substantial margin. For QLS( x; y < x ), the scale s extends beyond the trained subspace but has enough overlap to avoid severe accuracy loss, unlike LSQ-based models (see Sec. 6 of the Supplemental Material for additional results). 
+
+Full Quantization. Table 4 shows results for 4-bit weight and 4-bit activation quantization (W4A4). We use the RFDN model [33] as a representative image-to-image architecture, where low-bit activation quantization is particularly chal-lenging due to poor convergence under STE-based optimization. Starting from 
+
+Θ(mid) trained with Rqdist (b = 4) under the standard FP pipeline, we apply QLS to weights and LSQ to activations. This combined approach significantly out-performs the conventional FP → LSQ quantization, even with limited training (case (ii); see the Supplementary Material for additional results). 
+
+## 5 Conclusion 
+
+We propose QLS, a quantization strategy that constructs quantized weights di-rectly from the linear low-loss subspaces of a full-precision model. QLS does not use rounding operations during training and does not rely on STE approxima-tions. In the vast majority of experiments, the subspace midpoint simultaneously (i) achieves superior FP accuracy compared to standard training and (ii) pro-duces a quantized solution that outperforms LSQ-based QAT. Neural Network Quantization by Learning Low-Loss Subspaces 15 
+
+Due to its subspace formulation, QLS exhibits strong bitwidth-agnostic be-havior and robustness to power-of-two quantization. Furthermore, QLS provides an effective initialization for subsequent QAT training, particularly in low-bit joint weight-activation quantization scenarios where STE-based methods exhibit slow or suboptimal convergence (see discussion on limitations and future work in the Supplementary Material). 
+
+## References 
+
+1. Agustsson, E., Timofte, R.: Ntire 2017 challenge on single image super-resolution: Dataset and study. In: Proceedings of the IEEE conference on computer vision and pattern recognition workshops. pp. 126–135 (2017) 2. AskariHemmat, M., Jeddi, A., Hemmat, R.A., Lazarevich, I., Hoffman, A., Sah, S., Saboori, E., Savaria, Y., David, J.P.: Qgen: On the ability to generalize in quantization aware training. arXiv preprint arXiv:2404.11769 (2024) 3. Baldi, T., Campos, J., Weng, O., Geniesse, C., Tran, N., Kastner, R., Biondi, A.: Loss landscape analysis for reliable quantized ml models for scientific sensing. arXiv preprint arXiv:2502.08355 (2025) 4. Bengio, Y., Léonard, N., Courville, A.: Estimating or propagating gradi-ents through stochastic neurons for conditional computation. arXiv preprint arXiv:1308.3432 (2013) 5. Chen, S., Wang, W., Pan, S.J.: Metaquant: Learning to quantize by learning to pen-etrate non-differentiable quantization. Advances in Neural Information Processing Systems 32 (2019) 6. Chmiel, B., Banner, R., Shomron, G., Nahshan, Y., Bronstein, A., Weiser, U., et al.: Robust quantization: One model to rule them all. Advances in neural information processing systems 33 , 5308–5317 (2020) 7. Draxler, F., Veschgini, K., Salmhofer, M., Hamprecht, F.: Essentially no barriers in neural network energy landscape. In: International conference on machine learning. pp. 1309–1318. PMLR (2018) 8. Esser, S.K., McKinstry, J.L., Bablani, D., Appuswamy, R., Modha, D.S.: Learned step size quantization. arXiv preprint arXiv:1902.08153 (2019) 9. Fan, R., Sandlund, B., Ko, L.M.: Sharp minima can generalize: A loss landscape perspective on data. arXiv preprint arXiv:2511.04808 (2025) 10. Ferbach, D., Goujaud, B., Gidel, G., Dieuleveut, A.: Proving linear mode connec-tivity of neural networks via optimal transport. In: International Conference on Artificial Intelligence and Statistics. pp. 3853–3861. PMLR (2024) 11. Foret, P., Kleiner, A., Mobahi, H., Neyshabur, B.: Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412 (2020) 12. Frankle, J.: Revisiting" qualitatively characterizing neural network optimization problems". arXiv preprint arXiv:2012.06898 (2020) 13. Frankle, J., Dziugaite, G.K., Roy, D., Carbin, M.: Linear mode connectivity and the lottery ticket hypothesis. In: International conference on machine learning. pp. 3259–3269. PMLR (2020) 14. Frantar, E., Ashkboos, S., Hoefler, T., Alistarh, D.: Gptq: Accurate post-training quantization for generative pre-trained transformers. arXiv preprint arXiv:2210.17323 (2022) 15. Freeman, C.D., Bruna, J.: Topology and geometry of half-rectified network opti-mization. arXiv preprint arXiv:1611.01540 (2016) 16 V. Protsenko et al. 16. Garipov, T., Izmailov, P., Podoprikhin, D., Vetrov, D.P., Wilson, A.G.: Loss sur-faces, mode connectivity, and fast ensembling of dnns. Advances in neural infor-mation processing systems 31 (2018) 17. Gholami, A., Kim, S., Dong, Z., Yao, Z., Mahoney, M.W., Keutzer, K.: A sur-vey of quantization methods for efficient neural network inference. In: Low-Power Computer Vision, pp. 291–326. Chapman and Hall/CRC (2022) 18. Goodfellow, I.J., Vinyals, O., Saxe, A.M.: Qualitatively characterizing neural net-work optimization problems. arXiv preprint arXiv:1412.6544 (2014) 19. Ichikawa, Y., Kashiwamura, S., Sakata, A.: High-dimensional learning dy-namics of quantized models with straight-through estimator. arXiv preprint arXiv:2510.10693 (2025) 20. Izmailov, P., Podoprikhin, D., Garipov, T., Vetrov, D., Wilson, A.G.: Aver-aging weights leads to wider optima and better generalization. arXiv preprint arXiv:1803.05407 (2018) 21. Jacob, B., Kligys, S., Chen, B., Zhu, M., Tang, M., Howard, A., Adam, H., Kalenichenko, D.: Quantization and training of neural networks for efficient integer-arithmetic-only inference. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 2704–2713 (2018) 22. Javed, S., Le, H., Salzmann, M.: Qt-dog: Quantization-aware training for domain generalization. arXiv preprint arXiv:2410.06020 (2024) 23. Jiang, J., Meng, Y., Tang, C., Yu, H., Li, Q., Wang, Z., Zhu, W.: Quantization meets ood: Generalizable quantization-aware training from a flatness perspective. In: Proceedings of the 33rd ACM International Conference on Multimedia. pp. 11937–11946 (2025) 24. Karhadkar, K., Murray, M., Tseran, H., Montúfar, G.: Mildly overparameterized relu networks have a favorable loss landscape. arXiv preprint arXiv:2305.19510 (2023) 25. Kim, D., Lee, J., Ham, B.: Distance-aware quantization. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 5271–5280 (2021) 26. Krishnamoorthi, R.: Quantizing deep convolutional networks for efficient inference: A whitepaper. arXiv preprint arXiv:1806.08342 (2018) 27. Lee, J., Kim, D., Ham, B.: Network quantization with element-wise gradient scal-ing. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 6448–6457 (2021) 28. Lee, T., Seo, K., Yoo, J., Yoon, S.W.: Understanding flatness in generative models: Its role and benefits. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 4908–4917 (2025) 29. Li, A., Zhuang, L., Long, X., Yao, M., Wang, S.: Seeking consistent flat minima for better domain generalization via refining loss landscapes. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 15349–15359 (2025) 30. Li, H., Ding, L., Fang, M., Tao, D.: Revisiting catastrophic forgetting in large lan-guage model tuning. In: Findings of the association for computational linguistics: EMNLP 2024. pp. 4297–4308 (2024) 31. Li, T., Huang, Z., Tao, Q., Wu, Y., Huang, X.: Trainable weight averaging for fast convergence and better generalization. arXiv preprint arXiv:2205.13104 4 (2022) 32. Li, Y., Dong, X., Wang, W.: Additive powers-of-two quantization: An efficient non-uniform discretization for neural networks. arXiv preprint arXiv:1909.13144 (2019) 33. Liu, J., Tang, J., Wu, G.: Residual feature distillation network for lightweight image super-resolution. In: Computer Vision–ECCV 2020 Workshops: Glasgow, UK, August 23–28, 2020, Proceedings, Part III 16. pp. 41–55. Springer (2020) Neural Network Quantization by Learning Low-Loss Subspaces 17 34. Liu, J., Cai, J., Zhuang, B.: Sharpness-aware quantization for deep neural networks. arXiv preprint arXiv:2111.12273 (2021) 35. Liu, L., Dong, C., Liu, X., Yu, B., Gao, J.: Bridging discrete and backpropagation: Straight-through and beyond. Advances in Neural Information Processing Systems 
+
+36 , 12291–12311 (2023) 36. Louizos, C., Reisser, M., Blankevoort, T., Gavves, E., Welling, M.: Relaxed quan-tization for discretized neural networks. arXiv preprint arXiv:1810.01875 (2018) 37. Ma, L., Ma, J., Zhou, Y., Xie, G., He, Q., Lu, Z.: Learning from loss landscape: Generalizable mixed-precision quantization via adaptive sharpness-aware gradient aligning. arXiv preprint arXiv:2505.04877 (2025) 38. Nagel, M., Baalen, M.v., Blankevoort, T., Welling, M.: Data-free quantization through weight equalization and bias correction. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 1325–1334 (2019) 39. Nagel, M., Fournarakis, M., Amjad, R.A., Bondarenko, Y., Van Baalen, M., Blankevoort, T.: A white paper on neural network quantization. arXiv preprint arXiv:2106.08295 (2021) 40. Nagel, M., Fournarakis, M., Bondarenko, Y., Blankevoort, T.: Overcoming oscil-lations in quantization-aware training. In: International Conference on Machine Learning. pp. 16318–16330. PMLR (2022) 41. Nahshan, Y., Chmiel, B., Baskin, C., Zheltonozhskii, E., Banner, R., Bronstein, A.M., Mendelson, A.: Loss aware post-training quantization. Machine Learning 
+
+110 (11), 3245–3262 (2021) 42. Nunez, E., Horton, M., Prabhu, A., Ranjan, A., Farhadi, A., Rastegari, M.: Lcs: Learning compressible subspaces for efficient, adaptive, real-time network compres-sion at inference time. In: Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision. pp. 3818–3827 (2023) 43. Pei, Z., Yao, X., Zhao, W., Yu, B.: Quantization via distillation and contrastive learning. IEEE Transactions on Neural Networks and Learning Systems 35 (12), 17164–17176 (2023) 44. Shin, S., Park, J., Boo, Y., Sung, W.: Hlhlp: Quantized neural networks training for reaching flat minima in loss surface. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 34, pp. 5784–5791 (2020) 45. Spallanzani, M., Leonardi, G.P., Benini, L.: Training quantised neural networks with ste variants: the additive noise annealing algorithm. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 470–479 (2022) 46. Von Oswald, J., Kobayashi, S., Meulemans, A., Henning, C., Grewe, B.F., Sacramento, J.: Neural networks with late-phase weights. arXiv preprint arXiv:2007.12927 (2020) 47. Wang, Z., Li, J.B., Qu, S., Metze, F., Strubell, E.: Squat: Sharpness-and quantization-aware training for bert. arXiv preprint arXiv:2210.07171 (2022) 48. Wortsman, M., Horton, M.C., Guestrin, C., Farhadi, A., Rastegari, M.: Learning neural network subspaces. In: International Conference on Machine Learning. pp. 11217–11227. PMLR (2021) 49. Wortsman, M., Ilharco, G., Gadre, S.Y., Roelofs, R., Gontijo-Lopes, R., Morcos, A.S., Namkoong, H., Farhadi, A., Carmon, Y., Kornblith, S., et al.: Model soups: averaging weights of multiple fine-tuned models improves accuracy without increas-ing inference time. In: International conference on machine learning. pp. 23965– 23998. PMLR (2022) 50. Wu, L., Zhu, Z., et al.: Towards understanding generalization of deep learning: Perspective of loss landscapes. arXiv preprint arXiv:1706.10239 (2017) 18 V. Protsenko et al. 51. Xia, P., Pang, J., Cai, T.: Efficiently training a flat neural network before it has been quantizated. arXiv preprint arXiv:2511.01462 (2025) 52. Xiao, G., Lin, J., Seznec, M., Wu, H., Demouth, J., Han, S.: Smoothquant: Accurate and efficient post-training quantization for large language models. In: International conference on machine learning. pp. 38087–38099. PMLR (2023) 53. Yao, H., Li, P., Cao, J., Liu, X., Xie, C., Wang, B.: Rapq: Rescuing accuracy for power-of-two low-bit post-training quantization. arXiv preprint arXiv:2204.12322 (2022) 54. Yin, P., Lyu, J., Zhang, S., Osher, S., Qi, Y., Xin, J.: Understanding straight-through estimator in training activation quantized neural nets. arXiv preprint arXiv:1903.05662 (2019) 55. Yu, C., Yang, S., Zhang, F., Ma, H., Wang, A., Li, E.P.: Improving quantization-aware training of low-precision network via block replacement on full-precision counterpart. arXiv preprint arXiv:2412.15846 (2024) 56. Yun, S., Wong, A.: Starting positions matter: A study on better weight initializa-tion for neural network quantization. arXiv preprint arXiv:2506.10463 (2025) 57. Zhang, K., Yin, M., Wang, Y.X.: Why quantization improves generalization: Ntk of binary weight neural networks. arXiv preprint arXiv:2206.05916 (2022) 58. Zhou, Y., Chen, J., Cao, Q., Schürholt, K., Yang, Y.: Md tree: a model-diagnostic tree grown on loss landscape. arXiv preprint arXiv:2406.16988 (2024) 59. Zhou, Z., Sun, Y., Li, B., Wang, J., Wu, H., Wu, L., Yan, J.: How does local landscape geometry evolve in language model pre-training? 60. Zimmer, M., Spiegel, C., Pokutta, S.: Sparse model soups: A recipe for improved pruning via model averaging. arXiv preprint arXiv:2306.16788 (2023) Supplemental Material to “Neural Network Quantization by Learning Low-Loss Subspaces” 
+
+Vladimir Protsenko , Mikhalina Kharkevich , Alexander Vashchilko , and Vladimir Kryzhanovskiy 
+
+Huawei, Montreal, Canada 
+
+{protsenko.vladimir1, kryzhanovskiy.vladimir}@huawei.com 
+
+## 1 Effect of the Functional Form of Rqdist 
+
+In Eq. (8) of the main text (see Sec. 3.2), we introduce the quantization-aware regularization term 
+
+Rqdist 
+
+
+
+Θ(1) , Θ(2) 
+
+= 1
+
+N
+
+> N
+
+X
+
+> p=1
+
+1
+
+Dp
+
+X
+
+> all elements
+
+F
+
+
+
+∆p
+
+
+
+Θ(1)  
+
+> p
+
+, Θ (2) 
+
+> p
+
+ 
+
+, (1) which penalizes violations of the constraint ∆p
+
+
+
+Θ(1)  
+
+> p
+
+, Θ (2) 
+
+> p
+
+
+
+≤ 0.In the main paper, we use the quadratic form of the penalty function F (·)
+
+F (A) (∆) = H(∆) ⊙ ∆2, (2) where H(·) denotes the element-wise Heaviside step function. This choice yields a penalty that grows quadratically when the constraint ∆p ≤ 0 is violated. The regularization principle underlying the QLS method is not tied to this particular analytic form. More generally, any monotone penalty applied to pos-itive values of ∆p enforces the same structural constraint. To investigate the sensitivity of the QLS method to the specific choice of F (·), we evaluate two alternative functional forms. First, we consider a sigmoid-based penalty 
+
+F (B) (∆) = σ (10 ∆ − 5) , σ(x) =  1 + e−x−1 , (3) which introduces a smooth exponentially decaying penalty. Second, we consider a linear ReLU-based penalty 
+
+F (C) (∆) = ReLU( ∆) = max(0 , ∆ ). (4) These choices induce different curvature properties of the penalty: the quadratic form produces polynomial growth, the sigmoid introduces an exponential tran-sition, and the ReLU yields a piecewise-linear penalty. Figure 1 illustrates the resulting penalty profiles. Table 1 shows the accuracy obtained with the regularization forms intro-duced above. All experiments follow the same training protocol used in the main 20 V. Protsenko et al. -0.5 0 0.5 100.5 1   
+
+> F(A)
+> F(B)
+> F(C)
+> F (∆)
+
+∆
+
+Fig. 1: Functional forms of the penalty function F (∆).
+
+Table 1: Average accuracy (%) over 3 runs of the QLS method for different func-tional forms of the penalty function F (∆). QLS uses matching training and inference bitwidths ( i.e ., QLS( b-bit training, b-bit inference)). Model & Dataset Penalty Weight Bitwidth ( b)4 5 6ResNet-18 
+
+CIFAR-100 
+
+F (A) 74.82 75.02 75.12 
+
+F (B) 74.77 75.10 75.13 
+
+F (C) 74.71 75.17 75.25 ResNet-18 
+
+TinyImageNet 
+
+F (A) 65.82 66.24 66.7 
+
+F (B) 65.78 66.01 66.53 
+
+F (C) 65.91 66.1 66.56 
+
+paper (see Sec. 3.2 of this Supplemental Material); the only modification is the functional form of F (∆). Across all experiments, the three variants yield compa-rable performance. We find that the sigmoid-based formulation F (∆) = F (B) (∆)
+
+exhibits slightly larger variance across runs, which we attribute to slower opti-mization dynamics due to sigmoid saturation. Aside from this effect, the overall performance of the QLS method remains qualitatively the same. Thus, the QLS gains are not tied to a particular analytic form of the regular-ization. Different penalty functions may nevertheless show different convergence behavior. In practice, we adopt the quadratic formulation F (A) , which empiri-cally yields faster convergence and slightly more stable training. Identifying an optimal penalty for enforcing quantization-aware constraints in subspace train-ing remains an interesting direction for future work. 
+
+## 2 Implementation Details and Pseudocode 
+
+In this section, we provide a more detailed description of the pseudocode of the core components of the proposed QLS pipeline, illustrated for convolutional Neural Network Quantization by Learning Low-Loss Subspaces 21 
+
+layers for brevity. Integrating the method into standard training pipelines is straightforward and requires only minor modifications. Specifically, (i) convolu-tional layers that are to be quantized are replaced with subspace convolutional layers (Algorithm 2; the algorithms are provided at the end of this supplemen-tary material); and (ii) the training loop (Algorithm 4) is modified to include the sampling of weights from the subspace and to incorporate the quantization-aware regularization term (see Algorithm 3) into the total training loss. In practice, the sampling procedure can be equivalently implemented within the forward pass of the subspace convolution layer when operating in training mode. 
+
+## 3 Details of the Experiments 
+
+3.1 Datasets 
+
+For image classification, we conduct experiments on four datasets: CIFAR-10 [66], CIFAR-100 [66], TinyImageNet [67], and ImageNet (ILSVRC-2012) [63, 69]. The CIFAR-10 and CIFAR-100 datasets each contain 60000 RGB images of spatial resolution 32 × 32 , organized into 10 and 100 classes, respectively. Following common practice, we split each dataset into 45000 training images, 
+
+5000 validation images, and 10000 test images. During training, we apply random horizontal flips for data augmentation. The TinyImageNet dataset consists of 200 object classes with a total of 
+
+120000 images. The dataset includes 100000 training images, 10000 validation images, and 10000 test images, all with spatial resolution 64 × 64 . During train-ing, we apply random horizontal flips for data augmentation. Finally, the ImageNet dataset contains approximately 1.28 million training images and 50000 validation images divided onto 1000 categories. Following stan-dard pipeline, images are resized to 256 ×256 pixels and augmented with random 
+
+224 × 224 crops and random horizontal flips during training. For the 3× image super-resolution task, we use the RFDN model [68] and train it on the DIV2K [61] dataset. The dataset contains 900 high-resolution (2K resolution) images, split into 800 training images and 100 validation images. Dur-ing training, we randomly crop patches of size 24 × 24 from the low-resolution inputs and the corresponding 72 × 72 patches from the high-resolution targets. Following the training protocol of RFDN [68], the dataset is further augmented using random horizontal flips and 90 ◦ rotations. Test performance is evaluated using Peak Signal-to-Noise Ratio (PSNR), computed on the luminance (Y) chan-nel of the YCbCr color space. We report results on the standard super-resolution benchmarks Set5, Set14, and Urban100, which contain 5, 14, and 100 images, respectively [62, 64, 71]. 
+
+3.2 Training Protocols 
+
+For all experiments, we use the original torchvision implementations of ResNet-
+
+18 and ResNet-50 , applying dataset-specific architectural adaptations following 22 V. Protsenko et al. 
+
+the subspace training setups of Wortsman et al . [70]. The RFDN model is im-plemented according to the original paper [68]. Unless otherwise specified in the main text, models trained from scratch follow the protocols below: 
+
+ResNet-18 (CIFAR-10). The model is trained for 150 epochs with an initial learning rate of 10 −3. The learning rate is decayed by a factor of 10 at epochs 75, 100, and 125. We use a batch size of 64 and optimize with Adam [65] with a weight decay of 4 × 10 −5.
+
+ResNet-18 (CIFAR-100). The model is trained for 250 epochs with an initial learning rate of 10 −3, decayed by a factor of 10 at epochs 100, 150, and 200. The batch size is 64, and Adam is used with the same weight decay as above. 
+
+ResNet-18 & ResNet-50 (TinyImageNet). Models are trained for 300 epochs with a batch size of 128. The initial learning rate is 0.1 and is decayed to zero using a cosine scheduler. Optimization is performed using SGD with a weight decay of 5 × 10 −4.
+
+ResNet-18 & ResNet-50 (ImageNet). Models are trained for 100 epochs with a batch size of 256. The initial learning rate is 0.1 and decayed to zero via a cosine scheduler. Optimization is performed with SGD and a weight decay of 1 × 10 −4.
+
+RFDN (DIV2K). The model is trained for 1000 epochs with an initial learning rate of 5 × 10 −4, decayed to zero via a cosine scheduler. The batch size is 32, and the model is optimized using Adam without weight decay. 
+
+## 4 Effect of Extended Training in Low-Bit Regimes 
+
+As reported in the main paper, the QLS quantization consistently outperforms LSQ across the evaluated settings, with the sole exception of 4-bit ResNet-family models trained on the ImageNet dataset. As discussed in the main text, we attribute this behavior to the slightly slower convergence of QLS compared to LSQ, which explicitly incorporates quantizers into the optimization process. This effect becomes pronounced in low-bit, data-rich regimes.              
+
+> Table 2: Average accuracy (%) over 3 runs. The QLS results correspond to QLS( 4-bit train, 4-bit inference). All other notation and parameters are as in Table 2 of the main text. Model & Dataset Epochs Method LSQ QLS (Ours) W4Afp ResNet-18
+> ImageNet 100 70.18 69.64 200 70.61 70.75 W4Afp ResNet-50
+> ImageNet 100 76.1 75.85 200 76.53 76.64
+
+Neural Network Quantization by Learning Low-Loss Subspaces 23 
+
+In the experiments reported in the main paper, both LSQ and QLS are trained for the same number of epochs as the corresponding full-precision mod-els, namely 100 epochs. Under this fixed training budget, the faster convergence of LSQ leads to slightly better performance in this particular setting. However, when the training horizon is extended (see Table 2), we observe that QLS even-tually matches or surpasses LSQ even in this regime. 
+
+## 5 Weight Sparsity 
+
+During the QLS training, we observe that a substantial fraction of tensor ele-ments corresponding to the endpoints Θ(1) and Θ(2) of the subspace converge to approximately symmetric values with respect to zero, i.e ., a large fraction of tensor elements exhibit approximate antisymmetry [Θ(1) ]i ≈ − [Θ(2) ]i. As a consequence, the midpoint of the learned subspace, Θ(mid) = ( Θ(1) + Θ(2) )/2,
+
+contains a large amount of near-zero parameters. After quantization, these small-magnitude weights are mapped exactly to zero, resulting in a significantly in-creased level of sparsity in the quantized model. 
+
+Table 3: Fraction of zeros (%). Notation follows Table 3 of the main text. Model & Dataset Fraction of zeros (%) LSQ QLS (Ours) QLS → 1% LSQ 
+
+4-bit ResNet-18 & CIFAR-100 60.71 74.13 74.09 
+
+4-bit ResNet-18 & ImageNet 18.41 19.74 19.74 
+
+3-bit RFDN [68] & DIV2K [61] 9.64 19.13 18.88 layer1.0.conv1 
+
+> layer1.0.conv2
+> layer1.1.conv1
+> layer1.1.conv2
+> layer2.0.conv1
+> layer2.0.conv2
+> layer2.0.shortcut.0
+> layer2.1.conv1
+> layer2.1.conv2
+> layer3.0.conv1
+> layer3.0.conv2
+> layer3.0.shortcut.0
+> layer3.1.conv1
+> layer3.1.conv2
+> layer4.0.conv1
+> layer4.0.conv2
+> layer4.0.shortcut.0
+> layer4.1.conv1
+> layer4.1.conv2
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> Fraction of zeros (%)
+
+4-bit ResNet18 on CIFAR-100 
+
+> LSQ (zeros in entire network 60.71%)
+> QLS (zeros in entire network 74.13%)
+
+Fig. 2: Fraction of zero weights across layers in W4Afp ResNet-18/CIFAR-100. 24 V. Protsenko et al. B1.c1_d 
+
+> B1.c1_r
+> B1.c2_d
+> B1.c2_r
+> B1.c3_d
+> B1.c3_r
+> B1.c4
+> B1.c5
+> B1.cca.conv_du.0
+> B1.cca.conv_du.2
+> B2.c1_d
+> B2.c1_r
+> B2.c2_d
+> B2.c2_r
+> B2.c3_d
+> B2.c3_r
+> B2.c4
+> B2.c5
+> B2.cca.conv_du.0
+> B2.cca.conv_du.2
+> B3.c1_d
+> B3.c1_r
+> B3.c2_d
+> B3.c2_r
+> B3.c3_d
+> B3.c3_r
+> B3.c4
+> B3.c5
+> B3.cca.conv_du.0
+> B3.cca.conv_du.2
+> B4.c1_d
+> B4.c1_r
+> B4.c2_d
+> B4.c2_r
+> B4.c3_d
+> B4.c3_r
+> B4.c4
+> B4.c5
+> B4.cca.conv_du.0
+> B4.cca.conv_du.2
+> c.0
+> LR_conv
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> Fraction of zeros (%)
+
+3-bit RFDN on DIV2K (3x super-resolution task) 
+
+> LSQ (zeros in entire network 9.64%)
+> QLS (zeros in entire network 19.13%)
+
+Fig. 3: Fraction of zero weights across layers in W3Afp RFDN model. 
+
+Table 3 shows the percentage of zero-valued weights in the networks quan-tized by QLS/LSQ. Overall, QLS consistently produces solutions with higher sparsity. Notably, strong sparsity emerges in the RFDN super-resolution model despite the absence of explicit weight-magnitude regularization (e.g., weight de-cay). For image classification networks, the distribution of zero weights for LSQ and QLS exhibits moderate correlations across layers (see Fig. 2). In contrast, for RFDN we observe a pronounced redistribution of zeros across layers under QLS training, leading to the sparsity pattern which differs substantially from one produced by LSQ (see Fig. 3). Finally, we find that subsequent LSQ fine-tuning (Tab. 3) of post-training QLS-quantized models does not significantly degrade the sparsity level, indicat-ing that the sparse structure induced by QLS is relatively stable under further optimization. 
+
+## 6 Additional Results on Cross-Bit Adaptability and Power-of-Two Quantization 
+
+In this supplementary section, we present additional results on cross-bit adap-tation scenarios, in which a model trained for x-bit quantization scheme and then evaluated under a different inference precision y. Following the notation of the main paper, for the QLS method we denote this setting as QLS( x, y ) ≡
+
+QLS( x-bit train, y-bit inference). Table 4 presents results for both regimes: (i) inference at a higher bitwidth than used during training ( y > x , see the discussion in the main text), and (ii) inference at a lower bitwidth ( y < x ). In the latter case, Eq. (10) of the main Neural Network Quantization by Learning Low-Loss Subspaces 25 
+
+Table 4: Average accuracy (%) over 3 runs for different train–inference bitwidth config-urations. For LSQ, the best result across the two bitwidth-adaptation schemes (Sec. 4.2 of the paper) is presented. Model Dataset Bitwidth during 
+
+train 
+
+Bitwidth during inference 
+
+LSQ QLS (Ours) 
+
+4-bit 5-bit 6-bit 4-bit 5-bit 6-bit ResNet-50  Tiny-ImageNet 
+
+4-bit 67 .47 67 .05 67 .14 70 .01 70 .19 70 .19 5-bit 67 .99 69 .14 68 .69 69 .58 70 .14 70 .19 6-bit 66 .91 69 .61 70 .09 69 .55 70 .08 70 .30 
+
+ImageNet 
+
+4-bit 76 .10 75 .0 75 .0 75 .85 76 .32 76 .41 5-bit 71 .02 76 .41 75 .76 74 .79 76 .56 76 .72 6-bit 69 .15 75 .49 76 .68 73 .92 76 .04 76 .82 
+
+Table 5: The same as in Table 4, but with quantization scale factors converted directly to a power-of-two representation. Model Dataset Bitwidth during 
+
+train 
+
+Bitwidth during power-of-2 inference 
+
+LSQ QLS (Ours) 
+
+4-bit 5-bit 6-bit 4-bit 5-bit 6-bit ResNet-50  Tiny-ImageNet 
+
+4-bit 62 .6 63 .77 62 .30 69 .11 70 .10 70 .13 5-bit 62 .44 65 .58 66 .48 69 .28 69 .98 70 .07 6-bit 64 .5 68 .0 68 .02 69 .01 70 .1 70 .32 
+
+ImageNet 
+
+4-bit 72 .45 72 .45 72 .45 73 .13 75 .97 76 .34 5-bit 58 .34 73 .98 75 .03 73 .4 75 .93 76 .55 6-bit 53 .19 74 .45 75 .87 61 .65 75 .97 76 .61 
+
+paper gives 
+
+s(mid) (b = y) ≈ 2x−y × s(mid) (b = x) ∈ { 2, 4, 8, . . . }s(mid) (b = x), (5) indicating that the scale factor for y-bit ( y < x ) quantization derived from the subspace midpoint becomes a power-of-two multiple (2 n> 0) of the scale corre-sponding to x-bit quantization. Consequently, some quantized values fall outside the trained low-loss subspace. Nevertheless, a fraction of the weights remains within the high-accuracy subspace even after quantization. As a result, although QLS( x, y < x ) exhibits a certain accuracy degradation, it is considerably less pronounced than that one observed for LSQ. In Table 5, we further examine the combined effect of the cross-bit adapta-tion and the transformation of scale factors to a hardware-friendly power-of-two representation, s → spow2 = 2 ⌈log 2(s)⌉. In this scenario, the advantages of the proposed QLS scheme become even more pronounced. 26 V. Protsenko et al. 
+
+Table 6: Average PSNR of the WbAb quantized RFDN model (notation as in Table 4 of the main paper). Quantization Setup Epochs Set5 Urban100 W4A4 Standard FP → W4 LSQ A4 LSQ 1 22.05 20.37 
+
+Θ(mid) (b = 4) → W4 QLS A4 LSQ 31.0 25.68 Standard FP → W4 LSQ A4 LSQ 1000 31.01 24.89 
+
+Θ(mid) (b = 4) → W4 QLS A4 LSQ 32.85 26.29 W5A5 Standard FP → W5 LSQ A5 LSQ 1 33.43 26.97 
+
+Θ(mid) (b = 4) → W5 QLS A5 LSQ 33.7 27.15 Standard FP → W5 LSQ A5 LSQ 1000 34.02 27.66 
+
+Θ(mid) (b = 4) → W5 QLS A5 LSQ 34.12 27.7 W6A6 Standard FP → W6 LSQ A6 LSQ 1 33.83 27.29 
+
+Θ(mid) (b = 4) → W6 QLS A6 LSQ 33.95 27.31 Standard FP → W6 LSQ A6 LSQ 1000 34.08 27.76 
+
+Θ(mid) (b = 4) → W6 QLS A6 LSQ 34.17 27.8 
+
+## 7 Additional Results on Full Quantization 
+
+As discussed in the main paper (see also the Sec. 6 of this supplemental ma-terial), a model trained with QLS for a given weight bitwidth can be directly adapted to higher bitwidths without additional fine-tuning, resulting in a mono-tonic improvement in performance. Furthermore, the midpoint of the learned subspace provides a strong initialization for subsequent full quantization of both weights and activations (Sec. 4.2 of the paper). Here we demonstrate that this property eliminates the need to retrain the subspace for each target full-quantization configuration. In Table 6, we report results where both weights and activations are quantized to b bits (W bAb). We compare two strategies: (i) Conventional LSQ – starting from an FP model and applying LSQ to both weights and activations; (ii) Combined QLS–LSQ 
+
+– initializing from the midpoint of the learned subspace, applying QLS to the weights (without explicit quantizers or the STE approximation during training), and LSQ to the activations. Importantly, the second strategy uses the same midpoint initialization for all target bitwidths. As shown in Tab. 6, the combined QLS–LSQ approach consistently achieves faster convergence and improved accuracy, both under a single training epoch and when trained with the full training pipeline of FP model. 
+
+## 8 Limitations and Future Work 
+
+The proposed QLS algorithm finds low-loss regions of the objective landscape aligned with a target quantization scheme. The QLS quantization scheme learns Neural Network Quantization by Learning Low-Loss Subspaces 27 
+
+these quantization-aware subspaces during training from scratch, which requires reproducing the full FP training pipeline. However, this process often produces improved FP models compared to standard training. In principle, the subspace could also be learned from a pretrained FP model. Preliminary experiments suggest this may require far fewer training iterations, though appropriate learning-rate adjustments remain unclear and appear to be task-dependent. Extending the QLS method to large-scale transformer models for vision and language is an important direction for future work. Because training such models from scratch is computationally expensive, we leave this to a separate study that may also require further adaptations to the QLS pipeline. Finally, the current work focuses primarily on weight-only quantization. Ex-tending QLS to activation quantization is feasible and will be explored in future work. 28 V. Protsenko et al. 
+
+Algorithm 2 Pseudo code of QLSConv2d layer 
+
+Require: Input feature map x, Conv2D layer m, bit-width b
+
+Ensure: Output feature map y
+
+1: Initialize learnable weights W1, W 2 ← zeros_like (m.weight )
+
+2: Initialize interpolation tensor α ← 0.5 ones_like (m.weight )
+
+3: if m.bias exists then 
+
+4: bias ← m.bias 
+
+5: end if 
+
+6: tneg ← − 2b−1 + 1 
+
+7: tpos ← 2b−1 − 1
+
+8: W1 ← KaimingNormal() 9: W2 ← KaimingNormal() 10: function QuantizeMidpoint (Wmid )11: scale ← 2·max( |Wmid |)
+
+> tpos −tneg
+
+12: Q ← clamp (round (Wmid /scale ), t neg , t pos )
+
+13: return scale · Q
+
+14: end function 
+
+15: function ForwardTrain (x)16: W ← (1 − α)W1 + αW 2
+
+17: return Conv2D (x, W, bias )
+
+18: end function 
+
+19: function ForwardTest (x)20: Wmid ← (W1 + W2)/2
+
+21: Wq ← QuantizeMidpoint (Wmid )
+
+22: return Conv2D (x, W q , bias )
+
+23: end function 
+
+24: function Forward (x, training) 25: if training then 
+
+26: return ForwardTrain (x)27: else 
+
+28: return ForwardTest (x)29: end if 
+
+30: end function Neural Network Quantization by Learning Low-Loss Subspaces 29 
+
+Algorithm 3 Pseudo code of Rqdist regularization calculation 
+
+Require: Model with QLSConv2d layers 
+
+Ensure: Subspace regularization loss Rqdist 
+
+1: Rqdist ← 0
+
+2: nQLS ← 0
+
+3: for all layers m in model.modules() do 
+
+4: if m is instance of QLSConv2d then 
+
+5: Wmid ← (m.W 1 + m.W 2)/2
+
+6: scale ← 2·max( |Wmid |)
+
+> m.t pos −m.t neg
+
+7: Wnorm ← | m.W 1 − m.W 2|/scale 
+
+8: obj ← P where (Wnorm < 1, (Wnorm − 1) 2, 0) 
+
+9: Rqdist ← Rqdist + obj/ numel (Wmid )
+
+10: nQLS ← nQLS + 1 
+
+11: end if 
+
+12: end for 
+
+13: return Rqdist /n QLS 
+
+Algorithm 4 Training Step for model with QLSConv2d Layers 
+
+Require: Model with QLSConv2d layers, training loader, optimizer, scheduler, crite-rion, regularization weight λ
+
+Ensure: Updated model parameters 1: Set model to training mode 
+
+2: for all batches (x, y ) in training loader do 
+
+3: for all layers m in model.modules() do 
+
+4: if m is instance of QLSConv2d then 
+
+5: m.α ← random tensor of the same shape as m.α from a uniform distri-bution on the interval [0 , 1] m.α. shape 
+
+6: end if 
+
+7: end for 
+
+8: if scheduler exists then 
+
+9: scheduler.step() 10: end if 
+
+11: optimizer.zero_grad() 12: ˆy ← model (x)
+
+13: Ltask ← criterion (ˆ y, y )
+
+14: Rqdist ← qdist_regularization(model)  ▷ See Algorithm 3 15: Ltotal ← Ltask + λ · Rqdist 
+
+16: Backpropagate Ltotal 
+
+17: optimizer.step() 18: end for 30 V. Protsenko et al. 
+
+## Supplemental Material References 
+
+61. Agustsson, E., Timofte, R.: Ntire 2017 challenge on single image super-resolution: Dataset and study. In: Proceedings of the IEEE conference on computer vision and pattern recognition workshops. pp. 126–135 (2017) 62. Bevilacqua, M., Roumy, A., Guillemot, C., Alberi-Morel, M.L.: Low-complexity single-image super-resolution based on nonnegative neighbor embedding (2012) 63. Deng, J., Dong, W., Socher, R., Li, L.J., Li, K., Fei-Fei, L.: Imagenet: A large-scale hierarchical image database. In: 2009 IEEE conference on computer vision and pattern recognition. pp. 248–255. Ieee (2009) 64. Huang, J.B., Singh, A., Ahuja, N.: Single image super-resolution from transformed self-exemplars. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 5197–5206 (2015) 65. Kingma, D.P., Ba, J.: Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 (2014) 66. Krizhevsky, A., Hinton, G., et al.: Learning multiple layers of features from tiny images (2009) 67. Le, Y., Yang, X., et al.: Tiny imagenet visual recognition challenge. CS 231N 7(7), 3 (2015) 68. Liu, J., Tang, J., Wu, G.: Residual feature distillation network for lightweight image super-resolution. In: Computer Vision–ECCV 2020 Workshops: Glasgow, UK, August 23–28, 2020, Proceedings, Part III 16. pp. 41–55. Springer (2020) 69. Russakovsky, O., Deng, J., Su, H., Krause, J., Satheesh, S., Ma, S., Huang, Z., Karpathy, A., Khosla, A., Bernstein, M., et al.: Imagenet large scale visual recog-nition challenge. International journal of computer vision 115 , 211–252 (2015) 70. Wortsman, M., Horton, M.C., Guestrin, C., Farhadi, A., Rastegari, M.: Learning neural network subspaces. In: International Conference on Machine Learning. pp. 11217–11227. PMLR (2021) 71. Zeyde, R., Elad, M., Protter, M.: On single image scale-up using sparse-representations. In: Curves and Surfaces: 7th International Conference, Avignon, France, June 24-30, 2010, Revised Selected Papers 7. pp. 711–730. Springer (2012)
