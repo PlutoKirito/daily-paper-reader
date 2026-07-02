@@ -1,0 +1,464 @@
+Title: Accelerating Merge with Motion Vector Difference via Filter Difference Analysis for VVenC
+
+URL Source: https://arxiv.org/pdf/2606.31084v1
+
+Published Time: Wed, 01 Jul 2026 00:27:50 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Accelerating Merge with Motion Vector Difference via Filter Difference Analysis for VVenC 
+
+Xinmin Feng 1, Shengyang Xu 2, Jianhua Chen 2, Li Li 1, Dong Liu 1,†, Feng Wu 1
+
+> 1
+
+University of Science and Technology of China, 2Hupan Laboratory xmfeng2000@mail.ustc.edu.cn; {lil1, dongeliu, fengwu }@ustc.edu.cn 
+
+Abstract —Merge with Motion Vector Difference (MMVD) is a key coding tool in Versatile Video Coding for improving motion prediction accuracy. However, its exhaustive search strategy imposes a significant computational burden on the encoder. To address this issue, we propose a novel fast MMVD algorithm for the VVenC encoder based on fractional motion vector filter difference analysis. By approximating the 8-tap interpolation filter with a 2-tap filter, we derive a criterion based on spatial gradients and prediction residuals for estimating the potential gain of MMVD candidates. We further generalize this criterion to accommodate both shifted integer reference samples and 2D separable filtering. To minimize the overhead of the proposed method, we introduce implementation optimizations, including symmetric offset inference and cross-shaped downsampled dot-product computation. Compared with existing fast MMVD al-gorithms in VVenC, our method reduces the average MMVD search ratio from 21.07% to 11.05% and decreases the efficiency-complexity metric η from 11.79 to 7.10 under the fast preset. 
+
+Index Terms —Versatile Video Coding, Merge with Motion Vector Difference, Fast algorithm. 
+
+I. I NTRODUCTION 
+
+Merge mode is a key technique in modern video coding standards for exploiting spatial and temporal redundancies. Adopted in both High Efficiency Video Coding (HEVC) [1] and Versatile Video Coding (VVC) [2], it reduces motion vec-tor (MV) bitrate by reusing motion information from a list of merge candidates for the current coding unit (CU). In HEVC, this list is built from spatial and temporal neighbors. VVC enhances it with history-based [3] and subblock-based motion vector prediction [4], geometric partitioning [5], and combined inter-intra prediction [6]. It also incorporates decoder-side motion vector refinement [7] and Merge with Motion Vector Difference (MMVD) [8] for higher motion precision. Unlike standard merge mode, MMVD allows signaling an additional motion vector difference (MVD) to refine the selected base motion. Specifically, MMVD selects one of the first two merge candidates as the base motion. The refinement is represented by a direction and a distance. Four directions, including 0°, 90°, 180°, and 270°, are supported, with the direction index signaled in the bitstream. As shown in Table I, two predefined distance tables [9], each containing eight entries, define the offset magnitude. The encoder selects one table at the picture level and signals a distance index for the MVD. Though effective in coding, MMVD significantly increases encoding complexity because of exhaustive search over all direction–distance combinations. Specifically, en-abling MMVD in VVenC introduces encoding time overheads 
+
+TABLE I DISTANCE TABLES (IN UNIT OF LUMA SAMPLES ) USED IN MMVD.                         
+
+> Index 01234567
+> Table 1 1/4 1/2 124816 32
+> Table 2 124816 32 64 128 …
+> …
+
+…
+
+…
+
+(a) -2.0 -1.0 0.0 1.0 2.0 3.0 
+
+> Absolute MVD (Pel, Log2)
+> 0
+> 20
+> 40
+> 60
+> 80
+> Proportion (%)  faster
+> fast
+> medium
+> slow
+
+(b) 
+
+Fig. 1. Illustration of MMVD search process. (a) MMVD Search Process. (b) Distribution of MMVD steps. of 36.39% and 21.20% under the faster and fast presets, respectively, hindering its usage in low-latency scenarios. In this paper, we focus on accelerating MMVD from the perspective of fractional motion vector filter difference analysis. As shown in Fig. 1(b), existing MMVD modes still require evaluating a large portion of quarter-pixel MVD candidates, which accounts for 60% ∼80% of total trials. To alleviate this issue, we propose a residual-gradient criterion that estimates whether a given MMVD direction is likely to provide coding gain. The criterion is first derived for a 1D interpolation case where regular merge and MMVD use the same integer-positioned reference samples. We then extend it to practical cases where MMVD offsets crosses an integer-sample boundary, causing the interpolation support to shift by one sample, as well as to 2D separable filtering. In addition, we introduce several engineering optimizations, including symmetric offset inference and efficient dot-product computation, to reduce the overhead of the proposed method itself. Experimental results on the VVenC encoder demonstrate that, across multiple presets, our approach achieves a better trade-off between encoding complexity and RD performance than existing MMVD acceleration schemes. II. M ETHODOLOGY 
+
+In this section, we present an efficient method for acceler-ating MMVD in VVC by reusing the regular-merge prediction and the spatial gradients of the reference blocks. The core idea is to approximate the 8-tap fractional motion compensation filters with 2-tap filters and derive a lightweight criterion for early termination of non-promising MMVD directions.             
+
+> arXiv:2606.31084v1 [eess.IV] 30 Jun 2026 𝑶𝒓𝒈 −𝑷 𝒋
+> 𝟐 ∝−𝜶 𝒊 ,𝒋 ,
+> 𝑷 𝒓𝒆𝒇 ∗𝑫 𝒉 𝑶𝒓𝒈 −𝑷 𝒊 𝑷 𝒓𝒆𝒇 ∗𝑫 𝒗
+
+or  ≥ 𝟎 , Skip MMVD                              
+
+> 𝑃 ref [𝑛 ]𝑃 ref [𝑛 +1]𝑃 ref [𝑛 +2]
+> 𝒊 𝒋 =𝒊 +∆𝑴𝑽
+> (a) Aligned Integer -sample support
+> 𝑃 ref [𝑛 +1]𝑃 ref [𝑛 +2]
+> 𝒊 𝒋 =(𝒊 +∆𝑴𝑽 )mod 16
+> (b) Shifted Integer -sample support
+> 𝑃 ref [𝑛 ]
+> Integer reference samples for regular merge
+> Integer reference sample for MMVD
+> s=1
+> s=0
+
+Fig. 2. Illustration of the integer-positioned reference samples used by the regular-merge and MMVD predictions using a 2-tap interpolation filter as an example. The fractional MV of regular merge and MMVD, denoted as i and j, respectively, may use either (a) the same pair of integer-positioned refer-ence samples, referred to as the aligned-support case, or (b) different sample pairs after a one-sample support shift, referred to as the shifted-support case. 
+
+A. MMVD Prediction Approximation 
+
+We first distinguish two cases based on whether MMVD changes the integer-positioned reference samples used for in-terpolation, as shown in Fig. 2. Specifically, let i ∈ { 0, . . . , 15 }
+
+denote the fractional phase of the regular-merge MV along one dimension, and let ∆ denote the MMVD offset in 1/16 -sample units. The refined position of MMVD q := i+∆ can be decomposed as s = ⌊q/ 16 ⌋ and j = q − 16 s ∈ { 0, . . . , 15 },where j is the refined fractional phase and s is the corre-sponding integer-position shift. s = 0 indicates that regular merge and MMVD use the same pair of integer-positioned reference samples, whereas s = ±1 indicates that MMVD uses an adjacent pair. In this paper, we refer to these two cases as the aligned-support and shifted-support cases, respectively. In the aligned-support case, both predictions are interpo-lated from the same reference block: Pi = Pref ∗ fH[i] and 
+
+Pj = Pref ∗ fH[j], where fH[i] and fH[j] are the corresponding 8-tap DCT-IF filters. As shown in Fig. 3, the main coefficients of the interpolation filter are concentrated on two neighboring integer samples. Therefore, we approximate the 8-tap filter fH
+
+with a 2-tap filter H = [ H(0) , H (1) ], where H(0) +H(1) = 64 .The difference between the two approximated filters is 
+
+∆Hi,j = H[j] − H[i] = αi,j D, D = [ −1, 1] , (1) where αi,j = H(0)  
+
+> i
+
+−H(0)  
+
+> j
+
+is precomputed for each phase pair. Thus, the MMVD prediction can be approximated as 
+
+Pj ≈ Pi + αi,j (Pref ∗ D) = Pi + αi,j gref , (2) where gref is the spatial gradient of the reference block along the MMVD direction. Let O be the original block and ei =
+
+O − Pi be the residual of the regular-merge candidate. The distortion of the MMVD candidate is approximated as 
+
+di,j = ∥O − Pj ∥2 ≈ ∥ ei − αi,j gref ∥2. (3) Expanding this term yields 
+
+di,j ≈ ∥ ei∥2 + α2 
+
+> i,j
+
+∥gref ∥2 − 2αi,j ⟨ei, gref ⟩. (4) 0                                              
+
+> …
+> 61
+> 58
+> 54
+> 51
+> 64 00
+> 63 -34
+> 62 -58
+> 0064
+> …
+> 60 -813
+> 58 -10 17
+> -1
+> 00
+> 01
+> -12
+> 00
+> 3
+> -14
+> 000
+> -210
+> -210
+> 000
+> 64 0
+> 64
+> 8-tap filter ෩𝑯
+> 16 Fractional MVs
+> -410
+> ෩𝑯 [𝒊 ]
+> ෩𝑯 [𝒋 ]-510
+> 3
+> 6
+> 10
+> 13
+> 2-tap filter 𝑯
+> 𝑯 [𝒊 ]
+> 𝑯 [𝒋 ]⋅𝑫 =𝑯 𝒊 +
+> 𝑶𝒓𝒈 −𝑷 𝒋
+> 𝟐 ∝−𝜶 𝒊 ,𝒋 ,
+> 𝜶 𝒊 ,𝒋
+> 𝑷 𝒓𝒆𝒇 ∗𝑫 𝒉 𝑶𝒓𝒈 −𝑷 𝒊 𝑷 𝒓𝒆𝒇 ∗𝑫 𝒗
+> or ≥𝟎 , Skip MMVD
+
+≈
+
+Fig. 3. Illustration of the proposed fast MMVD algorithm for the aligned-support case. Given the original block O, regular-merge phase i, and prediction Pi = Pref ∗ H[i], the MMVD prediction at phase j is approximated as Pj ≈ Pi + αi,j (Pref ∗
+
+D). The candidate is skipped if −αi,j ⟨O − Pi, Pref ∗ D⟩ ≥ 0.The key observation is that the potential gain of the MMVD candidate is mainly determined by the sign of the inner-product term −⟨ ei, gref ⟩. If −αi,j ⟨ei, gref ⟩ ≥ 0, the MMVD candidate is unlikely to achieve lower distortion than regular merge, and its evaluation can therefore be skipped. We further extend the analysis to the shifted-support case. As shown in Fig. 2(b), the union of the two supports contains three integer samples, which can be factorized using the same differential kernel: 
+
+∆Hi,j =
+
+(
+
+−D ∗ [H(0)  
+
+> j
+
+, H (1)  
+
+> i
+
+], leftward shift ,
+
+D ∗ [H(0)  
+
+> i
+
+, H (1)  
+
+> j
+
+], rightward shift . (5) Thus, the gradient gref only needs to be computed once. The final prediction adjustment can then be obtained by applying a simple 2-tap filter to gref , avoiding direct 3-tap filtering on the original reference block. Following the same first-order criterion in Eq. (4), the candidate is skipped if the corresponding residual-gradient response is positive: 
+
+− ⟨ ei, Pref ∗ ∆Hi,j ⟩ ≥ 0. Notably, Pref should also be shifted by one pixel according to s before computing gref to align with the new integer position of the MMVD candidate. 
+
+B. Extension to 2D Separable Filtering 
+
+We next extend the 1D analysis to the 2D separable interpolation used in VVC, where the regular-merge with the fractional MV (ih, i v ) and MMVD predictions with the fractional MV (jh, j v ) are 
+
+Pi = Hv [iv ] ∗ (Hh[ih] ∗ Pref ), (6) 
+
+Pj = Hv [jv ] ∗ (Hh[jh] ∗ Pref ). (7) Using the 2-tap approximation, 
+
+Hh[jh] ≈ Hh[ih] + αhDh, Hv [jv ] ≈ Hv [iv ] + αv Dv , (8) where αh and αv are pre-computed horizontal and vertical scalars. Substituting these approximations into Pj gives 
+
+Pj ≈ (Hv [iv ] + αv Dv ) ∗ (( Hh[ih] + αhDh) ∗ Pref )= Pi + αhHv [iv ] ∗ (Dh ∗ Pref )+ αv Dv ∗ (Hh[ih] ∗ Pref ) + ((((((((( (
+
+αhαv Dv ∗ (Dh ∗ Pref ).
+
+(9) Algorithm 1: Proposed Fast MMVD Algorithm 
+
+Input: Source block O, biprediction reference blocks 
+
+{P (0)  
+
+> ref
+
+, P (1)  
+
+> ref
+
+}, BCW weights {w0, w 1},reconstruction of regular merge mode Pmerge , motion vector (ih, i v ), MMVD offset direction 
+
+(∆ h, ∆v ) ∈ { (∆ d, 0) , (−∆d, 0) , (0 , ∆d), (0 , −∆d)}
+
+Output: Whether to early-skip the current MMVD direction  
+
+> 1
+
+Initialize dot ← 0 
+
+> 2
+
+for i ∈ { 0, 1} do  
+
+> 3
+
+e ← O − Pmerge , g(i) 
+
+> h
+
+← Dh ∗ P (i) 
+
+> ref
+> 4
+
+s ← ⌊ (ih + ∆ h)/16 ⌋ 
+
+> 5
+
+if s = 0 then  
+
+> 6
+
+Df ← H(0)  
+
+> ih+∆ h
+
+− H(0)   
+
+> ih// aligned-support
+> 7
+
+else  
+
+> 8
+
+if s = 1 then  
+
+> 9
+
+Df ← − [H(0)  
+
+> ih+∆ h
+
+, H (0)  
+
+> ih
+
+] // leftward shifted-support  
+
+> 10
+
+else  
+
+> 11
+
+Df ← [H(0)  
+
+> ih
+
+, H (0)  
+
+> ih+∆ h
+
+] // rightward shifted-support  
+
+> 12
+
+dot ← dot − wi⟨e, Df ∗ g(i) 
+
+> h
+
+⟩ 
+
+> 13
+
+return dot ≥ 0 // Skip this direction  
+
+> 14 Note: For brevity, we only take bidirectional references and horizontal MMVD offsets as example.
+
+Since standard MMVD only searches four cardinal directions, only one of αh and αv is non-zero for each candidate. Thus, the cross-term vanishes. For a horizontal MMVD candidate, 
+
+Pj ≈ Pi + αhHv [iv ] ∗ (Dh ∗ Pref ). (10) For a vertical MMVD candidate, 
+
+Pj ≈ Pi + αv Dv ∗ (Hh[ih] ∗ Pref ). (11) Hence, the residual-gradient criterion derived in Eq. (4) can also be applied to both horizontal and vertical MMVD direc-tions. The complete implementation is summarized in Algo-rithm 1, where we use s = ⌊(ih + ∆ h)/16 ⌋ to distinguish the aligned- and shifted-support cases. Different cases are finally converted into the same dot-product form between the residual of regular merge modes and the spatial gradient of reference blocks, as shown in Line 12 of Algorithm 1. 
+
+C. Implementation Optimizations 
+
+To reduce the complexity overhead of the proposed algo-rithm, we introduce two implementation optimizations. (1) Symmetric Offset Inference: For a pair of symmetric MMVD offsets with opposite signs along the same axis, e.g., (∆ d, 0) 
+
+and (−∆d, 0) , when one offset leads to the shifted-support case while its counterpart remains in the aligned-support case, we explicitly compute the residual-gradient response for the aligned-support offset and infer the response of the shifted-support offset by sign inversion. The inferred response is then used to decide whether the corresponding MMVD candidate can be skipped. (2) Efficient Dot Product Calculation: 
+
+Instead of computing the dot product over the entire block, we restrict the calculation to a central cross-shaped region. Specifically, the middle row is used for horizontal MMVD offsets, and the middle column is used for vertical ones. 
+
+Algorithm 2: Integration of the Proposed Algorithm 
+
+Input: Merge candidate list, cost of last entry Clast 
+
+Output: Optimal MMVD vector and its cost  
+
+> 1
+
+Initialize bestDir ← ∅ 
+
+> 2
+
+for step ∈ { 0, 1, . . . , 7} do  
+
+> 3
+
+minCost ← ∞  
+
+> 4
+
+for dir ∈ { right , left , down , up } do  
+
+> 5
+
+Determine the MMVD offset (∆ h, ∆v ) from 
+
+(step, dir ) 
+
+> 6
+
+if Algorithm 1 returns true for (∆ h, ∆v ) then  
+
+> 7
+
+Continue // Proposed Algorithm  
+
+> 8
+
+if step ≥ 1 and dir ̸ = bestDir then  
+
+> 9
+
+Continue // ( Fast2 ) 
+
+> 10
+
+Compute cost c for (step, dir)  
+
+> 11
+
+if c < minCost then  
+
+> 12
+
+minCost ← c 
+
+> 13
+
+if step = 0 then  
+
+> 14
+
+bestDir ← dir  
+
+> 15
+
+if minCost > C last then  
+
+> 16
+
+Break // ( Fast3 ) 
+
+> 17
+
+return best MMVD result (bestDir, step, minCost) 
+
+III. E XPERIMENTS 
+
+A. Experimental Setup 
+
+We evaluate the RD performance and encoding complexity of enabling MMVD using the VVenC-1.14.0 encoder across four presets: faster, fast, medium, and slow. The proposed method is implemented on top of the existing MMVD fast-search strategies in VVenC, as shown in Algorithm 2. The original fast strategies include:  
+
+> •
+
+(Fast1 ) MMVD is evaluated only when the cost of its base merge candidate ranks within the top two positions of the coarse search list.  
+
+> •
+
+(Fast2 ) After the first step size is tested, only the best direction is retained for subsequent MMVD evaluations.  
+
+> •
+
+(Fast3 ) Further MMVD evaluations are skipped when the best MMVD cost is higher than the cost of the last candidate in the coarse search list. Here, we compare three MMVD-enabled configurations. Specifically, Baseline refers to full MMVD search without fast pruning, +Fast123 refers to MMVD accelerated by the above three strategies, and +Ours further integrates the proposed al-gorithm on top of +Fast123 . Experiments are conducted under Random Access configurations following the VVC common test conditions [10], using four quantization parameters: 22, 27, 32, and 37. The test sequences cover JVET CTC Classes A1, A2, B, C, and D. Compression performance is evaluated using the BD-Rate [11]. Encoding complexity is calculated as: 
+
+∆Tenc = Ttest − Tanchor 
+
+Tanchor 
+
+× 100% , (12) where Ttest denotes the encoding time of the tested MMVD-enabled configuration, and Tanchor denotes the encoding time of the original VVenC-1.14.0 encoder with MMVD disabled. For PSNR and SSIM [12], we report the weighted Bjøntegaard TABLE II EXPERIMENTAL RESULTS FOR DIFFERENT MMVD FAST ALGORITHMS ACROSS DIFFERENT PRESETS . BOLD : BEST PERFORMANCE . U NDERLINE :SECOND BEST PERFORMANCE .                                                                                                                                                                                
+
+> Method BD-Rate (%) ∆Tenc (%) η(↓)
+> SSIM PSNR VMAF
+> Faster Preset  Baseline Average -1.43 -1.12 -0.12 36.39 40.89
+> +Fast123 Average -0.87 -0.79 -0.18 7.20 11.74
+> +Ours
+> A1 -0.80 -0.52 -0.38 4.17 7.36 A2 -0.76 -0.69 -0.08 4.72 9.25 B-0.62 -0.78 -0.20 4.64 8.70 C-0.42 -0.53 -0.11 4.98 14.09 D-0.86 -1.09 -0.58 4.68 5.55 Average -0.69 -0.72 -0.27 4.64 8.26
+> Fast Preset
+> Baseline Average -0.90 -0.64 -0.26 21.10 35.17
+> +Fast123 Average -0.63 -0.41 -0.11 4.52 11.79
+> +Ours
+> A1 -0.78 -0.54 -0.59 2.91 4.57 A2 -0.59 -0.35 -0.10 1.69 4.88 B-0.54 -0.41 -0.29 2.87 6.94 C-0.19 -0.11 0.18 2.49 62.25 D-0.35 -0.32 0.27 1.18 8.85 Average -0.49 -0.35 -0.11 2.23 7.10
+> Medium Preset  Baseline Average -0.55 -0.30 0.07 16.59 63.81
+> +Fast123 Average -0.39 -0.19 0.05 3.19 18.06
+> +Ours
+> A1 -0.19 -0.07 -0.23 1.94 11.88 A2 -0.26 -0.11 -0.03 1.30 9.75 B-0.41 -0.27 -0.14 2.10 7.68 C-0.17 -0.10 0.25 1.90 285.00 D-0.26 -0.18 0.51 1.64 -70.29 Average -0.26 -0.15 0.07 1.78 16.05
+> Slow Preset
+> Baseline Average -0.48 -0.39 -0.24 5.21 14.08
+> +Fast123 Average -0.36 -0.29 -0.16 1.15 4.26
+> +Ours
+> A1 -0.28 -0.19 -0.16 0.76 3.62 A2 -0.27 -0.24 0.07 0.74 5.05 B-0.32 -0.24 -0.21 0.64 2.49 C-0.10 -0.08 -0.15 0.71 6.45 D-0.36 -0.31 -0.12 0.10 0.38 Average -0.27 -0.21 -0.11 0.59 2.99
+
+Delta rate using Y:Cb weights of 6:1:1. For VMAF [13], BD-rate is computed using the luma-domain VMAF score. To assess the cost-effectiveness of enabling MMVD, we fur-ther compute the ratio between encoding-time overhead and the average BD-rate gain over the reported quality metrics: 
+
+η = −∆Tenc /BD-rate , where a lower η indicates that less encoding-time overhead is required to obtain each unit of BD-rate gain, corresponding to a better trade-off between encoding complexity and RD performance. 
+
+B. Experimental Results 
+
+Table II summarizes the RD performance and encoding complexity of the three MMVD-enabled configurations. Full MMVD search provides the largest coding gain but intro-duces substantial encoding overhead, especially for the faster, fast, and medium presets. The existing VVenC fast-search strategies greatly reduce this overhead, while the proposed method further improves the efficiency–complexity trade-off across all presets. Compared with +Fast123 , +Ours reduces the encoding-time overhead from 7.20% to 4.64% under the faster preset and from 4.52% to 2.23% under the fast preset. Meanwhile, the corresponding η values decrease from 11.74 to 8.26 and from 11.79 to 7.10, respectively. Similar trends are observed for the medium and slow presets, where the proposed method achieves the lowest η. These results indicate 
+
+TABLE III ABLATION STUDY ON THE IMPLEMENTATION OPTIMIZATIONS .                                
+
+> SIMD SymOffset CrossDot BD-Rate (%) ∆Tenc (%) η(↓)
+> SSIM PSNR VMAF
+> -0.54 -0.37 -0.10 4.21 12.50
+> ✓-0.54 -0.37 -0.10 3.26 9.68
+> ✓✓-0.51 -0.36 -0.07 2.93 9.35
+> ✓✓✓-0.49 -0.35 -0.11 2.23 7.10
+
+TABLE IV AVERAGE NUMBER OF MMVD SEARCH ATTEMPTS PER CTU.                     
+
+> Method Faster Fast Medium Slow Average
+> Baseline 2016 1749 3805 7222 3698
+> +Fast123 348 (17.28%) 359 (20.51%) 842 (22.13%) 1568 (21.71%) 779 (21.07%)
+> +Ours 204 (10.14%) 168 (9.60%) 448 (11.77%) 814 (11.27%) 409 (11.05%)
+
+that the proposed acceleration strategy effectively removes less promising MMVD candidates while largely preserving the coding benefit of MMVD. To evaluate the implementation optimizations introduced in Section II-C, we conduct an ablation study using the fast preset. Starting from the block-level dot-product implementa-tion, we sequentially apply three techniques: Single Instruction Multiple Data (SIMD) optimization, symmetric offset infer-ence for reducing redundant computations of shifted-support cases, and cross-shaped dot-product calculation. As shown in Table III, these optimizations have negligible impact on cod-ing performance while significantly reducing computational overhead, lowering the encoding-time increase from 4.21% to 2.23%, validating the proposed implementation optimizations. Moreover, Table IV reports the average number of MMVD search attempts for each CTU across four presets. Relative to full MMVD search, the existing fast strategies reduce the attempts to 21.07%, and the proposed method further lowers this ratio to 11.05%. Thus, only about half of the candidates retained by +Fast123 are finally evaluated, i.e., r =11 .05 /21 .07 ≈ 0.52 . For a coding block of size W × H, the original MMVD evaluation requires approximately 2N W HK 
+
+operations, where N is the number of MMVD candidates and K is the interpolation filter length. With pruning, only an r portion of candidates requires full evaluation, while the algorithm adds 4( W + H) operations for cross-shaped 2-tap filtering and dot-product computation. Thus, the overall complexity is approximated as 2rN W HK +4( W +H). Since this additional O(W + H) overhead is much smaller than full block-wise motion compensation for typical CU sizes, the proposed method substantially reduces MMVD search complexity after +Fast123 .IV. C ONCLUSIONS 
+
+In this paper, we present a fast MMVD algorithm for VVenC based on filter difference analysis, which predicts MMVD gain using spatial gradients and residuals to avoid exhaustive search. Experimental results show better trade-off between encoding complexity and coding gains. Given that our method currently only supports the standard four cardinal directions; in future work, we plan to extend it to reduce the complexity of MMVD modes with more flexible diagonal angles [14]. REFERENCES [1] Gary J Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand, “Overview of the high efficiency video coding (hevc) standard,” IEEE Transactions on circuits and systems for video technology , vol. 22, no. 12, pp. 1649–1668, 2012. [2] Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J Sullivan, and Jens-Rainer Ohm, “Overview of the versatile video coding (vvc) standard and its applications,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 10, pp. 3736–3764, 2021. [3] Junru Li, Meng Wang, Li Zhang, Kai Zhang, Hongbin Liu, Shiqi Wang, Siwei Ma, and Wen Gao, “History-based motion vector prediction for future video coding,” in 2019 IEEE International Conference on Multimedia and Expo (ICME) . IEEE, 2019, pp. 67–72. [4] Ru-Ling Liao, Yan Ye, Jie Chen, Xinwei Li, and Yeping ZHENG, “Subblock-based temporal motion vector prediction,” Apr. 3 2025, US Patent App. 18/894,929. [5] Han Gao, Semih Esenlik, Elena Alshina, and Eckehard Steinbach, “Geometric partitioning mode in versatile video coding: Algorithm review and analysis,” IEEE transactions on circuits and systems for video technology , vol. 31, no. 9, pp. 3603–3617, 2020. [6] L. Pham Van, G. Van der Auwera, A. K. Ramasubramonian, V. Seregin, and M. Karczewicz, “CE10: CIIP with position-independent weights (test CE10-1.1),” Tech. Rep. JVET-N0302, Joint Video Experts Team (JVET) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11, Marrakech, Morocco, Mar. 2019. [7] Han Gao, Xu Chen, Semih Esenlik, Jianle Chen, and Eckehard Stein-bach, “Decoder-side motion vector refinement in vvc: Algorithm and hardware implementation considerations,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 8, pp. 3197– 3211, 2020. [8] Seungsoo Jeong, Yinji Piao, Min Woo Park, Minsoo Park, Anish Tamse, Narae Choi, Kiho Choi, Woongil Choi, and Chanyul Kim, “Merge mode with motion vector difference,” in 2020 IEEE International Conference on Image Processing (ICIP) . IEEE, 2020, pp. 1157–1160. [9] H. Liu et al., “AHG11: MMVD without fractional distances for SCC,” Tech. Rep. JVET-M0255, Joint Video Experts Team (JVET) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11, Marrakech, MA, Jan. 2019. [10] F. Bossen, J. Boyce, K. Suehring, X. Li, and V. Seregin, “JVET Common Test Conditions and Software Reference Configurations for SDR Video,” Oct. 2020. [11] G. Bjontegaard, “Calculation of Average PSNR Differences Between RD-Curves,” Apr. 2001. [12] Zhou Wang, Alan C Bovik, Hamid R Sheikh, and Eero P Simoncelli, “Image quality assessment: from error visibility to structural similarity,” 
+
+IEEE Transactions on Image Processing , vol. 13, no. 4, pp. 600–612, 2004. [13] Zhengfang Li, Anush Aaron, Ioannis Katsavounidis, Akshay Moorthy, and Megha Manohara, “Toward a practical perceptual video quality metric,” jun 2016, The Netflix Tech Blog, vol. 6, no. 2. [14] Mehdi Salehifar, Yuwen He, Kai Zhang, Na Zhang, and Li Zhang, “A template matching based extension for merge with motion vector difference,” in 2022 IEEE International Symposium on Circuits and Systems (ISCAS) , 2022, pp. 521–525.
