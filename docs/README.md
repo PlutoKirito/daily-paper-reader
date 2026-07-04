@@ -6,43 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-03
-- 运行时间：2026-07-03 21:36:33 UTC
+- 最新运行日期：2026-07-04
+- 运行时间：2026-07-04 21:10:04 UTC
 - 运行状态：成功
-- 本次总论文数：7
+- 本次总论文数：6
 - 精读区：1
-- 速读区：6
+- 速读区：5
 
 ### 今日简报（AI）
-今日推荐7篇论文，精读《SoftBinary Coding: 信息论神经压缩新范式》获8.0高分，速读涵盖扩散模型求解PDE逆问题与结构化贝叶斯剪枝压缩。  
-最值得关注方向：基于信息论的软二进制编码压缩，以及无需训练的卷积网络动态压缩框架HASTE。  
-建议优先阅读精读论文理解压缩理论，再结合速读中的扩散方法在科学计算中的应用拓展视野。
-- 详情：[/202607/03/README](/202607/03/README)
+今日聚焦扩散模型后训练剪枝与视频恢复，精读《Post-Training Pruning for Diffusion Transformers》（8.0分），建议优先关注其在高效生成上的剪枝方法；速读中《SATB-VR》的SNR轨迹混合值得一看。对普通读者，可先尝试将剪枝技术直接应用于现有扩散模型以降低推理成本。
+- 详情：[/202607/04/README](/202607/04/README)
 
 ### 精读区论文标签
-1. [SoftBinary Coding: A New Information-Theoretic Neural Compression Paradigm](/202607/03/2606.29578v1-softbinary-coding-a-new-information-theoretic-neural-compression-paradigm)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：使用随机二进制潜变量的端到端神经压缩范式
+1. [Post-Training Pruning for Diffusion Transformers](/202607/04/2607.00927v1-post-training-pruning-for-diffusion-transformers)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：针对扩散Transformer的后训练剪枝方法，适用于生成式视频压缩中的模型
 
 ### 速读区论文标签
-1. [Latent Diffusion Posterior Sampling with Surrogate Likelihood Guidance for PDE Inverse Problems](/202607/03/2606.26592v1-latent-diffusion-posterior-sampling-with-surrogate-likelihood-guidance-for-pde-inverse-problems)  
+1. [SATB-VR: Training Few-Step Video Restoration Diffusion Model using SNR-Aware Trajectory Blending](/202607/04/2606.28677v1-satb-vr-training-few-step-video-restoration-diffusion-model-using-snr-aware-trajectory-blending)  
    标签：评分：7.0/10、query:vcodec
-   evidence：潜扩散模型用于贝叶斯反问题，方法可迁移至生成式视频压缩
-2. [Push Puppet Networks: Structured Bayesian Pruning Algorithm for Language Model Compression](/202607/03/2606.28251v1-push-puppet-networks-structured-bayesian-pruning-algorithm-for-language-model-compression)  
+   evidence：基于信噪比感知轨迹混合的少步视频恢复扩散模型
+2. [When Token Compression Breaks: Structural Pruning vs. Token Reduction for Robust ViT Segmentation under High Compression](/202607/04/2607.02237v1-when-token-compression-breaks-structural-pruning-vs-token-reduction-for-robust-vit-segmentation-under-high-compression)  
    标签：评分：7.0/10、query:train-trick
-   evidence：结构化贝叶斯剪枝用于模型压缩
-3. [HASTE: A Framework for Training-Free, Dynamic, and Steerable Compression of Pre-Trained Convolutional Neural Networks](/202607/03/2606.30516v1-haste-a-framework-for-training-free-dynamic-and-steerable-compression-of-pre-trained-convolutional-neural-networks)  
+   evidence：对比ViT分割中的令牌压缩与结构剪枝，可用于轻量视频编解码
+3. [Quality-Aware Modulation for Diffusion Transformers](/202607/04/2606.30934v1-quality-aware-modulation-for-diffusion-transformers)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：为扩散Transformer引入质量感知调制，提升图像生成质量
+4. [Low-Latency Task-Oriented Image Transmission with Opportunistic Spectrum Access](/202607/04/2607.01921v1-low-latency-task-oriented-image-transmission-with-opportunistic-spectrum-access)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：基于VQ-VAE的任务导向图像传输，采用离散潜在表示压缩，与视频编解码中的神经熵编码和率失真优化紧密相关
+5. [OrbitQuant: Data-Agnostic Quantization for Image and Video Diffusion Transformers](/202607/04/2607.02461v1-orbitquant-data-agnostic-quantization-for-image-and-video-diffusion-transformers)  
    标签：评分：6.0/10、query:train-trick
-   evidence：通过哈希实现无需训练的动态CNN压缩
-4. [WarpI2I: Image Warping for Image-to-Image Translation](/202607/03/2606.31018v1-warpi2i-image-warping-for-image-to-image-translation)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：基于潜扩散模型，通过显著性引导的扭曲保留结构
-5. [Towards Memory-Efficient Autoregressive Video Generation via Instance-Specific Parametric Absorption](/202607/03/2607.00712v1-towards-memory-efficient-autoregressive-video-generation-via-instance-specific-parametric-absorption)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：自回归视频生成，KV缓存压缩
-6. [From SRA to Self-Flow: Data Augmentation or Self-Supervision?](/202607/03/2607.02508v1-from-sra-to-self-flow-data-augmentation-or-self-supervision)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：扩散变换器的表示对齐
+   evidence：图像和视频扩散变换器的数据无关量化，支持高效推理
 
 
 <div class="dpr-home-promo-card">
