@@ -6,38 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-04
-- 运行时间：2026-07-04 21:10:04 UTC
+- 最新运行日期：2026-07-05
+- 运行时间：2026-07-05 21:31:51 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 本次总论文数：3
+- 精读区：0
+- 速读区：3
 
 ### 今日简报（AI）
-今日聚焦扩散模型后训练剪枝与视频恢复，精读《Post-Training Pruning for Diffusion Transformers》（8.0分），建议优先关注其在高效生成上的剪枝方法；速读中《SATB-VR》的SNR轨迹混合值得一看。对普通读者，可先尝试将剪枝技术直接应用于现有扩散模型以降低推理成本。
-- 详情：[/202607/04/README](/202607/04/README)
+今日速读3篇论文，聚焦扩散模型量化与剪枝，及信源信道编码深度分析。
+最值得关注的是《OrbitQuant》提出的数据无关量化方法（7分），以及扩散Transformer的剪枝技术（6分）。
+建议优先阅读OrbitQuant掌握通用量化方案，再结合剪枝方法优化模型部署效率。
+- 详情：[/202607/05/README](/202607/05/README)
 
 ### 精读区论文标签
-1. [Post-Training Pruning for Diffusion Transformers](/202607/04/2607.00927v1-post-training-pruning-for-diffusion-transformers)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：针对扩散Transformer的后训练剪枝方法，适用于生成式视频压缩中的模型
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [SATB-VR: Training Few-Step Video Restoration Diffusion Model using SNR-Aware Trajectory Blending](/202607/04/2606.28677v1-satb-vr-training-few-step-video-restoration-diffusion-model-using-snr-aware-trajectory-blending)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：基于信噪比感知轨迹混合的少步视频恢复扩散模型
-2. [When Token Compression Breaks: Structural Pruning vs. Token Reduction for Robust ViT Segmentation under High Compression](/202607/04/2607.02237v1-when-token-compression-breaks-structural-pruning-vs-token-reduction-for-robust-vit-segmentation-under-high-compression)  
+1. [OrbitQuant: Data-Agnostic Quantization for Image and Video Diffusion Transformers](/202607/05/2607.02461v1-orbitquant-data-agnostic-quantization-for-image-and-video-diffusion-transformers)  
    标签：评分：7.0/10、query:train-trick
-   evidence：对比ViT分割中的令牌压缩与结构剪枝，可用于轻量视频编解码
-3. [Quality-Aware Modulation for Diffusion Transformers](/202607/04/2606.30934v1-quality-aware-modulation-for-diffusion-transformers)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：为扩散Transformer引入质量感知调制，提升图像生成质量
-4. [Low-Latency Task-Oriented Image Transmission with Opportunistic Spectrum Access](/202607/04/2607.01921v1-low-latency-task-oriented-image-transmission-with-opportunistic-spectrum-access)  
+   evidence：适用于扩散变换器的数据无关权重量化方法
+2. [Effective Depth in Joint Source-Channel Coding: An Implicit Equilibrium Analysis](/202607/05/2606.29737v2-effective-depth-in-joint-source-channel-coding-an-implicit-equilibrium-analysis)  
    标签：评分：6.0/10、query:entropy-coding
-   evidence：基于VQ-VAE的任务导向图像传输，采用离散潜在表示压缩，与视频编解码中的神经熵编码和率失真优化紧密相关
-5. [OrbitQuant: Data-Agnostic Quantization for Image and Video Diffusion Transformers](/202607/04/2607.02461v1-orbitquant-data-agnostic-quantization-for-image-and-video-diffusion-transformers)  
+   evidence：提出隐式均衡框架用于深度联合源信道编码，与端到端神经压缩概念相关
+3. [Post-Training Pruning for Diffusion Transformers](/202607/05/2607.00927v1-post-training-pruning-for-diffusion-transformers)  
    标签：评分：6.0/10、query:train-trick
-   evidence：图像和视频扩散变换器的数据无关量化，支持高效推理
+   evidence：扩散变换器的后训练剪枝方法
 
 
 <div class="dpr-home-promo-card">
