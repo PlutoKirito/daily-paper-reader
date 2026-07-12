@@ -6,71 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-11
-- 运行时间：2026-07-11 20:22:22 UTC
+- 最新运行日期：2026-07-12
+- 运行时间：2026-07-12 21:28:08 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
-- 速读区：11
+- 本次总论文数：12
+- 精读区：5
+- 速读区：7
 
 ### 今日简报（AI）
-今日共精读6篇、速读11篇，重点聚焦视频生成控制与图像滤波优化。最值得关注的是《Track the Noise》在可控视频生成中提出3D运动一致性噪声，以及《Reduced-complexity Adaptive Loop Filtering》通过输入依赖图滤波降低复杂度。建议普通读者优先精读这两篇高分文章获取核心方法，再根据兴趣扩展速读列表中统一自回归与双向扩散的Flex-Forcing或无损压缩的LUMI。
-- 详情：[/202607/11/README](/202607/11/README)
+今日聚焦视频传输鲁棒性与视频生成加速两项高分研究。最值得看的是《Towards Robust Semantic Video Transmission》提出的抗块擦除方案（9.0分）与《Reward Lightning》实现的同源偏好蒸馏快速生成方法（8.0分）。建议关注视频传输和生成技术的效率与稳定性，以应对未来实时编码与创作需求。
+- 详情：[/202607/12/README](/202607/12/README)
 
 ### 精读区论文标签
-1. [Track the Noise, Move the World:3D-Grounded Motion-Consistent Noise for Controllable Video Generation](/202607/11/2607.02798v1-track-the-noise-move-the-world3d-grounded-motion-consistent-noise-for-controllable-video-generation)  
+1. [Towards Robust Semantic Video Transmission over Block Erasure Channels](/202607/12/2607.07823v1-towards-robust-semantic-video-transmission-over-block-erasure-channels)  
    标签：评分：9.0/10、query:vcodec
-   evidence：基于潜在扩散的可控视频生成
-2. [Reduced-complexity Adaptive Loop Filtering via Input-dependent Graph Filters](/202607/11/2607.04985v1-reduced-complexity-adaptive-loop-filtering-via-input-dependent-graph-filters)  
-   标签：评分：9.0/10、query:train-trick
-   evidence：基于图的低复杂度自适应环路滤波方法用于视频编解码
-3. [DiffCVE: Diffusion-based Compressed Video Enhancement](/202607/11/2607.07195v1-diffcve-diffusion-based-compressed-video-enhancement)  
-   标签：评分：9.0/10、query:vcodec
-   evidence：基于扩散的压缩视频增强方法，利用编码先验，直接相关于生成式视频压缩
-4. [CineMobile: On-Device Image-to-Video Diffusion for Cinematic Camera Motion Generation](/202607/11/2607.03803v1-cinemobile-on-device-image-to-video-diffusion-for-cinematic-camera-motion-generation)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：蒸馏引导剪枝用于高效移动端视频扩散模型
-5. [MobileWan: Closing the Quality Gap for Mobile Video Diffusion](/202607/11/2607.06173v1-mobilewan-closing-the-quality-gap-for-mobile-video-diffusion)  
+   evidence：面向鲁棒传输的语义感知神经视频压缩框架
+2. [Reward Lightning: Fast Video Generation via Homologous Preference Distillation](/202607/12/2607.03960v1-reward-lightning-fast-video-generation-via-homologous-preference-distillation)  
    标签：评分：8.0/10、query:vcodec
-   evidence：通过扩散模型部署实现生成式视频压缩
-6. [Towards Robust Semantic Video Transmission over Block Erasure Channels](/202607/11/2607.07823v1-towards-robust-semantic-video-transmission-over-block-erasure-channels)  
+   evidence：使用潜在扩散模型与同源偏好蒸馏加速视频生成
+3. [Enhancing Video Physical Consistency via Role-aware Joint Training and Modality-decoupled Denoising](/202607/12/2607.04653v1-enhancing-video-physical-consistency-via-role-aware-joint-training-and-modality-decoupled-denoising)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：联合光流训练提升视频一致性，与视频压缩中的运动估计和补偿直接相关
+4. [Reduced-complexity Adaptive Loop Filtering via Input-dependent Graph Filters](/202607/12/2607.04985v1-reduced-complexity-adaptive-loop-filtering-via-input-dependent-graph-filters)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：面向视频编码的低复杂度自适应环路滤波
+5. [LUMI: Tokenizer-Agnostic LLM-Based Lossless Image Compression](/202607/12/2607.08221v1-lumi-tokenizer-agnostic-llm-based-lossless-image-compression)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：面向鲁棒传输的神经视频压缩框架
+   evidence：基于LLM的无损图像压缩，采用与分词器无关的熵编码和概率估计
 
 ### 速读区论文标签
-1. [Flex-Forcing: Towards a Unified Autoregressive and Bidirectional Video Diffusion Model](/202607/11/2607.03509v1-flex-forcing-towards-a-unified-autoregressive-and-bidirectional-video-diffusion-model)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：统一视频扩散模型，可实现高效生成；与基于扩散的生成式视频压缩相关
-2. [LUMI: Tokenizer-Agnostic LLM-Based Lossless Image Compression](/202607/11/2607.08221v1-lumi-tokenizer-agnostic-llm-based-lossless-image-compression)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：基于LLM的无损压缩概率估计
-3. [SLORR: Simple and Efficient In-Training Low-Rank Regularization](/202607/11/2607.08754v1-slorr-simple-and-efficient-in-training-low-rank-regularization)  
+1. [CineMobile: On-Device Image-to-Video Diffusion for Cinematic Camera Motion Generation](/202607/12/2607.03803v1-cinemobile-on-device-image-to-video-diffusion-for-cinematic-camera-motion-generation)  
    标签：评分：7.0/10、query:train-trick
-   evidence：训练中低秩正则化方法用于神经网络压缩，可应用于视频编解码
-4. [LongE2V: Long-Horizon Event-based Video Reconstruction, Prediction, and Frame Interpolation with Video Diffusion Models](/202607/11/2607.08770v1-longe2v-long-horizon-event-based-video-reconstruction-prediction-and-frame-interpolation-with-video-diffusion-models)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：基于事件流的视频帧插值和预测，使用视频扩散模型
-5. [Variable Bit-width Quantization: Learning Per-Group Precision for "Bigger-but-Smaller" Language Models](/202607/11/2607.02893v1-variable-bit-width-quantization-learning-per-group-precision-for-bigger-but-smaller-language-models)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：可微量化优化方法，可迁移至视频压缩潜变量量化
-6. [Rethinking Depth Pruning for Vision Transformers: A Heterogeneity-Aware Perspective](/202607/11/2607.03784v1-rethinking-depth-pruning-for-vision-transformers-a-heterogeneity-aware-perspective)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：视觉Transformer深度剪枝
-7. [SAD-LoRA: Spectral Alignment for Low-Rank Knowledge Distillation](/202607/11/2607.04306v1-sad-lora-spectral-alignment-for-low-rank-knowledge-distillation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：可迁移至视频编解码训练的知识蒸馏方法
-8. [Enhancing Video Physical Consistency via Role-aware Joint Training and Modality-decoupled Denoising](/202607/11/2607.04653v2-enhancing-video-physical-consistency-via-role-aware-joint-training-and-modality-decoupled-denoising)  
+   evidence：使用蒸馏引导剪枝获得紧凑视频生成模型
+2. [Discovering shared interpretable operations in image compression autoencoders](/202607/12/2607.04839v1-discovering-shared-interpretable-operations-in-image-compression-autoencoders)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：图像压缩自编码器分析，用于低复杂度设计
+3. [Optimized Adaptive Loop Filter in Versatile Video Coding](/202607/12/2607.05737v1-optimized-adaptive-loop-filter-in-versatile-video-coding)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：优化ALF降低VVC编码复杂度，符合低复杂度编解码器需求
+4. [CompressedVQA-AEV: Full-Reference and No-Reference Quality Assessment Models for Asymmetric Encoded Videos](/202607/12/2607.04606v1-compressedvqa-aev-full-reference-and-no-reference-quality-assessment-models-for-asymmetric-encoded-videos)  
    标签：评分：6.0/10、query:vcodec
-   evidence：角色感知联合训练与光流辅助视频扩散模型
-9. [Discovering shared interpretable operations in image compression autoencoders](/202607/11/2607.04839v1-discovering-shared-interpretable-operations-in-image-compression-autoencoders)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：研究自编码器内部操作以实现低复杂度图像压缩，可迁移到视频编解码
-10. [Semantic Video Communication via Multi-Scale Convolution and Dynamic Routing for Next-Generation Networks](/202607/11/2607.05093v1-semantic-video-communication-via-multi-scale-convolution-and-dynamic-routing-for-next-generation-networks)  
+   evidence：用于生成式视频编码感知质量优化的视频质量评估模型
+5. [Orthogonal Dendritic Intrinsic Networks: An Architecture for Significance-Ordered, Orthogonal Latent Spaces](/202607/12/2607.05653v1-orthogonal-dendritic-intrinsic-networks-an-architecture-for-significance-ordered-orthogonal-latent-spaces)  
    标签：评分：6.0/10、query:vcodec
-   evidence：多尺度时序建模与生成式AI的语义视频通信
-11. [FourTune: Towards Fully 4-Bit Efficient Post-Training for Diffusion Models](/202607/11/2607.05711v1-fourtune-towards-fully-4-bit-efficient-post-training-for-diffusion-models)  
+   evidence：自编码器架构具有正交潜空间，与端到端学习压缩框架相关
+6. [An exact information theory of generalization phase transitions in Bayesian diffusion models](/202607/12/2607.08041v1-an-exact-information-theory-of-generalization-phase-transitions-in-bayesian-diffusion-models)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：扩散模型的理论分析，涉及信息限制
+7. [It Takes Few to TANGO: A Quantized Distributed Model for Binaural Speech Enhancement](/202607/12/2607.08645v1-it-takes-few-to-tango-a-quantized-distributed-model-for-binaural-speech-enhancement)  
    标签：评分：6.0/10、query:train-trick
-   evidence：面向扩散模型的4位后训练量化框架，涉及量化感知训练
+   evidence：量化感知训练应用于神经语音增强模型的掩码估计
 
 
 <div class="dpr-home-promo-card">
