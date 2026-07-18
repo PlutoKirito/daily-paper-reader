@@ -1,0 +1,396 @@
+Title: DCVC-MB: Neural B-Frame Video Compression using State Space Models
+
+URL Source: https://arxiv.org/pdf/2607.14305v1
+
+Published Time: Fri, 17 Jul 2026 00:19:25 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# DCVC-MB: Neural B-Frame Video Compression using State Space Models 
+
+Arjun Arora ∗† 1, Calvin-Khang Ta ∗‡ 1, Carlos Restrepo-Galeano ∗∥ 3, Kruthi Murali 2, Naga Akhil E S 2,Arunkumar Mohananchettiar 2, Jay Shingala 2, Tong Shao 1, Peng Yin 1, and Sean McCarthy 11Dolby Laboratories, 2Ittiam Systems, 3University of Delaware 
+
+Abstract —In this paper we propose DCVC-Mamba (DCVC-MB), a neural video codec framework for B-frame coding. Our approach incorporates an IBP frame strategy for low-delay B-frame coding, a spatio-temporal fusion model based on state-space models for bidirectional temporal prediction, and an entropy-aware skipping mechanism that selectively omits coding certain latents to reduce entropy coding times. In addition to our model contributions we also implement two inference-time strategies that enhance compression performance. Experimental evaluation shows that DCVC-MB compares favorably to existing NVCs and traditional codecs. The method demonstrates BD-rate reductions of up to 8.98% on average compared to prior neural video codecs, and improvements of up to 30 .45% and 1.81% over the VTM-19.0-LDP and VTM-19.0-RA(Inter-GoP=16) benchmarks, respectively, contributing to advances in neural video compression. 
+
+Index Terms —Deep Learning, Video Compression, State Space Models 
+
+I. I NTRODUCTION 
+
+The growing demand for efficient video compression has driven innovation in both traditional codecs (AVC [ 1], HEVC [ 2], VVC [ 3]) and neural video codecs (NVCs) [ 4 ]. However, leading NVCs [ 5] predominantly use P-frame struc-tures (Figure 1), referencing only past frames and forgoing the compression gains from bidirectional prediction that B-frames provide in traditional codecs. While B-frames provide substantial compression gains in traditional codecs, neural video codecs (NVCs) have struggled to effectively leverage them. The core challenge lies in efficiently fusing bidirectional temporal information. Previous attempts [ 6 ] either underperform P-frame methods or introduce prohibitive computational complexity through transformer-based architectures that scale quadratically with resolution. We address this through DCVC-MB, which introduces a novel bidirectional feature fusion architecture based on state-space models (Mamba). Unlike transformers, Mamba achieves linear complexity O(N) while effectively capturing long-range spatial/temporal dependencies in both directions. This enables practical B-frame coding at high resolutions (720p, 1080p) where transformer-based approaches exhaust VRAM. In this paper we make the following contributions:  
+
+> •
+
+A base neural compression model to perform Random Access video coding using IBP frame ordering. 
+
+† Work done while at Dolby. Currently at Voia 
+
+‡ Corresponding Author (czta@dolby.com) 
+
+∥ Work done during internship at Dolby 
+
+> *
+
+Equal contribution. 
+
+Fig. 1. Diagrams showing a) LDP coding using P-frame ordering and b) RA coding using IBP-frame ordering, both in a Closed GoP configuration. Arrows indicate reference relationships.  
+
+> •
+
+A novel feature fusion architecture leveraging state-space models that exploits the temporal redundancy of previously decoded frames.  
+
+> •
+
+An adaptive entropy based latent-skipping technique for faster entropy coding.  
+
+> •
+
+Two inference-time optimizations, open GoP coding and Bidirectional Coding to enhance the compression performance of our models.  
+
+> •
+
+Strong experimental results (Table II): 30.45% /1.81% 
+
+BD-Rate savings over VTM-19.0-LDP (Intra-period = -1/32), 20.19% over the much stronger VTM-19.0-RA (Inter-GoP = 16), and 8.98% /9.21% over DCVC-FM [ 7]across both settings. II. R ELATED WORKS 
+
+Neural video codecs build upon image compression tech-niques [ 8], [ 9 ], [ 10 ], [ 11 ], [ 12 ], evolving from residual-based methods [ 13 ], [ 14 ], [ 15 ], [ 12 ] to context-based approaches [16 ], [ 4], [ 17 ], [ 5 ], [ 7], [ 18 ]. However, these predominantly use P-frame structures, limiting compression efficiency. Recent B-frame NVCs [ 19 ], [ 6], [ 20 ], [ 21 ] employ hierarchical encoding but underperform P-frame methods due to ineffective bidirec-tional fusion and computational complexity. Tang et al. [ 22 ]propose context modulation for neural video compression but provide no public checkpoints, precluding direct comparison. Mamba [ 23 ], a selective state-space architecture, offers O(N) complexity versus transformers’ O(N²), enabling high-resolution deployment [ 24 ], [ 25 ]. While concurrent work applies Mamba to video compression [ 26 ], these efforts remain limited to P-frame coding. DCVC-MB leverages Mamba for efficient bidirectional fusion in B-frame coding, achieving scalability at 1080p where transformer-based approaches fail. We introduce DCVC-MB, which adopts a simplified RA cod-ing strategy using IBP frame ordering—avoiding hierarchical arXiv:2607.14305v1 [cs.CV] 15 Jul 2026 Fig. 2. Overview of DCVC-MB architecture, built upon DCVC-DC [ 5]. Unlike prior DCVC models with a single decoded picture buffer (dpb), DCVC-MB maintains two dpbs from the past frame Xt−1 and future frame Xt+1 , fused via the contextual fusion modules (green) to condition both the encoder and entropy model for B-frame Xt.
+
+complexity while retaining bidirectional benefits. We leverage Mamba architectures [ 23 ], [ 24 ] for efficient reference feature fusion, exploiting temporal redundancy more effectively. III. P ROPOSED METHOD 
+
+Our DCVC-MB architecture introduces a fundamental change to the neural video compression framework by enabling simultaneous access to bidirectional temporal information. Un-like prior DCVC models [ 4 ], [ 17 ], [ 5 ], [ 7] that rely on a single Decoded Picture Buffer ( dpb ) from the previous frame, our architecture (Figure 2) leverages two dpb s concurrently—one from the past and one from the future. This bidirectional design enables fusion of reference features and frames, unlocking greater compression efficiency compared to unidirectional approaches. We maintain the I and P-frame model from [ 5] for compatibility, our key innovation being the B-frame processing that exploits temporal redundancy in both directions. 
+
+A. Encode/Decode 
+
+We encode frame xt into latent yt using a contextual encoder conditioned on fused multi-scale features ¯C0 
+
+> t
+
+, ¯C1 
+
+> t
+
+, ¯C2 
+
+> t
+
+from adjacent frames Cit−1 and Cit+1 . After quantization and entropy coding, the decoded latent ˆyt is processed through a contextual decoder with the fused pyramid to generate reconstructed frame 
+
+ˆxt and feature Ft. Motion vectors vt−1, v t+1 follow a similar encoding/decoding process using dedicated modules, but with a single fused motion feature ¯F mv t instead of a full pyramid. 
+
+B. Compression 
+
+To compress the latent representations ( yt or ymv t ), we use a four-stage entropy model following [ 5 ]. The key difference is that we fuse two decoded reference latents (e.g., ˆyt−1 and 
+
+ˆyt+1 or ˆymv t−1 and ˆymv t+1 ) to form a single fused latent ( ¯yt or 
+
+¯ymv t ), which conditions the entropy model. This model predicts a probability distribution used for entropy coding. 
+
+C. Fusion Model 
+
+For feature fusion (Figure 2, green blocks), we use the same Bidirectional Mamba Fusion architecture for each fusion model (Figure 3). The only variation between models lies in the number of input channels, matched to the features being fused. Given inputs Xt−1, X t+1 ∈ R(B,C,H,W ), we first concatenate them along the channel dimension to obtain 
+
+Xcat ∈ R(B, 2C,H,W ). A 2D CNN then embeds this into 
+
+Xemb ∈ R(B,C,H,W ), which is tokenized x ∈ R(B,M,C )
+
+with M = H × W . We add a 2D positional embedding 
+
+pce to x indicate the original 2D spatial position of each token. This sequence is processed by L = 2 layers of the Bidirectional Mamba Block (BMB), producing output embeddings y ∈ R(B,M,C ). Finally, we reshape y back to the spatial format ¯Xt ∈ R(B,C,H,W ) as the fused output. 
+
+D. Bidirectional Mamba 
+
+To compute y, we have to pass x through the internal State Space Model (SSM). Formally, the Mamba SSM is defined via the following ODE [23] as 
+
+h′(m) = Ah(m) + Bx(m), y (m) = Ch(m) (1) where x(m), y (m) ∈ RC represent the continuous versions of our input x and output y at the mth token. h(m) ∈ RN
+
+is our hidden state, computed using A ∈ RN ×N which represents the parameterized dynamics of the system while 
+
+B, C ∈ RN ×1 are our input-dependent projection matrices. However, to process our discrete input sequence, xm, we must discretize the ODE above using a timescale parameter, ∆.Using the zero order hold rule results in ¯A = exp (∆A) and 
+
+¯B = ( ∆A)−1(exp (∆A) − I) · ∆B. This allows us to then represent our final discrete ODE as 
+
+hm = ¯Ahm−1 + ¯Bxm and ym = Chm.Fig. 3. Bidirectional Mamba Fusion Model architecture. Left: Frames Xt−1 and Xt+1 are fused into output ¯Xt via the Bidirectional Mamba Block (BMB), enabling bidirectional temporal dependency learning. Right: Canonical vs. standard 2D position embeddings. By preserving the spatial harmonics, our canonical embeddings generalize across resolutions. 
+
+This set of equations describe how the SSM can model the dynamics of a system in the forward row-major scan. This assumes that token dependency only operates in the forward direction. However, our visual tokens may have much more complex dynamics that are not captured with only this direction. To solve this problem, we adopt the Spatial-First Bidirectional method described in [ 24 ]. We create a second set of parameter matrices, A−m, B−m, C−m to operate on the backward row-major scan direction, x−m, to produce the output sequence 
+
+y−m. y−m is then un-reversed and added to ym to compute the final output of the BMB. 
+
+E. Canonical Position Embedding 
+
+In most Vision Transformers (ViTs) and Mamba vision papers, it is common to encode spatial position information using a spatial patch’s pixel location [ 27 ], [ 28 ], or relative position to other image patches [ 29 ], [ 30 ]. Because we train on the Vimeo90k dataset [ 31 ], there is a resolution mismatch between training ( 256 × 256 ) vs inference [ 32 ], [ 33 ], [ 34 ](1080p, 720p, 540p, etc). For position embeddings based on explicit (x, y ) pixel coordinates or relative pixel coordinates 
+
+(xi − xj , y i − yj ), the resultant position sinusoidal harmonics will be very different between training and test (Figure 3). We found that this caused our models to be over-fit (See Appendix) to the training patch resolution. To combat this, we instead normalize position based on an image token’s position within the canonical image plane ( x ∈ [0 , 1] , y ∈ [0 , 1] ) rather than using the raw pixel values for position. 
+
+F. Adaptive Latent Skipping                       
+
+> P Encode P Decode B Encode B Decode Latent Skip 0.0197s 0.0182s 0.0061s 0.0092s No Latent Skip 0.1870s 0.1007s 0.0342s 0.0208s TABLE I AVERAGE ENTROPY CODING TIME (SECONDS )PER 1080 P FRAME FOR
+> P-FRAMES AND B-FRAMES ,WITH AND WITHOUT ADAPTIVE LATENT SKIPPING . L ATENT SKIPPING REDUCES ENTROPY CODING TIME BY APPROXIMATELY 9× FOR P-FRAMES AND 5× FOR B-FRAMES .
+
+We employ an adaptive latent skipping technique to improve runtime efficiency inspired by AlphaVC [ 15 ]. Differing from AlphaVC’s fixed threshold approach [ 15 ], we introduce a relative thresholding strategy that adapts to each frame’s latent distribution: 
+
+ˆyi =
+
+(
+
+μi, σ i < mean (σ)
+
+ˆyi, σ i ≥ mean (σ), (2) For multi-stage entropy coding, we compute the threshold separately for each stage using only the σ values of elements coded in that stage. When applied to 1080P videos we observe (Table I) reductions on the order of ∼ 9× in entropy coding times per frame whilst maintaining comparable performance (see Appendix). The skipping mechanism itself does not introduce asymmetric computation, as the mask M reduces the number of coded symbols symmetrically on both sides. 
+
+G. Open GoP and Bidirectional Coding 
+
+Beyond architectural improvements, we apply two inference-time optimizations. 
+
+Open GoP: allows Inter-GoP references: the final B-frame of each GoP can reference the next GoP’s I-frame [ 2], providing temporally closer references than closed GoP and improving coding efficiency. 
+
+Bidirectional Coding: encodes odd-indexed GoPs in both forward and backward directions, selecting the lower rate-distortion result; even-indexed GoPs use closed configuration to maintain linear complexity. While standard in traditional codecs, this is to our knowledge the first application to NVCs. We recommend it for archival or storage-critical scenarios. 
+
+H. Training 
+
+To train our model, we use a frozen I-frame from DCVC-DC, training both the P-frame model and our new B-frame model with adaptive latent skipping separately. We use a standard rate distortion loss function[ 5] defined as LRD = λD + R to train our model. In order to account for the adaptive latent skipping we include a binary mask M in our rate term such that R = Ex∼px M ∗ − log (py ) where M indicates the latents that were skipped. For our model, we choose to use the same lambda values as [ 5 ] and [ 7], namely λ ∈ (85 , 170 , 380 , 840) .Like [ 5], we also have a joint training strategy which first Method HEVC B HEVC C HEVC D UVG MCL-JCV Average                                                                                                                                                 
+
+> Intra-period = -1 (all frames, single I-frame) / Intra-period = 32 (all frames)
+> VTM-19.0-LDP[35] 0.0/0.00.0/0.00.0/0.00.0/0.00.0/0.00.0/0.0
+> VTM-19.0-RA (Inter-GoP=16) -/−30 .28 -/−29 .07 -/−24 .05 -/−25 .87 -/−24 .79 -/−26 .82
+> DCVC-DC[5] −1.48 /−20 .93 −12 .58 /−28 .63 −18 .41 /−32 .87 1.09 /−22 .90 −11 .61 /−20 .67 −8.59 /−25 .20
+> DCVC-FM[7] −16 .95 /−15 .90 −26 .38 /−22 .60 −30 .16 /−26 .28 −20 .67 /−19 .06 −13 .21 /−13 .40 −21 .47 /−19 .44
+> DCVC-MB −29 .86 /−28 .86 −35 .72 /−33 .18 −44 .25 /−39 .91 −23 .75 /−21 .91 −15 .13 /−13 .12 −29 .74 /−27 .39
+> DCVC-MB-bdc −31 .16 /-−36 .21 /-−44 .25 /-−24 .29 /-−16 .32 /-−30 .45 /-DCVC-MB-og -/−30 .45 -/−34 .07 -/−40 .52 -/−23 .78 -/−14 .30 -/−28 .62
+> DCVC-MB-bdc-og -/−30 .38 -/−34 .08 -/−40 .58 -/−23 .10 -/−14 .99 -/−28 .63
+
+TABLE II BD-R ATE (%) IN RGB BT.709 ( LOWER IS BETTER ) FOR INTRA -PERIODS OF -1 ( SINGLE I-FRAME ) AND 32. B EST RESULTS ARE IN BOLD . “ OG ” DENOTES 
+
+OPEN GOP AND “BDC ” DENOTES BIDIRECTIONAL CODING .
+
+Method HEVC B HEVC C HEVC D UVG MCL-JCV Average 
+
+VTM-19.0-LDP[35] 0.0 0.0 0.0 0.0 0.0 0.0 DCVC-DC[5] -19.55 -20.56 -33.64 -26.53 -20.29 -24.11 DCVC-FM[7] -15.78 -15.56 -29.03 -22.05 -14.57 -19.39 DCVC-LCG[36] -17.40 - - -28.51 -20.71 -22.21 DCVC-B[37] -22.27 -19.96 -39.29 -13.97 -10.27 -23.38 DCVC-MB -26.69 -23.60 -40.96 -26.79 -14.31 -26.47 DCVC-MB-og -27.95 -24.38 -41.42 -28.08 -15.31 -27.43 DCVC-MB-bdc-og -27.31 -24.53 -41.90 -27.32 -16.37 -27.49 
+
+TABLE III BD-R ATE (%) IN RGB BT.709 COLORSPACE (LOWER IS BETTER ). I NTRA -PERIOD = 32 WITH 96 FRAMES . S OME RESULTS ARE NOT AVAILABLE DUE TO LACK OF OFFICIAL IMPLEMENTATIONS .
+
+trains our model with separate optimization steps per frame, and then calculates a combined loss function across frames. We train our P-frame model for a total of 4.6 million iterations and our B-frame model for 1.85 million iterations. We employ the Adam [ 38 ] optimizer with a learning rate of 1e-4 and gradually decrease it to 1e-5. Together, P-frame and B-frame training totals approximately 1.5x the compute of DCVC-DC, with the additional cost attributable to the B-frame fusion module. IV. E XPERIMENTS 
+
+A. Experimental Details 
+
+Dataset: We train our model on the train split of the Vimeo90k dataset [ 31 ], using 7-frames with a patch resolution of 256 × 256 . For validation, we use BVI-DVC[39]. 
+
+Test Conditions: We evaluate our model on the HEVC [ 32 ], UVG [ 33 ], and MCL-JCV [ 34 ] datasets. To convert these originally YUV-based datasets to RGB, we use the BT.709 full-range conversion matrix. We compare against VTM-19.0-LDP/RA [ 35 ], as well as DCVC-DC [ 5] and DCVC-FM [ 7]as our SOTA NVCs. We choose to omit other neural video codecs using B-frames as prior works often fall short of even P-frame based NVC’s. For comparison, we use two major test conditions: Intra-period = 32 with all frames (Table II), and Intra-period = -1 with all frames (Table II). This allows us to compare directly with previous works [ 17 ], [ 5 ], [ 7], [ 16 ]using sequences in their entirety. Performance is measured using BD-Rate [ 40 ] with RGB PSNR. Despite not optimizing for YUV420 we use a naive RGB to YUV conversion and measure the BD-Rate in the Appendix. 
+
+B. Comparisons with Previous SOTA Methods 
+
+Our results (Table II) show that DCVC-MB outperforms VTM, DCVC-DC, and DCVC-FM on average across all datasets (Figure 4). We report three settings: the base model, open-GoP (og), and open-GoP with bidirectional coding (bdc-og). For Intra-period = -1, we report only the first two, as open-GoP is redundant with a single GoP. Beyond the BD-rate improvements over VTM-19.0-LDP shown in our tables, we achieve average BD-Rate reductions of 3.43% (Intra-period=32) and 21.86% (Intra-period=-1) over DCVC-DC, and 8.21% and 8.98% over DCVC-FM in the same settings. Full hierarchical VTM-RA (GoP=32) yields only marginal additional BD-rate savings over Inter-GoP=16[ 41 ], attributable to per-layer QP offsets incompatible with our IBP structure; we therefore compare against VTM-RA with Inter-GoP=16. DCVC-MB is shown (Table II) to be the only NVC that surpasses the stronger VTM configuration and does so by −1.81% . We would like to note that DCVC-LCG[ 36 ] does not have a public implementation, so we report their results as-is. DCVC-B has a hard sequence length limitation, so we report only 96-frame results; DCVC-MB outperforms both by significant margins (Table III). Subjectively, DCVC-MB preserves finer image details while using significantly fewer bits compared to both DCVC-DC and DCVC-FM (Figure 5) V. A BLATION STUDY 
+
+To validate the effectiveness of each component in our sys-tem, we present an ablation study in Table IV. We use DCVC-DC as the baseline model Ma, which has no fusion architecture. The first modification adds a CNN fusion architecture resulting Fig. 4. RD-Curves for Intra-period=32, all frames for HEVC-B, HEVC-C, and HEVC-D. Additional curves in the Appendix.                                
+
+> Fig. 5. Subjective quality comparison of DCVC-MB versus DCVC-DC and DCVC-FM. Note the reconstruction of the wrinkles in the player’s jersey which is accomplished with an order of magnitude less Bpp. Additional comparisons in the Appendix. TABLE IV ABLATION STUDIES ON HEVC-C VS DCVC-DC.
+> MaMbMcMdMeMfMg
+> CNN Fusion ✓
+> Mamba Fusion ✓✓✓✓✓
+> Positional Embedding ✓
+> Canonical Positional Embedding ✓✓✓
+> Open GoP ✓✓
+> Bidirectional Coding ✓
+> BD-Rate(%) 0.0 -2.5 -3.03 13.38 -4.55 -5.44 -5.45
+
+in model Mb. While Mb improves performance over Ma, we observe further gains by adopting our Mamba-based fusion model Mc. Despite Mc requiring an additional forward pass, it consistently achieves superior BD-Rate performance across all test conditions. Next, we evaluate positional encoding strategies. Model Md, which uses standard 2D positional embeddings, fails to generalize to unseen resolutions (See Appendix). Replacing this with 2D canonical positional embeddings in model Me yields further performance improvements over Mc
+
+(Table IV).Finally we test the inference-time strategies. Model 
+
+Mf incorporates open GoP, achieving a BD-Rate savings of approximately 0.90% over Me, with no additional encoding or decoding overhead. Finally, model Mg applies Bidirectional Coding, which requires encoding every other GoP twice, doubling encoding time. Though the BD-Rate gains are modest compared to open GoP alone, they are measurable. In scenarios where open GoP is not applicable, Bidirectional Coding still provides a 0.91% BD-Rate improvement over Mc (Table II). The base Mamba fusion model accounts for the majority of BD-Rate gains (−4.55%) , with inference-time strategies open GoP ( Mf ) and bidirectional coding ( Mg ) providing additive but secondary improvements ( −0.89% and −0.01% , respectively). VI. C ONCLUSION 
+
+We present DCVC-MB, a novel neural B-frame video codec that leverages bidirectional Mamba fusion and adaptive latent skipping to achieve state-of-the-art compression performance. Our method demonstrates notable BD-rate improvements over both traditional codecs (VTM-19.0) and leading neural codecs (DCVC-DC, DCVC-FM), with gains of up to 30.45% and 28.63% in different test configurations. The bidirectional Mamba architecture effectively exploits temporal redundancy while maintaining computational efficiency through our adap-tive skipping mechanism. These results establish that DCVC-MB is a competitive B-frame neural video codec and represents progress toward practical neural video compression. REFERENCES [1] ITU-T RECOMMENDATION, H.264 “Advanced Video Coding for Generic Audiovisual Services” , 2003. [2] Gary J. Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand, “Overview of the high efficiency video coding (HEVC) standard,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 22, no. 12, pp. 1649–1668, 2012. [3] Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J. Sullivan, and Jens-Rainer Ohm, “Overview of the versatile video coding (VVC) standard and its applications,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 10, pp. 3736–3764, 2021. [4] Jiahao Li, Bin Li, and Yan Lu, “Deep contextual video compression,” 
+
+Advances in Neural Information Processing Systems , vol. 34, 2021. [5] Jiahao Li, Bin Li, and Yan Lu, “Neural video compression with diverse contexts,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2023, Vancouver, Canada, June 18-22, 2023 , 2023. [6] Xihua Sheng, Li Li, Dong Liu, and Shiqi Wang, “Bi-directional deep contextual video compression,” IEEE Transactions on Multimedia , pp. 1–15, 2025. [7] Jiahao Li, Bin Li, and Yan Lu, “Neural video compression with feature modulation,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 17-21, 2024 , 2024. [8] Johannes Ballé, Valero Laparra, and Eero P. Simoncelli, “End-to-end optimized image compression,” in International Conference on Learning Representations , 2017. [9] Johannes Ballé, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston, “Variational image compression with a scale hyperprior,” 
+
+arXiv preprint arXiv:1802.01436 , 2018. [10] George Toderici, Damien Vincent, Nick Johnston, Sung Jin Hwang, David Minnen, Joel Shor, and Michele Covell, “Full resolution image compression with recurrent neural networks,” in Proceedings of the IEEE conference on Computer Vision and Pattern Recognition , 2017, pp. 5306–5314. [11] Yuanchao Bai, Xu Yang, Xianming Liu, Junjun Jiang, Yaowei Wang, Xiangyang Ji, and Wen Gao, “Towards end-to-end image compression and analysis with transformers,” in Proceedings of the AAAI conference on artificial intelligence , 2022, vol. 36, pp. 104–112. [12] Yinhao Zhu, Yang Yang, and Taco Cohen, “Transformer-based transform coding,” in International Conference on Learning Representations , 2022. [13] Eirikur Agustsson, David Minnen, Nick Johnston, Johannes Ballé, Sung Jin Hwang, and George Toderici, “Scale-space flow for end-to-end optimized video compression,” in 2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020, pp. 8500–8509. [14] Guo Lu, Wanli Ouyang, Dong Xu, Xiaoyun Zhang, Chunlei Cai, and Zhiyong Gao, “DVC: An end-to-end deep video compression framework,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2019, pp. 11006–11015. [15] Yibo Shi, Yunying Ge, Jing Wang, and Jue Mao, “Alphavc: High-performance and efficient learned video compression,” in European Conference on Computer Vision . Springer, 2022, pp. 616–631. [16] Yung-Han Ho, Chih-Peng Chang, Peng-Yu Chen, Alessandro Gnutti, and Wen-Hsiao Peng, “CANF-VC: Conditional augmented normalizing flows for video compression,” in European Conference on Computer Vision .Springer, 2022, pp. 207–223. [17] Jiahao Li, Bin Li, and Yan Lu, “Hybrid spatial-temporal entropy modelling for neural video compression,” in Proceedings of the 30th ACM International Conference on Multimedia , 2022, pp. 1503–1511. [18] Guo-Hua Wang, Jiahao Li, Bin Li, and Yan Lu, “EVC: Towards real-time neural image compression with mask decay,” in International Conference on Learning Representations , 2023. [19] Ivan Kirillov, Denis Parkhomenko, Kirill Chernyshev, Alexander Pletnev, Yibo Shi, Kai Lin, and Dmitry Babin, “Hierarchical b-frame video coding for long group of pictures,” ArXiv , vol. abs/2406.16544, 2024. [20] Jiayu Yang, Wei Jiang, Yongqi Zhai, Chunhui Yang, and Ronggang Wang, “Ucvc: A unified contextual video compression framework with joint p-frame and b-frame coding,” 2024 Data Compression Conference (DCC) , pp. 382–391, 2024. [21] M. Akin Yilmaz, O. Ugur Ulas, Ahmet Bilican, and Ahmet Murat Tekalp, “Motion-adaptive inference for flexible learned b-frame compression,” 
+
+2024 IEEE International Conference on Image Processing (ICIP) , 2024. [22] Chuanbo Tang, Zhuoyuan Li, Yifan Bian, Li Li, and Dong Liu, “Neural video compression with context modulation,” in Proceedings of the Computer Vision and Pattern Recognition Conference (CVPR) , June 2025, pp. 12553–12563. [23] Albert Gu and Tri Dao, “Mamba: Linear-time sequence modeling with selective state spaces,” ArXiv , vol. abs/2312.00752, 2023. [24] Kunchang Li, Xinhao Li, Yi Wang, Yinan He, Yali Wang, Limin Wang, and Yu Qiao, “Videomamba: State space model for efficient video understanding,” in European Conference on Computer Vision , 2024. [25] Yue Liu, Yunjie Tian, Yuzhong Zhao, Hongtian Yu, Lingxi Xie, Yaowei Wang, Qixiang Ye, and Yunfan Liu, “Vmamba: Visual state space model,” 
+
+ArXiv , vol. abs/2401.10166, 2024. [26] Shiyu Qin, Jinpeng Wang, Yimin Zhou, Bin Chen, Tianci Luo, Baoyi An, Tao Dai, Shutao Xia, and Yaowei Wang, “Mambavc: Learned visual com-pression with selective state spaces,” arXiv preprint arXiv:2405.15413 ,2024. [27] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weis-senborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby, “An image is worth 16x16 words: Transformers for image recognition at scale,” in International Conference on Learning Repre-sentations , 2021. [28] A Vaswani, “Attention is all you need,” Advances in Neural Information Processing Systems , 2017. [29] Xiangxiang Chu, Zhi Tian, Bo Zhang, Xinlong Wang, and Chunhua Shen, “Conditional positional encodings for vision transformers,” in 
+
+ICLR 2023 , 2023. [30] Yujie Li, Zihang Ma, Xinghe Wang, Yifu Wang, and Benying Tan, “Vision transformer with 2d explicit position encoding,” in ICASSP 2024 - 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2024, pp. 7690–7694. [31] Tianfan Xue, Baian Chen, Jiajun Wu, Donglai Wei, and William T Freeman, “Video enhancement with task-oriented flow,” International Journal of Computer Vision (IJCV) , vol. 127, no. 8, pp. 1106–1125, 2019. [32] Frank Bossen et al., “Common test conditions and software,” in JCTVC-LL1100 , 2013. [33] Alexandre Mercat, Marko Viitanen, and Jarno Vanne, “UVG dataset: 50/120fps 4k sequences for video codec analysis and development,” in 
+
+Proceedings of the 11th ACM Multimedia Systems Conference , 2020, pp. 297–302. [34] Haiqiang Wang, Weihao Gan, Sudeng Hu, Joe Yuchieh Lin, Lina Jin, Longguang Song, Ping Wang, Ioannis Katsavounidis, Anne Aaron, and C-C Jay Kuo, “MCL-JCV: a jnd-based h. 264/avc video quality assessment dataset,” in 2016 IEEE international conference on image processing (ICIP) . IEEE, 2016, pp. 1509–1513. [35] Joint Video Experts Team, “VTM reference software for VVC,” https: //vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM/, 2018. [36] Linfeng Qi, Zhaoyang Jia, Jiahao Li, Bin Li, Houqiang Li, and Yan Lu, “Long-term temporal context gathering for neural video compression,” in 
+
+European Conference on Computer Vision . Springer, 2024, pp. 305–322. [37] Xihua Sheng, Li Li, Dong Liu, and Shiqi Wang, “Bi-directional deep contextual video compression,” arXiv preprint arXiv:2408.08604 , 2024. [38] Diederik P Kingma and Jimmy Ba, “Adam: A method for stochastic optimization,” arXiv preprint arXiv:1412.6980 , 2014. [39] Di Ma, Fan Zhang, and David R Bull, “BVI-DVC: A training database for deep video compression,” IEEE Transactions on Multimedia , vol. 24, pp. 3847–3858, 2021. [40] Gisle Bjontegaard, “Calculation of average psnr differences between rd-curves,” ITU SG16 Doc. VCEG-M33 , 2001. [41] Joint Video Experts Team (JVET), “JVET-T0063: Suggestion to Upgrad-ing Random Access Configuration in CTC with GOP 32 Configuration,” Tech. Rep. JVET-T0063, Joint Video Experts Team, 2020, 20th Meeting, Teleconference. DCVC-MB: Neural B-Frame Video Compression using State Space Models Appendix 
+
+Arjun Arora ∗† 1, Calvin-Khang Ta ∗‡ 1, Carlos Restrepo-Galeano ∗∥ 3, Kruthi Murali 2, Naga Akhil E S 2,Arunkumar Mohananchettiar 2, Jay Shingala 2, Tong Shao 1, Peng Yin 1, and Sean McCarthy 11Dolby Laboratories, 2Ittiam Systems, 3University of Delaware 
+
+I. M EMORY SCALING 
+
+Transformer models are known for their memory and compute scaling requirements w.r.t to sequence length (i.e. 
+
+O(N 2)). For our fusion model design, this quickly results in Out of Memory errors. Take, for example, our C0 fusion model, which fuses inputs C0 
+
+> t+1
+
+and C0 
+
+> t−1
+
+∈ R(B, 48 ,H,W ).After CNN embedding, this results in an x ∈ R(B,M, 48) where 
+
+M = H×W . This results in 65536 tokens at an input resolution of (256 × 256) . Given self-attention scaling, Figure 1, this fusion model design quickly becomes untenable to train with currently existing hardware. 
+
+Fig. 1. Comparing the inference memory cost of DCVC-MB at varying resolutions for Mamba, CNN, and Transformer based fusion. The Transformer architecture is an encoder-only model, using nheads=8 and same d_model 
+
+and L layers as the Mamba and CNN architecture. We use the latest PyTorch-enabled flash-attention to ensure a fair comparison. 
+
+II. R UNTIME COMPLEXITY ANALYSIS 
+
+The B-frame model is approximately 2× (Table I) the latency of the P-frame (same as DCVC-DC[ 1]) model. Crucially, our Mamba-based fusion scales linearly O(N) with spatial 
+
+† Work done while at Dolby. Currently at Voia 
+
+‡ Corresponding Author (czta@dolby.com) 
+
+∥ Work done during internship at Dolby 
+
+> *
+
+Equal contribution. 
+
+Enc (ms/frame) Dec (ms/frame) Memory P B P B (GB) Ours (skip) 323 626 141 492 13.8 
+
+TABLE I RUNTIME COMPLEXITY AND MEMORY ANALYSIS .
+
+resolution, whereas a transformer-based alternative would scale quadratically O(N²). As shown in Figure 1, a transformer fusion model exceeds 40GB VRAM at 1080p, while our full B-frame pipeline fits within 13.8GB. III. YUV TO RGB C ONVERSION 
+
+To convert our YUV test sequences to RGB, we use a full-range BT.709 based matrix. We use the following format for the ffmpeg conversion: 
+
+ffmpeg -f rawvideo -vcodec rawvideo -s 416x240 -r 25 -pix_fmt yuv420p -i [input.yuv] -pix_fmt rgb24-vf scale¯ ın_range=full:in_color_matrix=bt709 :out_range=full:out_color_matrix=bt709 -color_primaries bt709 -color_trc bt709 -colorspace bt709 -y [output_rgb_%03.png] 
+
+IV. IBP E NCODING ALGORITHM 
+
+Here we provide an explicit approach for IBP encoding process: Algorithm 1 for the closed GoP case and Algorithm 2 for the open GoP case. Note that Algorithm 1 is per GoP while Algorithm 2 describes how to encode an entire sequence. V. C ANONICAL POSITION EMBEDDING 
+
+BD-Rate DCVC-DC ps no ps pce 
+
+Class B 0.0 55.12 -7.34 -7.93 
+
+Class C 0.0 14.27 -3.03 -4.55 
+
+Class D 0.0 -6.96 -7.14 -7.04 TABLE II COMPARING RESULTS OF DCVC-MB USING DIFFERENT POSITION EMBEDDINGS VS DCVC-DC. BT709 HEVC D ATASET , I NTRA -PERIOD = 32 ALL FRAMES .
+
+For canonical position embedding, denoted as pce , we adopt the same 2D sinusoidal basis functions as described in prior works on positional encoding [ 2], [ 3] (see Equation (1)). The Algorithm 1 IBP Encoding Closed GoP 
+
+1: X ← [x1, x 2, ..., x n]
+
+2: i ← 0
+
+3: N ← len (X)
+
+4: dpb ← [] 
+
+5: while i < N do 
+
+6: if i = 0 then 
+
+7: dpb [i] ← IF rame (Xi)
+
+8: else if i = N − 1 then 
+
+9: dpb [i] ← BF rame (Xi, dpb [i − 3] , dpb [i − 1]) 
+
+10: else if i is odd then 
+
+11: dpb [i + 1] ← P F rame (Xi+1 , dpb [i − 1]) 
+
+12: else if i is even then 
+
+13: dpb [i−1] ← BF rame (Xi−1, dpb [i−2] , dpb [i+1]) 
+
+14: end if 
+
+15: i ← i + 1 
+
+16: end while Algorithm 2 IBP Encoding Open GoP 
+
+1: X ← [x1, x 2, ..., x t]
+
+2: i ← 0
+
+3: T ← len (X)
+
+4: N ← gop_size 
+
+5: dpb ← [] 
+
+6: while i < T do 
+
+7: if i = 0 or (( i+1) mod N = 0 and (i < T −1)) then 
+
+8: dpb [i] ← IF rame (Xi)
+
+9: else if i = T − 1 then 
+
+10: dpb [i] ← BF rame (Xi, dpb [i − 3] , dpb [i − 1]) 
+
+11: else if i is odd then 
+
+12: dpb [i + 1] ← P F rame (Xi+1 , dpb [i − 1]) 
+
+13: else if i is even then 
+
+14: dpb [i−1] ← BF rame (Xi−1, dpb [i−2] , dpb [i+1]) 
+
+15: end if 
+
+16: i ← i + 1 
+
+17: end while 
+
+Fig. 2. Diagram comparing the 0th sinusoidal harmonic of 2D canonical position embedding vs 2D resolution dependent position embedding at varying resolutions. 
+
+key difference lies in how the input coordinates are handled: instead of using absolute pixel indices, we normalize spatial coordinates to a canonical image plane, where x, y ∈ [0 , 1] .This normalization ensures that the resulting positional encoding harmonics are resolution-agnostic (i.e., they remain consistent across input sizes) modulo the sampling frequency. As a result, higher-resolution inputs produce interpolated harmonics rather than extrapolated ones, improving the gener-alization of the model to unseen resolutions(Figure 2). As shown in Table II, the canonical positional embedding 
+
+pce outperforms both standard 2D positional embedding ps and models without any positional encoding. Notably, ps exhibits poor generalization, performing best on resolution classes closest to the training resolution (e.g., Class D at 416 × 240 )and worst on larger resolutions such as Class B.                                                               
+
+> pce (i, j, k ) =
+> 
+> sin (2πi W×e4klog (10 ,000)
+> L),if kis even and (k < L
+> 2)
+> cos (2πi W×e4klog (10 ,000)
+> L),if kis odd and (k < L
+> 2)
+> sin (2πj H×e4klog (10 ,000)
+> L),if kis even and (k≥L
+> 2)
+> cos (2πj H×e4klog (10 ,000)
+> L),if kis odd and (k≥L
+> 2)
+> s.t.
+> i∈[0 , W −1]
+> j∈[0 , H −1]
+> k∈[0 , L −1]
+
+(1) VI. A DAPTIVE LATENT SKIPPING :
+
+Method HEVC-B HEVC-C HEVC-D DCVC-DC 0 0 0Adaptive Latent Skipping –3.15 0.59 -0.98 No Skip 3.76 4.88 1.98 AlphaVC[4] 8.08 12.37 10.72 
+
+TABLE III WE TEST THE HARD THRESHOLD VS OUR ADAPTIVE LATENT SKIPPING METHOD AND USE DCVC-DC RESULTS AS THE ANCHOR . W E OBSERVE THAT THE HARD THRESHOLD STRATEGY RESULTS IN DEGRADED PERFORMANCE IN TERMS OF BD-R ATE .
+
+In order to verify the effectiveness of our adaptive latent skipping, we compare against the hard threshold proposed in AlphaVC [ 4 ]. We limit this experiment to just the DCVC-DC P frame model which is the same as our main model. We test AlphaVC’s method with a 95% confidence and train DCVC-DC with AlphaVC latent skipping and evaluate on HEVC classes B-D. Table III shows that the hard threshold often results degraded performance over the vanilla DCVC-DC model. In contrast, our adaptive latent skipping is able to improve upon the model for classes B and D which verifies the effectiveness. Additionally, when a model is trained with adaptive latent skipping but does perform latent skipping at inference time we observe a noticeable performance drop. This suggests that the model may be biased towards the slightly noisier latent elements introduced from skipping. 
+
+Rate Index ( λ) 0 (low) 1 2 3 (high) P-frame skip ratio 0.74 0.74 0.71 0.68 B-frame skip ratio 0.53 0.62 0.75 0.85 
+
+TABLE IV SKIP RATIOS FOR P-FRAMES AND B-FRAMES AT DIFFERENT RATE INDICES .From Table IV we can observe that as the quality increases the skip ratio for P-frames decreases. Conversely, the B-frame actually increases the amount of skipped latents. This demonstrates the effectiveness of our B-frame fusion model as we are more effectively utilizing information from the P-frames. The decoder processes a fixed-size tensor regard- less of skipping. VII. L IMITATIONS 
+
+A. Naive YUV comparisons                          
+
+> YUV420 Intra-period=32 HEVC-B HEVC-C HEVC-D Average
+> VTM-RA (Intergop=16) 0000DCVC-DC 18.72 -0.29 -10.08 2.78 DCVC-FM 12.72 -5.92 -15.24 -2.81
+> DCVC-MB (ours) 16.03 -1.65 -17.32 -0.98 TABLE V BD-R ATE (%) COMPARISON IN YUV420 COLORSPACE WITH
+> INTRA -PERIOD = 32.
+
+We do acknowledge that YUV420 is an important color space to test and include a naive comparison by converting our RGB model outputs back into YUV420 for comparison. However, we found that training a YUV model was much more difficult than RGB due to the challenges of balancing the distortion across the three channels. Despite not optimizing for YUV420 directly, we still see strong performance against VTM-19.0 and previous SOTA NVCs in Table V. 
+
+B. Domain Gap 
+
+While our approach has stronger performance on most datasets, we realize that there are cases where our model has suboptimal performance. For example, our performance on MCL-JCV on the intra-period=32 setting is worse than one of our baselines, DCVC-DC. After close analysis, we find that our B-frame model performance is our most common failure case. In the following graph, we observe that on videoSRC20 Figure 3 of the MCL-JCV dataset, we see that our B-frame model has lower PSNR and higher BPP than DCVC-DC. This is likely due to the domain gap from the training data. Specifically, when looking ad videoSRC20 in the regions where we have higher distortion we can see there is significantly larger motion between each frame than what you would see in natural videos. As a result our B-frame model is not trained to properly handle such drastic changes between neighboring frames as well as the subject matter. VIII. RD-C URVES 
+
+Here we include the RD-Curves for all test conditions discussed: All frames intra-period = 32 (Figure 4), All frames intra-period = -1 (Figure 5), 96 frames intra-period = 32 (Figure 6), and 96 frames intra-period = -1 (Figure 7). IX. V ISUAL COMPARISONS 
+
+We provide additional qualitative examples and compare against both DCVC-DC[ 1] and DCVC-FM[ 5 ]. In order to showcase the advantages of DCVC-MB we showcase frames that are coded as B-frames in Figure 8. Fig. 3. Inspecting the frame by frame PSNR vs BPP we see that there are cases where our B-frame model can fail to incorporate the information from the reference frames. This is commonly seen on animated content which is drastically different from the data contained in Vimeo90k as the subjects and motion between frames in animated content is drastically different from natural video. 
+
+Fig. 4. RD-Curves for intra-period = 32, All frames Fig. 5. RD-Curves for intra-period = -1, All frames Fig. 6. RD-Curves for intra-period = 32, 96 frames Fig. 7. RD-Curves for intra-period = -1, 96 frames Fig. 8. In this example DCVC-MB is able to maintain a higher PSNR and preserve the details where the flower meets the playing card while maintaining an order of magnitude lower bpp as well as more accurately preserve the texture of the bricks on the wall while maintaining a lower bpp. REFERENCES [1] Jiahao Li, Bin Li, and Yan Lu, “Neural video compression with diverse contexts,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2023, Vancouver, Canada, June 18-22, 2023 , 2023. [2] Xiangxiang Chu, Zhi Tian, Bo Zhang, Xinlong Wang, and Chunhua Shen, “Conditional positional encodings for vision transformers,” in ICLR 2023 ,2023. [3] Yujie Li, Zihang Ma, Xinghe Wang, Yifu Wang, and Benying Tan, “Vision transformer with 2d explicit position encoding,” in ICASSP 2024 - 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2024, pp. 7690–7694. [4] Yibo Shi, Yunying Ge, Jing Wang, and Jue Mao, “Alphavc: High-performance and efficient learned video compression,” in European Conference on Computer Vision . Springer, 2022, pp. 616–631. [5] Jiahao Li, Bin Li, and Yan Lu, “Neural video compression with feature modulation,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 17-21, 2024 , 2024.

@@ -6,75 +6,76 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-13
-- 运行时间：2026-07-13 21:36:52 UTC
+- 最新运行日期：2026-07-18
+- 运行时间：2026-07-18 21:35:12 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：4
-- 速读区：13
+- 本次总论文数：18
+- 精读区：8
+- 速读区：10
 
 ### 今日简报（AI）
-今日精读2篇，速读3篇，聚焦语义视频通信与低秩知识蒸馏两大方向。
-
-最值得关注：多尺度卷积动态路由的语义视频通信（9.0分）和频谱对齐的低秩知识蒸馏（8.0分），分别提升下一代网络传输效率与大模型压缩效果。
-
-普通读者可优先了解这两项技术如何在实际场景中降低带宽与计算成本，后续可追踪相关开源实现。
-- 详情：[/202607/13/README](/202607/13/README)
+1) 今日共收录18篇论文，精读8篇，其中视频压缩与生成式修复为焦点方向。  
+2) 值得关注精读高分研究：DCVC-MB利用状态空间模型实现B帧智能压缩，及H.264中的自适应量化控制方法。  
+3) 普通读者可优先阅读精读列表，深入了解视频编码前沿优化技术。
+- 详情：[/202607/18/README](/202607/18/README)
 
 ### 精读区论文标签
-1. [Semantic Video Communication via Multi-Scale Convolution and Dynamic Routing for Next-Generation Networks](/202607/13/2607.05093v1-semantic-video-communication-via-multi-scale-convolution-and-dynamic-routing-for-next-generation-networks)  
+1. [DCVC-MB: Neural B-Frame Video Compression using State Space Models](/202607/18/2607.14305v1-dcvc-mb-neural-b-frame-video-compression-using-state-space-models)  
+   标签：评分：10.0/10、query:vcodec
+   evidence：使用状态空间模型进行双向时域预测的神经视频编码器
+2. [Differentiable Proxy Learning for Adaptive Quantization Control in H.264 Video Coding](/202607/18/2607.10478v1-differentiable-proxy-learning-for-adaptive-quantization-control-in-h264-video-coding)  
+   标签：评分：9.0/10、query:train-trick
+   evidence：H.264自适应量化控制的可微分代理学习
+3. [Kaleido: Algorithm-Hardware Co-Design for Video Diffusion Transformers by Exploiting Latent Space Correlations](/202607/18/2607.13770v1-kaleido-algorithm-hardware-co-design-for-video-diffusion-transformers-by-exploiting-latent-space-correlations)  
    标签：评分：9.0/10、query:vcodec
-   evidence：生成式AI驱动的语义视频通信框架
-2. [SAD-LoRA: Spectral Alignment for Low-Rank Knowledge Distillation](/202607/13/2607.04306v1-sad-lora-spectral-alignment-for-low-rank-knowledge-distillation)  
+   evidence：利用潜在空间相关性加速视频扩散Transformer
+4. [URVC: A Unified Real-Time Neural Video Coding Model with Temporal, Spatial, and Perceptual Adaptivity](/202607/18/2607.15033v1-urvc-a-unified-real-time-neural-video-coding-model-with-temporal-spatial-and-perceptual-adaptivity)  
+   标签：评分：9.0/10、query:entropy-coding
+   evidence：统一实时神经视频编码模型，具有时间、空间和感知自适应性
+5. [Towards Efficient Convolutional Neural Network for Embedded Hardware via Multi-Dimensional Pruning](/202607/18/2607.11473v1-towards-efficient-convolutional-neural-network-for-embedded-hardware-via-multi-dimensional-pruning)  
    标签：评分：8.0/10、query:train-trick
-   evidence：利用频谱对齐的低秩知识蒸馏实现参数高效压缩
-3. [Enhancing Video Physical Consistency via Role-aware Joint Training and Modality-decoupled Denoising](/202607/13/2607.04653v2-enhancing-video-physical-consistency-via-role-aware-joint-training-and-modality-decoupled-denoising)  
-   标签：评分：8.0/10、query:vcodec
-   evidence：融合光流与联合训练提升视频一致性，与视频压缩中的运动估计与补偿相关
-4. [Reduced-complexity Adaptive Loop Filtering via Input-dependent Graph Filters](/202607/13/2607.04985v1-reduced-complexity-adaptive-loop-filtering-via-input-dependent-graph-filters)  
+   evidence：针对嵌入式硬件的多维CNN剪枝框架
+6. [SpeedyGS: Content-Aware 3D Gaussian Splatting Compression via Two-Stage Optimization](/202607/18/2607.12656v1-speedygs-content-aware-3d-gaussian-splatting-compression-via-two-stage-optimization)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：内容感知3DGS压缩，采用率失真优化和熵编码成本估计
+7. [N-O Cool-chic: reconcile fast encoding with lightweight decoding for neural image compression](/202607/18/2607.13723v1-n-o-cool-chic-reconcile-fast-encoding-with-lightweight-decoding-for-neural-image-compression)  
    标签：评分：8.0/10、query:train-trick
-   evidence：基于图固定滤波器的低复杂度自适应环路滤波用于视频编码
+   evidence：轻量神经图像编解码器，编码快速，复杂度低
+8. [MixCompress: Mixture of Experts for Variable Rate Learned Image Compression](/202607/18/2607.14334v1-mixcompress-mixture-of-experts-for-variable-rate-learned-image-compression)  
+   标签：评分：8.0/10、query:entropy-coding
+   evidence：使用混合专家模型解决可变速率图像压缩中的梯度冲突问题
 
 ### 速读区论文标签
-1. [Nemotron-Labs-3-Puzzle-75B-A9B: Compressing Hybrid MoE LLMs](/202607/13/2607.04371v2-nemotron-labs-3-puzzle-75b-a9b-compressing-hybrid-moe-llms)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：多阶段压缩结合知识蒸馏与量化，直接适用于视频编解码模型训练技巧
-2. [Discovering shared interpretable operations in image compression autoencoders](/202607/13/2607.04839v1-discovering-shared-interpretable-operations-in-image-compression-autoencoders)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：分析图像压缩自编码器中的共享可解释操作以设计低复杂度模型
-3. [FADRA: Frequency-Aware Diffusion with Residual Adaptation for Video Face Restoration](/202607/13/2607.06389v1-fadra-frequency-aware-diffusion-with-residual-adaptation-for-video-face-restoration)  
-   标签：评分：7.0/10、query:vcodec
-   evidence：使用扩散模型和LoRA适配进行视频人脸修复，与生成式视频编码和潜在扩散相关
-4. [Dynamic-in-Few-Step: Unifying Dynamic Computation and Few-Step Distillation for Efficient Video Generation](/202607/13/2607.06631v1-dynamic-in-few-step-unifying-dynamic-computation-and-few-step-distillation-for-efficient-video-generation)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：结合知识蒸馏与模型剪枝实现高效视频生成，适用于视频压缩训练技巧
-5. [LUMI: Tokenizer-Agnostic LLM-Based Lossless Image Compression](/202607/13/2607.08221v1-lumi-tokenizer-agnostic-llm-based-lossless-image-compression)  
+1. [LPM: Industrial-Scale Generative Video Restoration](/202607/18/2607.13460v1-lpm-industrial-scale-generative-video-restoration)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：基于扩散的生成式框架处理视频
+2. [VideoRAE: Taming Video Foundation Models for Generative Modeling via Representation Autoencoders](/202607/18/2607.14088v1-videorae-taming-video-foundation-models-for-generative-modeling-via-representation-autoencoders)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：VideoRAE利用表示自编码器将视频特征压缩为紧致潜码用于生成式建模
+3. [FlashDecoder: Real-Time Latent-to-Pixel Streaming Decoder with Transformers](/202607/18/2607.14898v1-flashdecoder-real-time-latent-to-pixel-streaming-decoder-with-transformers)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：面向潜在视频扩散模型的高效Transformer解码器
+4. [On the Gaussian-Quadratic Rate-Distortion Function for Vector Sources with Individual Distortion Constraints](/202607/18/2607.09545v1-on-the-gaussian-quadratic-rate-distortion-function-for-vector-sources-with-individual-distortion-constraints)  
    标签：评分：7.0/10、query:entropy-coding
-   evidence：基于大语言模型的概率估计用于无损图像压缩，与神经熵编码相关
-6. [It Takes Few to TANGO: A Quantized Distributed Model for Binaural Speech Enhancement](/202607/13/2607.08645v1-it-takes-few-to-tango-a-quantized-distributed-model-for-binaural-speech-enhancement)  
+   evidence：高斯信源率失真函数分析
+5. [Efficient Tuning Before Low-Bit Post-Training Quantization for Stochastic Gradient Descent-optimized Models](/202607/18/2607.11359v1-efficient-tuning-before-low-bit-post-training-quantization-for-stochastic-gradient-descent-optimized-models)  
    标签：评分：7.0/10、query:train-trick
-   evidence：量化感知训练用于语音增强
-7. [On the Gaussian-Quadratic Rate-Distortion Function for Vector Sources with Individual Distortion Constraints](/202607/13/2607.09545v1-on-the-gaussian-quadratic-rate-distortion-function-for-vector-sources-with-individual-distortion-constraints)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：向量源在失真约束下的率失真函数理论分析
-8. [A Reconfigurable and Representation-Adaptive ISA-Based Architecture for Efficient DNN Acceleration](/202607/13/2607.04475v1-a-reconfigurable-and-representation-adaptive-isa-based-architecture-for-efficient-dnn-acceleration)  
+   evidence：低比特量化前预调方法，可应用于视频编码模型量化感知训练
+6. [Efficient Text-to-Audio Generation via Pruning](/202607/18/2607.13330v1-efficient-text-to-audio-generation-via-pruning)  
+   标签：评分：7.0/10、query:train-trick
+   evidence：对AudioLDM U-Net应用滤波器剪枝，实现83%参数减少
+7. [WaveNet-Style Guitar Amplifier Model Pruning for Real-Time iOS Deployment](/202607/18/2607.10086v1-wavenet-style-guitar-amplifier-model-pruning-for-real-time-ios-deployment)  
    标签：评分：6.0/10、query:train-trick
-   evidence：可重构ISA加速器，适用于低复杂度编解码硬件
-9. [Empirical Minimal-Realisation Compression of Deep Neural Networks via Controllability-Observability Tests](/202607/13/2607.05457v1-empirical-minimal-realisation-compression-of-deep-neural-networks-via-controllability-observability-tests)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通过可控可观性测试进行神经网络压缩，与低复杂度编解码器设计相关
-10. [Clustered Codebook Quantization for 2D Gaussian-based Image Compression](/202607/13/2607.05667v1-clustered-codebook-quantization-for-2d-gaussian-based-image-compression)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：基于聚类码本量化的图像压缩方法，与视频编码中的量化技术相关
-11. [Gen4U: Unifying Video Generation and Understanding via Diffusion](/202607/13/2607.06856v1-gen4u-unifying-video-generation-and-understanding-via-diffusion)  
+   evidence：面向轻量化实时部署的模型剪枝方法
+8. [CoSAG: Compact Semantic Anchor Gaussians via Training-Free Rate-Distortion Coding](/202607/18/2607.10237v1-cosag-compact-semantic-anchor-gaussians-via-training-free-rate-distortion-coding)  
+   标签：评分：6.0/10、query:entropy-coding
+   evidence：提出免训练率失真编码实现紧凑存储与神经编解码器率失真优化相关
+9. [Self-Consistent Flow: Unifying Velocity and Endpoint Prediction for Rectified Flow Models](/202607/18/2607.12171v1-self-consistent-flow-unifying-velocity-and-endpoint-prediction-for-rectified-flow-models)  
    标签：评分：6.0/10、query:vcodec
-   evidence：视频扩散模型探测显示结构化的潜在空间可用于生成和理解
-12. [EdgeCompress: Coupling Multidimensional Model Compression and Dynamic Inference for EdgeAI](/202607/13/2607.06982v1-edgecompress-coupling-multidimensional-model-compression-and-dynamic-inference-for-edgeai)  
+   evidence：统一了整流流生成模型的速度和端点预测
+10. [Cross-Layer Error Compensation and Finite-Sample Feature-Statistics Matching for Extreme Low-Bit Quantization of Large Language Models](/202607/18/2607.14630v1-cross-layer-error-compensation-and-finite-sample-feature-statistics-matching-for-extreme-low-bit-quantization-of-large-language-models)  
    标签：评分：6.0/10、query:train-trick
-   evidence：包含动态裁剪和复合缩减的模型压缩框架，用于低复杂度
-13. [CRIMP: Compact & Reliable DNN Inference on In-Memory Processing via Crossbar-Aligned Compression and Non-ideality Adaptation](/202607/13/2607.08015v1-crimp-compact--reliable-dnn-inference-on-in-memory-processing-via-crossbar-aligned-compression-and-non-ideality-adaptation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：面向视频编解码轻量化训练的跨针面对齐压缩与量化方法
+   evidence：跨层误差补偿与特征统计匹配方法用于极低比特量化，可应用于视频编码模型量化训练
 
 
 <div class="dpr-home-promo-card">
