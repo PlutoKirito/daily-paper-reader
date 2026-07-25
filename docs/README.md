@@ -6,67 +6,76 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-21
-- 运行时间：2026-07-21 20:24:11 UTC
+- 最新运行日期：2026-07-25
+- 运行时间：2026-07-25 21:36:08 UTC
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：2
+- 本次总论文数：18
+- 精读区：5
 - 速读区：13
 
 ### 今日简报（AI）
-1) 今日推荐15篇论文，精读两篇8分重磅——神经图像压缩的编码-解码权衡新方案，以及率失真感知理论对信息表征极限的重新定义。  
-2) 最值得看的方向：图像压缩中的高效编码与轻量解码协同优化，以及率失真-感知三角理论框架的革新。  
-3) 建议优先精读这两篇高分论文，速读则关注模型量化微调、学生引导的知识蒸馏及视频生成缓存策略。
-- 详情：[/202607/21/README](/202607/21/README)
+今日精读2篇顶级论文（9.0分），速读13篇，重点关注信息表示极限与极端比特率视频压缩。  
+最值得深入的是《Rate-Distortion-Perception Theory》对信息论边界的重构，以及《Group-of-Latents》提出的掩码潜变量生成模型在超低比特率下的感知压缩突破。  
+建议普通读者优先精读这两篇高分论文，把握率失真感知权衡与生成式压缩的核心思想，其余速读文章可快速了解向量量化、3D扩散及视觉语言模型剪枝等方向的新进展。
+- 详情：[/202607/25/README](/202607/25/README)
 
 ### 精读区论文标签
-1. [N-O Cool-chic: reconcile fast encoding with lightweight decoding for neural image compression](/202607/21/2607.13723v1-n-o-cool-chic-reconcile-fast-encoding-with-lightweight-decoding-for-neural-image-compression)  
-   标签：评分：8.0/10、query:train-trick
-   evidence：降低编码复杂度实现轻量级神经编解码
-2. [Rate-Distortion-Perception Theory: Redefining the Fundamental Limits of Information Representation](/202607/21/2607.17232v1-rate-distortion-perception-theory-redefining-the-fundamental-limits-of-information-representation)  
+1. [Rate-Distortion-Perception Theory: Redefining the Fundamental Limits of Information Representation](/202607/25/2607.17232v1-rate-distortion-perception-theory-redefining-the-fundamental-limits-of-information-representation)  
+   标签：评分：9.0/10、query:vcodec
+   evidence：率失真感知理论，直接针对感知率失真优化
+2. [Group-of-Latents: Perceptual Video Compression at Extreme Bitrates via Masked Latent Generative Modeling](/202607/25/2607.19437v1-group-of-latents-perceptual-video-compression-at-extreme-bitrates-via-masked-latent-generative-modeling)  
+   标签：评分：9.0/10、query:vcodec
+   evidence：基于隐扩散的生成式视频压缩
+3. [Generative Transmission: Rethinking Computation, Bandwidth, and Memory in Communication](/202607/25/2607.17482v1-generative-transmission-rethinking-computation-bandwidth-and-memory-in-communication)  
+   标签：评分：8.0/10、query:vcodec
+   evidence：提出基于生成模型的视频传输，超低带宽下侧重感知效用
+4. [Wavefront Parallelization for Efficient Learned Image Compression](/202607/25/2607.19082v1-wavefront-parallelization-for-efficient-learned-image-compression)  
    标签：评分：8.0/10、query:entropy-coding
-   evidence：率失真-感知理论的教程，适用于神经编解码器
+   evidence：无训练的波前并行化加速学习图像压缩中的自回归上下文模型，直接适用于神经熵编码
+5. [Importance-Aware OBS Pruning for Diffusion Models](/202607/25/2607.20048v1-importance-aware-obs-pruning-for-diffusion-models)  
+   标签：评分：8.0/10、query:train-trick
+   evidence：扩散模型的重要性感知剪枝，与轻量码流的模型剪枝相关
 
 ### 速读区论文标签
-1. [Efficient Tuning Before Low-Bit Post-Training Quantization for Stochastic Gradient Descent-optimized Models](/202607/21/2607.11359v1-efficient-tuning-before-low-bit-post-training-quantization-for-stochastic-gradient-descent-optimized-models)  
+1. [Distributional Matching for Vector Quantization: A Unified Theoretical and Empirical Framework](/202607/25/2607.15933v1-distributional-matching-for-vector-quantization-a-unified-theoretical-and-empirical-framework)  
    标签：评分：7.0/10、query:train-trick
-   evidence：量化前预调优提升低比特性能
-2. [Single-Teacher View Augmentation: Enhancing Knowledge Distillation with Student-Guided Perturbations](/202607/21/2607.11557v1-single-teacher-view-augmentation-enhancing-knowledge-distillation-with-student-guided-perturbations)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：通过单教师视图增强的知识蒸馏方法
-3. [ACID: Adaptive Caching for vIDeo generation](/202607/21/2607.12358v2-acid-adaptive-caching-for-video-generation)  
+   evidence：提出分布匹配框架用于向量量化，解决码本崩溃和梯度失配问题
+2. [Continuous 3-D Latent Diffusion for Medical Generation and Reconstruction](/202607/25/2607.16491v1-continuous-3-d-latent-diffusion-for-medical-generation-and-reconstruction)  
    标签：评分：7.0/10、query:vcodec
-   evidence：视频扩散模型的自适应缓存加速
-4. [MixCompress: Mixture of Experts for Variable Rate Learned Image Compression](/202607/21/2607.14334v1-mixcompress-mixture-of-experts-for-variable-rate-learned-image-compression)  
-   标签：评分：7.0/10、query:entropy-coding
-   evidence：基于混合专家的变比特率图像压缩方法，与学习型视频压缩架构相关
-5. [Eddy-VL 1.9B: Structural Pruning and Layered Distillation for Edge-Deployable Multimodal Embedding](/202607/21/2607.16316v1-eddy-vl-19b-structural-pruning-and-layered-distillation-for-edge-deployable-multimodal-embedding)  
+   evidence：用于医学生成和重建的连续3D潜在扩散模型
+3. [Searching for Task-Specific Vision Paths: Evolutionary Block Pruning Across Vision-Language Models](/202607/25/2607.17052v1-searching-for-task-specific-vision-paths-evolutionary-block-pruning-across-vision-language-models)  
    标签：评分：7.0/10、query:train-trick
-   evidence：面向边缘部署的结构化剪枝与分层知识蒸馏方法，可直接用于神经视频编解码器的知识蒸馏训练
-6. [Deep Learning-based Filtering for Video Coding: A Survey on Architectures, Algorithms, and Complexity Analysis](/202607/21/2607.16319v1-deep-learning-based-filtering-for-video-coding-a-survey-on-architectures-algorithms-and-complexity-analysis)  
+   evidence：视觉语言模型的进化块剪枝方法，可迁移至视频编解码器剪枝
+4. [SANA-Video 2.0: Hybrid Linear Attention with Attention Residuals for Efficient Video Generation](/202607/25/2607.21553v1-sana-video-20-hybrid-linear-attention-with-attention-residuals-for-efficient-video-generation)  
    标签：评分：7.0/10、query:vcodec
-   evidence：深度学习滤波用于视频编码综述，与端到端学习视频压缩框架相关
-7. [Efficient Audio-Visual Event Recognition via Knowledge Distillation and Dynamic INT8 Quantization of a Hybrid Cross-Attention Network](/202607/21/2607.16980v1-efficient-audio-visual-event-recognition-via-knowledge-distillation-and-dynamic-int8-quantization-of-a-hybrid-cross-attention-network)  
-   标签：评分：7.0/10、query:train-trick
-   evidence：通过知识蒸馏与动态INT8量化实现高效的视听事件识别
-8. [Efficient Tuning Before Low-Bit Post-Training Quantization for Stochastic Gradient Descent-optimized Models](/202607/21/2607.11359v2-efficient-tuning-before-low-bit-post-training-quantization-for-stochastic-gradient-descent-optimized-models)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：提出量化前微调以提升低比特模型精度，与视频编解码训练中的量化优化相关
-9. [Towards Efficient Convolutional Neural Network for Embedded Hardware via Multi-Dimensional Pruning](/202607/21/2607.11473v1-towards-efficient-convolutional-neural-network-for-embedded-hardware-via-multi-dimensional-pruning)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：提出针对嵌入式硬件的CNN多维剪枝（深度、宽度、分辨率）
-10. [Implicit 4D Gaussian Splatting for Fast Motion with Large Inter-Frame Displacements](/202607/21/2607.12362v1-implicit-4d-gaussian-splatting-for-fast-motion-with-large-inter-frame-displacements)  
+   evidence：混合视频扩散Transformer，利用潜在扩散实现高效视频生成
+5. [Test-Time Noise Guided Adaptation for Realistic Autoregressive Video Generation](/202607/25/2607.15849v1-test-time-noise-guided-adaptation-for-realistic-autoregressive-video-generation)  
    标签：评分：6.0/10、query:vcodec
-   evidence：通过隐式神经网络处理帧间位移
-11. [SpeedyGS: Content-Aware 3D Gaussian Splatting Compression via Two-Stage Optimization](/202607/21/2607.12656v1-speedygs-content-aware-3d-gaussian-splatting-compression-via-two-stage-optimization)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：3DGS压缩中的率失真优化
-12. [CODA: Algorithm-Hardware Co-design for Edge Video Diffusion via NMP-Enabled Compute-Cache Operator Disaggregation](/202607/21/2607.14908v1-coda-algorithm-hardware-co-design-for-edge-video-diffusion-via-nmp-enabled-compute-cache-operator-disaggregation)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：面向边缘视频扩散的算子-缓存协同优化
-13. [Learning Faster without Deeper Networks: A*-Inspired Batch Selection for Efficient CNN Training](/202607/21/2607.15745v1-learning-faster-without-deeper-networks-a-inspired-batch-selection-for-efficient-cnn-training)  
+   evidence：提出测试时噪声引导的自适应方法用于自回归视频生成，解决误差累积，与扩散视频压缩直接相关
+6. [Efficient Audio-Visual Event Recognition via Knowledge Distillation and Dynamic INT8 Quantization of a Hybrid Cross-Attention Network](/202607/25/2607.16980v1-efficient-audio-visual-event-recognition-via-knowledge-distillation-and-dynamic-int8-quantization-of-a-hybrid-cross-attention-network)  
    标签：评分：6.0/10、query:train-trick
-   evidence：基于A*的批次选择策略用于高效CNN训练，可迁移至神经视频压缩模型训练
+   evidence：知识蒸馏与动态INT8量化用于高效模型压缩；可应用于神经视频压缩训练
+7. [CoCurve: Cross-Module Co-Pruning Curvature for Training-Free Structured LLM Pruning](/202607/25/2607.17568v1-cocurve-cross-module-co-pruning-curvature-for-training-free-structured-llm-pruning)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：Transformer结构化剪枝方法；可迁移至视频编码器剪枝
+8. [Pixel-Space Diffusion Transformers](/202607/25/2607.17585v2-pixel-space-diffusion-transformers)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：讨论潜在空间与像素空间扩散，与视频潜在扩散相关
+9. [Surprise Forcing: What to Remember, When to Skip in Long Video Generation](/202607/25/2607.18436v1-surprise-forcing-what-to-remember-when-to-skip-in-long-video-generation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：流式自回归扩散用于长视频生成，与潜在扩散相关
+10. [Self Gradient Forcing: Native Long Video Extrapolation](/202607/25/2607.20368v1-self-gradient-forcing-native-long-video-extrapolation)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：自回归视频扩散的双通训练；与潜在扩散及视频压缩训练策略相关
+11. [RealVDeblur: One-Step Diffusion for Generalizable Real-World Video Deblurring](/202607/25/2607.20628v1-realvdeblur-one-step-diffusion-for-generalizable-real-world-video-deblurring)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：视频扩散先验用于恢复
+12. [Beyond Independent Optimization: Compression, MoE Routing, and Quantization Interactions in Multimodal Edge Intelligence](/202607/25/2607.20981v1-beyond-independent-optimization-compression-moe-routing-and-quantization-interactions-in-multimodal-edge-intelligence)  
+   标签：评分：6.0/10、query:train-trick
+   evidence：涵盖低比特量化、边缘部署和token压缩等高效多模态推理技术
+13. [ElasticTTT: Prior-Preserving Test-Time Tuning for Video Editing](/202607/25/2607.21529v1-elasticttt-prior-preserving-test-time-tuning-for-video-editing)  
+   标签：评分：6.0/10、query:vcodec
+   evidence：面向视频编辑的扩散模型测试时调优与先验保持；可应用于生成式视频压缩和扩散模型编解码
 
 
 <div class="dpr-home-promo-card">
