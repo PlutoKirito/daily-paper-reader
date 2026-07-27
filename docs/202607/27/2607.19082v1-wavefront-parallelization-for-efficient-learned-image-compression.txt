@@ -1,0 +1,478 @@
+Title: Wavefront Parallelization for Efficient Learned Image Compression
+
+URL Source: https://arxiv.org/pdf/2607.19082v1
+
+Published Time: Wed, 22 Jul 2026 01:00:47 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Wavefront Parallelization for Efficient Learned Image Compression 
+
+Shimon Murai 
+
+School of Fundamental Science and Engineering Waseda University 
+
+Tokyo, Japan octachoron@suou.waseda.jp 
+
+Fangzheng Lin 
+
+School of Engineering Institute of Science Tokyo 
+
+Tokyo, Japan lin.f.f849@m.isct.ac.jp 
+
+Kasidis Arunruangsirilert 
+
+School of Fundamental Science and Engineering Waseda University 
+
+Tokyo, Japan kasidis@katto.comm.waseda.ac.jp 
+
+Jiro Katto 
+
+School of Fundamental Science and Engineering Waseda University 
+
+Tokyo, Japan katto@waseda.jp 
+
+Abstract —Autoregressive context models are foundational for learned image compression, but they suffer from slow serial inference. Existing acceleration methods such as checkerboard context require architectural changes and retraining, thus are inapplicable to pre-trained models. We propose a completely training-free inference-time acceleration algorithm inspired by wavefront parallelism in video coding standards. Our method reorganizes inference into an optimal “staggered” wavefront or-der, minimizing sequential steps while maintaining exact autore-gressive dependencies. Experimental results show our approach accelerates pre-trained autoregressive models (e.g., Cheng et al.) by more than 13 × while preserving the original rate-distortion performance. We also demonstrate that faster decoding is possible by trading off precise context dependencies. Source code will be available at https://github.com/tokkiwa/compressai-wavefront. 
+
+Index Terms —Neural Network, Image Compression, Image Coding, Bayesian Network, Wavefront Parallelization 
+
+I. I NTRODUCTION 
+
+Learned Image Compression (LIC) has surpassed traditional codecs in rate-distortion (RD) performance thanks to autore-gressive context models [1]–[3] which effectively capture spatial correlations. However, the sequential dependency of such models requires a raster-scan decoding order, lacking parallelism as decoding requires a minimum of O(H × W )
+
+stages [1], [2]. To accelerate inference, recent works introduce parallelism by breaking the latent-by-latent sequential dependency, such as using Checkerboard patterns [4] or channel-wise autoregression [5]. However, these methods fundamentally alter the probabilistic model, so models not only have to be retrained but also typically suffer from degraded RD performance. In contrast, spatial context models remain relevant in RD-oriented designs. For example, recent high-RD lattice-quantized codecs still rely on spatial autoregressive entropy modeling [6], [7], while achieving RD performance competitive with recent codecs based on alternative context models. This motivates accelerating pretrained spatial AR context models as a complementary systems contribution. Therefore, achieving the computation speed of parallel decoding without sacrificing the high RD performance of autoregressive models remains an open challenge. 
+
+This paper is supported by the MIC Project for Efficient Frequency Utilization Toward Wireless IP Multicasting and JST CRONOS, Japan Grant Number JPMJCS25N2. 10 1 10 0 10 1
+
+> Inference Time [s]
+> 10
+> 5
+> 0
+> 5
+> 10
+> 15
+> BD-Rate over VVC-Intra [%]
+> +WF+TrANS
+> (ours)
+> +WF+TrANS
+> (ours)
+> +WF+TrANS
+> (ours)
+> +WF
+> (ours)
+> +WF
+> (ours)
+> +WF
+> (ours)
+> MBT2018
+> Cheng2020
+> InvCompress
+> Checkerboard
+> ELIC2022
+> Minnen2020
+> 14.9× Faster
+> 14.0× Faster
+> 13.4× Faster
+> 2.4×
+> 2.3×
+> 2.0×
+> BD-Rate vs Inference Time (Kodak Dataset)
+
+Fig. 1: BD-rate versus inference time (compress and de-compress) on Kodak dataset [8]. We apply our Wavefront (“WF”) parallelization to three baselines: MBT2018 [1], Cheng2020 [2] and InvCompress [9]. “TrANS” denotes Ten-sorized rANS, an optimized entropy coder with tensorized interface (Sec. III-C). In this paper, we revisit the context model as a Bayesian network defined on a directed acyclic graph. A crucial ob-servation is that the dependency graph induced by spatial autoregression is sparse: a pixel depends only on a small local neighborhood (e.g., a 5 × 5 window) rather than the entire history of decoded pixels, implying that the standard raster-scan order is not necessarily optimal scheduling. This leads to our proposed staggered wavefront strategy, which maximizes parallelism while strictly respecting causality. We adopt Lamport’s theorem [10] from scheduling theory to prove that this order is a valid and optimal scheduling under certain restrictions. Moreover, we propose the context approximation 
+
+mode to further increase parallelism by processing multiple wavefronts jointly and approximating unavailable context val-ues. This mode allows a single trained model to operate at multiple speed (parallelism) settings, trading off bitrate against computation time. In contrast to prior acceleration methods, our proposal is completely training-free ; it is a drop-in replacement for inference on pre-trained models to enable arXiv:2607.19082v1 [eess.IV] 21 Jul 2026 (a) Autoregressive (AR) [2]                                                                                                                                             
+
+> 1
+> 10
+> 01
+> 10
+> 01
+> 10
+> 01
+> 10
+> 0
+> 1
+> 10
+> 01
+> 10
+> 01
+> 10
+> 01
+> 10
+> 0
+> 1
+> 10
+> 01
+> 10
+> 01
+> 10
+> 01
+> 10
+> 0
+> 1
+> 10
+> 01
+> 10
+> 01
+> 10
+> 01
+> 10
+> 0
+> 111
+> 111
+> 111
+> 11
+> 11
+> 1
+> (b) Checkerboard [4]
+> 14 15 16 17 18 19 20 21
+> 12 13 14 15 16 17 18 19
+> 10 11 12 13 14 15 16 17
+> 8910 11 12 13 14 15
+> 678910 11 12 13
+> 45678910 11
+> 23456789
+> 01234567
+> (c) Wavefront ( λ= 2 )
+> 21 22 23 24 25 26 27 28
+> 18 19 20 21 22 23 24 25
+> 15 16 17 18 19 20 21 22
+> 12 13 14 15 16 17 18 19
+> 910 11 12 13 14 15 16
+> 678910 11 12 13
+> 345678910
+> 01234567
+> (d) Wavefront ( λ= 3 )Not yet decoded Decoded latent codes Currently decoding Context of conv kernel is available as context are not available 09Decoding steps (pixels with the same number can be processed in parallel)
+
+Fig. 2: Illustration of different context models; c d are examples of proposed staggered wavefront processing. parallel execution. Our main contributions are:  
+
+> •
+
+We redefine the autoregressive model as a directed acyclic graph and derive an optimal parallel scheduling using Lamport’s theorem, and propose a training-free paral-lelization method that achieves ≈ 13 –32 × speedup.  
+
+> •
+
+We demonstrate that by approximating spatial context, a single trained model can operate at levels of parallelism, providing a tradeoff between bitrate and computation time.  
+
+> •
+
+We provide a GPU-friendly batched implementation of the proposed scheduling method and discuss its design and performance, achieving an additional acceleration of 
+
+≈ 2–3 ×. 
+
+> •
+
+We open-source our code to facilitate reproducibility. II. B ACKGROUND 
+
+A. Learned Image Compression 
+
+Modern learned image compression frameworks typically follow the structure of a variational autoencoder (VAE) [11]. An input image x is transformed by an analysis transform 
+
+ga into a latent representation y = ga(x). These latents are then quantized to yield discrete symbols ˆy = Q(y), which are losslessly compressed into a bitstream with an entropy coder. During decoding, the bitstream is decompressed to recover 
+
+ˆy, which is then passed through a synthesis transform gs to reconstruct the image ˆx = gs(ˆ y).The goal of the network is to minimize a rate-distortion objective function L = R + λD , where D measures the distortion between x and ˆx (e.g., MSE or MS-SSIM), and R
+
+represents the bitrate estimated with cross entropy. Therefore, accurately estimating the probability distribution of the quantized latents is crucial for minimizing R and achieving high compression efficiency. 
+
+B. Autoregressive Context Modeling 
+
+To minimize the bitrate, the entropy model must cap-ture the statistical dependencies among latent symbols. Early methods employed a factorized prior [12], which assumes latent variables are independent and thus not as performant. The hyperprior model [13] addresses this by utilizing side information ˆz to predict the distribution parameters of ˆy.To further improve compression, recent methods incorporate autoregressive context models, which can be broadly catego-rized into two types: channel-wise autoregression [5], captur-ing dependencies across channels; and spatial autoregression [1], capturing dependencies among neighboring latent pixels within the same spatial plane. The general autoregressive model can be expressed as: 
+
+p(ˆ y|ˆz) = Y
+
+> i
+
+p(ˆ yi|ctx (ˆ yi), ˆz) (1) While dense spatial autoregression shown in Fig. 2a offers powerful probability modeling capabilities, it also introduces a severe bottleneck: the decoding of a latent pixel strictly depends on its causal neighbors, and thus enforces a sequential raster-scan execution, leading to high latency. To mitigate this computational cost, recent performance-optimized models adopt simplified architectures that aim to reduce the number of serial stages. For example, Checkerboard models [4] reorganize spatial dependencies into a two-pass parallel decoding scheduling (Fig. 2b). Although these approaches effectively accelerate inference, in the end they are architectural approximations of the probability model. Adopting these methods also requires full re-training of the LIC model. These reasons combined are why standard spatial autoregressive models [1], [2], [9] still remain attractive: they offer dense correlation modeling, and we argue that their practicality would highly improve when the aforementioned serial bottleneck is resolved without relying on architectural simplification. 
+
+C. Wavefront Parallel Processing in Video Coding 
+
+Wavefront Parallel Processing (WPP) is a standardized methodology in HEVC and VVC that enables row-level par-allelism during CTU decoding [14], [15]. Each CTU row begins processing once a small number of CTUs (typically one or two) in the row above have been completed, creating a diagonal wavefront pattern. However, applying WPP directly to learned image compression is non-trivial. Video codecs op-erate at block granularity with localized inter-block dependen-cies, whereas spatial autoregressive learned image compres-sion models operate with dense and complex receptive fields induced by masked convolutions. To the best of our knowl-edge, no prior work has formally derived the optimal wave-front schedule for pixel-wise autoregressive context models. III. P ROPOSED METHOD 
+
+A. Problem Formulation 
+
+Let Y ∈ RH×W ×C be the latent feature map to be compressed. In spatial autoregressive entropy models, the probability distribution of a latent pixel yi,j (at row i, column 
+
+j) is conditioned on the set of previously decoded pixels, denoted as the context Ci,j .
+
+p(Y ) = 
+
+> H−1
+
+Y 
+
+> i=0
+> W−1
+
+Y
+
+> j=0
+
+p(yi,j | C i,j ) (2) Typical implementations define Ci,j using a masked con-volution with a kernel size K × K. The causal context restricts dependencies to pixels that are spatially prior to (i, j ),leading to the decoding in raster-scan order. We show that better scheduling that fully preserves context exists while also allowing parallelism. We formally redefine this structure as a Bayesian network 
+
+on a directed acyclic graph (DAG) G = ( V, E ). The vertex set 
+
+V represents the spatial locations {(i, j )}, and the edge set E
+
+represents the dependencies defined by the kernel: 
+
+E = {(( i′, j ′) → (i, j )) | (i − i′, j − j′) ∈ K} (3) where K is the set of relative coordinates with non-zero weights in the causal kernel. For the decoding process to be valid and preserve all causal contexts, the execution order must be a topological sort 
+
+of G. The standard raster-scan order, defined by the index 
+
+k = i · W + j, satisfies this condition. While sufficient for correctness, it imposes a strict total ordering that prohibits parallel execution. However, the graph G is sparse; a pixel only depends on a local neighborhood. This implies that multiple nodes may share the same topological rank. Our goal is to find an optimal topological sorting function τ (i, j ) → t that minimizes the total number of steps Tmax = max (i,j ) τ (i, j )
+
+while satisfying the causality constraint: 
+
+∀(( i′, j ′) → (i, j )) ∈ E, τ (i′, j ′) < τ (i, j ) (4) Nodes with the same rank t form a Wavefront set Wt =
+
+{(i, j ) | τ (i, j ) = t} and are mutually d-separated, given S 
+
+> k<t
+
+Wk. Thus, all pixels in Wt can be decoded in parallel. 
+
+B. Optimal Sorting via Hyperplane Method 
+
+To derive the optimal schedule τ , we formulate this as a loop scheduling problem on a 2D grid. We employ Lamport’s Hyperplane Method [10], which seeks a linear schedule vector π = ( λ, 1) such that the time step is given by: 
+
+τ (i, j ) = π · [i, j ]T = λi + j (5) Here, λ is a parameter called shear factor. According to Lamport’s theorem, this schedule is valid if and only if: 
+
+π · d > 0, ∀d ∈ D (6)                                                                                                                   
+
+> 14 15 16 17 18 19 20 21
+> 12 13 14 15 16 17 18 19
+> 10 11 12 13 14 15 16 17
+> 8910 11 12 13 14 15
+> 678910 11 12 13
+> 45678910 11
+> 23456789
+> 01234567
+> (a) Standard ( N=1 )
+> 77889910 10
+> 66778899
+> 55667788
+> 44556677
+> 33445566
+> 22334455
+> 11223344
+> 00112233
+> (b) Grouped ( N=2 )
+
+Fig. 3: Illustration of Context Approximation mode. This mode processes multiple diagonals simultaneously, using mean-fill approximation for unavailable context pixels. where D is the set of dependence vectors d = (di, d j )
+
+corresponding to the relative positions of the causal neighbors. For a standard 5 × 5 masked convolution, the dependency set includes vectors from the previous rows. The most critical constraint comes from the neighbor in the upper right in the receptive field, corresponding to the vector dcrit = (1 , −2) 
+
+(i.e., row i − 1, column j + 2 ). Substituting dcrit into Eq. 6: 
+
+λ · 1 + 1 · (−2) > 0 = ⇒ λ > 2 (7) Since τ must assign integer time steps to grid points, λ must also be an integer. Thus, the minimum valid shear factor is 
+
+λ = 3 . The number of execution steps of τ equals the length of the longest path of the DAG, implying its optimality among other schedules. More generality, for any (2 R + 1) × (2 R + 1) masked con-volution, the wavefront schedule with shear factor λ = R + 1 
+
+is valid and optimal. We depict this schedule, a staggered wavefront , in Fig. 2c and Fig. 2d. The standard wavefront used in HEVC/VVC (as detailed in Sec. 3.3.2. of [14]) often corresponds to λ = 1 (block-wise causality) or λ = 2 in this staggered wavefront framework. 
+
+C. Wavefront Implementation 
+
+To fully utilize GPU parallelism, we develop progressive optimizations to achieve practical speedup. Each optimization addresses a specific bottleneck identified in the previous im-plementation. 
+
+Baseline (per-pixel loop). A direct implementation iterates over pixels in wavefront order τ (i, j ) = λi + j. For each diagonal d = λi + j, we enumerate all valid (i, j ) pairs satisfying the constraint and process them sequentially. 
+
+Batched wavefront. Instead of searching the symbols in the wavefront each time, we can first group all pixels with the same τ value into a wavefront Ss and evaluate their context models in a single batched call. For a wavefront containing n
+
+pixels at positions (h1, w 1), . . . , (hn, w n), we extract their k ×
+
+k neighborhood patches from the padded latent tensor ˆY and stack them into Ps ∈ Rn×C×k×k. The masked convolution is then applied once: Cs = Conv2D (Ps, W ⊙ M), producing context features for all n pixels simultaneously. 
+
+Selective im2col. Naive patch extraction using unfolding materializes all HW sliding windows into a tensor of size TABLE I: Runtime and rate–distortion impact. Measured time includes whole network and entropy coding. Speedup is computed as a summation of encode–decode with regards to its autoregressive implementation in [16]. BD-rate [17] is calculated with VVC-Intra (VTM 23.0) as the reference. ∗Pre-trained weights or evaluated results were not publicly available from the authors.                                                                                                                                                       
+
+> Model Kodak Tecnick CLIC2020-valid Enc (s/img) Dec (s/img) Speedup (times) BD-rate (%) Enc (s/img) Dec (s/img) Speedup (times) BD-rate (%) Enc (s/img) Dec (s/img) Speedup (times) BD-rate (%) Cheng2020 [2] 2.811 5.937 1.00 5.31 9.344 21.219 1.00 6.92 15.512 34.073 1.00 -2.33 Cheng2020 + WF (ours) 0.1606 0.4629 14.0 5.31 0.2811 0.9202 25.4 6.92 0.3976 1.1152 32.8 -2.33 Cheng2020 + WF + TrANS (ours) 0.1285 0.1390 32.7 5.31 0.3004 0.3260 48.8 6.92 0.4177 0.4539 56.9 -2.33 MBT2018 [1] 2.5491 5.6723 1.00 11.26 9.256 21.045 1.00 12.69 14.944 33.409 1.00 0.36 MBT2018 + WF (ours) 0.1223 0.4280 14.9 11.26 0.2915 0.9232 24.9 12.69 0.3898 1.1108 32.2 0.36 MBT2018 + WF + TrANS (ours) 0.1104 0.1197 35.7 11.26 0.2478 0.2527 60.5 12.69 0.3432 0.3297 71.9 0.36 InvCompress [9] 2.5268 5.6637 1.00 -1.24 9.418 21.208 1.00 -0.99 16.519 35.047 1.00 -9.25 InvCompress + WF (ours) 0.1504 0.4607 13.4 -1.24 0.3730 1.0064 22.2 -0.99 0.5848 1.2829 27.6 -9.25 InvCompress + WF + TrANS (ours) 0.1457 0.1607 26.7 -1.24 0.3536 0.3807 41.7 -0.99 0.5046 0.4953 51.6 -9.25 Checkerboard [4] 0.0878 0.0656 –8.51 0.2575 0.2002 ––∗0.4036 0.3085 ––∗
+> ELIC [3] 0.2069 0.1288 –-7.19 0.4440 0.2843 –-7.75 0.6574 0.4091 –-12.88 Minnen2020 [5] 0.1773 0.1069 –1.30 0.3813 0.2368 –-1.63 0.5469 0.3403 ––∗
+
+C × k2 × HW from which we then index the wavefront pixels. This full im2col is wasteful when |Ss| ≪ HW . Instead, for each wavefront, we compute the flat indices of only the required k × k neighborhoods, then gather patches using PyTorch’s advanced indexing. This selective approach avoids materializing the full tensor and reduces memory overhead. 
+
+Tensorized rANS. Once wavefront overhead is reduced, en-tropy coding becomes the bottleneck. Recent learned compres-sion models adopt range variant of Asymmetric Neural Sys-tems (rANS) [18], and standard rANS interfaces (as in [16]) accept Python lists, requiring data conversion that triggers device-to-host synchronization and incurs per-symbol Python overhead. We implemented a C++ interface that performs rANS encoding/decoding by directly pointing elements in PyTorch Tensors without explicit data conversion. 
+
+D. Context Approximation for Further Speedup 
+
+To further improve throughput, we introduce an optional 
+
+context approximation mode that increases parallelism by relaxing strict autoregressive dependencies. As illustrated in Fig. 3, we process N consecutive wavefronts as a group .Within a group, some pixels would normally depend on other pixels that belong to later wavefronts in the same group; thus, strict AR causality is not fully satisfied. Our idea is to approximate the unavailable context values deterministically so that both encoder and decoder follow the same computation and remain synchronized. Before computing the context for a grouped wavefront, we temporarily assign provisional values to the yet-unavailable pixels. Specifically, for each pixel we fill missing context en-tries by the mean of already-known reconstructed latents in its local neighborhood; if no known samples exist, we use a fixed constant (zero in our experiments). This produces an approx-imate context tensor that allows the model to evaluate (μ, σ )
+
+for all pixels in the grouped wavefront in a single batched pass. Note that this approximation results in a suboptimal TABLE II: Speed–RD trade-off of context approximation for Cheng2020 (quality = 3) on Kodak. Speedups were measured relatively to the raster baseline. N denotes the group size.                               
+
+> Variant PSNR (dB) BPP ∆BPP (%) Speedup (Enc/Dec) Raster 31.317 0.269 +0.00 1.00/1.00 Wavefront 31.327 0.269 +0.00 21.87/42.71
+> N= 2 approx. 31.331 0.295 +9.67 31.71/59.37
+> N= 3 approx. 31.338 0.309 +14.9 36.96/73.04
+> N= 4 approx. 31.346 0.344 +27.9 52.1/103.8
+
+probability modeling and higher bitrate; however, preserves image quality as the transform networks are identical. IV. E XPERIMENT 
+
+A. Experiment Setup 
+
+The software environment is Python 3.10, Pytorch 2.9.0, CUDA 11.8. We used three datasets to evaluate the codecs including Kodak [8], Tecnick [19] and CLIC2020-Valid [20]. The Kodak dataset contains 24 images with a resolution of 
+
+768 × 512 . The Tecnick dataset contains 100 images with a resolution of 1200 × 1200 . The CLIC2020 validation dataset contains 41 images with various resolutions of which 65% are over Full-HD resolution. Unless otherwise mentioned, the inference time is measured on a single NVIDIA GeForce RTX 3080 12 GB GPU and an Intel Core i7-8700K CPU. Batch size is set to one. We adopt the selective im2col and tensorized rANS as a standard baseline. 
+
+B. Implementation 
+
+We implement the proposed wavefront parallelization method in PyTorch. For Cheng2020 [2] and MBT2018 [1], standard pre-trained weights from CompressAI [16] are used. For InvCompress [9], official pre-trained weights are used. For other methods, we used CompressAI implementations or re-implemented them based on the official papers. TABLE III: Runtime comparison across two additional experimental settings. Measured time includes whole network and entropy coding/decoding.                                                                                                                                                       
+
+> Model Setting 1 (RTX 2080 GPU) Setting 2 (RTX 5000 PRO Blackwell GPU) Kodak Tecnick CLIC2020-valid Kodak Tecnick CLIC2020-valid Enc (s/img) Dec (s/img) Enc (s/img) Dec (s/img) Enc (s/img) Dec (s/img) Enc (s/img) Dec (s/img) Enc (s/img) Dec (s/img) Enc (s/img) Dec (s/img) Cheng2020 (baseline) 3.260 5.636 11.733 20.778 18.409 32.749 1.418 2.222 5.092 8.259 7.941 12.952 Cheng2020 + TrANS 3.219 3.495 11.692 12.800 18.208 20.033 1.392 2.007 4.943 7.764 7.747 12.337 Cheng2020 + WF 0.152 0.372 0.320 0.794 0.410 0.941 0.088 0.151 0.179 0.341 0.224 0.416 Cheng2020 + WF + TrANS 0.138 0.148 0.291 0.311 0.356 0.373 0.069 0.088 0.156 0.230 0.182 0.267 MBT2018 (baseline) 3.260 5.656 11.808 20.754 18.521 32.503 1.402 2.269 5.128 8.282 8.057 12.899 MBT2018 + TrANS 3.229 3.485 11.818 12.817 18.409 20.223 1.363 2.155 5.010 7.821 7.761 11.124 MBT2018 + WF 0.151 0.386 0.323 0.827 0.410 0.993 0.088 0.151 0.187 0.346 0.224 0.398 MBT2018 + WF + TrANS 0.138 0.153 0.281 0.323 0.344 0.380 0.076 0.096 0.157 0.213 0.183 0.242 InvCompress (baseline) 3.175 5.580 11.817 20.660 18.739 32.803 1.398 2.238 5.204 8.393 8.053 12.944 InvCompress + TrANS 3.138 3.414 11.830 12.876 18.484 20.116 1.329 2.026 5.087 7.777 7.762 12.818 InvCompress + WF 0.174 0.405 0.434 0.893 0.581 1.107 0.100 0.174 0.295 0.456 0.351 0.534 InvCompress + WF + TrANS 0.164 0.178 0.403 0.415 0.538 0.539 0.091 0.119 0.263 0.334 0.303 0.394
+
+V. D ISCUSSION 
+
+A. Performance 
+
+As shown in Table I and Fig 1, the proposed wavefront scheduling substantially reduces the inference time of spa-tial autoregressive codecs while preserving their RD per-formance. On Kodak, WF+TrANS achieves a 26.7–35.7 ×
+
+speedup over the corresponding raster-scan baselines, and the gain further increases on larger images, reaching up to 71.9 ×
+
+on CLIC2020-valid. The speedup is consistent across three different spatial-AR backbones, indicating that the proposed scheduling is not specific to a particular model architecture. Table IV provides a comparison between other acceleration methods. Checkerboard decoding [4] provides the shortest runtime, however, its architectural simplification degrades RD performance and requires retraining. The BD-rate increases from 5.31% to 8.51% for Cheng2020 [2] and from 11.26% to 16.71% for MBT2018 [1]. In contrast, wavefront schedul-ing preserves the original BD-rate of the raster-scan models while reducing the decoding time from 5.64s to 0.148s for Cheng2020 and from 5.66s to 0.166s for MBT2018. Thus, although checkerboard remains faster in absolute runtime, wavefront provides a more favorable speed–RD trade-off for pre-trained spatial AR codecs by achieving deployable acceler-ation without retraining or sacrificing compression efficiency. To demonstrate that our methods are effective regardless of the hardware environment, we conducted experiments in other hardware settings together with detailed description. Setting 1. (Low) An Intel Core i7-7700 CPU with RTX 2080 SUPER GPU is deployed. Setting 2. (High) An Intel Core Ultra 9 285K with RTX 5000 PRO Blackwell GPU is deployed. As shown in Table III, wavefront parallelization (WF) alone achieves up to 97% reduction in decoding time compared to the raster-scan baseline (e.g., 5.636s →0.148s for Cheng2020 on Kodak in Setting 1). When combined with Tensorized rANS, decoding speedup reaches approximately 38 ×. Note that applying TrANS to the sequential raster-scan baseline also improves speed (5.636s →3.495s, ∼1.6 ×), but the gain is substantially smaller than in the WF setting. This observation confirms that once wavefront parallelization increases the de-gree of parallelism, the entropy coding becomes the dominant bottleneck, making TrANS essential for further acceleration. 
+
+B. Exactness and Reproducibility 
+
+In practice, changing the GPU execution order introduces minor floating-point rounding differences, and the wavefront-based rANS update order causes slight numerical variations. However, with our wavefront implementation of Cheng2020, the maximum relative error in PSNR and BPP compared to the raster baseline is less than 0.08% across all Kodak images, confirming that the proposed scheduling preserves the original model’s compression rate performance. 
+
+C. Ablation of implementations 
+
+We conducted an ablation study to validate our optimiza-tions (Table V). First, to ensure a fair comparison, we applied Tensorized rANS to the standard raster-scan method. This yields a 2.49 s decode time; while faster ( ≈ 2.4×) than the standard baseline, the serial bottleneck remains. In contrast, our proposed Wavefront method combined with Tensorized rANS achieves a decoding time of 0.14 s, representing a massive ≈ 18 × speedup even over the 
+
+optimized raster baseline (and > 40 × over the standard baseline). Notably, the speedup gain from Tensorized rANS is more pronounced in the Wavefront setting ( ≈ 3.3×, from 
+
+0.46 s to 0.14 s) compared to the Raster setting ( ≈ 2.4×). This confirms our observation that once neural network inference is parallelized via Wavefront, the bottleneck shifts to entropy TABLE IV: Comparison of acceleration methods on Cheng2020 [2] and MBT2018 [1]. 
+
+Model Method Speed BD-Rate Training-(s) (%) Free MBT2018 None(raster) 5.66 11.26 
+
+checkerboard 0.016 16.71 wavefront 0.166 11.26 ✓
+
+Cheng2020 None(raster) 5.64 5.31 
+
+checkerboard 0.066 8.51 wavefront 0.148 5.31 ✓
+
+TABLE V: Ablation of GPU-friendly implementation of Wavefront, evaluated with Cheng2020 [2] (quality = 3) over Kodak [8] dataset. 
+
+Variant Enc (s) Dec (s) bpp / PSNR (dB) Original Raster-Scan 2.811 5.937 0.269 / 31.32 + Tensorized rANS 2.493 2.694 0.269 / 31.32 Loop-based WF 0.1815 0.4676 0.269 / 31.33 Batched WF 0.1394 0.4512 0.269 / 31.33 + Tensorized rANS 0.1702 0.2096 0.269 / 31.33 Selective WF 0.1636 0.4576 0.269 / 31.33 + Tensorized rANS 0.1237 0.1376 0.269 / 31.33 
+
+coding overhead. Ultimately, the combination of selective batching and Tensorized rANS yields the best performance. 
+
+D. Context approximate mode 
+
+We evaluated the effectiveness of context approximation (Sec. III-D). As shown in Table II, larger N yields higher speedups at the cost of increased bitrate. Image quality is pre-served except for minor quantization errors. When we measure the rate-distortion with all qualities Cheng2020 and Kodak, the BD-Rate for N = {1, 2, 3, 4} are {0.00 , 9.33 , 14 .16 , 27 .00 }%,respectively. We view this as a practical speed–rate tradeoff for applications where throughput is prioritized over compression efficiency. 
+
+E. Limitations 
+
+Firstly, changing the processing order alters the bitstream layout. The compressed bitstream from our method is therefore not inter-decodable with the raster baseline, and vice versa. Nevertheless, model weights remain compatible with the pro-posed method applied on autoregressive models, and they do not have to be retrained. Secondly, our method targets spatial autoregressive models with local dependencies. It does not benefit Checkerboard-style models [4] or channel-wise autoregressive models [5]. However, in case the model combines channel and spatial au-toregressive context [21], our wavefront methods is applicable and can potentially bring further enhancement. VI. C ONCLUSION 
+
+We presented a training-free acceleration of spatial au-toregressive context models for learned image compression. By modeling the spatial context dependency as a DAG and deriving an optimal schedule in the form of a staggered wavefront order, we enable safe parallel execution without modifying model parameters. Combined with a GPU-friendly batched implementation, our method achieves more than 26 ×
+
+speedup (or 13 × with wavefront alone) while preserving compression performance. We further introduced an optional context-approximation mode that offers variable-speed infer-ence from a single model by trading bitrate for throughput. REFERENCES [1] David Minnen, Johannes Ball´ e, and George D Toderici, “Joint autore-gressive and hierarchical priors for learned image compression,” in 
+
+Advances in Neural Information Processing Systems (NeurIPS) , 2018, vol. 31. [2] Zhengxue Cheng, Heming Sun, Masaru Takeuchi, and Jiro Katto, “Learned Image Compression With Discretized Gaussian Mixture Like-lihoods and Attention Modules,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , June 2020. [3] Dailan He, Ziming Yang, Weikun Peng, Rui Ma, Hongwei Qin, and Yan Wang, “ELIC: Efficient Learned Image Compression With Unevenly Grouped Space-Channel Contextual Adaptive Coding,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 5718–5727. [4] Dailan He, Yaoyan Zheng, Baocheng Sun, Yan Wang, and Hongwei Qin, “Checkerboard Context Model for Efficient Learned Image Com-pression,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2021, pp. 14766–14775. [5] David Minnen and Saurabh Singh, “Channel-Wise Autoregressive Entropy Models for Learned Image Compression,” in International Conference on Image Processing , Oct. 2020, pp. 3339–3343. [6] Shinobu Kudo, Yukihiro Bandoh, Seishi Takamura, and Masaki Ki-tahara, “LVQ-VAE: End-to-end hyperprior-based variational image compression with lattice vector quantization,” OpenReview, 2023. [7] Eric Lei, Hamed Hassani, and Shirin Saeedi Bidokhti, “Approaching rate-distortion limits in neural compression with lattice transform cod-ing,” in International Conference on Learning Representations , 2025. [8] “Kodak lossless true color image suite,” https://r0k.us/graphics/kodak/. [9] Yueqi Xie, Ka Leong Cheng, and Qifeng Chen, “Enhanced invertible encoding for learned image compression,” in Proceedings of the 29th ACM International Conference on Multimedia , 2021, p. 162–170. [10] Leslie Lamport, “The parallel execution of do loops,” Communications of the ACM , vol. 17, no. 2, 1974. [11] Diederik P Kingma and Max Welling, “Auto-encoding variational bayes,” in International Conference on Learning Representations , 2014. [12] Johannes Ball´ e, Valero Laparra, and Eero P. Simoncelli, “End-to-end optimized image compression,” in International Conference on Learning Representations , 2017. [13] Johannes Ball´ e, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston, “Variational image compression with a scale hyperprior,” in International Conference on Learning Representations , 2018. [14] Vivienne Sze, Madhukar Budagavi, and Gary J Sullivan, High efficiency video coding: algorithms and architectures , Springer Publishing Com-pany, 2014. [15] Frank Bossen, Benjamin Bross, Karsten Suhring, and David Flynn, “Hevc complexity and implementation analysis,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 22, no. 12, 2012. [16] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja, “CompressAI: A PyTorch library and evaluation platform for end-to-end compression research,” arXiv preprint arXiv:2011.03029 , 2020. [17] Gisle Bjøntegaard, “Calculation of average psnr differences between rd-curves,” ITU-T VCEG-M33 , 2001. [18] Jarek Duda, “Asymmetric numeral systems,” arXiv preprint arXiv:1311.2540 , 2009. [19] Nicola Asuni, Andrea Giachetti, et al., “Testimages: a large-scale archive for testing visual devices and basic image processing algorithms.,” in 
+
+Smart Tools and Applications in Graphics(STAG) , 2014, pp. 63–70. [20] George Toderici, Wenzhe Shi, Radu Timofte, Lucas Theis, Johannes Ball´ e, Eirikur Agustsson, Nick Johnston, and Fabian Mentzer, “Work-shop and challenge on learned image compression,” 2020. [21] Changyue Ma, Zhao Wang, Ruling Liao, and Yan Ye, “A cross channel context model for latents in deep image compression,” arXiv preprint arXiv:2103.02884 , 2021. APPENDIX APROOF OF THE VALIDITY AND OPTIMALITY OF 
+
+WAVEFRONT PARALLELIZATION 
+
+In this section, we provide a formal proof of the validity and optimality of the wavefront parallelization strategy in general case. 
+
+Definition 1 (Dependency set for raster-scan causal masked convolution) . Let Ω = {0, . . . , I − 1} × { 0, . . . , J − 1} ⊂ Z2,where i ∈ { 0, . . . , I −1} is the row index and j ∈ { 0, . . . , J −
+
+1} is the column index. Let R ∈ N. A raster-scan (2 R+1) ×
+
+(2 R+1) causal masked convolution uses as context: (i) all pixels in the R rows above within horizontal offset at most R,and (ii) the R pixels to the left in the same row. Equivalently, define the dependence vector set 
+
+DR := ( {1, . . . , R } × {− R, . . . , R }) ∪ ({0} × { 1, . . . , R }).
+
+For each x ∈ Ω, the dependency graph contains an edge x −
+
+d → x for every d ∈ DR such that x − d ∈ Ω.
+
+Definition 2 (Staggered wavefront schedule) . Let λ := R + 1 .
+
+(Note: this λ corresponds to the shear factor λ in the main paper) Fix π = ( λ, 1) and define the rank function t : Ω → Z
+
+by 
+
+t(i, j ) = π · (i, j ) = λi + j. 
+
+The staggered wavefront schedule executes nodes in increasing order of t, and executes all nodes with the same value of t
+
+in one parallel step (i.e., level sets {(i, j ) ∈ Ω : t(i, j ) = c}
+
+form the parallel batches). 
+
+Theorem 1 (Validity and optimality of the staggered wavefront schedule) . Consider the dependency set DR from Definition 1 and assume J ≥ R + 1 . Let λ := R + 1 as in Definition 2. Then: 1) The staggered wavefront schedule is valid for DR.2) In the unit-time, infinite-processor model, the staggered wavefront schedule is optimal, i.e., it achieves the mini-mum possible makespan 
+
+T = λI + J − λ = ( R + 1) I + J − (R + 1) .
+
+Proof. (1) Validity. For any d ∈ DR, we have 
+
+π·d =
+
+(
+
+p, d = (0 , p ), p ∈ { 1, . . . , R },λr + q, d = ( r, q ), r ∈ { 1, . . . , R }, q ∈ {− R, . . . , R }.
+
+In the first case, π·d = p ≥ 1. In the second case, the minimum is attained at (r, q ) = (1 , −R), giving π · d ≥ λ − R = ( R +1) −R = 1 . Hence π ·d ≥ 1 > 0 for all d ∈ DR. Therefore the condition of Lamport’s hyperplane theorem holds for t(x) = 
+
+π · x, so executing level sets {x : t(x) = c} in increasing c is a valid wavefront schedule. (2) Optimality. Let T denote the optimal makespan. 
+
+Upper bound. Over Ω, tmin = t(0 , 0) = 0 and tmax =
+
+t(I − 1, J − 1) = λ(I − 1) + ( J − 1) . Thus the staggered wavefront schedule completes in 
+
+Twf = ( tmax − tmin ) + 1 = λ(I − 1) + J = λI + J − λ
+
+steps, implying T ≤ Twf .
+
+Lower bound. Any schedule must take at least the length of the longest directed path (critical path) in the dependency DAG. We construct a directed path of length Twf . First traverse the top row using (0 , 1) ∈ DR:
+
+(0 , 0) → (0 , 1) → · · · → (0 , J − 1) (J nodes ).
+
+Then, for each i = 0 , . . . , I − 2, use (1 , −R) ∈ DR to jump 
+
+(i, J − 1) → (i + 1 , J − 1 − R),
+
+and move right by R steps within row i + 1 using (0 , 1) ∈ DR
+
+to reach (i + 1 , J − 1) . Each row transition adds (R + 1) = λ
+
+nodes, yielding a path of length 
+
+J + λ(I − 1) = λI + J − λ = Twf .
+
+Hence T ≥ Twf . Combining with the upper bound gives T =
+
+Twf .APPENDIX BTORCH -LIKE PSEUDOCODE FOR WAVEFRONT 
+
+IMPLEMENTATION 
+
+params = hyper_network(bitstream_hyper) # means and scales for each pixel from hyper-prior # of shape (N, 2*C, H, W) y_hat = torch.zeros(N, C, H, W) # Pixel-wise processing 
+
+for h, w in get_diag_coords(H, W): # 1. Individual crop (Fragmented access) y_crop = y_hat[:, :, h:h+5, w:w+5] # 2. Compute & Update ctx = F.conv2d(y_crop, weight, bias=b) y_val = decode(params[..., h, w], ctx) y_hat[:, :, h+2, w+2] = y_val 
+
+Listing 1: Wavefront Decoding with Naive Loop-Based Processing 
+
+params = hyper_network(bitstream_hyper) params_flat = params.view(N, C, -1) y_hat = torch.zeros(N, C, H, W) # flat view must be taken AFTER padding/zeroing to point to correct memory y_hat_flat = y_hat.view(N, C, -1) # Batching with F.unfold 
+
+for batch_indices in get_diag_indices(H, W): # 1. Unfold entire image (High Memory Cost) # Inefficient: Extracts patches for ALL pixels every time patches_all = F.unfold(y_hat, 5) patches = patches_all[..., batch_indices] # 2. Batch Compute ctx = F.conv2d(patches, weight, bias=b) # 3. Gather Params for current batch (Fixed) # Must slice params to match ctx dimensions p_batch = params_flat[..., batch_indices]. unsqueeze(-1).unsqueeze(-1) # 4. Decode & Update y_vals = decode(p_batch, ctx) y_hat_flat.scatter_(1, batch_indices, y_vals) 
+
+Listing 2: Wavefront Decoding with Unfold-based Batching 
+
+params = hyper_network(bitstream_hyper) params_flat = params.view(N, C, -1) y_hat_flat = torch.zeros(N, C, H*W) # Selective Im2Col offset = get_kernel_offsets(kernel_size=5) 
+
+for centers in get_diag_centers(H, W): # 1. Gather Patches (Memory Efficient) # Calculate flat indices for 5x5 neighbors idx = centers.unsqueeze(1) + offset patches = y_hat_flat[:, idx].view(N, C, 5, 5) # 2. Compute Context from Patches ctx = F.conv2d(patches, masked_weight, bias=b) # 3. Fuse with Hyper-priors (params) # Gather params at the same center positions p = params_flat[:, centers].unsqueeze(-1). unsqueeze(-1) y_vals = decode(p, ctx) # 5. Scatter Update y_hat_flat.scatter_(1, centers, y_vals) y_hat = y_hat_flat.view(N, C, H, W) 
+
+Listing 3: Wavefront Decoding with Selective Im2Col APPENDIX CSETTINGS OF VVC-INTRA 
+
+We evaluated VVC reference coding using VTM-23.0. We found that using standard CompressAI’s benchmark results in inferior performance due to color space settings, therefore we conducted experiments directly with VTM-23.0 and ffmpeg. The encoder was configured with the default configuration file. Input images were 8-bit RGB. Prior to encoding, each image was converted to 8-bit YUV444 raw video using ffmpeg. The reconstructed YUV was converted back to RGB (ffmpeg), and PSNR was computed in the RGB domain against the original image. QP were set to 22, 27, 32, 37, 42 and 47. 1) RGB → YUV444 conversion (ffmpeg) 
+
+ffmpeg -y -i input.png -pix_fmt yuv444p -f rawvideo input.yuv 
+
+2) Encoding with VTM (EncoderApp) 
+
+EncoderApp -c encoder_intra_vtm.cfg \\ -i input.yuv -b output.bin \\ -o recon.yuv -f 1 -fr 2 \\ -wdt W -hgt H -q QP \\ --InputBitDepth=8 \\ --InputChromaFormat=444 \\ --OutputBitDepth=8 \\ --OutputBitDepthC=8 \\ --ConformanceWindowMode=1 
+
+3) YUV → RGB reconstruction (ffmpeg) 
+
+ffmpeg -y -f rawvideo -pix_fmt yuv444p -s W*H -i recon.yuv recon.png
