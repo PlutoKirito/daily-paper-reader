@@ -1,0 +1,361 @@
+Title: ReGenVC: End-to-End Real-Time Generative Video Coding at Ultra-Low Bitrate
+
+URL Source: https://arxiv.org/pdf/2607.28144v1
+
+Published Time: Fri, 31 Jul 2026 01:14:13 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# ReGenVC: End-to-End Real-Time Generative Video Coding at Ultra-Low Bitrate 
+
+# Zheyuan Zhang Johnson Wu Intel Corporation  
+
+> {zheyuan.zhang, johnson.wu }@intel.com
+
+# Abstract 
+
+We present ReGenVC (Real-time Generative Video Cod-ing), an end-to-end generative video codec that compresses talking-head video to an ultra-low bitrate and decodes it in real time. On the encoder side a source clip is re-duced to a compact bitstream—a neurally compressed first frame, per-frame pose keypoints, and metadata—totalling only ∼26 kB for a 77-frame sequence. On the decoder side a four-step distilled diffusion transformer reconstructs the video conditioned on the transmitted pose and refer-ence frame. Against x264/x265, ReGenVC transmits the same clip at roughly one order of magnitude lower bitrate 
+
+(∼26 kB vs. the ∼250–280 kB x264/x265 need for essen-tially artifact-free reconstruction); at a matched ultra-low bitrate the traditional codecs collapse into blocking arti-facts while ReGenVC stays sharp by exploiting a strong generative prior. The central obstacle to deploying such a codec is decoder latency : a multi-step sampler over a transformer and a VAE is far too slow for interactive use. We make the decoder real-time through four-step distillation of the teacher and three model-preserving sys-tems techniques: (i) eight-GPU unified sequence paral-lelism (Ulysses ×Ring), (ii) a spatially-split VAE, and (iii) a three-stage overlapped pipeline; an analytical timing model 
+
+Twin ≈ (wd+d) + max( v+a, w e+e) characterizes the real-time feasibility region. On an 8-GPU node the system sus-tains 24 fps output (972 ms per 25-frame window, within the 1000 ms budget), driving a live browser stream with no observed frame underruns over the tested run. A hy-brid CPU–GPU deployment further runs the encoder on the CPU at the same 24 fps and holds the decoder’s one-shot CLIP/T5 conditioners on the CPU as well, cutting the per-GPU memory peak from 21.1 GB to ∼7.7 GB and leaving the GPU for the diffusion critical path. Real-time decoding has been described as “a common challenge for generative codecs” [33]; ReGenVC is, to our knowledge, the first end-to-end generative video codec to overcome this challenge— combining ultra-low-bitrate encoding with real-time decod-ing on an 8-GPU node built from consumer-class GPUs. 
+
+# 1. Introduction 
+
+Video now dominates internet traffic, and the demand for ever-lower bitrates at usable quality is relentless. Tra-ditional hybrid codecs such as x264 and x265 are ex-tremely mature, but they are fundamentally pixel-fidelity 
+
+systems: at ultra-low bitrates their block-transform core de-grades gracelessly into blocking and ringing artifacts. For a talking-head clip, driving x264/x265 down to a few tens of kilobytes yields visibly broken video (Sec. 5.2). This is precisely the regime that matters for bandwidth-starved settings—live streaming on weak links, video messaging, telepresence—and precisely where traditional coding fails. 
+
+Generative video coding offers a way out. Instead of transmitting pixel residuals, the encoder sends a compact set of control signals and a strong generative model at the receiver synthesizes the video from them [34, 37]. Because the heavy lifting is moved from the bitstream to a learned prior, perceptual quality can be preserved at bitrates un-reachable by residual coding. The idea is compelling— but it has a crippling practical problem: the generative decoder is far too slow . A diffusion decoder must run a multi-step sampler over a large transformer and a VAE for every group of frames, taking seconds per short clip on a single GPU. For interactive use this is disqualifying, and it is the main reason generative coding has remained a largely offline, conceptual proposition—a real-time barrier that its own practitioners describe as “a common challenge for gen-erative codecs” [33]. 
+
+ReGenVC. We present ReGenVC , an end-to-end gen-erative video codec for talking-head video that targets the (bitrate × latency) quadrant left open by the gener-ative codecs surveyed in Sec. 2 (Table 1): simultane-ously ultra-low-bitrate and real-time-decodable . On the encoder side (Sec. 3.2) a source clip is reduced to three tiny streams: a first frame compressed with a neural image arXiv:2607.28144v1 [eess.IV] 30 Jul 2026 codec, per-frame body/face pose keypoints, and metadata— about 26 kB for a 77-frame sequence, roughly 110 of what x264/x265 need for essentially artifact-free reconstruction on the same clip. Overall the encoder side is comparatively lightweight and keeps up at 24 fps on 32 CPU cores alone, with no GPU involvement. On the decoder side a four-step distilled Wan2.1-Fun-Control model [30] reconstructs the video conditioned on the transmitted pose and reference frame. The scientific and engineering core of this paper is making that decoder run at 24 fps. 
+
+Making the decoder real-time. Three coupled bottle-necks stand between a diffusion decoder and real time: sampling depth (function evaluations multiply transformer cost), single-device compute (one window of diffusion + VAE is too heavy for one GPU), and stage serialization (conditioning encode, denoising, and pixel decode form a dependency chain). We attack all three: (i) a four-step dis-tilled transformer—obtained from the 20-step teacher via our DMD2 + x0-regression recipe (Sec. 3.4)—collapses the sampler; techniques (ii) –(iv) then keep this 4-step stu-dent’s parameters unchanged: (ii) eight-GPU unified se-quence parallelism (Ulysses ×Ring = 4 × 2) [14, 20] shards each forward; (iii) a spatially-split VAE parallelizes decode and encode; and (iv) a three-stage overlapped pipeline hides conditioning and cross-window encode behind the diffu-sion critical path. This contrasts with single-GPU real-time diffusion systems [15, 42, 43], which reach real time by changing the model (quantization, sparsity, architecture co-design) and thus trade away quality; we instead reach real time on our 4-step student via model-preserving multi-GPU parallelism . Orthogonal to per-window latency, we further hold the T5/CLIP one-shot conditioner weights on the CPU to free GPU memory for the diffusion critical path (Sec. 3.9). 
+
+Timing model. To reason about why the pipeline does or does not fit the frame budget, we contribute an analytical per-window timing model that decomposes wall-clock time into diffusion, decode, encode, and their launch/overhead terms, yielding Twin ≈ (wd+d) + max( v+a, w e+e) (sym-bols defined in Sec. 4). It makes the real-time constraint 
+
+Twin ≤ Trt analyzable and predicts the effect of each opti-mization before it is built. 
+
+Scope. We deliberately target talking-head / human video, where pose is a strong and compact driving signal; Re-GenVC is not a general-purpose codec. Within this scope it demonstrates that generative coding can be simultaneously ultra-low-bitrate and real-time, which we believe is a nec-essary step toward practical generative compression. 
+
+Contributions. 
+
+• An end-to-end generative video coding scheme that transmits ∼26 kB for a 77-frame clip—about 10 × smaller than the ∼250–280 kB x264/x265 need for artifact-free reconstruction, and sharp where they collapse at matched ultra-low bitrate (Sec. 5.2). • A DMD2 + x0-regression distillation recipe that shrinks Wan2.1-Fun-Control’s 20-step DDIM teacher into a 4-step student while mitigating the color-drift failure mode of vanilla DMD2 (Sec. 3.4). • A real-time multi-GPU diffusion decoder that sustains 24 fps output on an 8-GPU node (972 ms per 25-frame window, within the 1000 ms budget), by combining four-step distillation, eight-way USP, a spatially-split VAE, and a three-stage overlapped pipeline. • An analytical timing model that decomposes per-window wall-clock time and characterizes the real-time feasibility region, validated against measured traces. • A hybrid CPU–GPU deployment : on the encoder side, DWPose + cheng2020 attn run entirely on CPU, with the streaming-critical DWPose stage sustain-ing 24 fps on 32 CPU cores ( ≈909 ms per 24 frames, within the 1000 ms streaming budget); on the decoder side, the one-shot CLIP/T5 conditioner weights are held on the CPU as well, removing ∼13 GB of weights and cross-attention projections from GPU memory and cut-ting the per-GPU peak from 21.1 GB to ∼7.7 GB. 
+
+# 2. Related Work 
+
+2.1. Generative video coding 
+
+A mature parallel line, generative face video coding 
+
+(GFVC) [3], builds on motion-keypoint driven anima-tion techniques (FOMM [27], Face-vid2vid [32]) and is now under active standardization in JVET. Our work is complementary: we target the same talking-head domain and ultra-low-bitrate regime, but replace the low-capacity keypoint-warping decoder with a distilled video-diffusion transformer—a heavier but stronger generative prior— while still meeting a real-time budget through multi-GPU parallelism. Reframing compression as conditional generation more broadly is an active and fast-moving frontier. Recent sys-tems drive a generative prior from compact conditions: Yi 
+
+et al . [37] synthesize video from compact conditions with a 14 B diffusion backbone; JSCGC [34] unifies source, chan-nel, and generation coding; M3-CVC [29] steers a text-conditioned diffusion decoder with a multimodal LLM; DiSCo [31] decomposes a clip into text, a degraded video, and optional pose/sketch cues for a conditional video-diffusion decoder; T-GVC [33] guides a diffusion decoder with sparse motion trajectories; and training-free or zero-shot schemes such as Free-GVC [18] and ZeroGVC [10] compress along a video-diffusion latent trajectory. These sit alongside strong neural codecs such as DCVC-FM [17], while traditional hybrid codecs (x264/x265) remain the de-ployed baseline but degrade into blocking at ultra-low bi-trate. Two properties characterize this literature. First, it op-timizes rate-distortion-perception on offline reconstructions and almost never reports decoder latency : none of these sys-tems runs in real time. Second, most target general video with heavy or general-purpose priors (multimodal LLMs, multi-billion parameter backbones, per-clip trajectory opti-mization), and several works cast domain specialization as a limitation to overcome. We take the opposite stance: we de-liberately specialize a compact pose-controlled backbone to the talking-head domain, trading that generality for the par-allelism headroom that makes real-time decoding possible. We therefore differ by delivering a complete codec whose generative decoder runs in real time on a single 8-GPU node—filling the latency gap these systems leave open— rather than by claiming state-of-the-art offline reconstruc-tion quality; we quantify the gap to x264/x265 in Sec. 5.2. 
+
+2.2. Diffusion distillation and few-step sampling 
+
+The dominant cost of diffusion inference [11, 19, 25] is the number of function evaluations. A large body of work compresses the sampling trajectory. Progressive distilla-tion [26] halves the step count repeatedly; consistency mod-els [28] and their latent variant [22] learn a direct map from any point on the trajectory to its endpoint, enabling one- or few-step generation. Distribution-matching dis-tillation (DMD/DMD2) [38, 39] trains a few-step student by matching the score of the teacher’s output distribution, and InstaFlow [21] straightens the probability-flow ODE via reflow. In the video regime, CausVid [40] and Self-Forcing [12] convert bidirectional video diffusion into fast autoregressive students. We build on DMD2 for two rea-sons: it reaches the few-step regime in a single training run (rather than by iterated halving as in progressive dis-tillation), and it leaves the student’s backbone architecture identical to the teacher’s. We adapt it to our control-video setting, augmenting it with an x0-latent regression loss that anchors the student’s x0 prediction to the teacher’s and mit-igates a color-drift failure mode we observed with vanilla DMD2. This 4-step distilled student is the sampler on which our systems techniques operate; details are given in Sec. 3.4. 
+
+2.3. Real-time and streaming video diffusion 
+
+Serving diffusion interactively has driven a family of pipeline designs. StreamDiffusion [16] introduced stream batching and pre-computation for real-time interactive im-age generation. StreamDiT [15] generates streaming text-to-video with a moving buffer and reaches 16 fps; SANA-Streaming [42] co-designs a hybrid diffusion transformer that interleaves softmax and linear attention blocks with mixed-precision (FP4/FP8) quantization for 24 fps video editing; FlashVSR [43] delivers one-step streaming super-resolution. These systems reach real time by aggressively 
+
+modifying the model —quantization, sparsity, or heavy compression—which trades away fidelity, and they target open-ended generation or editing. Our approach differs in two respects: our target is a conditional generative de-coder (compression backend); and while we too distill the teacher to a 4-step student (Sec. 3.4), we then reach real time on that student with model-preserving multi-GPU par-allelism —rather than further shrinking it via quantization or sparsity—which raises the cross-device scheduling and communication issues we address (Sec. 3.7). 
+
+2.4. Parallel and efficient diffusion inference 
+
+Scaling diffusion transformers across devices builds on sequence-parallel attention. DeepSpeed-Ulysses [14] shards the sequence with all-to-all communication, while Ring attention [20] streams key/value blocks around a ring; unified sequence parallelism composes the two. xDiT [8] and PipeFusion [9] bring these ideas to DiT inference with patch-level pipelining and reuse of stale feature maps across diffusion steps. Efficient attention kernels [6, 7] underpin all of the above. We adopt USP for the transformer, but ex-tend the parallel scope to the VAE via spatial splitting and to cross-window scheduling of the decode and next-window encode. 
+
+# 3. Method 
+
+3.1. End-to-end codec overview 
+
+ReGenVC is a complete codec: an encoder maps a source clip to a compact bitstream and a decoder reconstructs the clip from it (Fig. 1). The design principle is to trans-mit only what a strong generative prior cannot infer — identity/appearance (a single reference frame) and motion (pose keypoints)—and to regenerate everything else (tex-ture, temporal coherence, view-consistent detail) at the re-ceiver. On the decode side this reference frame is held fixed :encoded once (via CLIP’s image encoder; Sec. 3.2) and used as visual conditioning at every window, it keeps the whole stream tied to one identity and appearance, while its one-time cost stays off the per-window critical path. This is what enables the order-of-magnitude bitrate reduction over pixel-fidelity coding, at the cost of restricting the domain to pose-drivable (talking-head/human) video. 
+
+3.2. Encoder 
+
+The encoder produces three streams (sizes in Sec. 5.2): 
+
+(i) a reference frame —the first frame compressed with the neural image codec cheng2020 attn [4] (Compres-sAI [1]) at quality 6 ( ∼10 kB), carrying identity and ap-Table 1. Where ReGenVC sits in the landscape of talking-head/video compression and streaming diffusion. “Ultra-low bitrate” means the method operates at ≲50 kB for a ∼3 s clip with recognizable output (a traditional codec that produces blocking artifacts at that rate is marked ✗ here even though the bitstream is small); “real-time” means sustained decoding at video frame rate. Only ReGenVC (last row) is a generative video codec that is simultaneously ultra-low-bitrate and real-time-decodable; the keypoint-warping line is both but has no diffusion prior, and every surveyed diffusion-based generative codec reports offline decoding. Symbols: ✓ property holds, ✗ does not, — not applicable. Method Category Ultra-low bitrate Real-time Diffusion prior x264 / x265 (FFmpeg) traditional codec ✗a ✓ —FOMM [27], Face-vid2vid [32] (GFVC line) gen. face codec (warping) ✓ ✓c ✗
+
+Yi’25 [37], M3-CVC [29], DiSCo [31], T-GVC [33], Free-GVC [18], ZeroGVC [10] gen. video codec (diffu-sion) 
+
+✓ ✗b ✓
+
+StreamDiT [15], SANA-Streaming [42], FlashVSR [43] streaming diffusion (not a codec) — ✓ ✓
+
+ReGenVC (ours) gen. video codec (diffu-sion) 
+
+✓ ✓ ✓        
+
+> ax264/x265 remain real-time and can produce the same ∼26 kB but collapse into blocking there (Sec. 5.2). bReported decoder latencies from the cited papers, all below video frame rate: Yi’25 [37] states its “decoding speed falls short of real-time requirements”; M3-CVC [29] reports 142.5 s decoder latency per clip; DiSCo [31] reports 396.20 ms per frame ( ∼2.5 fps); T-GVC [33] calls real-time decoding “a common challenge for generative codecs”; Free-GVC [18] reports 1.25 fps and notes that “real-time processing remains challenging”; ZeroGVC [10] reports 202 ms per frame at N=6 (∼5 fps). JSCGC [34] demonstrates on image transmission and does not report a video decoding rate, so we discuss it in the text but omit it from this row. c
+> Real-time for the GFVC line follows from the compact keypoint-plus-warping architecture and Face-vid2vid’s explicit video-conferencing target (“better suited for video streaming”, matching H.264 quality at one-tenth of the bandwidth); neither paper reports an explicit inference frame rate.
+
+source video 
+
+first frame 
+
+→10 kB 
+
+pose keypoints 
+
+→15.8 kB 
+
+bitstream 
+
+≈26 kB 
+
+4-step distilled DiT (USP 4×2)
+
+split VAE decode 
+
+output video   
+
+> Encoder (CPU, streaming) Decoder (real-time, 8GPUs)
+
+Figure 1. ReGenVC end-to-end codec. The encoder transmits only identity (a neurally compressed reference frame), motion (pose keypoints), and a small metadata header, totalling ≈26 kB for a 77-frame clip. The decoder regenerates the video with a four-step distilled diffusion transformer and a spatially-split VAE, in real time on 8 GPUs. 
+
+pearance; (ii) pose —per-frame body/face keypoints from DWPose [35] serialized as quantized coordinates ( ∼15.8 kB for 77 frames), replacing a full pose video with a few hun-dred bytes per frame and carrying motion; and (iii) meta-data (∼0.2 kB). The total is ∼26 kB. The encoder runs en-tirely on the CPU (Sec. 3.9); pose extraction dominates its cost. At the receiver the reference frame is decoded once and the pose stream is rendered to conditioning can-vases that drive the diffusion decoder (Sec. 3.3–3.8). How these signals condition the diffusion model—pose through a ControlNet-style control branch [41], the reference frame through CLIP’s image encoder [23], and any text con-text through CLIP’s text branch and T5 [24]—follows the Wan2.1-Fun-Control model [30] and is not a contribution of this work. 
+
+3.3. Problem setup and the real-time budget 
+
+We serve a conditional video-diffusion decoder in a sliding-window regime. The stream is processed in windows of 
+
+F = 25 latent-aligned frames (i.e., frame counts and indices coincide with the video-VAE’s latent grid). For each window the system (i) prepares conditioning signals (pose/control encode), (ii) runs a distilled diffusion sampler over a transformer backbone to denoise the window latent, and (iii) decodes the latent to pixels through a VAE. To keep the generation self-consistent across windows, the decoder also encodes an anchor region of the freshly generated frames back into latent space to condition the next window; consecutive windows overlap by this single anchor frame, so each window advances the stream by S = F − 1 = 24 
+
+new frames. Two VAE encodes therefore cross the window boundary and feed the next diffusion pass: an anchor en-code of the freshly generated overlap frames (which seed the next window for temporal continuity), and a condition-ing encode of the next window’s pose/control canvases. At a target frame rate fps = 24 , a window’s S net frames must be produced within their playback duration, giving the per-window real-time budget 
+
+Trt = S
+
+fps = F − 1
+
+fps = 24 24 s = 1000 ms. (1) Real-time serving requires the steady-state per-window wall-clock time Twin (whose steady-state decomposition we derive in Sec. 4) to satisfy Twin ≤ Trt for every window, so that the output frame queue never underruns. This is a throughput constraint on a producer feeding a fixed-rate consumer; transient windows may exceed Trt only if ab-sorbed by a bounded jitter buffer. Our objective is therefore to minimize and stabilize Twin .
+
+3.4. Four-step distilled diffusion transformer 
+
+The backbone is the transformer of a pretrained control model [30], a video diffusion transformer that follows the evolution of latent video diffusion from U-Net designs like SVD [2] to transformer backbones like CogVideoX [36]. A naive sampler evaluates this transformer for tens of steps per window, which alone exceeds Trt . We instead distill the 20-step DDIM teacher into a four-step student that repro-duces the teacher’s sampling trajectory with a fixed four-point timestep schedule {t1, t 2, t 3, t 4}. Our recipe applies distribution-matching distillation (DMD2) [38] augmented with an x0-latent regression loss: 
+
+Lgen = LDMD2 + λ Lreg (xstu  
+
+> 0
+
+, x tea  
+
+> 0
+
+). (2) We found that vanilla DMD2 in this control-video setting produces visible color drift across denoising trajectories; the regression term anchors the student’s x0 prediction to the teacher’s, breaks the DMD adversarial equilibrium, and stabilizes color. Crucially for a serving system, the student retains the teacher’s backbone architecture , so all down-stream parallelization and compilation apply identically to it. Reducing the number of function evaluations from ∼ 20 
+
+to 4 is the single largest latency reduction in the system and is the enabling precondition for real-time operation; the re-maining sections make those four evaluations, and the VAE that surrounds them, fit the budget. 
+
+Distillation setup (reproducibility). The student samples at four fixed timesteps {t1, t 2, t 3, t 4} =
+
+{1000 , 750 , 500 , 250 } selected from the teacher’s 20-step DDIM schedule. We train the student with the objective above (regression weight λ = 10 .0) at learning rate 1 × 10 −5 with 100-step linear warmup, in bf16 ,using per-device batch size 1 with gradient accumulation 4
+
+(effective batch 4). Training runs on a single GPU for 500 steps and we deploy the checkpoint at step 300 (selected on held-out reconstructions). The distillation corpus is ∼7,181 short person-motion video/control pairs (mp4) derived from publicly-available human-motion clips; the resulting student is applied at test time to the talking-head domain (Sec. 5.2), which is a mild in-modality generalization from the training distribution. Distillation is a one-time offline cost and does not affect the served pipeline described below. 
+
+3.5. Multi-GPU unified sequence parallelism 
+
+Running the four-step sampler on one GPU exceeds the budget. We shard the token sequence of the diffusion trans-former across N = 8 GPUs using unified sequence par-allelism (USP), which composes two orthogonal mecha-nisms: • Ulysses [14]: an all-to-all redistributes the sequence di-mension into the head dimension before attention and back afterwards, so each GPU computes exact attention over the full sequence for a subset of heads. We use an Ulysses degree U = 4 .• Ring attention [20]: the remaining factor streams key/value blocks around a ring of GPUs, computing at-tention in an online-softmax fashion. We use a ring de-gree R = 2 .The product U × R = 4 × 2 = 8 tiles the sequence across all eight devices. This hybrid is preferred over pure Ulysses (whose degree is capped by the head count and whose all-to-all volume grows with device count) and pure Ring (whose latency is sensitive to the slowest hop). We adopt the 4 × 2
+
+configuration on our node: on our backbone U =4 stays be-low the head-count cap, and we prefer larger U over larger 
+
+R to keep the Ring’s per-hop latency low on our 8-GPU NVLink topology. Because USP preserves exact attention, the parallel student is numerically equivalent to the single-device student up to reduction order. 
+
+3.6. Spatially-split VAE decode and encode 
+
+After denoising, the window latent must be decoded to pix-els by the VAE, and an anchor region must be encoded back to latent to condition the next window. On a single GPU these VAE passes are surprisingly expensive—comparable to several transformer forwards (Sec. 5)—because the de-coder operates at full spatial resolution. We therefore spa-tially split the VAE: the latent (or image) is partitioned along the spatial dimensions into N tiles, each GPU de-codes/encodes its tile, and results are gathered. To avoid seams at tile boundaries we include a halo overlap sized to the VAE receptive field and blend the overlap on gather. Spatial splitting turns the VAE from a serial per-device cost into a parallel one, and—unlike sequence splitting— requires communication only at the split and gather points rather than inside every attention layer. 
+
+3.7. Three-stage overlapped pipeline and cross-communicator scheduling 
+
+The three components of a window—conditioning encode, diffusion, and VAE decode—form a dependency chain, and additionally the next window’s anchor encode depends on the current window’s decoded pixels. Executed seri-ally, encode + diffusion + decode + anchor-encode exceeds 
+
+Trt . We break this with a three-stage software pipeline .The three stages run on independent resources: (i) pose preparation (p), executed by the encoder worker on the CPU; (ii) diffusion, decoding, and next-window anchor 
+
+(d+v+a), executed by the main thread and decoder worker on the main CUDA stream and dec stream (with v and a
+
+strictly following d); and (iii) host post-processing (cpu), the D2H copy and numpy conversion carried out on the decoder worker’s CPU thread. In steady state, the same wall-clock interval is occupied by three different windows at these three stages—the next window’s p, the current window’s d+v+a, and the previous window’s cpu—all making progress on independent resources. Within stage 
+
+(ii) , the current window’s decode branch ( vk+ak+1 ) on 
+
+dec stream runs concurrently with the next window’s encode ( ek+1 ) on enc stream , and each split-VAE col-lective is spread across the eight GPUs as in Sec. 3.6. The critical path therefore pays only max( v+a, w e+e) (see Sec. 4), not their sum. Figure 2 visualizes one steady-state window of this three-stage overlap. Overlapping two spatially-split VAE stages means two independent collective operations (the gather/scatter of de-code and encode) are in flight on different communicators 
+
+at the same time. Naively enqueuing them from indepen-dent Python threads can deadlock: if rank 0 enters the de-code collective while rank 1 enters the encode collective first, the two communicators can wait on each other. We avoid this with a deterministic global enqueue order : ev-ery rank enqueues the decode and encode collectives in the same fixed order, guaranteeing progress while still allow-ing the underlying runtime to execute them concurrently on separate streams. 
+
+3.8. Graph compilation 
+
+Finally, we compile the transformer with 
+
+torch.compile . We find that mode=default 
+
+yields a robust reduction in per-window wall-clock time by fusing pointwise operations and reducing Python/launch overhead, whereas mode=reduce-overhead (CUDA-graph capture) is unusable here: the graph’s static tensor lifetimes conflict with the pipeline’s cross-stream tensor reuse (notably in the sinusoidal timestep embedding), caus-ing a correctness/lifetime fault. We therefore standardize on mode=default , which is safe under our multi-stream,                       
+
+> Table 2. Per-GPU memory footprint and the effect of CPU offload-ing (measured). Relocating the one-shot T5 and CLIP conditioners to the CPU removes their weights from the GPU, cutting the peak from 21.1 GB to ∼7.7 GB and leaving the budget to the four-step transformer and the VAE. component GPU memory placement Transformer (DiT 1.3B +Ctrl) 2.91 GB GPU VAE (Wan2.1 enc. +dec.) 0.24 GB GPU T5 (umt5-xxl encoder) 10.58 GB →CPU CLIP (ViT-H/14 +XLM-R) 2.22 GB →CPU steady-state weights 15.95 GB absolute peak 21.07 GB
+> after CPU offload ∼7.7 GB
+
+cross-communicator schedule. The net effect is a 33 ms per-window reduction (Sec. 5), turning a marginally over-budget pipeline into a real-time one. 
+
+3.9. Hybrid CPU–GPU deployment 
+
+ReGenVC targets a hybrid CPU + GPU node that keeps the GPU dedicated to the repeated diffusion critical path and offloads everything else to the CPU. Two classes of work move off the GPU. (i) The entire encoder: its mod-els are small—CompressAI cheng2020 attn (31.7 M) and DWPose (YOLOX-L + DW-LL, 87.8 M)—and run ef-ficiently on the CPU. Only the per-frame DWPose extrac-tor lies on the streaming critical path; on 32 CPU cores it sustains 24 fps, matching the streaming budget, while the one-shot cheng2020 attn first-frame compression runs once per clip and is off the critical path. Encoding is there-fore entirely GPU-free. (ii) The one-shot conditioners on the decode side: the CLIP (ViT-H/14 [5, 13, 23], 1.2 B) and T5 (umt5-xxl encoder [24], ∼5.3 B) text/image encoders are evaluated once per sequence , not per denoising step. We keep their weights and computation on the CPU and stream only the resulting cross-attention key/value tensors to the GPU (host-to-device)—94.4 MB for T5 and 47.4 MB for CLIP in bf16 —instead of holding the ∼5.3B+1 .2Bconditioner weights in GPU memory. In our measurements this offload removes 12.8 GB of conditioner weights (plus 0.54 GB of key/value projections) from the GPU, cutting the per-GPU memory peak from 21.1 GB to ∼7.7 GB (Ta-ble 2). The GPU footprint is thus dominated by the four-step transformer and the split VAE rather than by condition-ing models. In contrast to single-GPU real-time diffusion systems [15, 42, 43], which keep all conditioning models resident in GPU memory or shrink them via quantization, we hold the T5/CLIP conditioner weights on the CPU— freeing GPU memory without lossily compressing them. time (ms)                 
+
+> 0500 1000 1500 2000
+> (iii) cpu
+> (ii) d+v+a
+> (i) p
+> wd+dmax( v+a, we +e)
+> pfor window N+1
+> D2H copy +numpy for window N−1
+> steady-state window ( Trt = 1000 ms )
+
+Figure 2. Steady-state three-stage pipeline (Sec. 3.7). In every window three different windows are in flight on independent resources: stage (i) prepares the next window’s pose on the CPU (the next-window VAE encode e appears inside stage (ii)’s max path); stage (ii) runs diffusion followed by the overlapped VAE decode/encode for the current window on the main and dec stream ; stage (iii) copies-out and post-processes the previous window on the decoder CPU thread. Only stage (ii) is on the wall-clock critical path: Twin ≈
+
+(wd+d) + max( v+a, w e+e); segment widths reflect measured values from Table 4. 
+
+# 4. Analytical Timing Model 
+
+To reason about real-time feasibility we decompose the per-window wall-clock time into GPU-compute terms and their associated host-side overhead/wait terms. This model lets us (i) identify the critical-path stage, (ii) predict the effect of an optimization before implementing it, and (iii) validate the pipeline by checking that measured windows obey it. 
+
+4.1. Terms 
+
+For one window we define the GPU-time terms 
+
+symbol meaning (GPU compute time) 
+
+d diffusion: four transformer forwards under USP 
+
+v VAE decode of the current window (spatially split) 
+
+a anchor encode of the generated frames 
+
+e VAE encode of the next window’s condition (split) 
+
+and the host-side overhead/wait terms 
+
+symbol meaning (launch / wait overhead) 
+
+p pose/control preparation on the CPU (rendering + H2D upload) 
+
+wd Python + kernel-launch overhead around diffusion 
+
+we extra wait on the encode stream beyond e
+
+cpu device-to-host copy + numpy post-processing 
+
+Here we = wait enc − e captures the portion of the encode wait not explained by encode compute (cross-stream seri-alization and synchronization slack); wd analogously ac-counts for Python and kernel-launch overhead surrounding diffusion on the main stream, and is obtained as the residual required by Eq. (3) given the other measured terms. 
+
+4.2. Wall-clock decomposition 
+
+Because decode ( v) and next-window encode ( e+we) are placed on separate streams and overlapped (Sec. 3.7), while diffusion ( d) with its launch overhead ( wd) is on the critical path preceding them, the steady-state per-window time is 
+
+Twin ≈ (wd + d)
+
+| {z }
+
+> diffusion path
+
++ max  v + a, w e + e| {z }
+
+> overlapped VAE path
+
+(3) The max captures the overlap: the window pays for the 
+
+longer of the decode branch ( v+a) and the concurrent next-window encode branch ( we+e), not their sum. The conditioning preparation p and the host post-processing cpu are either folded into wd or absorbed by the three-stage pipeline’s concurrent processing of adjacent windows (Sec. 3.7), and thus do not appear on the steady-state critical path. 
+
+4.3. Real-time feasibility 
+
+Combining Eq. (1) and Eq. (3), real-time serving requires 
+
+(wd + d) + max( v + a, w e + e) ≤ Trt = 1000 ms. (4) Equation (4) exposes the design levers directly: • Distillation shrinks d (fewer NFEs) and is the dominant term in the diffusion path. • USP width shrinks d further by sharding each forward. • VAE spatial split shrinks v and e, lowering both argu-ments of the max .• Overlap replaces a serial cost v+a+we+e with 
+
+max( v+a, w e+e); if the branches are balanced this nearly halves the VAE contribution. • Compilation shrinks wd by cutting Python/launch over-head. 
+
+# 5. Experiments 
+
+5.1. Setup 
+
+Our serving node has 8× NVIDIA RTX 5090D GPUs (Blackwell, sm 120 , 32 GB each) paired with an Intel Xeon 6 CPU (32-core, AMX). The backbone is a dis-tilled four-step control model derived from Wan2.1-Fun-Control [30]. All inference uses bfloat16 . Unless noted, the transformer runs under 8-way USP ( U =4 , R=2 ), the VAE decode and encode are spatially split across all 8
+
+GPUs, decode/encode of neighboring windows are over-lapped on separate streams, and the transformer is com-piled with torch.compile(mode=default) . Win-dows contain F = 25 frames, giving the real-time budget Trt = 1000 ms (Eq. (1)). We report steady-state windows (after pipeline warm-up) to characterize sustained through-put. 
+
+Test clips. We use two fixed-camera single-subject talking-head interview clips. The quantitative compression comparison (Sec. 5.2) is conducted on a 77-frame ( ∼3 s at 24 fps) clip, chosen because it has a fixed camera, no scene cuts, and a single subject—the regime for which Re-GenVC’s pose-drivable design is intended. For the live serving demo (Fig. 4) and the temporal reconstruction fig-ure (Fig. 5) we use a longer 240-frame ( ∼10 s at 24 fps) clip of the same type to visualize sustained decoding over mul-tiple windows; its bitstream is ∼60 kB ( ∼10 kB reference + ∼49 kB pose + ∼0.2 kB meta), the same per-frame pose cost and one-shot reference-frame cost as the 77-frame clip. A benchmark-scale evaluation across a talking-head dataset is out of scope for this paper and is left as future work. 
+
+5.2. Compression: bitrate and quality vs. x264/x265 
+
+Table 3 compares ReGenVC against x264 and x265 (FFm-peg) on the 77-frame talking-head test sequence. Two regimes matter. At high quality (crf 18) the traditional codecs need ∼250–280 kB to reach PSNR ∼49 dB (essen-tially artifact-free); ReGenVC transmits the same content in 
+
+∼26 kB—an order of magnitude smaller . We do not claim pixel-fidelity parity with such high-rate x264/x265—the re-construction is generative—and only assert that at matched ultra-low bitrate ReGenVC remains sharp while the tra-ditional codecs collapse. At a matched ultra-low bitrate (∼26 kB, crf 40–41) the traditional codecs enter their fail-ure mode: PSNR collapses to ∼36 dB and the frames show severe 8 × 8 blocking. On the comparison frame (Fig. 3), the two low-rate traditional panels at matched bitrate—x264 crf 41 and x265 crf 40, both ∼26 kB—show pronounced blocking and loss of high-frequency detail, whereas Re-GenVC at that bitrate regenerates sharp facial detail from its prior. We report the visual comparison rather than pixel-fidelity summary statistics, which are not meaningful for a generative reconstruction. This qualitative advantage is sustained across time on the longer 240-frame ( ∼10 s, ∼60 kB) clip (Fig. 5): Re-GenVC preserves recognizable identity and sharp facial detail throughout the sequence, while x264/x265 at the matched ultra-low bitrate remain in the blocking regime shown above. 
+
+5.3. End-to-end real-time performance 
+
+Table 4 reports the steady-state per-window wall-clock time and its decomposition under Eq. (3). The full system sus-tains Twin ≈ 972 ms per window, inside the 1000 ms bud-get with ≈ 28 ms (2.8% ) of headroom. In the tested run the system drove a browser video stream at 24 fps with no                                                                
+
+> Table 3. Compression on the 77-frame talking-head clip. Re-GenVC transmits the clip in ∼10 ×less bitstream than x264/x265 need for essentially artifact-free reconstruction (PSNR ∼49 dB); at matched ∼26 kB the traditional codecs collapse into blocking while ReGenVC stays sharp. PSNR is a pixel-fidelity metric and is not the right yardstick for a generative reconstruction (see text). method bitstream (kB) PSNR (dB) regime x264 (crf 18) 278.9 48.6 high-rate x265 (crf 18) 249.0 49.0 high-rate x264 (crf 41) 27.1 36.5 blocking x265 (crf 40) 26.3 37.0 blocking
+> ReGenVC (ours) 26.0 †—sharp (gen.)
+> †= 10 .0(reference, cheng2020 attn )+15 .8(pose) +0 .2(meta).
+> Table 4. Steady-state per-window decomposition (ms) on
+> 8×RTX 5090D, full system, reported as the mean over the steady-state phase of the tested run. Twin fits inside Trt = 1000 ms with
+> ∼28 ms headroom; the anchor-encode aruns serially after von
+> dec stream , so the decode branch pays v+a; the prep term p
+> and host post-processing cpu hide under the next window. Terms follow Sec. 4. diffusion path overlapped VAE path total
+> wddvaeweTwin
+> ∼78 ∼435 ∼399 ∼60 ∼301 ∼157 ≈972
+
+observed frame underruns (Fig. 4); the narrow headroom leaves the served pipeline sensitive to per-window jitter, and long-horizon stress testing is left to future work. The decomposition confirms the model: the diffusion path contributes wd + d ≈ 513 ms and the overlapped VAE path max( v+a, w e+e) ≈ 459 ms (with decode branch 
+
+v+a ≈ 459 ms and concurrent encode branch we+e ≈
+
+458 ms , balanced by design); the two paths sum to ≈
+
+972 ms , matching the steady-state Twin and confirming the Eq. (3) decomposition. 
+
+5.4. Where the latency comes from and which mech-anisms are load-bearing 
+
+The real-time barrier is intrinsic to diffusion decoding, not an artifact of our design: even a four-step distilled sampler is heavy at video resolution. We profile each kernel in iso-lation on a single RTX 5090D in bfloat16 (10 iters, 2
+
+warm-up); Table 5 reports the results. A single transformer forward costs 368.8 ms, so the four-step sampler alone is 
+
+≈ 1475 ms —already 1.5× the frame budget—while the VAE decode (957 ms) and encode (564 ms) each rival sev-eral transformer forwards. These are fixed costs that any 
+
+diffusion-based codec must pay; our contribution is to ab-sorb them within the budget—USP distributes each for-ward and the spatial split parallelizes the VAE, turning a Figure 3. Qualitative comparison on a talking-head frame. Top: original, x264 crf 18, x264 crf 41. Bottom: x265 crf 18, x265 crf 40, ReGenVC (ours). At high quality x264/x265 need ∼250–280 kB (crf 18); at ultra-low bitrate ( ∼26 kB, crf 40/41, red boxes) they collapse into blocking, whereas ReGenVC (green box) stays sharp at the same ∼26 kB.               
+
+> Figure 4. Live browser demo: ReGenVC decoding and streaming at 24 fps on 8×RTX 5090D. Table 5. Single-GPU bf16 kernel latency (mean, ms) on one RTX 5090D. The four-step transformer alone exceeds the real-time budget, while each VAE pass consumes most of it, motivating multi-GPU sharding and spatial splitting. kernel (1 GPU, bf16) mean (ms) vs. budget Transformer forward ( 1×)368.8 0.37 Trt
+> Transformer forward ( 4×, 4-step) 1475.2 1.48 Trt
+> VAE decode 957.4 0.96 Trt
+> VAE encode 564.2 0.56 Trt
+
+∼1475 ms serial workload into a real-time pipeline. 
+
+Effect of splitting. Under the 8-GPU spatial split the de-code drops to v ≈ 399 ms (Table 4), a 957 .4/399 ≈ 2.4×
+
+speed-up over the single device—sub-linear in device count due to halo overlap and gather communication, but suffi-cient to bring the VAE path inside the overlapped budget. 
+
+Overlap is structurally required. By Eq. (3), disabling cross-window overlap collapses max( v+a, w e+e) into the sum (v+a) + ( we+e). With the split VAE numbers above (v ≈ 399 ms , e ≈ 458 ms , plus the anchor encode a), that puts ∼ 857 ms of VAE-side cost on top of the wd+d
+
+path—structurally busting the 1000 ms budget without ever running the un-overlapped configuration. 
+
+Compilation ablation. One further measured optimiza-tion matters at the margin: switching from eager exe-cution to torch.compile(mode=default) reduces 
+
+Twin from 1005 ms to 972 ms, a 33 ms ( 3.3% ) improvement entirely in the launch-overhead term wd (Sec. 3.8)—just enough to carry the pipeline across the real-time line. The aggressive reduce-overhead (CUDA-graph) mode is not usable under our cross-stream schedule and is excluded. 
+
+5.5. Discussion and limitations 
+
+Domain. ReGenVC targets pose-drivable talking-head/human video, where a compact pose signal can drive generation; it is not a general-purpose codec and would not apply to arbitrary scenes without a suitable conditioning modality. Within this domain, the current setup assumes a fixed camera and a single subject; behavior under multi-person scenes and on streams longer than the tested clip is left for future evaluation. Evaluation scope. Our quan-titative compression measurements (Sec. 5.2) are on a sin-gle 77-frame talking-head clip, and sustained multi-window Figure 5. Reconstruction fidelity across the ∼10 s (240-frame) demo clip (Sec. 3.3). Top row: original input frames; bottom row: ReGenVC reconstructions decoded from the ∼60 kB bitstream, at six time instants spanning the sequence (timestamps on top). ReGenVC visibly preserves recognizable identity and facial detail across the tested clip. 
+
+decoding and reconstruction fidelity (Figs. 4, 5) are demon-strated on a single 240-frame ( ∼10 s) clip of the same type; a benchmark-scale evaluation across a talking-head dataset is left for future work. Metric. Because the reconstruc-tion is generative, PSNR understates quality; the honest comparison is perceptual, and a full LPIPS/FVD/identity-consistency study against neural and generative codecs is left to future work. Perceptual equivalence between the 4-step student and the 20-step DDIM teacher likewise de-pends on the quality of the distillation and is not claimed here. Cost. Real time here requires an 8-GPU node: rel-ative to single-GPU quantized/sparsified decoders we trade higher hardware cost for throughput and model-preserving decoding, and the architectural design is amenable to scal-ing to larger models or resolutions by adding devices (though such scaling is not validated in this work). 
+
+# 6. Conclusion 
+
+We presented ReGenVC , an end-to-end generative video codec whose distilled diffusion decoder meets a strict 1-second per-window real-time budget on 8 consumer-class GPUs. Its central design choice is model-preserving : rather than shrinking the transformer via quantization or architec-tural rewrites, we distribute a single 4-step student across eight devices via unified sequence parallelism, spatial VAE splitting, and overlapped cross-window scheduling. Our contributions span an end-to-end coding scheme, a DMD2 + 
+
+x0-regression distillation recipe, a model-preserving multi-GPU decoder schedule, an analytical timing model, and a hybrid CPU–GPU deployment. We see four avenues for follow-up work: (i) a full rate–distortion–perception evaluation (LPIPS, FVD, iden-tity consistency) across a talking-head benchmark; (ii) ex-tending beyond talking-head to general pose- or motion-drivable video; (iii) exploring the resource–quality Pareto frontier—higher reconstruction quality within the same 8-GPU real-time budget, or the same Twin target on fewer GPUs; and (iv) scaling out to multi-node clusters to sup-port larger backbones or higher resolutions. We hope these directions help move generative video coding from a largely offline research topic toward practical deployment in bandwidth-constrained applications such as live streaming, video messaging, and telepresence. 
+
+# References 
+
+[1] Jean B´ egaint, Fabien Racap´ e, Simon Feltman, and Akshay Pushparaja. Compressai: a pytorch library and evalua-tion platform for end-to-end compression research. arXiv preprint arXiv:2011.03029 , 2020. 3 [2] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, Varun Jampani, and Robin Rombach. Stable video diffusion: Scaling la-tent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. 5 [3] Bolin Chen, Jie Chen, Shiqi Wang, and Yan Ye. Generative face video coding techniques and standardization efforts: A review. In Data Compression Conference (DCC) , 2024. 2 [4] Zhengxue Cheng, Heming Sun, Masaru Takeuchi, and Jiro Katto. Learned image compression with discretized gaussian mixture likelihoods and attention modules. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020. 3 [5] Alexis Conneau, Kartikay Khandelwal, Naman Goyal, Vishrav Chaudhary, Guillaume Wenzek, Francisco Guzm´ an, Edouard Grave, Myle Ott, Luke Zettlemoyer, and Veselin Stoyanov. Unsupervised cross-lingual representation learn-ing at scale. In Annual Meeting of the Association for Com-putational Linguistics (ACL) , 2020. 6 [6] Tri Dao. Flashattention-2: Faster attention with better par-allelism and work partitioning. In International Conference on Learning Representations (ICLR) , 2024. 3 [7] Tri Dao, Daniel Y. Fu, Stefano Ermon, Atri Rudra, and Christopher R´ e. Flashattention: Fast and memory-efficient exact attention with io-awareness. In Advances in Neural Information Processing Systems (NeurIPS) , 2022. 3 [8] Jiarui Fang, Jinzhe Pan, Xibo Sun, Aoyu Li, and Jian-nan Wang. xdit: An inference engine for diffusion trans-formers (dits) with massive parallelism. arXiv preprint arXiv:2411.01738 , 2024. 3 [9] Jiarui Fang, Jinzhe Pan, Aoyu Li, Xibo Sun, and Jiannan Wang. Pipefusion: Patch-level pipeline parallelism for dif-fusion transformers inference. In Advances in Neural Infor-mation Processing Systems (NeurIPS) , 2025. 3 [10] Yixin Gao, Xiaohan Pan, Lin Liu, Xin Li, Zhibo Chen, and Qi Tian. ZeroGVC: Zero-shot generative video compres-sion with autoregressive diffusion priors. arXiv preprint arXiv:2606.22371 , 2026. 2, 4 [11] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-fusion probabilistic models. In Advances in Neural Informa-tion Processing Systems (NeurIPS) , 2020. 3 [12] Xun Huang, Zhengqi Li, Guande He, Mingyuan Zhou, and Eli Shechtman. Self forcing: Bridging the train-test gap in autoregressive video diffusion. In Advances in Neural Infor-mation Processing Systems (NeurIPS) , 2025. 3 [13] Gabriel Ilharco, Mitchell Wortsman, Ross Wightman, Cade Gordon, Nicholas Carlini, Rohan Taori, Achal Dave, Vaishaal Shankar, Hongseok Namkoong, John Miller, Han-naneh Hajishirzi, Ali Farhadi, and Ludwig Schmidt. Open-clip. https : / / doi . org / 10 . 5281 / zenodo . 5143773 , 2021. 6 [14] Sam Ade Jacobs, Masahiro Tanaka, Chengming Zhang, Min-jia Zhang, Shuaiwen Leon Song, Samyam Rajbhandari, and Yuxiong He. Deepspeed ulysses: System optimizations for enabling training of extreme long sequence transformer models. arXiv preprint arXiv:2309.14509 , 2023. 2, 3, 5 [15] Akio Kodaira, Tingbo Hou, Ji Hou, Markos Georgopou-los, Felix Juefei-Xu, Masayoshi Tomizuka, and Yue Zhao. Streamdit: Real-time streaming text-to-video generation. 
+
+arXiv preprint arXiv:2507.03745 , 2025. 2, 3, 4, 6 [16] Akio Kodaira, Chenfeng Xu, Toshiki Hazama, Takanori Yoshimoto, Kohei Ohno, Shogo Mitsuhori, Soichi Sugano, Hanying Cho, Zhijian Liu, Masayoshi Tomizuka, and Kurt Keutzer. Streamdiffusion: A pipeline-level solution for real-time interactive generation. In IEEE/CVF International Con-ference on Computer Vision (ICCV) , 2025. 3 [17] Jiahao Li, Bin Li, and Yan Lu. Neural video compression with feature modulation. In IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , 2024. 3 [18] Xiaoyue Ling, Chuqin Zhou, Chunyi Li, Yunuo Chen, Yuan Tian, Guo Lu, and Wenjun Zhang. Free-GVC: To-wards training-free extreme generative video compression with temporal coherence. arXiv preprint arXiv:2602.09868 ,2026. 2, 4 [19] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maxi-milian Nickel, and Matt Le. Flow matching for generative modeling. In International Conference on Learning Repre-sentations (ICLR) , 2023. 3 [20] Hao Liu, Matei Zaharia, and Pieter Abbeel. Ring attention with blockwise transformers for near-infinite context. arXiv preprint arXiv:2310.01889 , 2023. 2, 3, 5 [21] Xingchao Liu, Xiwen Zhang, Jianzhu Ma, Jian Peng, and Qiang Liu. Instaflow: One step is enough for high-quality diffusion-based text-to-image generation. In International Conference on Learning Representations (ICLR) , 2024. 3 [22] Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, and Hang Zhao. Latent consistency models: Synthesizing high-resolution images with few-step inference. arXiv preprint arXiv:2310.04378 , 2023. 3 [23] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In International Conference on Machine Learning (ICML) , 2021. 4, 6 [24] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of Machine Learn-ing Research (JMLR) , 2020. 4, 6 [25] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image syn-thesis with latent diffusion models. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2022. 3[26] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. In International Confer-ence on Learning Representations (ICLR) , 2022. 3 [27] Aliaksandr Siarohin, St´ ephane Lathuili` ere, Sergey Tulyakov, Elisa Ricci, and Nicu Sebe. First order motion model for im-age animation. In Advances in Neural Information Process-ing Systems (NeurIPS) , 2019. 2, 4 [28] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. In International Conference on Machine Learning (ICML) , 2023. 3 [29] Rui Wan, Qi Zheng, and Yibo Fan. M3-CVC: Controllable video compression with multimodal generative models. In 
+
+IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2025. 2, 4 [30] Wan Team et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. 2, 4, 5, 7 [31] Lingdong Wang, Guan-Ming Su, Divya Kothandara-man, Tsung-Wei Huang, Mohammad Hajiesmaili, and Ramesh K. Sitaraman. Low-bitrate video compression through semantic-conditioned diffusion. arXiv preprint arXiv:2512.00408 , 2025. 2, 4 [32] Ting-Chun Wang, Arun Mallya, and Ming-Yu Liu. One-shot free-view neural talking-head synthesis for video conferenc-ing. In IEEE/CVF Conference on Computer Vision and Pat-tern Recognition (CVPR) , 2021. 2, 4 [33] Zhitao Wang, Hengyu Man, Wenrui Li, Xingtao Wang, Xi-aopeng Fan, and Debin Zhao. T-GVC: Trajectory-guided generative video coding at ultra-low bitrates. In AAAI Con-ference on Artificial Intelligence (AAAI) , 2026. 1, 2, 4 [34] Tong Wu, Zhiyong Chen, Guo Lu, Li Song, Feng Yang, Meixia Tao, and Wenjun Zhang. Joint source-channel-generation coding: From distortion-oriented reconstruc-tion to semantic-consistent generation. arXiv preprint arXiv:2601.12808 , 2026. 1, 2, 4 [35] Zhendong Yang, Ailing Zeng, Chun Yuan, and Yu Li. Effec-tive whole-body pose estimation with two-stages distillation. In IEEE/CVF International Conference on Computer Vision Workshops (ICCVW) , 2023. 4 [36] Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiao-han Zhang, Guanyu Feng, Da Yin, Yuxuan Zhang, Weihan Wang, Yean Cheng, Bin Xu, Xiaotao Gu, Yuxiao Dong, and Jie Tang. Cogvideox: Text-to-video diffusion models with an expert transformer. In International Conference on Learning Representations (ICLR) , 2025. 5 [37] Fangqiu Yi, Jingyu Xu, Jiawei Shao, Chi Zhang, and Xue-long Li. Conditional video generation for high-efficiency video compression. arXiv preprint arXiv:2507.15269 , 2025. 1, 2, 4 [38] Tianwei Yin, Micha¨ el Gharbi, Taesung Park, Richard Zhang, Eli Shechtman, Fr´ edo Durand, and William T. Freeman. Im-proved distribution matching distillation for fast image syn-thesis. Advances in Neural Information Processing Systems (NeurIPS) , 2024. 3, 5 [39] Tianwei Yin, Micha¨ el Gharbi, Richard Zhang, Eli Shecht-man, Fr´ edo Durand, William T. Freeman, and Taesung Park. One-step diffusion with distribution matching distillation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2024. 3 [40] Tianwei Yin, Qiang Zhang, Richard Zhang, William T. Free-man, Fr´ edo Durand, Eli Shechtman, and Xun Huang. From slow bidirectional to fast autoregressive video diffusion mod-els. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025. 3 [41] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding conditional control to text-to-image diffusion models. In 
+
+IEEE/CVF International Conference on Computer Vision (ICCV) , 2023. 4 [42] Yuyang Zhao, Yicheng Pan, Qiyuan He, Jincheng Yu, Jun-song Chen, Tian Ye, Haozhe Liu, Enze Xie, and Song Han. Sana-streaming: Real-time streaming video editing with hy-brid diffusion transformer. arXiv preprint arXiv:2605.30409 ,2026. 2, 3, 4, 6 [43] Junhao Zhuang, Shi Guo, Xin Cai, Xiaohui Li, Yihao Liu, Chun Yuan, and Tianfan Xue. Flashvsr: Towards real-time diffusion-based streaming video super-resolution. arXiv preprint arXiv:2510.12747 , 2025. 2, 3, 4, 6
