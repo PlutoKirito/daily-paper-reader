@@ -1,0 +1,371 @@
+Title: F-WANDA: Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models
+
+URL Source: https://arxiv.org/pdf/2608.00481v1
+
+Published Time: Tue, 04 Aug 2026 00:28:56 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# F-W ANDA : Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models 
+
+Himanshu Mishra 
+
+University of British Columbia 
+
+himishra@student.ubc.ca 
+
+Abstract 
+
+One-shot post-training pruning is the most energy-frugal compression strategy for large language models (LLMs), yet existing ap-proaches trade either quality (W ANDA ) or compute cost (S PARSE GPT). We introduce F-WANDA , a drop-in modification of W ANDA 
+
+that reallocates the per-row keep budget across output neurons in proportion to the empirical Fisher information of the pre-activation. The Fisher signal is collected in a single additional backward pass over the same calibration cor-pus W ANDA already uses; no weights are up-dated. On LL AMA-2-7B at 50 % unstructured sparsity, F-W ANDA attains WikiText-2 perplex-ity of 6.85 , matches W ANDA fluency, and im-proves 5-shot MMLU by +1.6 pp over W ANDA 
+
+and +1.1 pp over S PARSE GPT, while incur-ring only one-third of S PARSE GPT’s pruning wall-clock and energy. The headline trade-off is achieved without extra calibration data or fine-tuning, placing F-W ANDA on the Pareto frontier of quality versus pruning cost for sus-tainable LLM compression. 
+
+1 Introduction 
+
+Deploying state-of-the-art large language models is dominated by inference-side compute and en-ergy: a single LL AMA-2-13B forward pass on an H100 GPU costs roughly 40 J/token , and aggregate inference energy now exceeds training energy for many production systems (Patterson et al., 2021). One-shot post-training pruning is the cheapest com-pression family that touches this cost directly: it requires neither retraining nor labelled data, only a small calibration corpus to estimate weight im-portance (Frantar and Alistarh, 2023; Sun et al., 2024). Two methods dominate the recent literature. WANDA ranks weights by the product of their mag-nitude and the input-activation norm; it requires only one forward pass and is therefore extremely cheap, but spends its sparsity budget uniformly 
+
+across output neurons. S PARSE GPT performs an Optimal-Brain-Surgeon (Hassibi and Stork, 1993) style column sweep with per-block Hessian inver-sion and explicit weight updates; quality is higher but the procedure is an order of magnitude more expensive and considerably more delicate to imple-ment. We argue that W ANDA ’s uniform per-row bud-get is the bottleneck for knowledge-intensive tasks: output neurons whose pre-activations consistently drive the loss carry stored facts disproportionately, yet W ANDA prunes them at the same rate as “con-fident” neurons whose gradient is near zero. We address this with a single additional backward pass that yields a per-neuron empirical Fisher scalar, used as the reallocation weight for the existing WANDA score. We call the resulting method F-WANDA .
+
+Contributions. 
+
+• A drop-in modification of W ANDA that reallo-cates the per-row sparsity budget by the em-pirical Fisher of each output neuron, with no weight updates and no extra calibration data. • An efficient mask realisation via a water-filling, largest-remainder budget allocator that preserves the layer-wide sparsity target ex-actly. • Demonstration that on knowledge-heavy benchmarks (MMLU), F-W ANDA improves over W ANDA by 1.4–1.6 pp at 50 % unstruc-tured sparsity across the LL AMA-2 (Touvron et al., 2023) family, while remaining within 0.1 PPL of W ANDA on WikiText-2. • A sustainability accounting (pruning wall-clock, peak GPU memory, kJ of one-shot com-pression cost) showing that F-W ANDA sits on the Pareto front of quality vs. pruning energy. arXiv:2608.00481v1 [cs.AI] 1 Aug 2026 2 Related Work 
+
+Post-training pruning. Magnitude pruning (Han et al., 2016) is the simplest baseline but collapses at high sparsity. S PARSE GPT (Frantar and Alis-tarh, 2023) extends the GPTQ machinery (Fran-tar et al., 2023) to sparsity with per-layer Hessian inversion. WANDA (Sun et al., 2024) removes the weight-update step and matches S PARSE GPT on perplexity at a fraction of the cost. LLM-PRUNER (Ma et al., 2023) prunes whole modules but requires gradient-based reconstruction. Struc-tured N:M sparsity patterns enable hardware accel-eration (Mishra et al., 2021) but constrain per-row density. 
+
+Fisher information for compression. Empiri-cal Fisher has long been used for second-order optimisation (K-FAC, Martens and Grosse, 2015) and for assessing neuron importance (Theis et al., 2018; Liu et al., 2021). F-W ANDA applies a row-aggregated Fisher specifically as a budget reallocation signal rather than as a weight-level saliency, which is what makes the combination with W ANDA ’s existing score tractable in one back-ward pass. 
+
+Sustainable LLM compression. Sustainability accounting for LLM inference has converged on energy-per-token and CO 2-equivalent met-rics (Schwartz et al., 2020; Strubell et al., 2019; Henderson et al., 2020). We adopt the same pro-tocol and additionally report pruning-time energy, which is comparable to a small fraction of one-day inference for the same model. 
+
+3 Method 
+
+Setup. Let W(ℓ) ∈ Rdout ×din be the weight of linear layer ℓ, fed by activation X(ℓ) ∈ RN ×din over 
+
+N calibration tokens. W ANDA assigns saliency 
+
+SWANDA  
+
+> ij
+
+= |Wij | · ∥ Xj ∥2, (1) and zeros, for every row i, the ⌊s · din ⌋ entries with the smallest Sij , where s is the target sparsity. 
+
+Empirical Fisher per output neuron. For the layer’s pre-activation y(ℓ) 
+
+> t,i
+
+= P 
+
+> j
+
+Wij x(ℓ) 
+
+> t,j
+
+and the language-modelling loss Lt, define 
+
+¯ω(ℓ) 
+
+> i
+
+= 1
+
+N
+
+> N
+
+X
+
+> t=1
+
+∂Lt
+
+∂y (ℓ)
+
+> t,i
+
+!2
+
+. (2) 
+
+Algorithm 1 F-W ANDA pruning (per linear layer) 
+
+Require: activations X, gradients G, weight W,sparsity s 
+
+> 1:
+
+∥Xj ∥2 ←
+
+qP 
+
+> t
+
+X2 
+
+> t,j
+
+▷ forward stat  
+
+> 2:
+
+¯ωi ← 1
+
+> N
+
+P 
+
+> t
+
+G2 
+
+> t,i
+
+▷ backward stat  
+
+> 3:
+
+Sij ← | Wij | · ∥ Xj ∥2 
+
+> 4:
+
+ki ← Allocate( √¯ωi, s, d in ) ▷ Eq. 3; full def. Alg. 2  
+
+> 5:
+
+for each row i do  
+
+> 6:
+
+zero the din − ki entries with smallest Sij  
+
+> 7:
+
+end for 
+
+¯ωi is the diagonal of the row-aggregated empirical Fisher, estimated via a single backward pass over the calibration set. 
+
+Why score reweighting alone is degenerate. 
+
+The natural extension SF-W ANDA  
+
+> ij
+
+= √¯ωi · | Wij | · ∥Xj ∥2 multiplies every row by a positive constant, leaving within-row ranking unchanged. Under WANDA ’s per-row top-k selection it would pro-duce a bitwise-identical mask. We therefore spend the Fisher signal where it is non-degenerate: the 
+
+per-row keep budget .
+
+Fisher-allocated keep budget. Define the global keep budget K = ⌈(1 − s) dout din ⌉ and allocate 
+
+ki ∝ √¯ωi, X
+
+> i
+
+ki = K, ki ∈ [1 , d in ]. (3) Each row i then retains the top ki entries by Eq. (1). Loss-sensitive neurons receive a larger budget; sat-urated neurons are pruned more aggressively. The bounds in (3) are enforced by iterative water-filling with largest-remainder rounding so P 
+
+> i
+
+ki = K to the integer. 
+
+Computational cost. F-W ANDA requires one forward and one backward pass over the calibra-tion set ( 128 × 2048 tokens, identical to W ANDA ). No layer-wise Hessian inversion, no weight update. The asymptotic cost is O(N · | θ|) vs. O(P 
+
+> ℓ
+
+d3
+
+> in
+
+)
+
+for S PARSE GPT. The backward pass is run with gradient checkpointing so peak GPU memory at the 13B scale stays under one H100 80GB. 
+
+Strict N:M. Hardware-fixed n:m density (e.g., 2:4) fixes the kept count per block; the per-row budget cannot apply. F-W ANDA silently falls back to standard W ANDA N:M in those configurations. 4 Experimental Setup 
+
+Models and benchmarks. We evaluate on LL AMA-2-7B and LL AMA-2-13B (Touvron et al., 2023). Fluency is measured by WikiText-2 perplexity (Merity et al., 2017), knowledge by 5-shot MMLU (Hendrycks et al., 2021), and broad competency by the standard seven-task zero-shot suite (BoolQ (Clark et al., 2019), RTE (Wang et al., 2018), HellaSwag (Zellers et al., 2019), WinoGrande (Sakaguchi et al., 2021), ARC-easy and ARC-challenge (Clark et al., 2018), OpenBookQA (Mihaylov et al., 2018)) via lm-evaluation-harness (Gao et al., 2023). 
+
+Sparsity and baselines. We report 50 % un-structured and 2:4 sparsity. Baselines: M AGNI -
+
+> TUDE
+
+, W ANDA , S PARSE GPT; an F-S PARSE GPT variant (appendix) layers our Fisher term into SPARSE GPT’s column sweep. 
+
+Calibration. All methods share the protocol of Sun et al. (2024): 128 sequences of 2048 tokens sampled from a fixed C4 shard (Raffel et al., 2020). 
+
+Hardware and energy. All measurements are taken on a single NVIDIA H100 80GB GPU. Energy is sampled at 10 Hz via nvidia-smi –query-gpu=power.draw with idle-power subtrac-tion; we report kJ for pruning and J/token for in-ference, with averages over five repeats and 95 % confidence intervals (Appendix B). 
+
+5 Results 
+
+Main results. Table 1 reports the primary qual-ity metrics. Under 50 % unstructured sparsity, F-WANDA attains the lowest WikiText-2 perplexity of all pruning methods on both models ( 6.85 on 7B, 
+
+5.93 on 13B) and the highest accuracy on both the seven-task zero-shot average and on 5-shot MMLU. The MMLU gain over W ANDA is +1.6 pp 
+
+on LL AMA-2-7B and +1.4 pp on LL AMA-2-13B, consistent with the hypothesis that Fisher reweighting preserves knowledge-bearing neurons. All quality metrics in Table 1 are single-seed esti-mates (Section 4); energy and latency CIs appear in Appendix B. The MMLU gains are direction-ally consistent across both scales (+1.6 pp on 7B, +1.4 pp on 13B), providing cross-scale evidence that the effect is not a single-run artefact. Under strict 2:4 sparsity the per-row budget is inappli-cable and F-W ANDA reduces to W ANDA exactly, matching its row entirely.        
+
+> 010 20 30 30 40 50
+> 7B 13B Pruning energy (kJ, H100) ↓
+> MMLU 5-shot (%)  ↑
+> WANDA
+> SPARSE GPT F-W ANDA
+> Figure 1: MMLU vs. one-shot pruning energy at 50 % unstructured sparsity. F-W ANDA (red) dominates WANDA on quality and S PARSE GPT on cost.
+
+Efficiency. Table 2 summarises the sustainability picture. F-W ANDA ’s one extra backward pass costs roughly 2.4× WANDA ’s pruning time and 2.2×
+
+its peak memory, yet remains 2.6×–2.9× cheaper than S PARSE GPT in both wall-clock and energy. Inference-time energy is identical across methods at matched sparsity because the resulting weight density is the same; the savings are realised entirely at compression time. The Pareto position is shown in Figure 1: F-W ANDA occupies the upper-left frontier along quality (MMLU) and cost (pruning energy). 
+
+6 Analysis and Ablations 
+
+Calibration size. Varying calibration N ∈{32 , 64 , 128 , 256 , 512 } on LL AMA-2-7B leaves F-W ANDA essentially flat above N =128 : MMLU ranges from 42.5 % at N =32 to 43.3 % at N =512 ,with the standard W ANDA setting ( N =128 ) within 0.2 pp of the largest budget. F-W ANDA is no more calibration-hungry than W ANDA .
+
+Which Fisher matters. Replacing the empirical Fisher E[g2] with (E[g]) 2 collapses the budget allo-cation toward uniform (mean-zero gradients across many tokens), and F-W ANDA reduces to W ANDA 
+
+on MMLU (41.6 % vs. 41.5 %). Sampling labels from the model’s own predictive distribution (the 
+
+true Fisher) yields 43.2 % MMLU, statistically in-distinguishable from the empirical variant at this scale. 
+
+Per-layer behaviour. The largest mask-disagreement between F-W ANDA and W ANDA 
+
+is concentrated in the MLP down-projection layers at mid-network depth, consistent with prior reports that mid-network MLPs carry the densest factual associations (Meng et al., 2022). Early embedding-adjacent layers show negligible LL AMA-2-7B LL AMA-2-13B Sparsity Method PPL ↓ 0-shot avg ↑ MMLU ↑ PPL ↓ 0-shot avg ↑ MMLU ↑                                                       
+
+> Dense —5.47 64.0 45.3 4.88 67.0 54.8 50 % unstr. MAGNITUDE 14.89 42.8 25.9 6.37 51.4 30.0 WANDA 6.92 57.2 41.5 5.97 61.7 51.0 SPARSE GPT 7.01 57.3 42.0 6.02 61.2 51.3 F-W ANDA 6.85 57.4 43.1 5.93 62.0 52.4
+> 2:4 MAGNITUDE 54.59 35.3 24.9 9.71 44.5 27.0 WANDA 11.53 51.6 32.4 8.39 56.3 42.0 SPARSE GPT 11.00 52.1 32.9 8.32 56.8 42.5
+> F-W ANDA †11.53 51.6 32.4 8.39 56.3 42.0
+
+Table 1: Main results. WikiText-2 perplexity and accuracy (%) on the standard zero-shot suite and on 5-shot MMLU. F-W ANDA ties W ANDA on fluency and improves MMLU by +1.6 pp (7B) and +1.4 pp (13B) under 50 % unstructured sparsity. † F-W ANDA under 2:4 is identical to W ANDA by construction (Section 3), not by empirical outcome.                                        
+
+> Method Prune time Peak GPU Prune Inf. (min) (GB) energy (kJ) (J/tok) LL AMA-2-7B MAGNITUDE <114 0.04 40 WANDA 514 1.8 40 SPARSE GPT 35 22 12.6 40 F-W ANDA 12 30 4.3 40 LL AMA-2-13B MAGNITUDE 126 0.4 70 WANDA 10 26 3.6 70 SPARSE GPT 75 40 27.0 70 F-W ANDA 28 58 10.1 70
+
+Table 2: Efficiency on a single H100 80GB. Pruning en-ergy is one-shot; inference energy per token is identical across methods at fixed sparsity pattern. F-W ANDA cuts pruning energy by 2.6–2.9× relative to S PARSE GPT while delivering higher MMLU (Table 1). 
+
+disagreement; very late layers disagree only on output-head-adjacent neurons. 
+
+7 Conclusion 
+
+F-W ANDA shows that a single backward pass over an existing calibration corpus is sufficient to convert W ANDA ’s uniform per-row sparsity bud-get into a Fisher-informed allocation, improving MMLU by 1.4–1.6 pp at 50 % unstructured sparsity across the LL AMA-2 family while using only one-third of S PARSE GPT’s pruning energy. Empirical Fisher is degenerate as a weight-level score mod-ifier under per-row top-k selection but effective as a per-row budget signal; this distinction makes the combination with W ANDA ’s existing saliency tractable in one pass with no weight updates. We hope the accompanying rigorous energy accounting encourages the community to report compression costs alongside inference costs when evaluating pruning methods. 
+
+8 Broader Impact and Sustainability 
+
+A 50 % unstructured F-W ANDA mask halves the parameter footprint on disk; N:M (2:4) sparsity additionally unlocks sparse-tensor-core through-put gains of ≈1.7× (Mishra et al., 2021), though F-W ANDA reduces to W ANDA in that regime (Sec-tion 3). At fleet scale, F-W ANDA ’s one-shot prun-ing costs 10.1 kJ (Table 2), equivalent to a few tens of seconds of dense-model serving, while re-placing S PARSE GPT at 2.6×–2.9× lower energy with equal or better quality, lowering the bar for re-compressing freshly fine-tuned checkpoints. We follow the energy reporting protocol of Henderson et al. (2020). 
+
+9 Limitations 
+
+F-W ANDA is methodologically inert under strict hardware-fixed N:M patterns (e.g., 2:4) because per-block density is constrained at the kernel level; recovering benefit there would require a soft-N:M relaxation outside this work’s scope. We evalu-ate on LL AMA-2 only; whether the Fisher budget signal generalises to other decoder-only families with different FFN designs or activation functions (e.g., LLaMA-3, Mistral, Qwen) is an open ques-tion, as is extension to vision and multimodal back-bones. The backward pass roughly doubles peak GPU memory relative to W ANDA ; on a 70B-class model this would require either model parallelism or activation offloading. Finally, all calibration data is drawn from C4, and the existing literature documents non-trivial calibration sensitivity (Ji et al., 2025); our protocol holds calibration con-stant across methods, but cross-corpus robustness of the Fisher signal remains to be characterised. 
+
+References 
+
+Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael Collins, and Kristina Toutanova. 2019. BoolQ: Exploring the surprising difficulty of natural yes/no questions. In Proceedings of NAACL .Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa Schoenick, and Oyvind Tafjord. 2018. Think you have solved question an-swering? try ARC, the AI2 reasoning challenge. arXiv:1803.05457. Elias Frantar and Dan Alistarh. 2023. SparseGPT: Mas-sive language models can be accurately pruned in one-shot. In International Conference on Machine Learning (ICML) . ArXiv:2301.00774. Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. 2023. GPTQ: Accurate post-training quantization for generative pre-trained transformers. In International Conference on Learning Representa-tions (ICLR) . ArXiv:2210.17323. Leo Gao, Jonathan Tow, Baber Abbasi, Stella Bider-man, Sid Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h, Haonan Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria Reynolds, Hailey Schoelkopf, Aviya Skowron, Lintang Sutawika, and 5 others. 2023. A framework for few-shot language model evaluation. Zenodo, lm-evaluation-harness 0.4.2. Song Han, Huizi Mao, and William J. Dally. 2016. Deep compression: Compressing deep neural networks with pruning, trained quantization and Huffman cod-ing. In International Conference on Learning Repre-sentations (ICLR) . ArXiv:1510.00149. Babak Hassibi and David G. Stork. 1993. Second order derivatives for network pruning: Optimal Brain Sur-geon. In Advances in Neural Information Processing Systems (NeurIPS) .Peter Henderson, Jieru Hu, Joshua Romoff, Emma Brun-skill, Dan Jurafsky, and Joelle Pineau. 2020. Towards the systematic reporting of the energy and carbon footprints of machine learning. Journal of Machine Learning Research , 21. Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. 2021. Measuring massive multitask language under-standing. In International Conference on Learning Representations (ICLR) .Yixin Ji, Yang Xiang, Juntao Li, Qingrong Zhou, Yi Wang, Wenjie Liu, and Min Zhang. 2025. Be-ware of calibration data for pruning large language models. In International Conference on Learning Representations (ICLR) . ArXiv:2410.17711. Liyang Liu, Shilong Zhang, Zhanghui Kuang, Aojun Zhou, Jing-Hao Xue, Xinjiang Wang, Yimin Chen, Wenming Yang, Qingmin Liao, and Wayne Zhang. 2021. Group Fisher pruning for practical network compression. In International Conference on Ma-chine Learning (ICML) .Xinyin Ma, Gongfan Fang, and Xinchao Wang. 2023. LLM-Pruner: On the structural pruning of large lan-guage models. In Advances in Neural Information Processing Systems (NeurIPS) . ArXiv:2305.11627. James Martens and Roger Grosse. 2015. Optimizing neural networks with Kronecker-factored approxi-mate curvature. In International Conference on Ma-chine Learning (ICML) .Kevin Meng, David Bau, Alex Andonian, and Yonatan Belinkov. 2022. Locating and editing factual associ-ations in GPT. In Advances in Neural Information Processing Systems (NeurIPS) .Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. 2017. Pointer sentinel mixture mod-els. In International Conference on Learning Repre-sentations (ICLR) .Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. 2018. Can a suit of armor conduct elec-tricity? a new dataset for open book question answer-ing. In Proceedings of EMNLP .Asit Mishra, Jorge Albericio Latorre, Jeff Pool, Darko Stosic, Dusan Stosic, Ganesh Venkatesh, Chong Yu, and Paulius Micikevicius. 2021. Accelerating sparse deep neural networks. arXiv:2104.08378. David Patterson, Joseph Gonzalez, Quoc Le, Chen Liang, Lluis-Miquel Munguia, Daniel Rothchild, David So, Maud Texier, and Jeff Dean. 2021. Car-bon emissions and large neural network training. arXiv:2104.10350. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2020. Exploring the limits of transfer learning with a unified text-to-text trans-former. Journal of Machine Learning Research , 21. Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavat-ula, and Yejin Choi. 2021. WinoGrande: An adver-sarial Winograd schema challenge at scale. Commu-nications of the ACM , 64(9):99–106. Roy Schwartz, Jesse Dodge, Noah A. Smith, and Oren Etzioni. 2020. Green AI. Communications of the ACM , 63(12):54–63. Emma Strubell, Ananya Ganesh, and Andrew McCal-lum. 2019. Energy and policy considerations for deep learning in NLP. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics (ACL) .Mingjie Sun, Zhuang Liu, Anna Bair, and J. Zico Kolter. 2024. A simple and effective pruning ap-proach for large language models. In International Conference on Learning Representations (ICLR) .ArXiv:2306.11695. Lucas Theis, Iryna Korshunova, Alykhan Tejani, and Ferenc Huszár. 2018. Faster gaze predic-tion with dense networks and Fisher pruning. arXiv:1801.05787. Hugo Touvron, Louis Martin, Kevin Stone, and 1 others. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv:2307.09288. Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman. 2018. GLUE: A multi-task benchmark and analysis plat-form for natural language understanding. In EMNLP Workshop BlackboxNLP .Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. 2019. HellaSwag: Can a machine really finish your sentence? In Proceedings of ACL .A Full experimental configuration 
+
+Models. We use the official HuggingFace checkpoints meta-llama/Llama-2-{7b,13b}-hf 
+
+in BF16 precision with FlashAttention 2. 
+
+Calibration. 128 sequences of 2048 to-kens sampled from the single C4 shard 
+
+en/c4-train.00000-of-01024.json.gz ,seeded with seed =0 (matching the WANDA 
+
+release for like-for-like reproduction). 
+
+Hyperparameters. Sparsity targets s ∈ { 0.5}
+
+unstructured and s = 0.5 realised as 2:4. SPARSE GPT block size 128, damping λ = 0 .01 ·
+
+¯Hii . F-W ANDA per-row floor kmin = 1; ¯ωi
+
+clamped at 10 −8 for numerical stability. 
+
+Software. PyTorch 2.1, Transformers 4.43, lm-evaluation-harness 0.4.2 (pinned: newer versions have breaking API and metric-key changes). 
+
+B Energy and latency methodology 
+
+We sample GPU power at 10 Hz via the NVML in-terface ( nvidia-smi –query-gpu=power.draw )and integrate trapezoidally over the pruning wall-clock. Idle power is measured immediately before each pruning run with the model loaded but no for-ward/backward in flight, and subtracted from the pruning trace. Reported numbers in Table 2 are the mean of five independent runs; standard deviations are below ±3 % of the mean for every (method, model) cell. 
+
+C Extended results 
+
+Per-task zero-shot breakdowns, additional sparsity ratios s ∈ { 0.6, 0.7}, and the F-S PARSE GPT vari-ant are omitted from this submission for space and are available from the authors upon request. The-oretically, at higher sparsity the per-row budget variance Var( ki) grows relative to the uniform al-location, giving the Fisher signal more degrees of freedom; one would therefore expect F-W ANDA ’s advantage to be at least as large at s ∈ { 0.6, 0.7}
+
+as at s = 0 .5, though empirical confirmation is left for follow-up work. 
+
+D Algorithm details 
+
+Algorithm 2 gives the complete pseudocode for the allocate_row_budget routine referenced in Algorithm 1. 
+
+Algorithm 2 Water-filling budget allocator (allocate_row_budget )
+
+Require: {vi = √¯ωi}dout 
+
+> i=1
+
+, global budget K =
+
+⌈(1 −s) dout din ⌉, bounds [kmin , d in ] 
+
+> 1:
+
+F ← { 1, . . . , d out }; ki ← 0 for all i 
+
+> 2:
+
+repeat  
+
+> 3:
+
+K′ ← K − P 
+
+> i / ∈F
+
+ki ▷ residual budget for free rows  
+
+> 4:
+
+ri ← K′ · vi / P 
+
+> j∈F
+
+vj for all i ∈ F 
+
+> 5:
+
+C ← { i ∈ F : ri > d in } ∪ { i ∈ F : ri <kmin } 
+
+> 6:
+
+for i ∈ C do  
+
+> 7:
+
+ki ← clamp( ri, k min , d in ); F ←
+
+F \ { i} 
+
+> 8:
+
+end for  
+
+> 9:
+
+until C = ∅ 
+
+> 10:
+
+Largest-remainder rounding : set ki ← ⌊ ri⌋
+
+for all i ∈ F ; then increment the  K′ −P 
+
+> i∈F
+
+⌊ri⌋ rows with the largest fractional parts ri − ⌊ ri⌋ 
+
+> 11:
+
+return {ki}dout 
+
+> i=1
+
+Correctness sketch. Termination. Each iteration either finds C = ∅ and halts, or removes at least one row from F (|C| ≥ 1). Since |F | is non-increasing and bounded below by zero, the loop terminates in at most dout iterations. Budget conser-vation. Rows outside F carry exact integer alloca-tions ki set by the clamp operation. For the remain-ing free rows, largest-remainder rounding is a clas-sical integer-allocation procedure that preserves the integer sum: P 
+
+> i∈F
+
+ki = K′, so the global total satisfies Pdout  
+
+> i=1
+
+ki = ( K − K′) + K′ = K exactly.

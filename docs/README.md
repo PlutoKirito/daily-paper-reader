@@ -1,54 +1,106 @@
-<div class="dpr-home-notice-card">
-  <h3 class="dpr-home-notice-title">🚀 Start Here</h3>
-  <ul class="dpr-home-notice-list">
-    <li><a href="#/tutorial/README">使用教程</a></li>
-  </ul>
+<div class="dpr-home-notice-card dpr-home-panel">
+  <div class="dpr-home-notice-header dpr-home-panel-header">
+    <h3 class="dpr-home-notice-title">公告与更新</h3>
+    <a class="dpr-home-notice-tutorial" href="#/tutorial/README">使用教程 <span aria-hidden="true">›</span></a>
+  </div>
+  <div class="dpr-home-notice-entry">
+    <time class="dpr-home-notice-date" datetime="2026-07-20">07.20</time>
+    <div>
+      <strong class="dpr-home-notice-entry-title">反馈功能上线</strong>
+      <span class="dpr-home-notice-entry-summary">新增反馈功能，欢迎大家踊跃反馈各种建议，我们会第一时间查看并协调处理。</span>
+    </div>
+  </div>
+  <div class="dpr-home-notice-entry">
+    <time class="dpr-home-notice-date" datetime="2026-07-19">07.19</time>
+    <div>
+      <strong class="dpr-home-notice-entry-title">首页新增社区统计</strong>
+      <span class="dpr-home-notice-entry-summary">现在可以看到今天看论文的人数和项目加入人数。</span>
+    </div>
+  </div>
+  <div class="dpr-home-site-stats" data-dpr-site-stats hidden aria-live="polite">
+    <span>今天有 <strong class="dpr-home-site-stat-value" data-dpr-daily-readers>--</strong> 人在看论文</span>
+    <span class="dpr-home-site-stat-separator" aria-hidden="true">·</span>
+    <span>昨天有 <strong class="dpr-home-site-stat-value" data-dpr-yesterday-readers>--</strong> 人在看论文</span>
+    <span class="dpr-home-site-stat-separator" aria-hidden="true">·</span>
+    <span>已有 <strong class="dpr-home-site-stat-value" data-dpr-fork-count>--</strong> 人加入 Daily Paper Reader</span>
+    <span class="dpr-home-history">
+      <button type="button" class="dpr-home-history-trigger" data-dpr-history-trigger aria-label="查看最近 14 天阅读趋势"><span aria-hidden="true">🔍</span></button>
+      <span class="dpr-home-history-popover" data-dpr-history-popover role="tooltip">
+        <span class="dpr-home-history-header">近 14 天阅读趋势</span>
+        <span class="dpr-home-history-meta">
+          <span data-dpr-history-range>--</span>
+          <span>峰值 <strong data-dpr-history-peak>--</strong></span>
+        </span>
+        <span class="dpr-home-history-chart" data-dpr-history-chart></span>
+      </span>
+    </span>
+  </div>
 </div>
 
-## 每次日报
-- 最新运行日期：2026-08-02
-- 运行时间：2026-08-02 21:36:07 UTC
-- 运行状态：成功
-- 本次总论文数：6
-- 精读区：0
-- 速读区：6
+<div class="dpr-home-dashboard-grid">
+<section class="dpr-home-dashboard-card dpr-home-report-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">2026-08-09</span>
+      <h3 class="dpr-home-dashboard-title">今日汇总</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
+  </div>
+  <dl class="dpr-home-dashboard-stats">
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+  </dl>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-09 21:01:13 UTC<br>状态：成功</p>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-brief-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">合并后生成</span>
+      <h3 class="dpr-home-dashboard-title">今日简报</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">AI</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<p>今日精读4篇、速读4篇，重点聚焦神经视频压缩与生成式压缩的跨平台部署优化。最值得关注的两项9分工作：混合精度流式视频压缩，以及面向码本生成压缩的率-算力调度。若时间有限，建议优先了解这两篇的高效压缩思路，再延伸至模型量化与剪枝的速读内容。</p>
+  </div>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-deep-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">今日累计</span>
+      <h3 class="dpr-home-dashboard-title">精读推荐</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Streamable Neural Video Compression: A Mixed Precision Approach for Cross-Platform Deployment">Streamable Neural Video Compression: A Mixed Precision Approach for Cross-Platform Deployment</span></li><li><span class="dpr-home-dashboard-paper-title" title="GVCCTurbo: Rate-Compute Quality Scheduling for Codebook Driven Generative Compression">GVCCTurbo: Rate-Compute Quality Scheduling for Codebook Driven Generative Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="GVC-RT: Towards Real-Time Generative Video Compression at Ultra-Low Bitrates">GVC-RT: Towards Real-Time Generative Video Compression at Ultra-Low Bitrates</span></li></ul>
+  </div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>3</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-skim-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">今日累计</span>
+      <h3 class="dpr-home-dashboard-title">速读推荐</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hadamard-Domain Model Quantization for Learned Image Coding">Hadamard-Domain Model Quantization for Learned Image Coding</span></li><li><span class="dpr-home-dashboard-paper-title" title="F-WANDA: Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models">F-WANDA: Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Estimating SSIM from MSE for DCT-Based Compressed Images">Estimating SSIM from MSE for DCT-Based Compressed Images</span></li></ul>
+  </div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+</section>
+</div>
 
-### 今日简报（AI）
-今日速读6篇论文，暂无精读；内容覆盖知识蒸馏、扩散模型采样与变分自编码器优化。
-
-其中《SPRKD》关注深度神经网络知识蒸馏的鞍点近似，扩散模型采样参数学习与VAE潜空间软约束优化均值得一瞥。
-
-建议优先泛读这三篇6.0分论文的摘要与实验结论，后续再按兴趣深入精读。
-- 详情：[/202608/02/README](/202608/02/README)
-
-### 精读区论文标签
-- 本次无精读推荐。
-
-### 速读区论文标签
-1. [SPRKD: Effective Knowledge Distillation for Deep Neural Networks via Saddle Region Approximation](/202608/02/2607.23346v1-sprkd-effective-knowledge-distillation-for-deep-neural-networks-via-saddle-region-approximation)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：通过鞍点区域近似提出通用知识蒸馏方法，可用于神经视频编码器训练
-2. [Learning Sampling Parameters for Diffusion Models](/202608/02/2607.23488v1-learning-sampling-parameters-for-diffusion-models)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：学习扩散模型的提示条件及时步变化采样参数，可用于潜在扩散的调参
-3. [Soft-Constrained Optimization of Latent Space in Variational Autoencoders](/202608/02/2607.23751v1-soft-constrained-optimization-of-latent-space-in-variational-autoencoders)  
-   标签：评分：6.0/10、query:entropy-coding
-   evidence：基于熵的隐码约束与神经网络编解码器的率失真优化相关。
-4. [Enabling Fully Integer-Only Inference for Lightweight Detection Transformers](/202608/02/2607.24981v1-enabling-fully-integer-only-inference-for-lightweight-detection-transformers)  
-   标签：评分：6.0/10、query:train-trick
-   evidence：轻量级Transformer全整数量化，可迁移至低复杂度神经编解码器部署
-5. [Decoder-Guided Lossy Contour Coding Via Anchor Refinement](/202608/02/2607.26426v1-decoder-guided-lossy-contour-coding-via-anchor-refinement)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：解码器引导的轮廓编码利用解码端粗参考，类似于可伸缩视频编码
-6. [Amortized Moment Matching for Visual Generation](/202608/02/2607.26860v1-amortized-moment-matching-for-visual-generation)  
-   标签：评分：6.0/10、query:vcodec
-   evidence：为扩散去噪器提出摊销矩匹配，对基于潜在扩散的生成式编码有直接借鉴
-
-
-<div class="dpr-home-promo-card">
-  <h3 class="dpr-home-promo-title">💬 社区与支持</h3>
-  <ul class="dpr-home-promo-list">
-    <li>欢迎 Star / Fork / Issue / PR</li>
-    <li>QQ群：583867967（欢迎交流，已有：1151人）</li>
-  </ul>
+<div class="dpr-home-promo-card dpr-home-panel">
+  <div class="dpr-home-panel-header">
+    <h3 class="dpr-home-promo-title">社区与支持</h3>
+  </div>
+  <p class="dpr-home-promo-copy">欢迎通过 Star、Fork、Issue 或 PR 一起完善 Daily Paper Reader。</p>
+  <div class="dpr-home-promo-meta">
+    <span>QQ群 <strong>583867967</strong></span>
+    <span class="dpr-home-promo-separator" aria-hidden="true">·</span>
+    <span>已有 <strong>1,491</strong> 人参与交流</span>
+  </div>
 </div>

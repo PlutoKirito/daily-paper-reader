@@ -1,0 +1,775 @@
+Title: GVCCTurbo: Rate-Compute Quality Scheduling for Codebook Driven Generative Compression
+
+URL Source: https://arxiv.org/pdf/2608.03517v1
+
+Published Time: Wed, 05 Aug 2026 00:58:04 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# GVCCTurbo: Rate–Compute Quality Scheduling for Codebook Driven Generative Compression 
+
+## Ziyue Zeng 1, Dingjie Peng 1, Xun Su 1, Hiroshi Watanabe 1
+
+> 1
+
+Waseda University, Tokyo, Japan zengziyue@fuji.waseda.jp, kefipher9013@asagi.waseda.jp, suxun_opt@asagi.waseda.jp, hiroshi.watanabe@waseda.jp 
+
+Abstract 
+
+Codebook-driven generative compression uses a pretrained image or video generator as a zero-shot visual prior and trans-mits compact codebook indices to guide reconstruction at ultra-low bitrate. Current codecs tie each finite-rate correc-tion to a fresh prior evaluation, so shortening the sampler also removes correction slots that carry target-dependent in-formation. We propose GVCCTurbo, a BPP-driven scheduler that separates expensive prior refreshes from codebook cor-rections: after calibrating an atom-count operating point and skip-gap ratio once per protocol, it maps a target codebook-payload bitrate to a trajectory length and refresh period, mak-ing BPP a schedule input instead of a fixed consequence of sampler length. The same endpoint-prediction and finite-rate steering interface covers GVCC-style rectified-flow video and DDCM-style diffusion image compression, preserving zero-training deployment and compatibility with future distilled priors. Native 1080p curves position the complete zero-shot codec in the ultra-low-bitrate regime. In a controlled 720p Wan-GVCC study, the scheduler cuts prior evaluations from 
+
+20 to 9 for a ∼ 44% measured decoding-time reduction shared across the whole schedule family, at a small shared LPIPS cost on high-motion content; within that family, uniform refresh thinning (pure-skip) is a boundary point, and the BPP-aware interior point trades 2.9% fewer codebook-payload bits for consistently higher PSNR at comparable LPIPS. These results support BPP-to-compute scheduling as a controllable exten-sion of sampler-length tuning, without requiring the allocated point to dominate every boundary point. 
+
+## Introduction 
+
+At ultra-low bitrate, the bitstream cannot fully specify visual structure. Conventional hybrid codecs such as HEVC (Sul-livan et al. 2012) and VVC (Bross et al. 2021), and learned codecs such as DCVC-FM (Li, Li, and Lu 2024) and DCVC-RT (Jia et al. 2025), remain strong at standard bitrates but become deterministic and over-smoothed as fine detail dis-appears from the transmitted signal. Generative compression addresses this regime by using a pretrained image or video generator as a visual prior, with compact target-dependent bits steering reconstruction toward the input (Mentzer et al. 2020; Theis et al. 2022; Yang and Mandt 2023; Vonderfecht and Liu 2025; Zeng et al. 2026). Generative codecs may use the generator as a perceptually aligned latent space, a reconstruction module conditioned on (a) Full GVCC (b) GVCCTurbo (Ours)    
+
+> One Prior Estimation → One Correction
+> 𝑁 !" = 𝑁 #$%&
+> One Prior Estimation → Multiple Corrections
+> 𝑁 !" ≪ 𝑁 #$%&
+> 𝑥₀ 𝑥₀
+> Realized Step Denoise Drift Codebook Correction
+> Prior Evaluation Endpoint Estimation
+> Data Manifold
+> x̂₀|𝑡 ₖ
+> 𝑥 ₖ𝑥 !
+> 𝑥 !"#
+> 𝑥 !"$
+> $𝑥 '|𝑡 (
+> $𝑥 '|𝑡 ()*
+> 𝑥 !"#
+> 𝑥 !"$
+> $𝑥 '|𝑡 ()*
+
+Figure 1: Trajectory geometry. (a) Full GVCC spends one prior evaluation per correction step; (b) GVCCTurbo re-freshes the prior only at selected steps while keeping the correction grid dense between refreshes. side information, or—in the narrower model-as-codec class studied here—the codec itself. This distinction matters for acceleration: in the last setting, skipping a generator eval-uation changes the bitstream-guided trajectory rather than merely accelerating a downstream module. GVCC (Zeng et al. 2026) uses a pretrained rectified-flow video genera-tor as a zero-shot decoder and transmits compact codebook indices instead of dense residuals; Turbo-DDCM (Vaisman et al. 2026) develops a related multi-atom mechanism for image diffusion codecs. Both avoid training a task-specific backbone, but tie each correction step to a prior evaluation: shortening the sampler saves computation while removing opportunities to inject target-dependent information. This coupling is undesirable because bitrate controls finite-rate corrections, whereas compute is dominated by prior evaluations; reconstruction quality depends on both. As il-lustrated in Fig. 1, GVCCTurbo separates them within a 
+
+(T, p, M ) schedule family, with truncation and uniform re-fresh thinning as boundary points. It keeps the correction grid dense, refreshes the prior only at selected steps, and reuses the cached clean endpoint between refreshes, thereby skipping evaluations without deleting scheduled codebook-payload opportunities. Because encoder-selected innovations make arXiv:2608.03517v1 [cs.CV] 4 Aug 2026 the trajectory non-smooth, skipped steps use an endpoint hold; bit-exact replay further requires a fixed shared schedule rather than online per-sample cache decisions. We calibrate a perceptually stable atom count Mperc and tolerated skip-gap ratio τgap once per protocol. At run time, a probe-free calcu-lator fixes M = Mperc , maps a target codebook-payload BPP to (T ⋆, p ⋆), and returns (T ⋆, p ⋆, M perc ) without retraining the prior. We make three contributions. First, we separate decoder-reproducible prior evaluations, which add no newly transmit-ted target bits, from finite-rate corrections carrying target-dependent symbols in the scheduled codebook channel, yielding a common rate–compute interface for GVCC-style rectified-flow video and DDCM-style diffusion image codecs. Second, after one-time protocol calibration of Mperc 
+
+and τgap , endpoint-cached refresh and a probe-free calcula-tor map a target codebook-payload BPP to (T ⋆, p ⋆, M perc )
+
+without retraining the prior, codebook, or decoder replay; uniform refresh thinning is a boundary of this schedule family rather than an external baseline. Third, decoupling 
+
+Ncode from prior-evaluation count removes the structural tie between correction density and sampler length, creating a testable route toward few-evaluation distilled priors rather than establishing distilled-prior gains here; the supplemen-tary material reports only a preliminary observation. Native 1080p curves position the complete codec. Controlled 720p Wan-GVCC studies cut prior evaluations from 20 to 9, reduc-ing decoding time by ∼ 44% across the schedule family with a small shared LPIPS cost on high-motion content; within that family, the BPP-aware point uses 2.9% fewer codebook-payload bits while improving PSNR at comparable LPIPS. Diagnostics on the FLF2V-14B GVCC backbone and Turbo-DDCM test interface transfer rather than cross-system speed parity. 
+
+## Related Work 
+
+Generative Models in Codecs 
+
+Generative models play several roles in compression (Yang and Mandt 2026). Latent-transform codecs use them to pro-vide perceptually aligned representations while a learned transform and entropy model carry the compressed signal (Qi et al. 2025; Guo et al. 2025; Zheng et al. 2026; Li et al. 2026); restoration and conditional-generation codecs instead recon-struct detail from a separately coded representation or com-pact side information (Mao et al. 2026; Wang et al. 2025; Ding et al. 2026; Wang et al. 2026; Wan, Zheng, and Fan 2025). In both cases, accelerating the generator changes a representation or reconstruction module rather than the re-play of a transmitted generative trajectory. Our work is closest to the model-as-codec paradigm, where the bitstream specifies the trajectory of a pretrained generator. DiffC communicates per-step diffusion innova-tions through reverse channel coding (Theis et al. 2022; Vonderfecht and Liu 2025); GVCC and Turbo-DDCM in-stead steer rectified-flow video and diffusion image trajecto-ries with reproducible codebooks (Zeng et al. 2026; Ohayon et al. 2025; Vaisman et al. 2026). Related zero-shot ap-proaches use posterior, noise-combination, progressive, or reverse-channel coding (Elata, Michaeli, and Elad 2024; Su and Kasai 2025; Ling et al. 2026). GVCCTurbo builds on the codebook-correction interface and maps a codebook-payload bitrate cap to trajectory length and refresh period with ex-plicit correction and prior-evaluation costs. 
+
+Sampling Acceleration 
+
+Distillation, consistency training, and efficient generators re-duce sampling cost by changing the model, objective, or representation (Salimans and Ho 2022; Song et al. 2023; Luo et al. 2023; Xie et al. 2024). They are complementary to our zero-training scheduler, which preserves the pretrained prior and bit-exact trajectory replay. Training-free caches reuse intermediate features or pre-dict model-output changes from timestep and state displace-ment (Ma, Fang, and Wang 2024; Liu et al. 2025; Ma et al. 2025; Fan, Wang, and Zhang 2025; Bu et al. 2026; Cui, Wang, and Xu 2026). Their smooth, fixed-conditioning trajecto-ries permit extrapolation or online per-sample reuse. Here, encoder-selected codebook innovations perturb every step, favoring a held endpoint over output extrapolation, while bit-exact replay requires a precommitted shared schedule. GVCCTurbo therefore removes prior evaluations symmetri-cally at the encoder and decoder; it does not claim superiority over decoder-only adaptive caches. 
+
+## Method 
+
+GVCCTurbo leaves the pretrained generator, shared code-book, and bit-exact replay unchanged, modifying only the shared codec/sampling schedule (T, p, M ): trajectory length, prior-refresh period, and per-step atom count. Encoder and decoder derive the same refresh steps, so skipped evaluations require no signaling. Content-adaptive refresh would instead require signaling and, if selected from dense cache metrics, encoder-side probes. This zero-training layer remains com-patible with backbone acceleration such as distillation. 
+
+Unified Interface 
+
+Let x0 ∈ RD be the target latent of an image or video GOP, and let xk = xtk be the decoder state at reverse timestep 
+
+tk. Codebook-driven compression steers a learned prior that predicts the clean target from the current state. At step k, this prediction is 
+
+Dk(xk) = ˆ x0|tk . (1) For a rectified-flow backbone (Liu, Gong, and Liu 2023) under the linear-path convention xt = (1 − t)x0 + tϵ , the velocity target is ϵ − x0, so uθ (xt, t ) ≈ ϵ − x0. The clean endpoint estimate is therefore 
+
+ˆx0|tk = xk − tkuθ (xk, t k). (2) For diffusion-based codecs (Ho, Jain, and Abbeel 2020; Song et al. 2021), Dk denotes the corresponding denoised esti-mate. Since the encoder has access to x0, it computes the end-point residual 
+
+rk = x0 − Dk(xk). (3) The residual is not transmitted directly. The encoder projects it onto a shared codebook C = [ c1, . . . , c K ] that both sides can reproduce, keeping the M atoms most aligned with rk:
+
+Sk = TopM j∈{ 1,...,K } |⟨ cj , r k⟩| . (4) The transmitted innovation is then 
+
+z⋆k = norm 
+
+ X
+
+> j∈Sk
+
+sign( ⟨cj , r k⟩) cj
+
+ , (5) where only the selected indices and signs are encoded, and 
+
+norm( ·) matches the sampler-specific stochastic scale. Projecting the residual into the stochastic slot is not a heuristic choice. Under the linear path xt = (1 − t)x0 + tϵ ,the same state xk admits two decompositions: one with the true pair (x0, ϵ ), and one with the model estimate and the noise it implicitly attributes, xk = (1 − tk)ˆ x0|tk + tk ˆϵk.Subtracting the two gives 
+
+ϵ − ˆϵk = − 1 − tk
+
+tk
+
+rk, (6) so an endpoint error is identically a noise-attribution error: 
+
+rk is, up to a scalar, the innovation missing from the stochas-tic slot for the target trajectory. The exact missing innovation contains both direction and magnitude. Our fixed-scale code-book channel transmits only a quantized direction, while the admissible correction scale is prescribed by the sampler. Nor-malization matches this sampler-prescribed scale and avoids a gross scale mismatch with the prior’s expected state distri-bution; because atom selection is conditioned on the target residual, it does not imply an unconditional Gaussian sample. This is analogous to the innovation channel that DiffC (Theis et al. 2022; Vonderfecht and Liu 2025) communicates with reverse channel coding; the codebook projection provides a fixed-rate, shared-seed directional quantization. The same identity holds with a path-specific scalar for the DDPM path underlying DDCM, qualifying the endpoint residual as the common interface quantity of both families (full analysis in the supplementary material). A codebook-controlled update step then takes the form 
+
+xk+1 = Ak(xk, D k(xk)) + Bkz⋆k , (7) where Ak is the backbone-specific prior update and Bkz⋆k is the finite-rate correction. Evaluating Dk is the denoiser or flow-model evaluation counted by NFE . Applying z⋆k spends bitrate and is counted by Ncode . The two costs are informa-tionally asymmetric: Dk(xk) is a deterministic function of the decoder state and the shared weights, computable without receiving any new bits, whereas every applied z⋆k introduces target-dependent symbols in the scheduled codebook chan-nel. Evaluations refine the anchor against which residuals are measured; corrections inject the payload . Refresh thin-ning preserves the number of target-dependent correction slots and their nominal rate capacity, while changing the se-lected innovations through the cached residual. Within the scheduled codebook channel, it changes the anchor used for selection without deleting payload opportunities, so GVCC-Turbo schedules the two costs separately. C!D! C"D" C#D# C$D$ C%D% C&D& C!' D!' C"( D"( …          
+
+> 𝑇 123456⋯19 20
+> GVCC (No Skip)
+> GVCCTurbo BPP =0.003, Skip=2
+
+# …C!D! C"D! C#D" C$D" C%D# C&D# C!' D!( C"( D!(        
+
+> 𝑇
+> C!D!C"D!C#D!C$D!C%D"C&D"C#' D!( C$( D!(
+> 𝑇
+
+# …        
+
+> GVCCTurbo BPP =0.006, Skip=4
+> C!D!C"D!C#D!C$D!C%D!C&D"C$' D!( C%( D!(
+> 𝑇
+
+# …                           
+
+> GVCCTurbo BPP =0.009, Skip=5
+> D)C)D)
+> Denoised Estimation
+> (Expensive Cost)
+> Estimation Cache
+> (No Cost)
+> Codebook Step
+> (Cheap Cost)
+> 123456⋯19 20
+> 123456⋯39 40
+> 123456⋯49 50
+
+Figure 2: Rate–compute scheduling. GVCC ties each code-book correction to a prior evaluation, whereas GVCCTurbo caches the clean endpoint and reuses it across several cor-rections, decoupling prior refreshes ( NFE ) from finite-rate corrections ( Ncode ). 
+
+Endpoint-Cached Prior Refresh 
+
+As shown in Fig. 2, GVCCTurbo evaluates the prior only at a set of refresh steps and reuses each clean-endpoint prediction across several low-cost codebook corrections. The correction trajectory can therefore remain dense even when the number of prior evaluations is reduced. Let R be the set of refresh steps, and let s(k) = max {s ∈ R : s ≤ k} be the most recent refresh step at or before step k. At a refresh step 
+
+s ∈ R , the codec evaluates the prior and stores its clean-endpoint prediction 
+
+as = Ds(xs) = ˆ x0|ts . (8) At a non-refresh step k / ∈ R , the prior evaluation Dk(xk) is skipped, and the cached prediction is reused as eDk = as(k).The encoder still forms a residual against this cached end-point, erk = x0 − eDk, selects z⋆k = Π K,M (erk), and transmits its atom indices and signs. Endpoint caching therefore re-moves prior evaluations without removing any correction step. For rectified-flow backbones under the linear path conven-tion used in Eq. (2), the cached endpoint also induces a local velocity at the current state: 
+
+euk = xk − eDk
+
+tk
+
+. (9) The cache therefore stores a predicted endpoint rather than a velocity. Since xk changes after each correction step, reusing the endpoint lets the local direction be recomputed from the current state without a new prior evaluation. The held-endpoint velocity component x′ = ( x − a)/t is exactly in-tegrable in isolation because (x − a)/t is invariant along it. The full sampler also contains stochastic, score, or cor-rection terms: these use the same numerical scheme but in-herit the cached-endpoint approximation. Endpoint staleness, ek = Dk(xk) − as(k), is therefore the central approximation introduced by reuse, rather than an exact account of the full stochastic update. Under a continuous normalized-direction approximation, small relative staleness causes only second-order angular loss, but the discrete Top-M selection can change discontinuously; once staleness becomes compara-ble to the residual, substantial misalignment becomes likely. This local intuition and the measured slow-drift-then-cliff behavior motivate the calibrated skip-gap constraint. The supplementary material gives the scoped analysis. 
+
+Probe-Free Calibrated Scheduling 
+
+GVCCTurbo separates schedule selection into two codec-level decisions: the strength of each finite-rate correction and the largest protocol-calibrated fraction of the trajectory over which a cached endpoint can be reused. Both quantities are calibrated once for a specified backbone, resolution protocol, and atom-rate model, and are then reused as fixed constants within that setting. At test time the scheduler runs no probe and estimates no per-input statistics; with M = Mperc fixed, it maps a target codebook-payload BPP directly to (T ⋆, p ⋆).
+
+Perceptual atom operating point. The per-step atom count M sets both the strength and the bitrate cost of each correction: under a fixed budget, smaller M buys more cor-rection steps but weakens each projection, and larger M
+
+does the opposite. We select a perceptually stable operat-ing point Mperc from iso-bitrate and iso-compute sweeps with LPIPS as the primary criterion; the sweep for our Wan-GVCC instantiation is reported in the experiments, and other backbones or atom coders calibrate their own value. 
+
+Skip-gap calibration constant. Endpoint staleness is the central approximation introduced by reuse. Because it is not available to the decoder without an additional prior evalua-tion, we use the skipped interval relative to the full control-lable trajectory as a protocol-level proxy and calibrate a fixed, input-independent skip-gap ratio τgap from a fixed-(T, M )
+
+cliff sweep. For a trajectory length T , a refresh period p skips 
+
+p − 1 consecutive prior evaluations, so we take the largest period whose skipped fraction (p − 1) /T stays within τgap :
+
+p⋆ = ⌊τgap T ⌋ + 1 . (10) The cliff sweep that fixes τgap for our instantiation is reported in the ablations; the scheduler then uses Mperc and τgap to allocate bitrate and compute, as described next. 
+
+Rate–Compute Allocation 
+
+After Mperc and τgap are calibrated once for a protocol, GVC-CTurbo maps a target codebook-payload BPP B to (T ⋆, p ⋆)
+
+and returns the shared schedule (T ⋆, p ⋆, M perc ).Let P = F HW denote the number of displayed pixels, 
+
+Flat the number of latent temporal slots using codebook cor-rections, and q the deterministic tail length with no transmit-ted codebook bits. For a constant-M schedule and a generic atom-rate model b(M, K ), the codebook-payload BPP is 
+
+BPP cb (T, M ) = Flat Ncode (T ) b(M, K )
+
+P , (11) where Ncode (T ) = T − q. Equation (11) counts atom iden-tities and signs, but excludes container headers and non-codebook side information. For a protocol with side infor-mation, all terms normalized over the same displayed-pixel support, 
+
+BPP tot = BPP side + BPP cb .
+
+Thus B in the scheduler denotes the target codebook-payload BPP, not the total codec BPP. Once a possibly content-dependent side rate is known, an external total-rate allocator could set the available codebook budget to 
+
+max {0, BPP tot ,target − BPP side }; such content-dependent total-rate allocation is not used or claimed in our controlled scheduler experiments, which specify the codebook-payload budget directly. For FLF2V, boundary-frame bits are in-cluded separately when reporting total BPP over unique frames. For the signed-index rate model used in Wan-GVCC video, bvid (M, K ) = M (⌈log 2 K⌉ + 1) . For the supple-mental Turbo-DDCM image transfer, atom identities are coded as an unordered subset with signs, so bimg (M, K ) = 
+
+⌈log 2
+
+ KM
+
+⌉ + M . The codebook-rate allocation below is un-changed after substituting the backbone-specific atom-rate model. With M = Mperc fixed, the target codebook-payload BPP determines the maximum number of codebook-controlled steps: 
+
+N ⋆ 
+
+> code
+
+=
+
+ B P Flat b(Mperc , K )
+
+
+
+(12) This gives as many whole correction steps as the cap allows at the calibrated strength; T ⋆ = N ⋆ 
+
+> code
+
++ q, and any residual budget below one correction-step quantum remains unused. The refresh period is chosen from the fixed skip-gap rule in Eq. (10). The resulting number of prior evaluations is 
+
+N ⋆ 
+
+> FE
+
+=
+
+ N ⋆
+
+> code
+
+p⋆
+
+
+
++ q, (13) where the two terms count refreshes during codebook-controlled steps and deterministic tail evaluations. The tail length q counts deterministic DDIM steps with no codebook bits ( q = 3 video, q = 1 image) and enters as a constant offset in T and NFE , independent of the bitrate allocation. Compute is thus an output of the BPP-to-schedule rule; an ex-plicit budget acts only as a feasibility constraint N ⋆ 
+
+> FE
+
+≤ BFE .Algorithm 1 in the supplementary material summarizes the procedure. The strict ultra-low profile sets B = B0, where B0 is the no-skip codebook-payload anchor. Small-slack profiles use 
+
+B ≤ (1 + η)B0 and report B/B 0. Wider BPP sweeps are used only for diagnostics and rate–compute–quality analysis. 
+
+## Experiments 
+
+We organize the evaluation around three claims: native 1080p codec performance, controlled scheduler behavior, and inter-face diagnostics across backbones and codec families. 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0 BPP (×10 3)                                                                          
+
+> 0.100 0.125 0.150 0.175 0.200 0.225 0.250 0.275 0.300 LPIPS
+> HEVC-B
+> 246810 12 14 16 BPP (×10 3)
+> 0.100 0.125 0.150 0.175 0.200 0.225 0.250 LPIPS
+> UVG
+> 246810 12 14 16 18 BPP (×10 3)
+> 0.075 0.100 0.125 0.150 0.175 0.200 0.225 0.250 LPIPS
+> MCL-JCV
+> 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0 BPP (×10 3)
+> 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 DISTS
+> 246810 12 14 16 BPP (×10 3)
+> 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 DISTS
+> 246810 12 14 16 18 BPP (×10 3)
+> 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 DISTS
+> 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0 BPP (×10 3)
+> 24 26 28 30 32 34 36 PSNR
+> 246810 12 14 16 BPP (×10 3)
+> 28 30 32 34 36 38 PSNR
+> 246810 12 14 16 18 BPP (×10 3)
+> 28 30 32 34 36 PSNR
+> DCVC-RT DCVC-FM GLC-video VTM-17.0 HM-16.25 ECM-5.0 GVC1D GVCCTurbo (Ours)
+
+Figure 3: Native 1080p rate–distortion comparison on HEVC-B, UVG, and MCL-JCV benchmarks under the same metrics and evaluation protocol. BPP is the protocol-total rate. 
+
+Experimental Protocol 
+
+For the native 1080p comparison we use UVG (Mercat, Viita-nen, and Vanne 2020), HEVC Class B, and MCL-JCV (Wang et al. 2016) with 33-frame GOPs; these system-level points use the FLF2V-14B GVCC backbone with predictive skip and multi-resolution refinement, positioning the complete codec and reporting protocol-total BPP, including boundary-frame bits. For isolation, a controlled 720p study runs Wan-T2V-1.3B (Wan Team 2025) under matched settings, re-porting no-skip, pure-skip, and BPP-aware schedules from the same (T, p, M ) design family with codebook-payload BPP, NFE , LPIPS (Zhang et al. 2018), PSNR (DISTS (Ding et al. 2022) additionally for the native curves), and decoder-only wall-clock reductions. Full protocol details—sequence counts, matched preprocessing and codebook construction, and hardware—are in the supplementary material. 
+
+Native 1080p Rate–Distortion Curves 
+
+Fig. 3 provides the native 1080p comparison. Across the three datasets, GVCCTurbo operates at the extreme low-bitrate end of the curves and obtains low LPIPS and DISTS relative to traditional and learned codecs such as HEVC/VVC (Sullivan et al. 2012; Bross et al. 2021) and the DCVC family (Li, Li, and Lu 2024; Jia et al. 2025). The most competitive baseline is the trained generative codec GVC1D (Zheng et al. 2026), whose tokenizer, transform, and entropy model are opti-mized specifically for compression. GVCCTurbo requires no codec-specific training and reaches higher PSNR at compa-rable ultra-low rates, indicating stronger fidelity even where LPIPS favors the trained perceptual-token route. This figure is an R–D comparison under a unified metric protocol, not a decoding-complexity-matched comparison with real-time codecs. A qualitative 1080p comparison depicted in Fig. 4 illus-trates this behavior: GVCCTurbo preserves the legibility of fine text on the storefront sign and retains coherent facial structure in the cropped region, whereas DCVC-RT over-smooths both regions and GLC-Video introduces visible structural distortion in the text. Table 1: Ultra-low schedules for Wan-T2V-1.3B at 720p. Here B/B 0 is the codebook-payload BPP ratio. Results are reported as mean ± standard deviation, with subscripts indi-cating NFE .                                                              
+
+> Configuration B/B 0UVG HEVC-B MCL-JCV
+> LPIPS ↓(Primary) No-skip 20 1.000 0.125 ±0.056 0.155 ±0.052 0.169 ±0.081
+> Pure-skip 91.000 0.128 ±0.056 0.168 ±0.059 0.172 ±0.084
+> GVCCTurbo 90.971 0.125 ±0.056 0.169 ±0.063 0.170 ±0.086
+> ∆LPIPS −0.001 +0 .014 +0 .002
+> PSNR ↑(Secondary) No-skip 20 1.000 28 .22 ±2.53 25 .11 ±1.68 26 .26 ±5.77
+> Pure-skip 91.000 28 .04 ±2.51 24 .93 ±1.74 26 .18 ±5.72
+> GVCCTurbo 90.971 28 .26 ±2.51 25 .11 ±1.74 26 .38 ±5.78
+> Decoder-time Reduction (vs. No-skip; shared) Pure-skip 91.000 44% 44% 44% GVCCTurbo 90.971 44% 44% 44%
+
+Controlled Scheduler Study at 720p 
+
+The controlled study isolates the scheduler under a fixed codec. The no-skip anchor (20 , 1, 64) defines the reference codebook-payload bitrate and quality; pure-skip (20 , 3, 64) 
+
+is the refresh-thinning boundary that keeps T and M fixed while changing p; GVCCTurbo (25 , 4, 48) is the BPP-aware interior allocation, reaching the same NFE = 9 with more correction steps at the protocol-calibrated atom count. That pure-skip alone already recovers the full 20 → 9 saving is itself evidence of the separation: the bitstream needs correc-tion density, not prior-evaluation density. Table 1 reports the main controlled evidence. Both accel-erated schedules cut prior evaluations from 20 to 9 and share the same ∼ 44% decoding-time reduction; the allocated point is marginally slower in absolute time because its five extra correction steps carry a per-step cost independent of M (sup-plementary material). Against no-skip, HEVC-B LPIPS rises similarly for both ( +0 .013 pure-skip, +0 .014 allocated), in-dicating sensitivity to refresh reduction on harder motion rather than an allocation penalty. At matched NFE = 9 , the BPP-aware point spends 2.9% fewer codebook-payload bits on more correction slots at the calibrated atom count; relative to pure-skip its LPIPS changes are −0.003 /+0 .001 /−0.002 
+
+and its PSNR is higher on all three datasets. We read these as quality-comparable rate flexibility within the family, not per-ceptual superiority: the measured reductions substantiate the shared saving rather than ranking the two points. The paired sequence-level mean is ∆LPIPS = −0.0018 (p = 0 .046 ,
+
+n = 42 ); it characterizes the change but is not used to claim a visible advantage. 
+
+Schedule-Family Diagnostic 
+
+Table 2 diagnoses the schedule family at fixed compute, 
+
+NFE = 9 , and near-fixed bitrate (all rows within 3% of B0,most within 1% ). Small atom counts spread weaker correc-tions over long trajectories, while M = 64 recovers the pure-skip boundary. The literal truncation corner ( p = 1 ) would force a short T = 9 trajectory with only six coarse correction Table 2: One-time atom-count calibration at fixed NFE = 9 
+
+and near-B0 codebook-payload bitrate.                                      
+
+> M(T, p )Ncode LPIPS ↓PSNR ↑Role 12 (93,16) 90 0.198 28.34 Weak Atoms 18 (63,10) 60 0.195 28.28 Weak Atoms 27 (43,7) 40 0.173 28.27 Over-long 40 (30,5) 27 0.160 27.99 Near Optimum 48 (25,4) 22 0.156 27.96 Selected 64 (20,3) 17 0.159 27.62 Pure-skip
+
+slots, so it is a structural boundary, not a measured row. End-point caching expands the feasible space: pure-skip keeps seventeen correction slots, and the allocated schedule keeps twenty-two by using the protocol-calibrated Mperc = 48 .Because the one-GOP LPIPS separation is small, the table is used to select Mperc and illustrate schedule freedom, not to rank family members; the skip-gap sweep and the calcu-lator’s behavior across bitrate targets appear in the ablations and supplementary material. 
+
+Cross-Backbone Transfer 
+
+The FLF2V-14B GVCC backbone tests whether the same scheduling interface transfers to a stronger, boundary-conditioned model, whose bitrate splits into a scheduled codebook component and a boundary-frame component computed over unique frames. As shown in Fig. 5, on this 14B backbone the same inter-face reduces NFE from 20 to 9 while matching the no-skip anchor in LPIPS and PSNR at 720p. Because boundary-frame bits dominate, codebook savings barely change total BPP; this experiment therefore tests cross-backbone NFE scheduling, not BPP gain. The supplementary material in-cludes the matched pure-skip endpoint. Turbo-DDCM with SD-2.1 provides a second-codec interface check: pure-skip gives LPIPS 0.099 at 1.000 B0 and NFE = 16 , whereas the BPP-aware point gives 0.096 at 0.991 B0 and NFE = 15 .We do not treat this small difference as a powered quality or speed claim; in the small image latent, NFE no longer tracks wall-clock time (supplementary material). 
+
+## Ablation Study 
+
+The ablations characterize three parts of the scheduler: (i) how the (T, p, M ) family expands sampler-length control, (ii) how the calibrated constants are chosen, and (iii) why the cached quantity is the clean endpoint. 
+
+Calibrated Allocation over the Schedule Family. Table 2 sweeps the iso-NFE design family over M . The LPIPS curve is not monotone, and the stable operating region appears near 
+
+M = 48 , placing refresh thinning as one boundary of a larger BPP-planning space. This one-time sweep fixes Mperc ; at run time, GVCCTurbo holds M = Mperc , allocates Ncode from the target codebook-payload BPP, and makes the induced 
+
+NFE explicit. 
+
+Fixed Skip-Gap Rather than Per-Input Probing. Table 3 calibrates the second constant, τgap , using a fixed-(T, M )Figure 4: Qualitative 1080p comparison with representative existing methods. No-skip           
+
+> NFE = 20 GVCCTurbo
+> NFE = 9
+> 00.004 0.008 0.012
+> Bits per Pixel
+> 0.00493 0.00478 0.00819 0.00819 0.01312 0.01297
+> BPP cb BPP bd BPP tot BPP cb BPP bd BPP tot
+> 0.097 0.091 31.37 31.49
+> LPIPS PSNR
+
+Figure 5: Cross-backbone transfer to FLF2V-14B on UVG. stress probe. A conservative period p = 4 uses more prior evaluations, while p = 7 reaches NFE = 9 with a skipped fraction of 14 .0% . Increasing the period beyond the measured band degrades quality: LPIPS reaches 0.304 at p = 9 , and the reconstruction collapses at p = 15 . Textured and smooth di-agnostics, together with five held-out clips and a multi-GOP variance check in the supplement, show a compatible stabil-ity region within the calibrated Wan-GVCC 720p protocol. This supports the protocol-fixed choice τgap ≈ 0.15 , used by all controlled experiments, without implying invariance across resolutions or GOP settings. Because LPIPS already drifts from 0.244 (p=4 ) to 0.273 (p=7 ), τgap marks a stabil-ity bound, not a no-degradation region. 
+
+Endpoint Caching compared with Velocity Caching. 
+
+GVCCTurbo caches the clean endpoint prediction ˆx0 rather than the instantaneous velocity. A frozen velocity cannot adapt to the updated state after subsequent prior drift and codebook innovations, whereas an endpoint cache allows the local velocity to be recomputed from the current state through Eq. (9). A controlled comparison with this simple frozen-velocity baseline confirms the advantage of endpoint caching. At the same Mperc = 48 operating point ( NFE = 9 ,one-GOP diagnostic) with bit-exact-identical codebook and seed, frozen-velocity reuse degrades LPIPS from 0.156 to Table 3: Skip-gap ablation at fixed T = 43 and M = 27 on a two-sequence stress subset. 
+
+p gap/ T NFE LPIPS ↓ PSNR ↑
+
+4 7.0% 13 0.244 26.16 7 14.0% 9 0.273 26.09 9 18.6% 8 0.304 25.80 15 32.6% 6 0.565 23.27 
+
+0.257 (+65% , worse on all seven sequences) and PSNR from 
+
+27 .96 to 25 .42 dB at the same NFE and bitrate; per-sequence values are reported in the supplementary material. Higher-order extrapolators could in principle reduce cache staleness further, but would introduce additional state and scheduling choices beyond the present fixed-schedule interface. 
+
+## Conclusion 
+
+GVCCTurbo separates prior evaluations from finite-rate cor-rections and schedules them through a shared endpoint-cache interface without changing the pretrained prior, codebook, or deterministic replay. In the controlled 720p study, prior evaluations fall from 20 to 9, and decoding time falls by 
+
+∼ 44% ; within this accelerated family, the BPP-aware point uses 2.9% fewer codebook-payload bits at comparable qual-ity. The current constants are calibrated per protocol and are not shown resolution- or GOP-invariant; temporal met-rics are not measured, and NFE tracks wall-clock only when prior evaluations dominate. Reported timings are decoder-only and do not imply parity with trained real-time codecs. Because the interface is training-free and backbone-agnostic, future few-step distilled priors can be tested by replacing the prior and recalibrating the schedule. 
+
+## References 
+
+Bross, B.; Wang, Y.-K.; Ye, Y.; Liu, S.; Chen, J.; Sullivan, G. J.; and Ohm, J.-R. 2021. Overview of the Versatile Video Coding (VVC) Standard and its Applications. IEEE Transac-tions on Circuits and Systems for Video Technology , 31(10): 3736–3764. Bu, J.; Ling, P.; Zhou, Y.; Wang, Y.; Zang, Y.; Wu, T.; Lin, D.; and Wang, J. 2026. DiCache: Let Diffusion Model Determine Its Own Cache. In International Conference on Learning Representations (ICLR) . ArXiv:2508.17356. Cui, B.; Wang, Y.; and Xu, H. 2026. Denoising as Path Planning: Training-Free Acceleration of Diffusion Models with DPCache. arXiv preprint arXiv:2602.22654 .Ding, D.; Li, D.; Chen, Y.; Gao, Y.; Dong, R.; Li, K.; and Li, L. 2026. Controllable Generative Video Compression. 
+
+arXiv preprint arXiv:2604.06655 .Ding, K.; Ma, K.; Wang, S.; and Simoncelli, E. P. 2022. Image Quality Assessment: Unifying Structure and Texture Similarity. IEEE Transactions on Pattern Analysis and Ma-chine Intelligence , 44(5): 2567–2581. Elata, N.; Michaeli, T.; and Elad, M. 2024. Zero-Shot Im-age Compression with Diffusion-Based Posterior Sampling. 
+
+arXiv preprint arXiv:2407.09896 .Fan, Z.; Wang, Z.; and Zhang, W. 2025. TaoCache: Structure-Maintained Video Generation Acceleration. arXiv preprint arXiv:2508.08978 .Guo, Z.; Jia, Z.; Li, J.; Zhang, X.; Li, B.; and Lu, Y. 2025. Generative Latent Video Compression. arXiv preprint arXiv:2510.09987 .Ho, J.; Jain, A.; and Abbeel, P. 2020. Denoising Diffusion Probabilistic Models. In Advances in Neural Information Processing Systems .Jia, Z.; Li, B.; Li, J.; Xie, W.; Qi, L.; Li, H.; and Lu, Y. 2025. Towards Practical Real-Time Neural Video Compres-sion. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . DCVC-RT; arXiv:2502.20762. Li, D.; Dong, R.; Chen, Y.; Li, K.; Ding, D.; and Li, L. 2026. ProGVC: Progressive-based Generative Video Com-pression via Auto-Regressive Context Modeling. arXiv preprint arXiv:2603.17546 .Li, J.; Li, B.; and Lu, Y. 2024. Neural Video Compression with Feature Modulation. In IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) . DCVC-FM. Ling, X.; Zhou, C.; Li, C.; Chen, Y.; Tian, Y.; Lu, G.; and Zhang, W. 2026. Free-GVC: Towards Training-Free Extreme Generative Video Compression with Temporal Coherence. 
+
+arXiv preprint arXiv:2602.09868 .Liu, F.; Zhang, S.; Wang, X.; Wei, Y.; Qiu, H.; Zhao, Y.; Zhang, Y.; Ye, Q.; and Wan, F. 2025. Timestep Embed-ding Tells: It’s Time to Cache for Video Diffusion Model. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . TeaCache; arXiv:2411.19108. Liu, X.; Gong, C.; and Liu, Q. 2023. Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow. In International Conference on Learning Representations (ICLR) . ArXiv:2209.03003. Luo, S.; Tan, Y.; Huang, L.; Li, J.; and Zhao, H. 2023. Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference. ArXiv:2310.04378. Ma, X.; Fang, G.; and Wang, X. 2024. DeepCache: Acceler-ating Diffusion Models for Free. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .Ma, Z.; Wei, L.; Wang, F.; Zhang, S.; and Tian, Q. 2025. MagCache: Fast Video Generation with Magnitude-Aware Cache. In Advances in Neural Information Processing Sys-tems . ArXiv:2506.09045. Mao, Q.; Cheng, H.; Yang, T.; Jin, L.; and Ma, S. 2026. Generative Neural Video Compression via Video Diffusion Prior. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . ArXiv:2512.05016. Mentzer, F.; Toderici, G.; Tschannen, M.; and Agustsson, E. 2020. High-Fidelity Generative Image Compression. In 
+
+Advances in Neural Information Processing Systems .Mercat, A.; Viitanen, M.; and Vanne, J. 2020. UVG Dataset: 50/120fps 4K Sequences for Video Codec Analysis and De-velopment. In ACM Multimedia Systems Conference .Ohayon, G.; Manor, H.; Michaeli, T.; and Elad, M. 2025. Compressed Image Generation with Denoising Diffusion Codebook Models. In International Conference on Machine Learning (ICML) . ArXiv:2502.01189. Qi, L.; Jia, Z.; Li, J.; Li, B.; Li, H.; and Lu, Y. 2025. Gener-ative Latent Coding for Ultra-Low Bitrate Image and Video Compression. arXiv preprint arXiv:2505.16177 .Salimans, T.; and Ho, J. 2022. Progressive Distillation for Fast Sampling of Diffusion Models. In International Con-ference on Learning Representations (ICLR) .Song, Y.; Dhariwal, P.; Chen, M.; and Sutskever, I. 2023. Consistency Models. In International Conference on Ma-chine Learning (ICML) .Song, Y.; Sohl-Dickstein, J.; Kingma, D. P.; Kumar, A.; Er-mon, S.; and Poole, B. 2021. Score-Based Generative Mod-eling through Stochastic Differential Equations. In Inter-national Conference on Learning Representations (ICLR) .ArXiv:2011.13456. Su, X.; and Kasai, H. 2025. Noise is All You Need: Solving Linear Inverse Problems by Noise Combination Sampling with Diffusion Models. arXiv preprint arXiv:2510.23633 .Sullivan, G. J.; Ohm, J.-R.; Han, W.-J.; and Wiegand, T. 2012. Overview of the High Efficiency Video Coding (HEVC) Standard. IEEE Transactions on Circuits and Systems for Video Technology , 22(12): 1649–1668. Theis, L.; Salimans, T.; Hoffman, M. D.; and Mentzer, F. 2022. Lossy Compression with Gaussian Diffusion. arXiv preprint arXiv:2206.08889 .Vaisman, A.; Ohayon, G.; Manor, H.; Elad, M.; and Michaeli, T. 2026. Turbo-DDCM: Fast and Flexible Zero-Shot Diffusion-Based Image Compression. In Interna-tional Conference on Learning Representations (ICLR) .ArXiv:2511.06424. Vonderfecht, J.; and Liu, F. 2025. Lossy Compression with Pretrained Diffusion Models. In International Conference on Learning Representations .Wan, R.; Zheng, Q.; and Fan, Y. 2025. M3-CVC: Control-lable Video Compression with Multimodal Generative Mod-els. In IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . ArXiv:2411.15798. Wan Team. 2025. Wan: Open and Advanced Large-Scale Video Generative Models. arXiv preprint arXiv:2503.20314 .Wang, H.; Gan, W.; Hu, S.; Lin, J. Y.; Jin, L.; Song, L.; Wang, P.; Katsavounidis, I.; Aaron, A.; and Kuo, C.-C. J. 2016. MCL-JCV: A JND-based H.264/AVC Video Quality Assessment Dataset. In IEEE International Conference on Image Processing (ICIP) .Wang, L.; Su, G.-M.; Kothandaraman, D.; Huang, T.-W.; Hajiesmaili, M.; and Sitaraman, R. K. 2025. Low-Bitrate Video Compression through Semantic-Conditioned Diffu-sion. arXiv preprint arXiv:2512.00408 . DiSCo. Wang, Z.; Man, H.; Li, W.; Wang, X.; Fan, X.; and Zhao, D. 2026. T-GVC: Trajectory-Guided Generative Video Coding at Ultra-Low Bitrates. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 40, 10430–10438. ArXiv:2507.07633. Xie, E.; Chen, J.; Chen, J.; Cai, H.; Tang, H.; Lin, Y.; Zhang, Z.; Li, M.; Zhu, L.; Lu, Y.; and Han, S. 2024. SANA: Efficient High-Resolution Image Synthesis with Linear Dif-fusion Transformer. ArXiv:2410.10629. Yang, R.; and Mandt, S. 2023. Lossy Image Compression with Conditional Diffusion Models. In Advances in Neural Information Processing Systems .Yang, Y.; and Mandt, S. 2026. Advances in Diffusion-Based Generative Compression. arXiv preprint arXiv:2601.18932 .Zeng, Z.; Su, X.; Liu, H.; Lu, B.; Tatsumi, Y.; and Watan-abe, H. 2026. GVCC: Zero-Shot Video Compression via Codebook-Driven Stochastic Rectified Flow. arXiv preprint arXiv:2603.26571 .Zhang, R.; Isola, P.; Efros, A. A.; Shechtman, E.; and Wang, O. 2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .Zheng, Z.; Jia, Z.; Xue, N.; Li, J.; Li, B.; Guo, Z.; Zhang, X.; Chen, Z.; Li, H.; and Lu, Y. 2026. Generative Video Compression with One-Dimensional Latent Representation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . ArXiv:2603.15302. A Experiment Setup 
+
+Implementation details. Unless otherwise specified, we use codebook size K = 16384 , base atom count M0 = 64 ,base trajectory length T0 = 20 , deterministic tail length 
+
+q = 3 , SDE diffusion coefficient gscale = 3 .0, classifier-free guidance scale 1.0, timestep shift 5.0, and fixed seed 42 . The native 1080p comparison uses UVG (7 sequences), HEVC Class B (5 sequences), and the full MCL-JCV set (30 se-quences); the controlled 720p study shares matched prepro-cessing, GOP partitioning, codebook construction, and back-bone settings. Prior-evaluation counts fall symmetrically at the encoder and decoder; the wall-clock reductions reported in the main paper are decoder-only. Each 720p sequence uses GOP length 33 and latent shape 16 × 9 × 90 × 160 , with the number of GOPs per sequence adjusted to scene changes; per-dataset scores are sequence-equal-weighted means. Code-book bitrate is counted as M (⌈log 2 K⌉ + 1) bits per latent slot. Experiments run on Ubuntu 24.04 with PyTorch 2.10 (video) and PyTorch 2.11 (image transfer) under CUDA 12.8; timings are measured on a single NVIDIA RTX PRO 6000 (96 GB) under identical precision and batch settings. Both the native 1080p rate–distortion curves and the 720p controlled study use the full MCL-JCV dataset (videoSRC01–30). 
+
+Metrics. BPP is computed as Btotal /(F HW ), where 
+
+Btotal is the sum of the bitrate components reported by the relevant protocol. The controlled Wan-GVCC and Turbo-DDCM scheduler studies count the scheduled codebook pay-load; FLF2V additionally includes boundary-frame bits over unique frames. Container headers are excluded. PSNR is computed from RGB MSE after mapping pixels to [0 , 1] , and LPIPS uses the AlexNet backbone with inputs mapped to 
+
+[−1, 1] .
+
+## B Mechanistic Intuition for Thinning Prior Refreshes 
+
+The main paper reports that the schedule removes roughly half of the prior evaluations at small perceptual cost, and calibrates the stability region empirically through τgap . This appendix gives the interface-level reasons for that robust-ness. The arguments use the endpoint/noise identity under the appropriate path convention and the codebook projection shared by the GVCC and DDCM instances. The rectified-flow derivation is given first, followed by its DDPM coun-terpart. Notation follows the main paper: x0 is the target latent, Dk(xk) = ˆ x0|tk the clean-endpoint prediction at step 
+
+k, rk = x0 − Dk(xk) the residual, as(k) the cached endpoint from the most recent refresh step, and z⋆k the transmitted signed-atom innovation. 
+
+B.1 Prior Evaluations Add No New Transmitted Bits 
+
+A prior evaluation Dk(xk) is a deterministic function of the decoder state and the shared weights, so the decoder com-putes it without receiving new bits. Because the state already contains past target-dependent corrections, however, the eval-uation need not be statistically independent of the target. Within the scheduled codebook channel, newly communi-cated target-dependent symbols enter through the finite-rate corrections: Ncode selections of M signed atoms. Removing evaluations while retaining the correction count and atom count therefore preserves the number of correction slots and their nominal capacity, but it does not leave the bitstream content unchanged: the cached residual can select different indices and signs. Evaluations and corrections remain asym-metric resources because the former refine the anchor with-out new transmitted symbols, whereas the latter spend the scheduled codebook payload. 
+
+B.2 The Residual Is Mis-Attributed Noise 
+
+Why does projecting the endpoint residual into the sampler’s 
+
+stochastic slot steer the trajectory at all? Under the linear path xt = (1 − t)x0 + tϵ , the same state xk admits two decompositions: one with the true pair (x0, ϵ true ) and one with the model’s estimate ˆx0|tk and the noise ˆϵk it implicitly attributes, xk = (1 − tk)ˆ x0|tk + tk ˆϵk. Subtracting the two gives 
+
+ϵtrue − ˆϵk = − 1 − tk
+
+tk
+
+rk. (14) An endpoint error is thus identically a noise-attribution er-ror, up to a scalar factor. The exact missing innovation con-tains both direction and magnitude. The codec imposes a fixed-scale channel design: it transmits a finite-rate quan-tization of the direction, while the admissible correction scale is prescribed by the sampler. Normalization matches that prescribed scale and avoids a gross scale mismatch with the prior’s expected state distribution. It does not im-ply an unconditional Gaussian sample, because the Top-M
+
+atoms and their signs are selected conditionally on the tar-get residual. The identity is not specific to rectified flow: for the DDPM path xt = √¯αt x0 + √1 − ¯αt ϵ underly-ing DDCM, the same two-decomposition subtraction gives 
+
+ϵ−ˆϵk = −p¯αt/(1 − ¯αt) rk. The endpoint residual is there-fore the mis-attributed innovation in both families, up to a path-specific scalar, which is what qualifies it as the com-mon quantity of the unified interface in the main paper. This channel view originates with DiffC (Theis et al. 2022; Von-derfecht and Liu 2025), which transmits an approximate pos-terior sample of the per-step innovation by reverse channel coding at substantial computational cost; the codebook pro-jection can be read as a fixed-rate, shared-seed quantization of the corresponding missing-innovation direction. 
+
+B.3 Exact Drift under a Held Endpoint 
+
+Endpoint caching replaces Dk(xk) by a held prediction a
+
+and the induced velocity euk = ( xk − a)/t k. In isolation, the resulting drift component x′(t) = ( x − a)/t satisfies 
+
+ddt 
+
+ x − at
+
+
+
+= x′(t) t − (x − a)
+
+t2 = 0 , (15) so (x−a)/t is invariant and the state moves along the straight segment toward the cached endpoint. Sub-steps that recom-pute euk from the current state reproduce the exact solution of this held-endpoint component. The full sampler also contains stochastic, score, or correction terms. Although these use the same numerical scheme, their values inherit the cached-endpoint approximation, so the exactness above does not extend to the full stochastic update. Endpoint staleness— the gap between as(k) and what Dk(xk) would have returned—is the central approximation introduced by reuse. Each stochas-tic correction still has its own prescribed step scale and fresh codebook draw, which motivates thinning NFE while keep-ing Ncode dense. 
+
+B.4 Staleness Explains the Empirical Cliff 
+
+Between refreshes the encoder measures the frozen resid-ual erk = x0 − as(k), whereas the true residual is rk =
+
+x0 −Dk(xk). Their gap is the staleness ek = Dk(xk)−as(k),giving erk = rk + ek. While ∥ek∥ ≪ ∥ erk∥, a continuous normalized-direction approximation gives an angular loss of order O(∥ek∥2/∥erk∥2). This is local intuition rather than a guarantee: discrete Top-M selections can change discontinu-ously even under a small perturbation. As the skipped interval grows and the two norms become comparable, substantial misalignment becomes likely. This predicts a gentle local regime followed by a sharper degradation and is consistent with the measured slow-drift-then-cliff shape used to cali-brate τgap ; its numerical value remains protocol-calibrated. The same accounting also explains why holding the endpoint can outperform freezing the velocity (main-paper ablation): a frozen velocity cannot adapt to the updated state, whereas an endpoint cache allows the local velocity to be recomputed from the current state. 
+
+B.5 Why Dense Corrections Need Not Be Redundant 
+
+Within a skip window, all corrections target the same frozen 
+
+er, and each step draws a fresh shared-seed codebook. The selected innovations are conditioned on the same residual, so they are neither independent nor unconditional Gaussian samples. Nevertheless, fresh draws make exact repetition unlikely and vary the orthogonal quantization components, providing an intuition for why dense corrections need not collapse into duplicates. A simple high-dimensional order-statistic approximation places the top-M threshold among 
+
+K atoms at order p2 log( K/M ). Comparing the coherently accumulated component along er with the incoherent orthog-onal component then gives the rough alignment scale 
+
+cos  z⋆, er ≈
+
+r 2M log( K/M )
+
+D . (16) Equation (16) is an order approximation that neglects se-lection dependencies, normalization details, and closed-loop dynamics. Under the signed-index video rate model, the di-rectional gain grows sublinearly with M while bit cost grows linearly; other atom coders use their own b(M, K ). This of-fers intuition for an interior operating point but neither proves complementarity nor ranks schedules. The actual Mperc is therefore calibrated empirically. 
+
+## C Toward Distilled Priors: An Implication and a Preliminary Observation 
+
+A potential implication of decoupling the correction count 
+
+Ncode from the prior-evaluation count NFE is that a dense correction grid can coexist with few prior evaluations. This appendix explains why tying the two is restrictive for a few-step prior and reports a preliminary observation. It motivates future study rather than establishing a distilled-prior gain or a universal necessity. 
+
+Why tying is restrictive for a distilled prior. A distilled prior is trained to be accurate within a small native prior-evaluation budget BFE (few-step sampling). In a codec that ties one correction to every prior evaluation—the setting of GVCC and Turbo-DDCM before this work—a distilled prior faces a tradeoff. To keep a dense correction grid it must be evaluated many times, which pushes it far outside its few-step training regime and lets the endpoint prediction drift, so reconstruction degrades. To instead stay near its native regime it must use few evaluations, which under tying also means few corrections, limiting the target-dependent sym-bols available through the scheduled codebook channel (Ap-pendix B). Endpoint-cached refresh relaxes this coupling: it evaluates the prior only BFE times—keeping it inside its native regime—while still applying a correction at every tra-jectory step, so the correction grid stays dense. The interface therefore suggests that decoupling may recover some of the quality that tying forfeits when the prior is distilled. 
+
+Preliminary observation. A two-sequence single-GOP diagnostic on a step-distilled backbone is consistent with this prediction. Applying the distilled prior in the tied regime— one correction per evaluation along a long trajectory— produces markedly degraded reconstructions, as the prior is driven well outside its few-step operating point. Endpoint-cached refresh, which invokes the distilled prior only at sparse refresh steps while preserving the dense correction grid, recovers a large fraction of this loss at a fraction of the prior evaluations. We report this as a qualitative phenomenon rather than a measured claim: the diagnostic is small, uses constants that would be recalibrated for a distilled backbone, and— crucially—the recovery mitigates the tying-induced collapse rather than matching full-prior quality, which re-mains a separate property of the distilled backbone and car-ries its own distillation penalty. 
+
+Outlook. The observation suggests that the decoupling in-troduced here may make it easier to use distilled priors in-side a codebook-driven codec, and it turns the distillation– inheritance argument into a concrete test: a controlled tied-versus-decoupled comparison at matched NFE , across dis-tilled backbones and step budgets, with the two calibrated constants re-measured per backbone. Such a study would de-termine whether decoupling materially helps once each back-bone is recalibrated; failure to recover quality would limit the practical value of the interface in that setting. We leave this full study to future work, as it depends on the availability of distilled video priors that accept codebook steering. D Scheduler Diagnostics and Supplemental Transfers 
+
+This appendix complements the main-paper ablations, which already report the M -sweep and skip-gap sweep that fix 
+
+Mperc ≈ 48 and τgap ≈ 0.15 . Here we give the sched-uler pseudocode, the full calculator schedules (Table 6) and rate–distortion curve across bitrate targets (Table 7), and the cross-backbone and cross-codec transfer diagnostics. These diagnostics focus on the BPP-to-schedule interface itself: the codec backbone and decoder replay remain fixed, while the one-time protocol calibration fixes Mperc and the calculator changes (T, p ) under the appropriate atom-rate model and calibrated constants. 
+
+D.1 Scheduler Pseudocode 
+
+Algorithm 1: Rate–Compute Allocation 
+
+Require: Target codebook-payload BPP B; pixel count P ; latent slots Flat ; codebook size K; tail length q; atom-rate model 
+
+b(M, K ); calibrated atom count Mperc ; skip-gap constant τgap .
+
+Ensure: Schedule (T ⋆, p ⋆, M perc ), correction count N ⋆
+
+> code
+
+, and prior-evaluation count N ⋆
+
+> FE
+
+.
+
+Rate allocation: 
+
+1: b⋆ ← b(Mperc , K )
+
+2: N ⋆ 
+
+> code
+
+← ⌊ B P/ (Flat b⋆)⌋
+
+3: T ⋆ ← N ⋆ 
+
+> code
+
++ q
+
+Prior refresh: 
+
+4: p⋆ ← ⌊ τgap T ⋆⌋ + 1 
+
+5: N ⋆ 
+
+> FE
+
+← ⌈ N ⋆
+
+> code
+
+/p ⋆⌉ + q
+
+Schedule construction: 
+
+6: for k = 0 , . . . , N ⋆ 
+
+> code
+
+− 1 do 
+
+7: if k mod p⋆ = 0 then 
+
+8: refresh Dk (xk ) and cache endpoint ak
+
+9: erk ← x0 − ak
+
+10: else 
+
+11: reuse cached endpoint as(k)
+
+12: erk ← x0 − as(k)
+
+13: end if 
+
+14: select and apply z⋆k = Π K,M perc (erk )
+
+15: end for 
+
+16: run q deterministic tail steps 17: return (T ⋆, p ⋆, M perc , N ⋆
+
+> code
+
+, N ⋆
+
+> FE
+
+)
+
+D.2 Held-out Constant Calibration 
+
+As a robustness check, we rerun both sweeps on held-out material disjoint from every benchmark: three stock-market clips, one animation sequence, and one synthetic screen-content clip, spanning natural, animated, and screen domains, one GOP each. As shown in Table 4, the sweeps recover the same operating region: the mean iso-NFE M -sweep is minimized at M = 48 on a broad 40 –64 plateau (LPIPS within 0.002 across the plateau), and the skip-gap curve stays in a gentle-degradation regime ( ≈ +0 .015 LPIPS per step up to 18 .6% ) before collapsing at 32 .6% . Per-clip argmins vary within the plateau—the screen-content clip, whose absolute LPIPS is only 0.048 , prefers small M , while others favor 
+
+48 or 64 —but the cross-domain mean remains at M = 48 ,supporting reuse of the same constants in the reported Wan-GVCC 720p protocol. Table 4: Out-of-distribution held-out calibration on five clips outside all evaluation benchmarks (three stock-market, one animation, one synthetic screen-content; one GOP each). (a) iso-NFE = 9 , iso-B0 M -sweep, mean LPIPS; (b) fixed 
+
+(T, M ) = (43 , 27) p-sweep, mean LPIPS. The mean opti-mum reproduces Mperc ≈ 48 and the τgap ≈ 0.15 cliff. Abso-lute LPIPS is not comparable to the in-distribution schedule-selection and skip-gap tables of the main paper. 
+
+(a) M -sweep (iso-NFE = 9 )
+
+M 12 18 27 40 48 64 LPIPS ↓ 0.173 0.175 0.160 0.157 0.155 0.157 (b) p-sweep (fixed T =43 , M =27 )
+
+p 1 4 7 9 15 gap/ T 0% 7.0% 14.0% 18.6% 32.6% LPIPS ↓ 0.131 0.143 0.160 0.175 0.279 
+
+Multi-GOP variance of the calibration sweeps. The held-out check above varies content ; we additionally vary the 
+
+time segment by re-running both sweeps over three consecu-tive 33-frame GOPs per sequence under the same diagnostic protocol. The M -sweep uses the seven diagnostic sequences (20 sequence–GOP cells; one clip is only two GOPs long), and the skip-gap sweep uses four sequences—the original textured/smooth stress pair plus HoneyBee and videoSRC07 (12 cells). As shown in Table 5, the mean M -sweep is again minimized at M =48 with the 40 –64 plateau within 0.003 
+
+LPIPS, and per-cell argmins concentrate on 40 –48 (15/20 cells; the remainder fall to 27 , never to the weak-atom or pure-skip extremes). The skip-gap curve degrades gently up to an 18 .6% skipped fraction (largest per-cell p=7 → 9 in-crease +0 .031 LPIPS) and collapses at 32 .6% in all 12 cells (smallest collapse jump +0 .058 ), so the cliff location does not drift across sequences or GOPs. The per-cell standard deviations below reflect content difficulty, not instability of the constants. Table 5: Multi-GOP variance of both calibration sweeps 
+
+(three GOPs per sequence, same protocol as the main-paper diagnostics; mean ± std across sequence–GOP cells). (a) iso-NFE = 9 , iso-B0 M -sweep over the seven diagnos-tic sequences (20 cells). (b) fixed (T, M ) = (43 , 27) p-sweep over four sequences (12 cells). The optimum stays at 
+
+Mperc =48 and the skip-gap cliff stays between 18 .6% and 
+
+32 .6% , matching the single-GOP calibration and the held-out check above. 
+
+(a) M -sweep (iso-NFE = 9 ), 20 sequence–GOP cells 
+
+M 12 18 27 40 48 64 mean LPIPS ↓ 0.186 0.183 0.162 0.152 0.149 0.152 std 0.112 0.108 0.091 0.078 0.076 0.075 (b) p-sweep (fixed T =43 , M =27 ), 12 sequence–GOP cells 
+
+p 1 4 7 9 15 gap/ T 0% 7.0% 14.0% 18.6% 32.6% mean LPIPS ↓ 0.138 0.148 0.163 0.177 0.297 std 0.077 0.085 0.096 0.104 0.177 
+
+D.3 Supplemental Codebook-BPP Operating Points 
+
+Robustness beyond the Strict Anchor. Within the same calibrated protocol, the calculator maps additional codebook-payload BPP targets to schedules while holding NFE = 9 .Across UVG, HEVC-B, and MCL-JCV, these settings cut decoding time by 43% –45% , consistent with the ∼ 44% 
+
+reduction at the strict anchor, while improving the rate– distortion point. At 1.191 B0, the three-dataset scores are LPIPS 0.120 /0.160 /0.165 and PSNR 28 .66 /25 .46 /26 .73 ,respectively; the added correction steps carry only a small 
+
+M -independent per-step cost. The scheduler traces a local, protocol-specific frontier, not a universal one. Table 6: Calculator schedules implied by the codebook-payload bitrate cap. M stays at the perceptual near-optimum (Mperc = 48 ); extra bits buy correction steps, and the cal-ibrated skip-gap rule holds NFE near 9. Here gap /T =(p⋆ − 1) /T is the realized skipped fraction, kept just under 
+
+τgap = 0 .15 .
+
+Target (T, p, M ) Ncode BPP cb /B 0gap/ T NFE 
+
+B0 (25,4,48) 22 0.971 12.0% 9
+
+1.2B0 (30,5,48) 27 1.191 13.3% 9
+
+1.3B0 (32,5,48) 29 1.279 12.5% 90.50 0.75 1.00 1.25 1.50 1.75 2.00 BPP / B0 (ultra-low band) 0.05 0.10 0.15 0.20 0.25 0.30 0.35 LPIPS  (AlexNet)                
+
+> NFE 7 NFE 9 NFE 9 NFE 9 NFE 7 NFE 9 NFE 9 NFE 9 NFE 7 NFE 9 NFE 9 NFE 9 NFE 7 NFE 9 NFE 9 NFE 9
+> Perceptual (primary)
+> ShakeNDry Jockey videoSRC04 videoSRC01
+> 0.50 0.75 1.00 1.25 1.50 1.75 2.00 BPP / B0(ultra-low band) 20 25 30 35 PSNR (dB)
+> Fidelity (secondary)
+> ShakeNDry Jockey videoSRC04 videoSRC01
+> BPP-to-compute calculator: rate--distortion--compute curve (compute const, off both cliffs)
+
+Figure 6: Probe-free codebook-payload bitrate curve at 
+
+Mperc =48 on a one-GOP diagnostic subset. Two se-quences spanning textured-hard (ShakeNDry) to smooth (videoSRC01) share the calculator’s schedules at each bitrate target. This figure supplements the fixed-B0, three-dataset controlled study in the main paper. Table 7: Probe-free R-D curve at Mperc =48 (one GOP; cf. Fig. 6). The calculator maps each codebook-payload bitrate target to a schedule; a textured (ShakeNDry) and a smooth (videoSRC01) sequence are shown. Increasing codebook-payload BPP improves LPIPS while NFE stays nearly flat (7–9). The BPP cb /B 0 column lists the target ratio; realized ratios follow Table 6 (e.g., 0.971 at the B0 target). 
+
+Content BPP cb /B 0(T, p, M ) NFE LPIPS PSNR ShakeNDry 0.50 (14,3,48) 7 0.339 23.90 ShakeNDry 1.00 (25,4,48) 9 0.244 25.65 ShakeNDry 1.50 (37,6,48) 9 0.240 26.41 ShakeNDry 2.00 (48,8,48) 9 0.229 26.90 videoSRC01 0.50 (14,3,48) 7 0.096 33.75 videoSRC01 1.00 (25,4,48) 9 0.064 36.11 videoSRC01 1.50 (37,6,48) 9 0.060 36.57 videoSRC01 2.00 (48,8,48) 9 0.059 36.92 
+
+D.4 Endpoint and Transfer Diagnostics 
+
+Table 8 gives the per-sequence endpoint-vs-velocity com-parison summarized in the main-paper ablation. Both arms share the same Mperc = 48 schedule ( NFE = 9 ), codebook, and seed bit-exactly, and differ only in the cached quantity. Caching the velocity degrades LPIPS on all seven sequences (mean 0.156 → 0.257 , +65% ) and PSNR by 2.5 dB, con-firming that the endpoint, not the direction, is the quantity to reuse. Table 8: Endpoint vs. velocity caching (per-sequence, one-GOP). Both arms use the same Mperc = 48 sched-ule ( NFE = 9 ) with bit-exact-identical codebook and seed; GVCCTurbo stores the clean endpoint ˆx0 and recomputes the local direction, whereas the velocity arm is a simple frozen-velocity baseline that reuses uθ (xs, t s). Lower LPIPS is bet-ter.                     
+
+> Sequence Endpoint ˆx0Velocity uθ
+> videoSRC01 0.065 0.174 HoneyBee 0.068 0.118 Jockey 0.099 0.169 YachtRide 0.115 0.178 videoSRC07 0.223 0.352 ShakeNDry 0.244 0.356 videoSRC04 0.274 0.454 Mean 0.156 0.257
+
+Table 9 reports the FLF2V-14B schedule-family diagnos-tic on UVG 720p, where pure-skip is the M =64 refresh-thinning endpoint of the schedule family. Table 9: FLF2V-14B schedule-family diagnostic (UVG 720p). Pure-skip is the M = 64 endpoint of the schedule family.                     
+
+> Method NFE BPP cb BPP bd BPP tot LPIPS PSNR No-skip 20 0.00493 0.00819 0.01312 0.097 31.37 Pure-skip 90.00493 0.00819 0.01312 0.094 31.35 GVCCTurbo 90.00478 0.00819 0.01297 0.091 31.49
+
+Table 10: Rate-allocation and endpoint-cache interface check on Turbo-DDCM image compression. Results are averaged over 5 Kodak images at 512 2 with SD-2.1. All settings use the same no-skip codebook-payload reference bitrate B0 ≈ 0.108 bpp. The image branch uses tail length q =1 (the video branch uses q = 3 ); the NFE column is computed with this q. ∆LPIPS is relative to no-skip. The pure-skip and BPP-aware columns are two points in the same schedule family. This second-codec instance deliberately enters the small-latent regime where per-step correction cost is non-negligible, so it maps the boundary of the NFE compute proxy (see text) rather than restating the video runtime result.                                  
+
+> No-skip ref. Pure-skip GVCCTurbo
+> (T, p, M )(30 ,1,100) (30 ,2,100) (97 ,7,25)
+> NFE 30 16 15
+> BPP cb /B 01.000 1.000 0.991 LPIPS ↓0.090 0.099 0.096
+> ∆LPIPS ↓–+0.009 +0.006 PSNR ↑25.57 25.48 25.50 Dec. red. 0% 38% 25%
+
+For this image diagnostic, substituting the Turbo-DDCM atom-rate model carries over the rate-allocation part of the calculator: with K = 16384 , an M -atom correction costs 
+
+⌈log 2
+
+ KM
+
+⌉ + M bits, replacing the signed-index video cost. We fix the image operating point at M = 25 before eval-uation; the codebook budget then gives Ncode = 96 and 
+
+T = 97 . To place the small-latent diagnostic near the matched compute target NFE = 15 , we set p = 7 . Thus this experiment transfers the rate-allocation and endpoint-cache interfaces, not the Wan-specific τgap calibration rule. It shows that those interfaces can be instantiated with a sec-ond codec and a different atom-rate model without changing the codec training procedure. This instance tests the boundary of the NFE compute proxy. The controlled scheduler study established that a per-step codebook correction carries a real cost independent of the atom count M , so NFE tracks wall-clock only while that per-step cost stays small next to a prior evaluation. The im-age setting deliberately inverts this ratio: in the small SD-2.1 latent a prior evaluation is cheap, and the BPP-aware T = 97 
+
+schedule deliberately buys 67 additional correction steps rel-ative to the pure-skip boundary. It therefore spends one fewer prior evaluation but has a smaller wall-clock reduction ( 25% 
+
+versus 38% over no-skip). The interface and calculator carry over, while compute accounting must move from an NFE 
+
+count to a per-step-aware model once corrections stop being negligible. This matches the main-paper limitation that NFE 
+
+tracks wall-clock only when prior evaluations dominate. 
+
+## E 1080p Comparison 
+
+This appendix gives the extended 1080p comparison refer-enced in the native 1080p discussion. It complements the main three-dataset BPP curves with a tiered tabular com-parison. The table groups codecs by bitrate regime and uses the same UVG benchmark, preprocessing, and PSNR/LPIP-S/BPP metric protocol as the main 1080p comparison. These system-level BPP values are protocol-total rates; the FLF2V values include both codebook and boundary-frame compo-nents. All baselines are open-source implementations evalu-ated under this unified protocol; some recent trained genera-tive codecs report stronger numbers but release neither code nor bitstreams, so they cannot be evaluated under matched preprocessing and metrics and are omitted. The comparison therefore represents the reproducible open-source state of the art rather than every published number. The controlled 720p T2V-1.3B protocol remains the mechanism validation for the probe-free scheduler constants. In the ∼ 0.006 tier of Table 11, GVCCTurbo-FLF2V has lower LPIPS than GVCC-FLF2V ( 0.103 vs. 0.117 ). The learned DCVC codecs reach higher PSNR but have roughly 
+
+2.5× higher LPIPS in this tier. Relative runtime and multi-resolution acceleration details appear in the MR appendix. The representative qualitative comparison is reported in the main paper. 
+
+## F Multi-Resolution GVCC 
+
+The MR branch shares the main experimental setup (Ap-pendix A): Mperc ≈ 48 for the Wan-GVCC 720p setting, with the no-skip anchor (T, p, M ) = (20 , 1, 64) at codebook-payload reference bitrate B0 ≈ 0.00483 bpp. Table 11: Additional comparison on UVG 1080p. Methods are grouped into bitrate tiers and reported with the same PSNR, LPIPS, and BPP columns used in the native 1080p comparison. LPIPS remains the primary perceptual metric in the controlled scheduler protocol. We report only the FLF2V native-resolution GVCCTurbo point, because the updated first/last-frame pipeline is the relevant high-resolution variant; T2V and I2V GVCCTurbo quality rows are intentionally omitted. The GVCCTurbo-FLF2V 1080p point uses the multi-resolution+skip variant described in the MR appendix.                                                                                     
+
+> Tier 1: ∼0.003 bpp Tier 2: ∼0.006 bpp Tier 3: ∼0.05 bpp Method PSNR ↑LPIPS ↓BPP PSNR ↑LPIPS ↓BPP PSNR ↑LPIPS ↓BPP
+> Traditional
+> HEVC (Sullivan et al. 2012) 29.8 0.385 0.003 30.2 0.360 0.006 34.7 0.115 0.050 VVC (Bross et al. 2021) 31.5 0.325 0.003 31.8 0.315 0.006 36.0 0.112 0.050
+> Learned
+> DCVC-FM (Li, Li, and Lu 2024) 34.0 0.286 0.003 34.7 0.265 0.006 37.0 0.110 0.050 DCVC-RT (Jia et al. 2025) 34.1 0.285 0.003 34.6 0.261 0.006 39.7 0.115 0.050
+> Generative (trained)
+> GLC-Video (Qi et al. 2025) 27.5 0.160 0.003 29.5 0.145 0.006 32.0 0.109 0.050 GNVC-VD (Mao et al. 2026) 26.8 0.165 0.003 30.0 0.140 0.006 ———
+> Generative (zero-shot)
+> Free-GVC (Ling et al. 2026) —0.185 0.003 —0.155 0.006 —0.105 0.050 GVCC-FLF2V (Zeng et al. 2026) 31.7 0.117 0.006
+> GVCCTurbo-FLF2V (14B) 32.0 0.103 0.006
+
+The main paper accelerates codebook-driven generative compression along the trajectory-time axis, evaluating the prior sparsely while keeping finite-rate corrections dense. Multi-resolution (MR) GVCC operates on an orthogonal axis, the resolution axis. It runs the early high-noise tra-jectory steps on a smaller latent grid, restores the native grid near the reconstruction stage, and then continues with the same codebook-driven decode. We invoke this branch only for the native 1080p comparison runs. It is not part of the 720p controlled scheduler ablation. 
+
+F.1 Relation to Predictive Skip 
+
+Predictive skip changes how often the expensive prior is evaluated while leaving the codebook-correction trajectory dense. MR instead changes the spatial token count of the early prior evaluations. The two axes are compatible but separate: time axis: NFE ̸ = Ncode ,
+
+resolution axis: (Hlow , W low ) → (H, W ).
+
+The 1080p GVCCTurbo-FLF2V point combines MR with predictive skip. Skip supplies the acceleration relative to GVCC at matched backbone quality, and MR acts as a high-resolution refinement knob that improves the native 1080p operating point. MR is absent from the 720p T2V-1.3B main tables, and we make no claim that it transfers to images. 
+
+F.2 Progressive Latent Resolution 
+
+The video branch follows a progressive latent path. Early steps run on a lower-resolution latent grid, and at a chosen transition step the decoder opens the full grid and fills the newly exposed high-frequency band. The low-stage target is not produced by independently encoding a downsampled video. It is the low-frequency projection of the native latent, 
+
+xlow  
+
+> 0
+
+= TL(VAE full (V )) , (17) Table 12: Multi-resolution GVCC on the full UVG-7 set (Wan-T2V-1.3B, 720p, 480 p → 720 p; 7 sequences × 3GOPs). BPP ratio and decoder speedup are relative to full-resolution GVCC on the same platform, not absolute-time claims.                    
+
+> Method Transition PSNR LPIPS BPP ratio Dec. speed Full-res GVCC none 28.72 0.114 1.000 ×1.00 ×
+> MR-random random 27.67 0.135 0.938 ×1.38 ×
+> MR-codebook codebook 28.07 0.122 0.996 ×1.38 ×
+
+so that the low and high stages share one coordinate system. This “lp_raw” convention removes the mismatch that would otherwise arise between the two stages. Random spectral expansion leaves the newly opened band untargeted. The compression-specific DLC variant adds a transition codebook in which the encoder approximates the target high-frequency band with signed atoms and transmits their indices. The high-band fill is 
+
+xHτ = tτ ϵH + (1 − tτ )z⋆H , (18) where H denotes the newly opened high-frequency band, 
+
+ϵH is a decoder-reproducible stochastic initializer, and z⋆H is the target-aware transition correction. Following the transi-tion, the decoder runs the remaining full-resolution trajectory steps and can apply the same endpoint-cache skip schedule used in the main method. 
+
+F.3 Video MR Evidence 
+
+The transition codebook (Table 12) improves on random high-frequency expansion, closing roughly 40% of the MR-random-to-full-resolution PSNR gap ( +0 .40 dB, −0.012 Table 13: Image-domain MR port on Turbo-DDCM (Kodak pilot diagnostic, SD2.1-base). The best case is a near tie, and more low-resolution steps monotonically lose PSNR. This result is used only to delimit the scope of MR.                         
+
+> Tlow PSNR, align PSNR, none Best ∆
+> 327.01 27.03 −0.02
+> 526.93 27.03 −0.02
+> 726.49 26.66 −0.39
+> 10 23.86 25.77 −1.29
+> 13 20.93 24.62 −2.43
+> 16 17.59 23.90 −3.16
+> 21 15.19 23.15 −3.91
+
+LPIPS at the same 1.38 × decoder speedup), while preserving the bit-exact decoder interface of the main method. A resid-ual −0.65 dB gap to full-resolution GVCC remains, which is why MR stays an appendix speed-quality knob rather than a part of the main GVCCTurbo contribution. 
+
+F.4 Why Image-Domain MR Was Rejected 
+
+We also tested a direct two-stage MR port to image-domain Turbo-DDCM (SD2.1-base); the results are reported in Ta-ble 13. The setup mirrors the video idea: the first Tlow bit-spending steps run on a 4 × 32 × 32 latent, spectrally ex-pand to the native 4 × 64 × 64 latent, and then finish the remaining bit-spending and clean DDIM steps at full reso-lution. The baseline is the single-resolution Turbo-DDCM point T = 30 , M = 100 , at PSNR 27 .05 , BPP 0.0781 , and 
+
+30 prior evaluations ( NFE ). Three causes explain this negative result. First, image la-tents are already small: the native image latent has dimension 
+
+4 · 64 · 64 = 16 ,384 , whereas a 720p video GOP latent is orders of magnitude larger, so the saved image UNet work does not offset the transition bookkeeping. Second, SD2.1-base is trained on the native 64 × 64 latent grid, and running the prior at 32 × 32 introduces an out-of-distribution low-stage trajectory that the late full-resolution stage cannot fully repair. Third, the image early-noise region is milder than the video one: the measured image spectrum is roughly ω−1.92 ,against ω−2.42 for the video branch. MR therefore helps only when the high-resolution video trajectory carries enough to-ken count and early-frequency asymmetry to exploit. For im-ages, the canonical extension remains the BPP-to-compute scheduler of the main paper rather than MR. 
+
+## G Pixel-Decoder Extension: PiD-DDCM 
+
+PiD-DDCM is a decoder-side perceptual extension. Where the main paper schedules prior evaluations and codebook corrections ahead of decoding, PiD addresses a separate question: once a low-bitrate DDCM/Turbo-DDCM latent has been transmitted, can a pixel-diffusion decoder yield a more perceptually plausible 4K reconstruction than a standard cas-cade super-resolution decoder? We treat this appendix as a demonstration and diagnostic study; it does not contribute to the main rate–distortion or speed claims. Table 14: PiD-DDCM 4K perceptual decode on one DIV8K crop (single-example diagnostic). PiD improves LPIPS and no-reference perceptual scores but lowers PSNR. This is a perception-distortion tradeoff, not a fidelity improvement.                                              
+
+> Method BPP 4KPSNR LPIPS MUSIQ NIQE Bicubic 4×.00270 20.79 .485 25.22 8.31 Lanczos 4×.00270 20.70 .464 25.41 8.79 PiD full .00270 18.18 .379 53.70 4.39 Bicubic ke=8 .00103 18.13 .849 23.88 8.15 PiD ke=8 .00103 17.52 .423 61.63 3.78 Bicubic ke=14 .00180 20.10 .614 23.92 7.68 PiD ke=14 .00180 18.09 .376 58.75 3.83
+
+G.1 Decoder-Side 4K Pipeline 
+
+The compressed representation stays a codebook-driven la-tent stream, and only the final image decoder changes. The tested 4K pipeline is 
+
+4096 2 GT → 1024 2 encoder input 
+
+→ DDCM-FLUX bits 
+
+→
+
+VAE decode at 1024 2 then bicubic/Lanczos 4×,
+
+PiD pixel-diffusion 4 × decode .
+
+PiD is a four-step FLUX-distilled pixel-diffusion SR decoder operating at the native 2K → 4K point. The DDCM config-uration uses T = 28 , codebook size K = 16384 , M = 256 ,and 21 bit-carrying steps. We report 4K BPP as the bit count normalized by the 4096 2 output pixels, 
+
+BPP 4K = BPP 1024 
+
+ 1024 4096 
+
+2
+
+. (19) Early-exit variants hand an intermediate latent xke to PiD after only a prefix of the DDCM bit loop, where the exit step 
+
+ke is distinct from the codebook size K; ke = 8 uses roughly 30% of the bit-carrying steps and ke = 14 roughly 52%. 
+
+G.2 4K Perceptual Single-Example Result 
+
+This single-example diagnostic isolates the perception– distortion tradeoff. PiD variants score better on perceptual metrics: MUSIQ rises from about 25 for classical SR to 54–62, NIQE drops from about 8 to about 4, and LPIPS improves from the 0.46–0.85 range to the 0.38–0.42 range. PSNR moves the other way, falling from about 20–21 dB for the cascade baselines to about 17.5–18.2 dB for PiD. The 
+
+ke=8 row even scores higher MUSIQ than the source crop itself, indicating that the decoder can hallucinate sharper-than-source texture. 
+
+G.3 Same-Resolution Control and Early Exit 
+
+A 1024-domain control sweep confirms that PiD is not a generic decoder swap. Downsampling the PiD 4× output back to 1024 and comparing against the 1024 input leaves PSNR and MS-SSIM roughly flat, while LPIPS is worse than the VAE decode. The perceptual gain in Table 14 is therefore tied to the true 4× SR setting. Table 15: Low-rank residual energy captured on three Kodak images. PCA is an oracle upper bound fitted to the evaluation residual; DCT is a free structured basis; random is the NCS-style baseline. The probe is unquantized and is not yet a real-bit codec result.                         
+
+> Basis r= 8 r= 32 r= 64 r=128
+> PiD / PCA oracle .72 .91 .96 .98 PiD / DCT .59 .79 .88 .94 PiD / random .01 .04 .08 .17 VAE / PCA oracle .76 .94 .99 1.00
+
+The same sweep clarifies when PiD helps. At aggressive early exit ke = 8 , PiD repairs a heavily truncated latent and gives a PSNR lift of about 1.3–1.5 dB on the 1024 control images, with large LPIPS gains on several images. As ke
+
+increases and the VAE baseline becomes more faithful, this advantage erodes; by ke = 20 , PiD often worsens LPIPS be-cause it adds generative texture on top of an already adequate reconstruction. 
+
+G.4 Low-Rank Pixel Correction Probe 
+
+We also tested a possible route from perceptual decoding toward a real codec gain: add a structured low-rank endpoint correction in pixel space before the PiD decode. For each 
+
+16 × 16 × 3 patch p, the residual between the ground truth and the clean decoder prediction is 
+
+rp = x0,p − ˆx0,p ,
+
+and a rank-r basis Ap ∈ R768 ×r defines the endpoint correc-tion subspace 
+
+r∥ 
+
+> p
+
+= ApA⊤ 
+
+> p
+
+rp. (20) This correction differs in kind from injecting low-rank SDE noise: it modifies the clean endpoint channel, leaving the generative noise channel white and avoiding an out-of-distribution sampler. Table 15 shows that structured bases capture far more residual energy than random atoms; oracle PCA at r = 32 
+
+captures about 91% of the PiD residual energy. The caveat is that this remains an upper-bound diagnostic. The PCA ba-sis is not deployable without training or transmission, the projection is real-valued and unquantized, and no true RD-P curve has been demonstrated. The low-rank branch is there-fore left as follow-up work rather than claimed as a result of this paper. 
+
+G.5 Hallucination Caveat 
+
+PiD-DDCM should be read as a perceptual reconstruction demo, not as a fidelity-preserving codec result. The gen-erated textures can look plausible and score better under LPIPS, MUSIQ, and NIQE while still departing from the original image. The risk is most acute at very low BPP, where the compressed latent cannot uniquely determine fine detail. For forensic, scientific, medical, or evidentiary use, the conservative decoder or a fidelity-oriented metric should remain the primary evaluation. A video extension would also need a temporal pixel-diffusion decoder, since independent per-frame PiD decoding risks flicker and drift.

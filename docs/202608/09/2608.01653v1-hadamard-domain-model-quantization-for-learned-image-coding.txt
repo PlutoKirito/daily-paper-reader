@@ -1,0 +1,1491 @@
+Title: Hadamard-Domain Model Quantization for Learned Image Coding
+
+URL Source: https://arxiv.org/pdf/2608.01653v1
+
+Published Time: Tue, 04 Aug 2026 02:11:48 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+> JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# Hadamard-Domain Model Quantization for Learned Image Coding 
+
+Junqi Shi, Chongzhi Wang, Yiwen He, Ming Lu, and Zhan Ma 
+
+Abstract —Uniform INT8 quantization is attractive for deploy-ing learned image coding (LIC), but its rate–distortion (R– D) performance is often limited by heavy-tailed tensors and large inter-channel variations. Existing methods mainly adapt the quantizer through mixed precision or non-uniform codebooks. We propose Ha damard-Transform-domain Quantization ( HaTQ ), which uses orthogonal Hadamard reparameterization before quantization to redistribute weight and activation responses in the original domain across channels. The reparameterization preserves the original function mapping of each linear operator, while making its weights and activations more amenable to uniform INT8 quantization. HaTQ provides two complemen-tary forms. Double-Hadamard quantization transforms both the input activations and weights, whereas weight-only Hadamard quantization transforms only the weights. This distinction is important because the constant Hadamard basis can coherently accumulate a nonzero channel mean and enlarge the activation range in sensitive layers. We identify these sensitive layers through offline profiling and assign the appropriate form to each layer without input-dependent branching. HaTQ supports both post-training quantization (PTQ) and quantization-aware training (QAT), uses uniform INT8 quantizers, and is compatible with integer-only execution. Experiments on representative LIC architectures and datasets demonstrate consistent improvements across different quantization settings. The resulting QAT models further outperform competing mixed-precision and non-uniform quantization methods. TensorRT deployment results demonstrate practical INT8 inference efficiency. The source code will be publicly released. 
+
+Index Terms —Learned image coding, Hadamard transform, Quantization-aware training, Post-training quantization 
+
+I. I NTRODUCTION 
+
+# LEARNED image coding (LIC) replaces hand-crafted cod-ing tools [1]–[3] with jointly optimized neural transforms and entropy models, enabling compressed representations tai-lored to reconstruction, perceptual quality, and downstream machine analysis [4]–[10]. Recent standardization efforts, in-cluding JPEG AI [11] and IEEE Std 1857.11 [12], further indicate its transition toward practical visual communication systems. However, the growing complexity of LIC models makes efficient and deterministic deployment as important as floating-point rate—distortion (R–D) performance. Model quantization [13]–[15] provides a natural solution by representing weights and intermediate activations with low-precision integers, thereby reducing storage, memory traffic, and arithmetic cost while limiting platform-dependent nu-merical variation. Such numerical consistency is particularly critical for LIC, where small encoder–decoder discrepancies 
+
+J. Shi, C. Wang, Y. He, M. Lu, and Z. Ma are with the School of Elec-tronic Science and Engineering, Nanjing University, Nanjing, Jiangsu 210023, China (e-mail: junqishi@smail.nju.edu.cn; 522024230061@smail.nju.edu.cn; yiwenhe2022@smail.nju.edu.cn; minglu@nju.edu.cn; mazhan@nju.edu.cn). J. Shi and C. Wang contributed equally to this work. INT8         
+
+> INT6
+> INT10 FP32
+> INT8
+> -127 128
+> Fine
+> Sparse Dense Sparse
+> Original Domain
+> Coarse grid
+> (a) Non-Uniform (NU) / Mixed Precision (MP) Quantization
+> 𝐗 𝟏
+> 𝐖 𝟏
+> 𝐖 𝟐 . . .
+> INT8 Avg.
+> Outlier-rich LIC
+> Activation / Weight
+> . . .
+> (b) Transform-Domain (TD) Quantization
+> +1 +1
+> +1
+> +1
+> +1 -1
+> -1
+> -1
+> Hadamard Domain
+> Outlier suppressed
+> Uniform
+> INT8
+> Hadamard Transform
+> Frequency
+> Value 0
+> Outliers cause coarse
+> quantization grids.
+> Uniform Quant. NU / MP Quant. Transform-Domain Quant.
+> Hardware-friendly
+> R-D performance
+
+Fig. 1. Overview of Hadamard transform-domain quantization for LIC. Outlier-rich weights and activations make original-domain uniform quanti-zation hardware-friendly but vulnerable to severe R–D degradation, whereas non-uniform or mixed-precision quantization often improves performance with more complex inference. By equivalently transforming tensors into the Hadamard domain, our HaTQ suppresses outliers and enables uniform INT8 quantization to better balance R–D performance and deployment efficiency. 
+
+in entropy-probability estimation may lead to arithmetic de-coding failure [16]–[18]. Therefore, practical LIC quantization must preserve end-to-end R–D performance while maintaining a regular low-precision computation path with reproducible deployment. Recent studies have explored QAT and PTQ for LIC [13], [15], [19]–[25]. Nevertheless, substantial R–D degradation remains under uniform INT8 quantization, particularly when activations are quantized tensor-wise for compatibility with common inference engines. One key difficulty lies in the numerical distributions of LIC tensors. Weights and activations often exhibit heavy-tailed responses and pronounced inter-channel magnitude variation, as illustrated in Fig. 2. A few extreme values can dominate the quantization range and force most values to share a coarse quantization grid. This problem is especially pronounced in LIC, where latent representations are quantized into discrete symbols for entropy coding and the associated scaling and integer-domain representation further enlarge numerical ranges and magnitude variations. Existing LIC model quantization methods address these distributional and sensitivity issues by adapting the quantizer or the precision assignment. Mixed-precision schemes [24]– [27] allocate additional bits to sensitive layers, whereas non-uniform schemes [23], [28] place quantization grids unevenly across the value range to provide finer resolution for selected values. These methods improve accuracy, but the added flex-ibility may introduce heterogeneous bit widths, specialized numerical representations, or operators that are less directly arXiv:2608.01653v1 [eess.IV] 3 Aug 2026 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2
+
+supported by standard INT8 inference backends. This raises a complementary question: instead of making the quantizer increasingly adaptive, can we make the tensors themselves easier to quantize while keeping the quantizer simple? 
+
+We answer this question by revisiting a fundamental com-pression principle: transform coding [29], [30], which maps signals into domains that permit lower-distortion quantiza-tion and more efficient entropy coding. While traditionally applied to source signals such as images and videos, we extend this principle to model weights and activations by seeking function-preserving reparameterizations that better align their distributions with a uniform integer grid. The Hadamard transform is particularly attractive for this purpose because it is orthogonal, sign-structured, inexpensive to im-plement, and has been used in transform coding since the late 1960s [31]. Each transformed channel is formed from an equal-magnitude signed combination of the original channels, thereby redistributing channel-localized responses across chan-nels. Moreover, when Hadamard transforms are introduced in algebraically paired forms, their factors cancel algebraically, preserving the input–output mapping of the original linear operator. Building on this principle, we propose Ha damard-
+
+Transform-domain Quantization ( HaTQ ), a framework for LIC models. HaTQ quantizes Hadamard-domain weights and activations through two complementary operator forms. 
+
+Double-Hadamard (DH) quantization applies matched trans-forms to the activation and weight operands along their contracted dimension. Weight-only Hadamard (WH) quantiza-tion instead transforms the weights along the output-channel dimension and restores the original output basis after accumu-lation, thereby avoiding activation-side transformation. This distinction is necessary because Hadamard transforma-tion is not uniformly beneficial for all layers. In most layers, it suppresses heavy-tailed responses and improves utilization of the INT8 grid. In a small set of activation-sensitive layers, however, nonlinearities can produce a nonzero mean across channels. The constant-basis component then coherently ac-cumulates this mean, potentially creating an extreme response that expands the tensor-wise quantization range. We therefore develop an offline profiling strategy that selects DH or WH for each layer according to its activation-range expansion. The resulting assignment remains fixed during optimization and inference, introducing no input-dependent branching. At its core, HaTQ applies the principle of transform coding to model quantization: a simple uniform quantizer can be more effective when weights and activations are in a more quantization-friendly representation domain. Our main contri-butions are summarized as follows: 1) Hadamard-domain quantization framework. We intro-duce HaTQ, a transform-domain framework that incorpo-rates function-preserving Hadamard reparameterizations into LIC linear operators. It supports uniform INT8 quantization under both PTQ and QAT, while remaining compatible with integer-only inference. 2) Layer-adaptive Hadamard quantization. We character-ize a coherent accumulation effect in which a nonzero activation mean produces a dominant constant-basis com-ponent and enlarges the tensor-wise quantization range. Based on this observation, we develop an offline profiling mechanism that assigns either DH or WH quantization to each layer. 3) Comprehensive evaluation and deployment. Experi-ments across representative LIC architectures, datasets, and quantization granularities demonstrate consistent R– D improvements over existing quantization methods. A TensorRT implementation further evaluates the practical inference latency and storage overhead of HaTQ under INT8 deployment. II. R ELATED WORK 
+
+A. Learned Image Coding 
+
+High-dimensional vector quantization (VQ) can, in prin-ciple, approach the rate–distortion (R–D) limit of a source, but its codebook size and search complexity grow pro-hibitively with the source dimension [32]–[34]. Modern image codecs therefore predominantly follow the transform-coding paradigm, which maps images into compact representations for tractable quantization and entropy coding [30], [35]. Classical systems instantiate this principle with analytically designed tools, such as Huffman coding [36] and the discrete cosine transform [37]. LIC inherits this transform-coding view but replaces fixed transforms, quantizers, and probability models with learned data-driven modules. Early neural image-coding studies explored the use of neural networks for compact representations [38]–[41], but the mod-ern LIC paradigm was established when nonlinear transforms and entropy models became trainable end to end. Toderici et al. [42] demonstrated variable-rate recurrent coding, while Ball´ e et al. [4], [43] connected nonlinear analysis/synthesis transforms, differentiable quantization surrogates, and learned entropy models into a principled R–D optimization framework. Minnen et al. [5], [44] further showed that hierarchical priors and autoregressive contexts can substantially improve entropy estimation. These works shifted learned coding from isolated neural components to an end-to-end nonlinear transform-coding system. Later work has expanded this framework along two main axes. The first improves the analysis and synthesis transforms through residual, attention-based, transformer, and state-space architectures [8], [45]–[48]. The second improves probability modeling through hyperpriors, spatial/channel contexts, and transformer-based entropy models [4], [49]–[51]. Hierarchical and conditional formulations further enable progressive re-construction and flexible rate control [10], [52]–[54], while learned representations also support perceptual, machine-oriented, and joint source–channel objectives [55]–[58]. More recently, generative priors, including diffusion models, have been incorporated as expressive decoders to improve percep-tual reconstruction at very low bitrates [9], [59]–[62]. As visual data increasingly serves both human perception and machine intelligence, this flexibility positions LIC as a key enabling technology for AI-era visual communication. At the same time, increasingly sophisticated transforms, entropy models, and iterative generative decoders further increase computation, JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3
+
+memory traffic, and inference latency. Deployment-oriented optimization, including low-precision execution, is therefore becoming an increasingly central issue for LIC. 
+
+B. Model Quantization 
+
+Model quantization reduces storage, memory traffic, and arithmetic cost by representing weights and activations with low-precision numbers. It should be distinguished from la-tent quantization in learned codecs, which produces discrete symbols for entropy coding and directly controls the coding rate. The efficiency potential is substantial: under a 45-nm CMOS estimate, an 8-bit integer multiplication consumes about 0.2 pJ, compared with 3.7 pJ for a 32-bit floating-point multiplication [63]. Although the actual savings depend on the hardware architecture and fabrication technology, this comparison illustrates the efficiency potential of low-precision computation. Quantization methods are often distinguished by their opti-mization regime. Post-training quantization (PTQ) converts a pretrained model using a small calibration set, with quantiza-tion parameters commonly determined from numerical ranges or by minimizing quantization or task error [14], [64], [65]. It is deployment-friendly but has limited ability to absorb quan-tization error. Quantization-aware training (QAT) simulates low-precision arithmetic during training, allowing weights and quantization parameters to adapt to the target precision at the cost of additional training [14], [66]. Orthogonal to this PTQ/QAT distinction is the quantizer design. Uniform INT8 quantization is attractive because it maps naturally to widely available integer kernels, but it is vulnerable to outliers and inter-channel range imbalance. Mixed-precision methods allocate more bits to sensitive layers or channels [67]–[69], whereas non-uniform methods adapt quantization levels or numerical formats to the underlying distributions [28], [70], [71]. Another line of work changes the numerical domain be-fore quantization without changing the full-precision function. SmoothQuant [72] uses channel-wise scaling to migrate acti-vation outlier difficulty to weights, making activations easier to quantize with uniform grids. Rotation-based approaches go further by redistributing numerical energy across dimensions through orthogonal transformations: QuaRot [73] applies ran-domized Hadamard rotations, SpinQuant [74] optimizes learn-able rotations, and QuIP# [75] introduces lattice codebooks for weight quantization. These methods reveal an important principle: quantization quality is determined not only by the quantizer, but also by the coordinate system in which tensors are quantized. 
+
+C. LIC Model Quantization 
+
+Early studies primarily focused on QAT. Ball´ e et al. [76] redesigned learned codecs for integer arithmetic, and subse-quent work extended low-precision computation from weights to activations and nonlinear modules [21], [22]. Other methods then improved R–D robustness by exposing the codec to quan-tization effects during optimization. RAQ [19], Q-LIC [20], and IQ-LIC [77] introduced range adaptation, sensitivity-aware channel redistribution, and quantization-aware objec-tives, respectively. Quantization has also been combined with pruning and variable-rate coding [78], [79]. Although QAT can substantially recover R–D performance, it requires access to training data and costly codec-level retraining. PTQ offers a lighter path for converting pretrained LIC models. Cross-platform PTQ and quantized-decoder studies focus on entropy-model consistency and deterministic recon-struction, showing that carefully quantizing entropy-related modules can preserve codec interoperability [11], [16]–[18]. RDO-PTQ further demonstrates that calibration should opti-mize the end-to-end R–D objective rather than local tensor reconstruction alone [13]. More recent methods explicitly exploit the heterogeneous quantization sensitivity of LIC networks. FMPQ [26] assigns layer-wise bit-widths according to the fractional increase in R– D loss and employs an adaptive search to meet a given model-size budget, whereas MP-PTQ [27] evaluates layer sensitivity through end-to-end R–D analysis and jointly determines the bit-width and quantization scale from a small calibration set. DynaQuant [25] further extends static layer-wise allocation with content-adaptive scales and offsets, together with an input-dependent selector that dynamically adjusts the precision of individual layers. AWDB [15] addresses outliers and range imbalance by transferring quantization difficulty between paired activations and weights or redistributing salient values across channels, thereby reducing clipping and rounding errors under low-precision quantization. SS-PTQ selects distribution-matched quantization levels from a dense candidate pool, pro-viding a non-uniform quantizer that better represents irregular layer- or channel-wise weight distributions [23]. These quantizer-oriented designs improve quantization ro-bustness, but their numerical flexibility does not necessarily translate into efficient end-to-end inference. Heterogeneous bit widths, non-uniform representations, and structural modifica-tions may require precision conversions, specialized kernels, or irregular execution paths. Such requirements complicate operator fusion and scheduling, fragment the codec pipeline, and limit direct use of the uniform INT8 kernels available on commodity accelerators. In contrast, our transform-domain approach redistributes tensors with equivalent Hadamard trans-forms before quantization, retaining a regular uniform INT8 computation path without heterogeneous precision or non-uniform arithmetic. This design targets both R–D robustness and compatibility with existing low-precision hardware and deployment pipelines. III. P RELIMINARIES 
+
+A. Uniform Quantization 
+
+Uniform quantization [14] maps a real-valued tensor x to an integer grid. Given a scale s > 0, a zero-point z, and an integer range [qmin , q max ], the element-wise quantization and dequantization operations are 
+
+xint = clamp 
+
+
+
+round 
+
+ xs
+
+
+
++ z, q min , q max 
+
+
+
+,
+
+ˆx = s(xint − z). (1) JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4excess kurtosis: 92.8     
+
+> (a) Original Activation Domain excess kurtosis: 4.2 (b) Hadamard Activation Domain excess kurtosis: 12.4 (c) Original Weight Domain excess kurtosis: 0.3 (d) Hadamard Weight Domain Fig. 2. Absolute magnitudes of the input activations and weights in the original and Hadamard domains. The transform substantially suppresses outliers, reducing the excess kurtosis of activations and weights by 95.5% and 97.6%, respectively.
+
+For affine min–max quantization, let ¯xmin = min( xmin , 0) 
+
+and ¯xmax = max( xmax , 0) , so that zero is representable. For a nondegenerate range, the quantization parameters are 
+
+s = ¯xmax − ¯xmin 
+
+qmax − qmin 
+
+,z = clamp 
+
+
+
+round 
+
+
+
+qmin − ¯xmin 
+
+s
+
+
+
+, q min , q max 
+
+
+
+. (2) For unsigned b-bit quantization, qmin = 0 and qmax = 2 b − 1.Static quantization fixes (s, z ) after calibration or training, whereas dynamic quantization computes them from each run-time activation tensor. In our PTQ setting, weights use static quantization and activations use dynamic affine quantization. For QAT, we use static symmetric quantization. Defining 
+
+qsmax = 2 b−1 − 1, we have 
+
+xint = clamp 
+
+
+
+round 
+
+ xs
+
+
+
+, −qsmax , q smax 
+
+
+
+,s = ∥x∥∞
+
+qsmax 
+
+, z = 0 . (3) Symmetric quantization removes zero-point corrections and simplifies integer accumulation. However, extreme values in-crease s and coarsen the quantization grid available to the remaining values. This sensitivity motivates the distribution reshaping developed in Sec. IV-B. 
+
+B. Integer-Only Inference 
+
+Eq. (1) gives the dequantized values used to simulate quantization during PTQ or QAT. At inference, a linear or convolutional layer can instead accumulate directly on the integer codes. Suppressing the output indices and summing over the contracted dimension i, the accumulator is 
+
+aint = X
+
+> i
+
+(xint ,i − zx)( wint ,i − zw) + bint ,bint = round 
+
+ bsxsw
+
+
+
+. (4) Since aint has scale sxsw, conversion to an output grid with scale sy requires the ratio sxsw/s y . This ratio is approximated by an integer multiplier M and a nonnegative shift n:
+
+sxsw
+
+sy
+
+≈ M
+
+2n . (5) The output code is then obtained by requantization: 
+
+yint = clamp 
+
+
+
+round 
+
+ M a int 
+
+2n
+
+
+
++ zy , q min , q max 
+
+
+
+. (6) Thus, the layer uses integer multiply–accumulate, fixed-point rescaling, rounding, and saturation; no floating-point tensor need be materialized between compatible quantized operators. In Sec. IV-B, we show that the proposed Hadamard-domain operators preserve this integer-only execution form. 
+
+C. Hadamard Transform 
+
+Let eH ∈ {− 1, +1 }m×m be a Hadamard matrix [31], [80] satisfying eH eH⊤ = mI . Its normalized form is 
+
+H = 1
+
+√m eH, HH ⊤ = H⊤H = I. (7) Hence, H−1 = H⊤ and the transform preserves inner products and Euclidean norms. For a vector x ∈ Rm, each component of y = Hx is a normalized signed sum: 
+
+yi = 1
+
+√m
+
+> m
+
+X
+
+> j=1
+
+eHij xj . (8) Each input component therefore contributes equally in magni-tude to every transformed component. It can disperse channel-localized extremes and yield a range better matched to uniform quantization. Sec. IV-B uses the orthogonality of H to trans-form weights and activations without changing the function mapping of the original operator. IV. M ETHODOLOGY 
+
+A. From Original-Domain to Transform-Domain Quantization 
+
+Outlier-dominated distributions in the original domain. 
+
+LIC weights and activations commonly contain a dense con-centration of small values and a sparse set of large responses, as illustrated in Fig. 2(a) and (c). Under uniform quantiza-tion, these responses determine the quantization range and hence the step size, leaving fewer effective grids for the bulk of the tensor. This limitation is particularly severe for per-tensor quantization because one range is shared across all channels and spatial positions. Channel-wise quantization mitigates inter-channel range imbalance, but remains sensitive to extreme values within each channel. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 50 1 2 3 4 5    
+
+> log(1 + κexcess )
+> 18 22 26 30 34
+> Tensor-wise INT8 SQNR (dB)
+> Hadamard transform
+> Original domain ( r= −0.67 )Hadamard domain ( r= −0.44 )
+> Fig. 3. Activation excess kurtosis versus SQNR under tensor-wise INT8 quantization. Each point denotes the input-activation tensor produced by one test image, evaluated either in the original domain or after a Hadamard transform. Solid lines are least-squares fits, and shaded ellipses indicate 90% covariance regions. The Hadamard-domain samples generally exhibit lower excess kurtosis and higher SQNR.
+
+This distributional mismatch leads to substantial R–D degra-dation. For example, the original-domain QAT baseline with tensor-wise activations and channel-wise weights incurs an 18.63% BD-rate increase; the complete ablation setting is reported in Fig. 8. This result indicates that the original-domain distributions of LIC tensors are not well suited to low-precision uniform quantization. We quantify tail heaviness by the empirical excess kurto-sis [81], [82]. For a nonconstant tensor X = {xi}Ni=1 ,
+
+μX = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+xi,κex (X) = 
+
+> 1
+> N
+
+PNi=1 (xi − μX )4
+
+h 1
+
+> N
+
+PNi=1 (xi − μX )2
+
+i2 − 3. (9) The subtraction of 3 sets the Gaussian reference value to zero: a Gaussian distribution has excess kurtosis 0. A larger κex (X)
+
+indicates greater fourth-moment concentration and, typically, stronger sensitivity to isolated large-magnitude values. Quan-tization fidelity is measured using the signal-to-quantization-noise ratio (SQNR): 
+
+SQNR( X, bX) = 10 log 10 
+
+∥X∥2
+
+> F
+
+∥X − bX∥2
+
+> F
+
+, (10) where bX is the dequantized tensor. A higher SQNR indicates a smaller relative quantization error. Fig. 3 shows a negative correlation between activation excess kurtosis and SQNR, linking heavy-tailed activation distributions to poor utilization of the uniform integer grid. 
+
+Distribution reshaping in the Hadamard domain. We therefore apply an orthogonal Hadamard transform before quantization. Its equal-magnitude signed mixing disperses responses localized to individual channels while preserving the tensor Frobenius norm. In the representative layer of Fig. 2, this transformation produces more balanced activation and weight magnitudes and substantially reduces their excess kurtosis. Across various test images, Fig. 3 further shows that the transformed activations generally attain higher SQNR. These results motivate quantizing LIC in the Hadamard domain rather than changing the uniform quantizer itself. Orthogonality alone preserves tensor energy, but network oper-ator equivalence requires the activation and weight transforms to be paired appropriately. The next subsection derives these equivalent constructions. 
+
+B. Hadamard Transform-Domain LIC Quantization 
+
+We construct two equivalent reparameterizations for transform-domain quantization. Double-Hadamard (DH) quan-tization transforms both weights and activations along their contracted dimension, whereas weight-only Hadamard (WH) quantization eliminates the activation-side transform by ap-plying a Hadamard transform to the weight output channels and subsequently restoring the original output basis. Fig. 4 summarizes their integer inference paths. 
+
+Hadamard-domain formulation of linear operators. Af-ter unfolding a convolution into input patches, both convolu-tional and fully connected layers can be written as 
+
+Yl = XlW ⊤ 
+
+> l
+
+, (11) where Xl ∈ RNl×Dl contains the input vectors, Wl ∈
+
+RCout ,l ×Dl contains the weight vectors, and Yl ∈ RNl×Cout ,l .Here, Dl = Cin ,l KhKw for a Kh × Kw convolution and 
+
+Dl = Cin ,l for a fully connected layer. Bias terms are omitted for readability and are treated in supplementary materials. Let Hn ∈ Rn×n be a normalized Hadamard matrix satisfy-ing HnH⊤ 
+
+> n
+
+= In. For clarity, we first assume that the channel dimensions admit square Hadamard matrices of the same orders; the padded construction is introduced in Sec. IV-D. The input-side transform is 
+
+Hin  
+
+> l
+
+=
+
+(
+
+IKhKw ⊗ HCin ,l , convolution ,
+
+HCin ,l , fully connected , (12) where ⊗ denotes the Kronecker product. For convolution, this block-diagonal form applies the same channel transform inde-pendently at each kernel position and need not be explicitly constructed. 
+
+Double-Hadamard quantization. Since Hin  
+
+> l
+
+(Hin  
+
+> l
+
+)⊤ =
+
+IDl , Eq. (11) is equivalently expressed as 
+
+Yl =  XlHin 
+
+> l
+
+   WlHin 
+
+> l
+
+⊤ . (13) Quantizing both transformed operands gives 
+
+bY DH  
+
+> l
+
+= Qa
+
+ XlHin 
+
+> l
+
+ Qw
+
+ WlHin 
+
+> l
+
+⊤ , (14) where Qa(·) and Qw(·) denote quantization followed by dequantization for activations and weights, respectively. We call Eq. (14) double-Hadamard (DH) quantization because both operands are quantized in the same input Hadamard basis. In the underlying full-precision identity, the paired transforms cancel through Hin  
+
+> l
+
+(Hin  
+
+> l
+
+)⊤ = IDl ; thus, no output-side basis conversion is required. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6Hadamard 
+
+Quantize 
+
+MatMul 
+
+Dequantize 
+
+𝑢 𝑖𝑛𝑡,𝑙  𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟖 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+ℋ𝑙 𝑖𝑛 (𝑢 𝑖𝑛𝑡,𝑙 )
+
+𝑥 𝑖𝑛𝑡,𝑙 
+
+𝑎 𝑖𝑛𝑡,𝑙 
+
+𝑣 𝑖𝑛𝑡,𝑙 
+
+𝑤 𝑖𝑛𝑡,𝑙 
+
+𝑰𝑵𝑻𝟖 
+
+Quantize 
+
+MatMul 
+
+Dequantize 
+
+𝑥 𝑖𝑛𝑡,𝑙 
+
+𝑎 𝑖𝑛𝑡,𝑙 
+
+𝑀 𝑙 ⊙ 𝑎 𝑖𝑛𝑡,𝑙 
+
+𝑢 𝑖𝑛𝑡,𝑙 
+
+𝑤 𝑖𝑛𝑡,𝑙 
+
+𝑰𝑵𝑻𝟖 
+
+Hadamard 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟖 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟑𝟐 
+
+𝑰𝑵𝑻𝟑𝟐 𝑣 𝑖𝑛𝑡,𝑙 
+
+Eq.22 
+
+Eq.22 
+
+Eq.20 
+
+Eq.20 
+
+Double Hadamard  Weight-only Hadamard 
+
+Fig. 4. Integer inference paths of double-Hadamard (DH, left) and weight-only Hadamard (WH, right) quantization. DH transforms the activation into the input Hadamard basis before quantization and INT8 matrix multiplication. WH keeps the activation in its original basis and restores the output basis after accumulation. The blocks labeled Quantize and Dequantize perform fixed-point integer rescaling, and they do not materialize floating-point tensors. 
+
+Weight-only Hadamard quantization. We instead retain 
+
+Xl in its original basis and transform Wl along the output-channel dimension. Define 
+
+Hout  
+
+> l
+
+= HCout ,l ∈ RCout ,l ×Cout ,l (15) as the normalized output-side transform. Orthogonality gives 
+
+Yl =
+
+h
+
+Xl
+
+ Hout  
+
+> l
+
+Wl
+
+⊤i
+
+Hout  
+
+> l
+
+(16) and its quantized counterpart is 
+
+bY WH  
+
+> l
+
+=
+
+h
+
+Qa(Xl)Qw
+
+ Hout  
+
+> l
+
+Wl
+
+⊤i
+
+Hout  
+
+> l
+
+. (17) The matrix multiplication produces an accumulator in the output Hadamard basis, which is subsequently mapped back to the original basis by Hout  
+
+> l
+
+. Accordingly, weight-only means that only the weights are transformed. 
+
+Integer-only inference. Although Eq. (14) and (17) are expressed in dequantized form, both operators support integer-only execution under the hardware-prevalent setting of sym-metric tensor-wise activation quantization and channel-wise weight quantization. Let sx,l be the activation scale of the INT8 operand consumed by layer l, and let sw,l,c be the weight scale of output channel c. The INT8 multiply–accumulate produces an INT32 tensor aint ,l . Its c-th output channel has the accumulator scale 
+
+sA,l,c = sx,l sw,l,c . (18) Thus, the real-valued accumulated output in channel c is approximated by sA,l,c aint ,l,c .We denote the corresponding unnormalized integer output-and input-side transforms by Hout  
+
+> l
+
+and Hin 
+
+> l+1
+
+, respectively. They require only additions and subtractions. Let mout  
+
+> l
+
+and 
+
+min  
+
+> l+1
+
+be the actual Hadamard orders, equal to the correspond-ing channel dimensions when no padding is used. Table I lists the required transforms and their normalization factors. 
+
+TABLE I INTEGER BASIS CONVERSIONS BETWEEN ADJACENT DH AND WH 
+
+> LAYERS
+
+. T HE OUTPUT -SIDE TRANSFORM Hout   
+
+> lIS APPLIED BEFORE THE ACTIVATION FUNCTION
+
+ϕ, AND THE INPUT -SIDE TRANSFORM Hin  
+
+> l+1 IS APPLIED AFTERWARD
+
+. H ERE , I IS THE IDENTITY AND m DENOTES THE ACTUAL HADAMARD ORDER , INCLUDING ANY PADDED DIMENSIONS .
+
+Transition 
+
+
+
+γout  
+
+> l
+
+, γ in 
+
+> l+1
+
+ Hout 
+
+> l
+
+before ϕ
+
+Hin 
+
+> l+1
+
+after ϕ
+
+DH-to-WH (1 , 1) I I
+
+DH-to-DH 
+
+
+
+1,
+
+q
+
+min 
+
+> l+1
+
+
+
+I Hin 
+
+> l+1
+
+WH-to-WH 
+
+q 
+
+mout  
+
+> l
+
+, 1
+
+
+
+Hout  
+
+> l
+
+I
+
+WH-to-DH 
+
+q 
+
+mout  
+
+> l
+
+,
+
+q
+
+min 
+
+> l+1
+
+
+
+Hout  
+
+> l
+
+Hin 
+
+> l+1
+
+The factors γout  
+
+> l
+
+and γin  
+
+> l+1
+
+are the denominators of the normalized output- and input-side transforms in Table I. Their product and the scale ratio for accumulator channel c are 
+
+αl = γout  
+
+> l
+
+γin 
+
+> l+1
+
+,ρl,c = sA,l,c 
+
+αlsx,l +1 
+
+≈ Ml,c 
+
+2nl
+
+, Ml,c = round (2 nl ρl,c ) , (19) where Ml,c is an integer multiplier and nl ≥ 0 is a shared right shift. Both are determined offline subject to multiplier preci-sion and overflow constraints. The Hadamard normalization is therefore absorbed into fixed-point requantization. For the identity mapping, or for a positively homogeneous activation such as ReLU, LeakyReLU, or PReLU, satisfying 
+
+ϕ(βz ) = βϕ (z) for β > 0, the common factor 2−nl can be propagated through ϕ. The transition then becomes 
+
+vint ,l = Hout  
+
+> l
+
+(M l ⊙ aint ,l ) , (20) 
+
+uint ,l = ϕint (vint ,l ) , (21) 
+
+xint ,l +1 = clamp round 
+
+" Hin  
+
+> l+1
+
+(uint ,l )2nl
+
+#
+
+, q min , q max 
+
+!
+
+,
+
+(22) where ϕint preserves the common implicit scale, ⊙ denotes channel-wise multiplication, and xint ,l +1 is the INT8 operand consumed by layer l + 1 .As summarized in Table I, DH-to-WH requires no basis conversion, DH-to-DH and WH-to-WH require one integer Hadamard transform, and WH-to-DH requires two transforms separated by ϕ. Nonhomogeneous activations such as SiLU, GELU [83], and GDN [84] instead require explicit fixed-point rescaling on both sides of an integer nonlinear kernel. Supple-mentary materials give the complete derivation, including bias handling and general nonlinearities. Thus, HaTQ is compatible with integer-only inference. 
+
+C. Layer-wise Hadamard Strategy Selection 
+
+Hadamard mixing reduces excess kurtosis for most eval-uated tensors. However, we observe that, in a subset of sensitive layers, the maximum activation magnitude increases sharply after the transform. Since the scale of symmetric per-tensor activation quantization is proportional to ∥Xl∥∞,such amplification enlarges the quantization range and reduces JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 70 30 60 90 120 150 180       
+
+> Channel index
+> 010 20 30 40
+> Maximum absolute activation  Original Domain Hadamard Domain
+> Coherent component (19.97)
+> Mean: 17.78 →16.31
+> Variance: 67.70 →5.10
+
+(a) Range reduction 0 30 60 90 120 150 180        
+
+> Channel index
+> 0510 15 20 25 30
+> Maximum absolute activation  Original Domain Hadamard Domain
+> Coherent spike (32.55)
+> Mean: 8.80 →6.26
+> Variance: 21.72 →5.82
+
+(b) Coherent amplification 0 100 200 300 400 500 600        
+
+> Channel index
+> 010 20 30 40 50 60
+> Maximum absolute activation  Original Domain Hadamard Domain
+> Coherent spike (59.77)
+> Mean: 11.52 →7.88
+> Variance: 43.86 →7.93
+
+(c) Coherent amplification Fig. 5. Per-channel maximum absolute activations before and after Hadamard transform for three representative neural layers. For most layers, as represented by (a), the constant-basis component remains below the original tensor maximum, and Hadamard transform reduces the overall range. For a small subset of sensitive layers, as exemplified by (b) and (c), coherent accumulation creates new maxima of 32.55 and 59.77, respectively, thereby increasing the scale required by symmetric per-tensor quantization. 
+
+the effective quantization grid for the remaining values. We therefore select the activation-side transform on a layer-by-layer basis. 
+
+Activation amplification in sensitive layers. To understand why activation-side mixing can be unfavorable, consider the input-channel vector x ∈ RCin ,l at one spatial position of layer 
+
+l. Let min  
+
+> l
+
+≥ Cin ,l be the Hadamard order and ¯x ∈ Rmin  
+
+> l
+
+be the corresponding zero-padded vector. We use a normalized Hadamard matrix whose first column is generally defined as the constant basis h0 = 1/
+
+q
+
+min  
+
+> l
+
+. While the remaining columns combine channels with balanced positive and negative signs, h0 adds all channel values with the same sign. Thus, for y = H⊤
+
+> min
+> l
+
+¯x, the constant-basis component is 
+
+y0 = h⊤ 
+
+> 0
+
+¯x = 1
+
+q
+
+min 
+
+> lCin ,l
+
+X
+
+> j=1
+
+xj = Cin ,l 
+
+q
+
+min 
+
+> l
+
+μx, (23) where μx is the mean over the original input channels. Eq. (23) shows that a nonzero channel mean accumulates coherently rather than being canceled by sign mixing. In the unpadded case, min  
+
+> l
+
+= Cin ,l and y0 = pCin ,l μx; the constant-basis response is therefore amplified by pCin ,l relative to the channel mean and may become the tensor maximum. Fig. 5 illustrates both outcomes. In Fig. 5(a), the coherent component remains below the original maximum, so the Hadamard transform reduces the per-tensor range. In Fig. 5(b) and (c), it becomes the dominant transformed response and in-creases the quantization step. Such amplification occurs more often for activations because activation functions can introduce sign asymmetry and nonzero channel means, whereas learned weights are generally more balanced around zero. 
+
+Profiling-based strategy selection. We identify activation-sensitive layers once, before quantization optimization. Given a profiling set of M images, let Xl,k be the input activation of layer l for image k, and let Hin  
+
+> l
+
+(·) denote its input-side Hadamard transform, including padding when required. We define the empirical range-expansion probability as 
+
+pl = 1
+
+M
+
+> M
+
+X
+
+> k=1
+
+I  Hin  
+
+> l
+
+(Xl,k ) ∞ > ∥Xl,k ∥∞
+
+ , (24) where I[·] is the indicator function. A large pl indicates that activation-side Hadamard transformation consistently enlarges the quantization range of layer l.Based on this statistic, the layer-wise strategy is selected as 
+
+πl =
+
+(
+
+WH , pl > τ sel ,
+
+DH , pl ≤ τsel , (25) where DH and WH are defined in Sec. IV-B. Layers with frequent range expansion use WH to avoid transforming their activations; all remaining layers use DH. We use M = 1000 profiling images and τsel = 0 .8 in all experiments. The resulting πl is fixed during PTQ, QAT, and inference, introducing neither input-dependent branching nor online selection overhead. 
+
+D. Hadamard Construction and Implementation 
+
+Hadamard matrices are not guaranteed to exist for arbitrary orders. For a channel dimension C, we therefore pad it to the smallest supported order no smaller than the next multiple of four: 
+
+C4(C) = 4 
+
+ C
+
+4
+
+
+
+, m(C) = min {m ∈ M H | m ≥ C4(C)} ,
+
+(26) where MH contains the orders supported by the adopted Sylvester, Paley, and Kronecker constructions [80], [85]. The constructions are detailed in supplementary materials. The transformed weights are input-independent and can therefore be precomputed offline. During inference, each activation-side Hadamard transform is implemented as a fixed bias-free ( 1 × 1) convolution, ensuring compatibility with standard inference backends. This portable implementation is not computationally optimal, as it realizes the signed transform as a dense convolution, incurs redundant multiply–accumulate and memory operations, and does not exploit operator fusion. The overhead could be further reduced through dedicated addition–subtraction kernels and fusion with adjacent quan-tized operators. Since these optimizations require backend-and hardware-specific CUDA kernel design, we leave them for future work. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8
+
+E. Training and Optimization 
+
+Our framework supports two quantization workflows, QAT and PTQ, as well as two quantization granularities, channel-wise and tensor-wise quantization. These two choices can be combined independently, resulting in four supported config-urations. After determining the configuration and fixing the transform type for each layer, the complete quantized codec is trained or calibrated accordingly. 
+
+Network-wise PTQ calibration. Conventional PTQ meth-ods commonly calibrate individual layers or blocks by min-imizing local reconstruction error, as in AdaRound [86], BRECQ [87] and RDO-PTQ [13]. Such local objectives, how-ever, cannot fully capture how quantization errors propagate across the codec. Following the network-wise paradigm of NeuroQuant [88], we instead optimize all learnable quanti-zation parameters jointly using 
+
+LPTQ = R + λD + ηLreg , (27) where R is the estimated rate, D is the reconstruction dis-tortion, λ controls their trade-off, and η weights the adaptive-rounding regularizer Lreg . The regularizer progressively drives the learnable rounding variables toward discrete decisions. For channel-wise activation quantization, DH is adopted for all layers, whereas tensor-wise activation quantization uses the calibration set to select between DH and WH for each layer according to Eq. (25). The activation quantization ranges are estimated dynamically for each input at inference time. 
+
+Quantization-aware training. For QAT, we fine-tune the network weights and quantization parameters using 
+
+LQAT = R + λD. (28) The layer strategies remain fixed, while the activation scales are tracked during training and frozen for static inference. Let Xt denote the activation presented to a quantizer at step 
+
+t: it is expressed in the input Hadamard basis for DH and in the original basis for WH. For tensor-wise symmetric b-bit quantization, the instantaneous scale is 
+
+est = ∥Xt∥∞
+
+qsmax 
+
+, qsmax = 2 b−1 − 1. (29) For channel-wise quantization, est and the running scale 
+
+st are vectors, and all subsequent operations are applied independently to each channel. Because an isolated spike can corrupt a conventional exponential moving average (EMA), we update the running scale only when est is within a prescribed multiple of its previous value: 
+
+st =
+
+(βema st−1 + (1 − βema )est, est ≤ τema st−1,st−1, est > τ ema st−1, (30) with s0 = es0. We use βema = 0 .99 and τema = 15 . The final 
+
+st values are fixed for inference. V. E XPERIMENT 
+
+A. Experimental Setup 
+
+Models and operating points. We evaluate the proposed method on two representative LIC architectures, GMM [6] and ELIC [7]. Their available pretrained checkpoints 12 
+
+serve as both the quantization initialization and the corre-sponding FP32 references. For each architecture, we eval-uate six fixed-rate models. The R–D multipliers are λ ∈{0.0018 , 0.0035 , 0.0067 , 0.013 , 0.025 , 0.0483 } for GMM and 
+
+λ ∈ { 0.0004 , 0.0008 , 0.0016 , 0.0032 , 0.015 , 0.045 } for ELIC, following their open-source configurations. 
+
+Training, calibration, and profiling. QAT uses MLIC-Train-100K [89] and fine-tunes each pretrained model for 50 epochs with a learning rate of 1 × 10 −5. PTQ uses the 512 images from DIV2K [90] as the calibration set. The layer-wise DH/WH assignment is determined before quantization optimization using M = 1000 profiling images and the range-expansion statistic in Eq. (24). We set τsel = 0 .8 according to the empirical range-expansion statistics, so that WH is assigned only to layers exhibiting persistent activation-range amplification. The resulting assignment is fixed throughout PTQ, QAT, and inference. All QAT and PTQ optimization runs are conducted on a single NVIDIA RTX 4090D GPU. 
+
+Evaluation datasets and metrics. We evaluate all models on Kodak [91], Tecnick [92], and the CLIC Professional validation set [93]. Kodak contains 24 images at 512 × 768 ,Tecnick contains 100 images at 1200 × 1200 , and CLIC con-tains 41 2K-resolution images. Rate–distortion performance is measured using bits per pixel (bpp) and peak signal-to-noise ratio (PSNR). We further report the Bjøntegaard delta rate (BD-rate) [94] relative to the corresponding FP32 check-points over the six operating points. Lower BD-rate values indicate better performance, and negative values indicate an improvement over the FP32 reference. 
+
+Comparison methods. We compare against representative LIC quantization methods under their reported optimization regimes and activation granularities. The QAT baselines com-prise Q-LIC [20], RAQ-QAT [19], DynaQuant [25], FPQ [26], and FMPQ [26]. The PTQ baselines comprise RDO-PTQ [13], SS-PTQ [23], RAQ-PTQ [19], MPPTQ [27], and AWDB-PTQ [15]. We additionally include LinearQuant [14] and SmoothQuant [72] using the results reported by Yu et al. [15]. These baselines cover uniform, non-uniform, and mixed-precision quantization under both channel-wise and tensor-wise activation granularities. Tables II and III report the exact precision, quantization granularity, optimization regime, and benchmark results for each comparison. 
+
+Quantization configurations. Unless otherwise specified, every HaTQ variant uses uniform W8A8 quantization. We apply channel-wise symmetric quantization to weights and evaluate both channel-wise and tensor-wise activation quanti-zation. PTQ uses static weight quantization and dynamic affine activation quantization. QAT uses static symmetric quanti-zation, with activation scales tracked during fine-tuning and frozen before inference. The tensor-wise QAT configuration follows the regular W8A8 execution pattern supported by standard INT8 inference engines. We deploy this configuration with NVIDIA TensorRT and report its runtime overhead in the deployment study. 
+
+> 1https://interdigitalinc.github.io/CompressAI/zoo.html
+> 2https://github.com/VincentChandelier/ELiC-ReImplemetation
+
+JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 90.2 0.4 0.6 0.8 
+
+Bitrate (bpp)   
+
+> 28 30 32 34 36
+> PSNR (dB)  0.125 0.150 0.175 28.5 29.0 29.5 30.0
+> Low-rate zoom
+> FP32 Ours-QAT (CW) Ours-QAT (TW) FPQ-INT8 AWDB-PTQ DynaQuant RDO-PTQ
+
+(a) Kodak 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)   
+
+> 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.100 0.125 30 31
+> Low-rate zoom
+> FP32 Ours-QAT (CW) Ours-QAT (TW) FPQ-INT8 AWDB-PTQ DynaQuant
+
+(b) CLIC 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)     
+
+> 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.10 0.12 0.14 30 31 32 Low-rate zoom
+> FP32 Ours-QAT (CW) Ours-QAT (TW) FPQ-INT8 AWDB-PTQ
+
+(c) Tecnick Fig. 6. Rate–distortion performance of different quantization methods applied to GMM [6] on the Kodak, CLIC, and Tecnick datasets. The original FP32 model serves as the anchor. CW and TW denote channel-wise and tensor-wise activation quantization, respectively. TABLE II BD-RATE CHANGE (%) OF QUANTIZED GMM MODELS RELATIVE TO THEIR FP32 COUNTERPARTS .
+
+Granularity Optimization Method Precision Kodak CLIC Tecnick Avg. 
+
+Channel-wise QAT DynaQuant (AAAI’26) [25] UP-INT8 +1 .02% +2 .61% – +1 .82% 
+
+DynaQuant (AAAI’26) [25] MP-INT6.2 +7 .15% +12 .87% – –FPQ (ICME’24) [26] UP-INT8 +2 .05% +3 .54% +4 .97% +3 .52% 
+
+FMPQ (ICME’24) [26] MP-INT8.0 +0 .89% +1 .70% +2 .68% +1 .76% 
+
+Q-LIC (TCSVT’25) [20] UP-INT8 +10 .50% +13 .00% – +11 .75% 
+
+HaTQ (Ours) UP-INT8 −1.84 % −4.18 % −5.55 % −3.86 %
+
+Channel-wise PTQ RDO-PTQ (TCSVT’24) [13] UP-INT8 +4 .88% – +6 .86% +5 .87% 
+
+SS-PTQ (IEEE Access’25) [23] NU-INT8 +4 .05% – – +4 .05% 
+
+HaTQ (Ours) UP-INT8 +1.13 % +1.26 % +2.17 % +1.52 %
+
+Tensor-wise QAT RAQ-QAT (TCSVT’21) [19] UP-INT8 +12 .20% +17 .60% – +14 .90% 
+
+HaTQ (Ours) UP-INT8 +4.29 % +1.98 % −0.08 % +2.06 %
+
+Tensor-wise PTQ RAQ-PTQ (TCSVT’21) [19] UP-INT8 +27 .84% – +29 .95% +28 .90% 
+
+AWDB-PTQ (ACM MM’25) [15] UP-INT8 +8 .74% +13 .06% +15 .53% +12 .44% 
+
+LinearQuant (ACM MM’25) [15] UP-INT9 +5 .51% +7 .29% +8 .47% +7 .09% 
+
+SmoothQuant (ICML’23) [72] UP-INT9 +2.35 % +3 .92% +4 .41% +3 .56% 
+
+AWDB-PTQ (ACM MM’25) [15] UP-INT9 +2 .85% +3 .77% +5 .57% +4 .06% 
+
+MPPTQ (IoT-J’25) [27] MP-INT11.3 † +6 .29% +8 .36% +9 .57% +8 .07% 
+
+HaTQ (Ours) UP-INT8 +3 .15% +2.95 % +2.77 % +2.96 %
+
+Note: UP, NU, and MP denote uniform, non-uniform, and mixed-precision quantization, respectively. INT8 and INT9 indicate 8- and 9-bit weight–activation configurations. For MP, precision denotes the approximate equivalent bitwidth. MPPTQ uses layer-wise configurations selected from W4A4, W8A8, and W16A16. Layer-wise and tensor-wise activation quantization are equivalent and differ only in terminology. Averages are calculated over the available datasets. Best results within each setting are highlighted .
+
+B. Evaluation 
+
+Fig. 6 and 7 present the R–D curves of the FP32 and INT8 models, while Tables II and III report the corresponding BD-rate changes. 
+
+Comparison with QAT methods. Existing state-of-the-art QAT methods mainly address heterogeneous quantiza-tion sensitivity by increasing the flexibility of the quan-tizer. FMPQ [26] assigns mixed precision to sensitive layers, whereas DynaQuant [25] uses content-adaptive quantization bitwidth. In contrast, HaTQ retains uniform W8A8 quantiza-tion. On GMM, channel-wise HaTQ-QAT achieves an aver-age BD-rate change of −3.86% , outperforming both mixed-precision FMPQ and DynaQuant. The R–D curves in Fig. 6 show that this advantage is maintained across the six operating points. Redistributing concentrated responses can therefore be more effective than assigning additional precision to selected layers. The gains also transfer to ELIC. On Kodak, channel-wise HaTQ-QAT reduces the BD-rate changes of mixed-precision DynaQuant from 5.97% to 0.16% . The improvement across two different LIC architectures suggests that the benefit is not specific to the transform and context structure of GMM. Notably, HaTQ-QAT achieves negative BD-rate values rel-ative to the corresponding FP32 checkpoints. This does not imply that INT8 arithmetic is intrinsically superior to FP32, as the pretrained FP32 checkpoints are not strict R–D upper bounds. A plausible explanation is that Hadamard-domain JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 10 
+
+TABLE III BD-RATE CHANGE (%) OF QUANTIZED ELIC MODELS RELATIVE TO THEIR FP32 COUNTERPARTS .
+
+Granularity Optimization Method Precision Kodak CLIC Tecnick Avg. 
+
+Channel-wise QAT DynaQuant (AAAI’26) [25] UP-INT8 +5 .97% +2 .55% – +4 .26% 
+
+DynaQuant (AAAI’26) [25] MP-INT6.9 +7 .62% +4 .01% – –
+
+HaTQ (Ours) UP-INT8 +0.16 % +0.63 % +6.33 % +2.37 %
+
+Tensor-wise QAT HaTQ (Ours) UP-INT8 +5.03 % +6.40 % +8.33 % +6.59 %
+
+Note: UP and MP denote uniform- and mixed-precision quantization, respectively. INT8 indicates an 8-bit weight–activation configuration. For MP, precision denotes the approximate equivalent bitwidth. Averages are calculated over the available datasets. Best results within each setting are highlighted .0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 
+
+Bitrate (bpp)   
+
+> 28 29 30 31 32 33 34 35 36 37
+> PSNR (dB)  0.125 0.150 0.175 28.5 29.0 29.5 30.0
+> Low-rate zoom
+> FP32 QAT-CW QAT-TW PTQ-CW PTQ-TW
+
+(a) GMM, Kodak 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)   
+
+> 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.100 0.125 30.5 31.0 31.5
+> Low-rate zoom
+> FP32 QAT-CW QAT-TW PTQ-CW PTQ-TW
+
+(b) GMM, CLIC 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)    
+
+> 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.100 0.125 30.5 31.0 31.5 32.0 Low-rate zoom
+> FP32 QAT-CW QAT-TW PTQ-CW PTQ-TW
+
+(c) GMM, Tecnick 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+Bitrate (bpp)  
+
+> 26 27 28 29 30 31 32 33 34 35 36 37
+> PSNR (dB)  0.04 0.06 26.0 26.5 27.0 27.5
+> Low-rate zoom
+> FP32 QAT-CW QAT-TW
+
+(d) ELIC, Kodak 0.0 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)    
+
+> 28 29 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.04 0.05 28.0 28.5 29.0 29.5 Low-rate zoom
+> FP32 QAT-CW QAT-TW
+
+(e) ELIC, CLIC 0.0 0.1 0.2 0.3 0.4 0.5 0.6 
+
+Bitrate (bpp)   
+
+> 28 29 30 31 32 33 34 35 36 37 38
+> PSNR (dB)  0.04 0.06 28.0 28.5 29.0 29.5
+> Low-rate zoom
+> FP32 QAT-CW QAT-TW
+
+(f) ELIC, Tecnick Fig. 7. Rate–distortion performance of the FP32 and INT8 GMM (top) and ELIC (bottom) under different quantization settings. CW and TW denote channel-wise and tensor-wise activation quantization, respectively. 
+
+reparameterization improves QAT conditioning, enabling con-vergence to more favorable R–D operating points. How pa-rameterization affects the loss landscape and training dynamics represents another interesting direction for future research. 
+
+Comparison with PTQ methods. Across the Kodak and Tecnick benchmarks, HaTQ reduces the average BD-rate in-crease from 5.87% for RDO-PTQ to 1.65% . Unlike RDO-PTQ [13], which optimizes individual layers independently, our network-wise calibration coordinates quantization errors according to their accumulated impact on the end-to-end R– D objective. SS-PTQ [23] enhances weight representability through non-uniform quantization but operates entirely in the original weight domain. On Kodak, HaTQ achieves a BD-rate increase of only 1.13% , compared with 4.05% for SS-PTQ. This result demonstrates that uniform quantization in a suitably conditioned transform domain can outperform more flexible non-uniform quantization applied directly in the original domain. 
+
+Performance under tensor-wise quantization. The benefit of HaTQ is retained when all activation channels share one quantization scale. This setting is more sensitive to channel-wise range imbalance because a few extreme responses can determine the quantization grid of the entire tensor. Under tensor-wise PTQ, HaTQ reduces the average BD-rate degra-dation of AWDB-PTQ [15] from 12 .44% to 2.96% . AWDB-PTQ is a channel-wise rescaling method that balances the activation and weight ranges by transferring the dynamic-range burden between the two operands. In contrast, the Hadamard transform redistributes concentrated components within the transform domain through orthogonal mixing. Overall, HaTQ consistently improves both QAT and PTQ, remains effective with tensor-wise activation quantization, and transfers from GMM to ELIC. The results support transform-domain quantization as a practical alternative to JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 11 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 
+
+> Bitrate (bpp)
+> 29 30 31 32 33 34 35 36 37
+> PSNR (dB)
+> FP32 w/ Hadamard (INT8) w/o Hadamard (INT8)
+> BD-rate: +1.13% BD-rate: +2.42%
+
+(a) Channel-wise PTQ 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8  
+
+> Bitrate (bpp)
+> 29 30 31 32 33 34 35 36 37
+> PSNR (dB)
+> FP32 w/ Hadamard (INT8) w/o Hadamard (INT8)
+> BD-rate: -1.84% BD-rate: +4.47%
+
+(b) Channel-wise QAT 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8  
+
+> Bitrate (bpp)
+> 29 30 31 32 33 34 35 36 37
+> PSNR (dB)
+> FP32 w/ Hadamard (INT8) w/o Hadamard (INT8)
+> BD-rate: +3.15% BD-rate: +15.16%
+
+(c) Tensor-wise PTQ 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8  
+
+> Bitrate (bpp)
+> 29 30 31 32 33 34 35 36 37
+> PSNR (dB)
+> FP32 w/ Hadamard (INT8) w/o Hadamard (INT8)
+> BD-rate: +4.29% BD-rate: +18.63%
+
+(d) Tensor-wise QAT Fig. 8. Effectiveness of the Hadamard transform across different quantization settings. 
+
+mixed-precision or non-uniform quantization for INT8 LIC deployment. 
+
+C. Ablation Studies 
+
+Unless otherwise specified, all ablation studies are con-ducted on Kodak using GMM. 
+
+Effect of Hadamard-domain quantization. We first re-move all Hadamard transforms while retaining the quantizers, training data, and optimization schedule. Across the four set-tings in Fig. 8, the transformed models consistently outperform their counterparts. Thus, the improvement demonstrates that the domain presented to the uniform quantizer is itself a principal source of error. The magnitude of the gain reveals when this transformation is most useful. With channel-wise activation scales, PTQ with dynamic activation quantization can already absorb much of the inter-channel range variation on each input. Static QAT scales cannot adapt in this manner and therefore benefit more from Hadamard reparameterization. The distinction becomes sharper under tensor-wise activation quantization. In this case, some extreme components determine the step size for the complete tensor. The agreement between the distributional and R–D changes supports Hadamard-domain quantization. 
+
+Effect of layer-adaptive selection. In layers with a nonzero channel mean, the constant Hadamard basis can coherently accumulate activation components and increase this maximum even when the overall distribution becomes less heavy-tailed. Profiling shows that the sensitive layers are mainly located in the context module, where quantization errors directly perturb probability estimation and accumulate over latent symbols. Our profiling criterion in Eq. (24) therefore applies double-Hadamard quantization to beneficial layers and switches sen-sitive layers to weight-only transformation. As shown in Fig. 9a, this reduces the BD-rate loss from 9.30% to 4.29%, demonstrating that layer adaptivity is necessary to prevent locally unfavorable transformations from degrading the end-to-end coding objective. 
+
+Effect of calibration-set size. As shown in Fig. 9b, the R–D loss decreases steadily and approaches saturation at approxi-mately 512 images. Unlike layer-wise reconstruction, whole-network calibration jointly optimizes quantization parameters according to their accumulated effects on entropy estimation and reconstruction, and therefore benefits from greater data diversity. We consequently use 512 calibration images in PTQ. 
+
+D. Deployment 
+
+We evaluate the deployment characteristics of HaTQ on NVIDIA TensorRT. Both HaTQ and the baseline use uniform W8A8 quantization with tensor-wise activation scales and channel-wise weight scales. 
+
+TensorRT realization. As described in Sec. IV-D, all weight-side transforms are folded offline into the padded con-volution kernels and therefore introduce no additional runtime operators. Each online Hadamard transform is exported as a fixed, bias-free 1 × 1 convolution whose coefficients are specified by the corresponding Hadamard matrix. The remain-ing network is executed using the standard TensorRT INT8 pipeline. This implementation requires no custom TensorRT plugins and supports both the power-of-two and non-power-of-two Hadamard orders used in our construction. 
+
+Latency and storage overhead. We measure average in-ference latency on an NVIDIA GeForce RTX 4090D at the different input resolutions shown in Fig. 9c. At 768 × 512 ,HaTQ requires 13 .39 ms per image, compared with 8.13 ms for the TensorRT INT8 QAT baseline and 24 .80 ms for the FP32 reference. Thus, the portable HaTQ realization incurs 
+
+5.26 ms over the matched INT8 baseline while remaining 
+
+11 .41 ms faster than the reported floating-point implementa-tion. The Hadamard matrices add only 1.5 MB of storage. 
+
+Optimization potential. The measured overhead primarily reflects the portable realization of the online transform. Treat-ing a signed Hadamard transform as an unfused dense 1 × 1
+
+convolution introduces avoidable multiplications, memory traf-fic, and kernel launches. As derived in Sec. III-B, the transform itself requires only additions and subtractions, and its normal-ization factor can be absorbed into adjacent fixed-point scales. Dedicated integer Hadamard kernels, fusion with neighboring quantized operators, and butterfly implementations for power-of-two orders can therefore reduce the deployment overhead without changing the trained model. VI. C ONCLUSION 
+
+This work reframes LIC quantization as a problem of select-ing a better numerical domain, rather than continually increas-JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 12 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Bit-rate (bpp)
+> 28 29 30 31 32 33 34 35 36 37
+> PSNR (dB)
+> BD-rate: 4.29% BD-rate: 9.3%
+> w/ layer-adaptive selection w/o layer-adaptive selection
+
+(a) Layer-adaptive selection mechanism. 0 100 200 300 400 500  
+
+> Calibration set size
+> 1.50 1.53 1.56 1.59
+> R-D loss
+
+(b) Calibration set size. 480×360 512×768 1280×720 1920×1080  
+
+> Input resolution
+> 020 40 60 80 100 120 140
+> Inference latency (ms/image)
+> 12.2 24.8 62.5 134.7 4.3 8.1 20.2 43.7 7.5 13.4 31.6 77.3
+> FP32 w/o Hadamard (INT8) w/ Hadamard (INT8)
+
+(c) Inference latency. Fig. 9. Ablation studies and deployment analysis. (a) Effect of layer-adaptive selection on the R–D performance of GMM on Kodak under tensor-wise activation QAT. (b) Effect of calibration set size on whole-network R–D optimization. (c) Inference latency of FP32 and INT8 models with and without the Hadamard transform at different input resolutions. 
+
+ing the flexibility of the quantizer. We introduced equivalent Hadamard reparameterizations that redistribute outliers and channel-wise magnitude variations before uniform INT8 quan-tization. The proposed framework consistently improves R–D performance under all four combinations of quantization work-flow and granularity across different LIC architectures and datasets. More broadly, the results connect model quantization with the principle of transform coding: a simple quantizer can become more effective when its input representation is better conditioned. The operators are compatible with integer-only execution, and the TensorRT implementation demonstrates that the proposed method can be readily integrated into practical inference pipelines. The current implementation uses unfused 
+
+1 × 1 convolutions for online transforms and simplifies some branches, leaving clear room for improvement. Dedicated Hadamard kernels, operator fusion, and extensions to lower bit widths are promising directions for future work. REFERENCES [1] G. K. Wallace, “The jpeg still picture compression standard,” IEEE transactions on consumer electronics , vol. 38, no. 1, pp. xviii–xxxiv, 1992. [2] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, “Overview of the high efficiency video coding (hevc) standard,” IEEE Transactions on circuits and systems for video technology , vol. 22, no. 12, pp. 1649– 1668, 2012. [3] B. Bross, Y.-K. Wang, Y. Ye, S. Liu, J. Chen, G. J. Sullivan, and J.-R. Ohm, “Overview of the versatile video coding (vvc) standard and its applications,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 10, pp. 3736–3764, 2021. [4] J. Ball´ e, D. Minnen, S. Singh, S. J. Hwang, and N. Johnston, “Variational image compression with a scale hyperprior,” in International Conference on Learning Representations , 2018. [5] D. Minnen, J. Ball´ e, and G. D. Toderici, “Joint autoregressive and hierarchical priors for learned image compression,” Advances in neural information processing systems , vol. 31, pp. 10 771–10 780, 2018. [6] Z. Cheng, H. Sun, M. Takeuchi, and J. Katto, “Learned image com-pression with discretized gaussian mixture likelihoods and attention modules,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2020, pp. 7939–7948. [7] D. He, Z. Yang, W. Peng, R. Ma, H. Qin, and Y. Wang, “Elic: Efficient learned image compression with unevenly grouped space-channel contextual adaptive coding,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 5718– 5727. [8] J. Liu, H. Sun, and J. Katto, “Learned image compression with mixed transformer-cnn architectures,” in Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , 2023, pp. 14 388– 14 397. [9] J. Shi, M. Lu, X. Li, A. Ke, R. Zhang, and Z. Ma, “Dit-ic: Aligned diffusion transformer for efficient image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2026, pp. 25 719–25 729. [10] W. Cong, J. Shi, M. Lu, X. Zhang, and Z. Ma, “Taming hierarchical image coding optimization: A spectral regularization perspective,” in 
+
+The Fourteenth International Conference on Learning Representations ,vol. 1, 2026. [11] ISO/IEC, “Information technology—JPEG AI learning-based image coding system—Part 1: Core coding system,” ISO/IEC 6048-1:2025, 2025, accessed 2026-07-24. [12] IEEE, “IEEE Standard for Neural Network-Based Image Coding,” IEEE Std 1857.11-2024, 2024. [13] J. Shi, M. Lu, and Z. Ma, “Rate-distortion optimized post-training quantization for learned image compression,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 5, pp. 3082– 3095, 2024. [14] M. Nagel, M. Fournarakis, R. A. Amjad, Y. Bondarenko, M. Van Baalen, and T. Blankevoort, “A white paper on neural network quantization,” 
+
+arXiv preprint arXiv:2106.08295 , 2021. [15] J. Yu, S. Mai, P. Zhang, Y. Jiang, and J. Cheng, “Activation and weight distribution balancing for optimal post-training quantization in learned image compression,” in Proceedings of the 33rd ACM International Conference on Multimedia , 2025, pp. 7959–7967. [16] D. He, Z. Yang, Y. Wang, Y. Chen, Q. Zhang, and H. Qin, “Post-training quantization for cross-platform learned image compression,” in 
+
+International Conference on Learning Representations , 2022. [17] E. Koyuncu, T. Solovyev, E. Alshina, and A. Kaup, “Device interop-erability for learned image compression with weights and activations quantization,” in 2022 Picture Coding Symposium (PCS) . IEEE, 2022, pp. 151–155. [18] E. Koyuncu, T. Solovyev, J. Sauer, E. Alshina, and A. Kaup, “Quantized decoder in learned image compression for deterministic reconstruction,” in ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2024, pp. 3985–3989. [19] W. Hong, T. Chen, M. Lu, S. Pu, and Z. Ma, “Efficient neural image decoding via fixed-point inference,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 9, pp. 3618–3630, 2021. [20] H. Sun, L. Yu, and J. Katto, “Q-lic: Quantizing learned image compres-sion with channel splitting,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 35, no. 4, pp. 3798–3811, 2025. [21] H. Sun, Z. Cheng, M. Takeuchi, and J. Katto, “End-to-end learned image compression with fixed point weight quantization,” in Proceedings of the IEEE International Conference on Image Processing , 2020, pp. 3359– 3363. [22] H. Sun, L. Yu, and J. Katto, “Learned image compression with fixed-point arithmetic,” in Picture Coding Symposium , 2021, pp. 1–5. [23] J. Yang, X. Wang, Q. Li, S. Qiao, and Y. Zhou, “Subset-selection weight JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 13 
+
+post-training quantization method for learned image compression task,” 
+
+IEEE Access , vol. 13, pp. 5145–5153, 2025. [24] Y. Zhang, W. Shen, T. Gao, N. Zhang, and P. Wang, “Mpp-lic: Mixed precision post-training quantization for learned image compression,” in 
+
+2026 Data Compression Conference (DCC) . IEEE, 2026, pp. 487–487. [25] Y. Bao, Y. Cheng, Y. Liu, Y. Yang, P. Qin, M. Li, and Y. Liang, “Dynaquant: Dynamic mixed-precision quantization for learned image compression,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 40, no. 17, 2026, pp. 14 475–14 483. [26] M. A. F. Hossain, Z. Duan, and F. Zhu, “Flexible mixed precision quan-tization for learned image compression,” in 2024 IEEE International Conference on Multimedia and Expo (ICME) . IEEE, 2024, pp. 1–8. [27] J. Yu, S. Mai, P. Zhang, Y. Jiang, and J. Cheng, “Mixed-precision post-training quantization for learned image compression,” IEEE Internet of Things Journal , vol. 12, no. 16, pp. 34 392–34 405, 2025. [28] C. Baskin, N. Liss, E. Schwartz, E. Zheltonozhskii, R. Giryes, A. M. Bronstein, and A. Mendelson, “Uniq: Uniform noise injection for non-uniform quantization of neural networks,” ACM Transactions on Computer Systems (TOCS) , vol. 37, no. 1-4, pp. 1–15, 2021. [29] R. Clarke, Transform coding of images . Academic Press Professional, Inc., 1985. [30] V. K. Goyal, “Theoretical foundations of transform coding,” IEEE Signal processing magazine , vol. 18, no. 5, pp. 9–21, 2001. [31] W. K. Pratt, J. Kane, and H. C. Andrews, “Hadamard transform image coding,” Proceedings of the IEEE , vol. 57, no. 1, pp. 58–68, 1969. [32] R. M. Gray, “Vector quantization,” IEEE ASSP Magazine , vol. 1, no. 2, pp. 4–29, 1984. [33] A. Gersho and R. M. Gray, Vector Quantization and Signal Compression .Springer, 1992. [34] J. Ball´ e, P. A. Chou, D. Minnen, S. Singh, N. Johnston, E. Agustsson, S. J. Hwang, and G. Toderici, “Nonlinear transform coding,” IEEE Journal of Selected Topics in Signal Processing , vol. 15, no. 2, pp. 339–353, 2021. [35] N. S. Jayant and P. Noll, Digital Coding of Waveforms: Principles and Applications to Speech and Video . Englewood Cliffs, NJ, USA: Prentice-Hall, 1984. [36] D. A. Huffman, “A method for the construction of minimum-redundancy codes,” Proceedings of the IRE , vol. 40, no. 9, pp. 1098–1101, 1952. [37] N. Ahmed, T. Natarajan, and K. R. Rao, “Discrete cosine transform,” 
+
+IEEE Transactions on Computers , vol. C-23, no. 1, pp. 90–93, 1974. [38] J. G. Daugman, “Complete discrete 2-d gabor transforms by neural networks for image analysis and compression,” IEEE Transactions on Acoustics, Speech, and Signal Processing , vol. 36, no. 7, pp. 1169–1179, 1988. [39] G. W. Cottrell, P. W. Munro, and D. Zipser, “Image compression by back propagation: A demonstration of extensional programming,” in 
+
+Advances in Cognitive Science , N. E. Sharkey, Ed. Chichester, U.K.: Ellis Horwood, 1987, vol. 2. [40] R. D. Dony and S. Haykin, “Neural network approaches to image compression,” Proceedings of the IEEE , vol. 83, no. 2, pp. 288–303, 1995. [41] J. Jiang, “Image compression with neural networks: A survey,” Signal Processing: Image Communication , vol. 14, no. 9, pp. 737–760, 1999. [42] G. Toderici, S. M. O’Malley, S. J. Hwang, D. Vincent, D. Minnen, S. Baluja, M. Covell, and R. Sukthankar, “Variable rate image com-pression with recurrent neural networks,” in International Conference on Learning Representations , 2016. [43] J. Ball´ e, V. Laparra, and E. P. Simoncelli, “End-to-end optimized image compression,” in International Conference on Learning Representations ,2017. [44] D. Minnen and S. Singh, “Channel-wise autoregressive entropy models for learned image compression,” in 2020 IEEE International Conference on Image Processing (ICIP) . IEEE, 2020, pp. 3339–3343. [45] Z. Cheng, H. Sun, M. Takeuchi, and J. Katto, “Deep residual learning for image compression.” in Cvpr workshops , 2019, p. 0. [46] R. Zou, C. Song, and Z. Zhang, “The devil is in the details: Window-based attention for image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 17 492–17 501. [47] D. Feng, Z. Cheng, S. Wang, R. Wu, H. Hu, G. Lu, and L. Song, “Linear attention modeling for learned image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2025, pp. 7623–7632. [48] F. Zeng, H. Tang, Y. Shao, S. Chen, L. Shao, and Y. Wang, “Mambaic: State space models for high-performance learned image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025, pp. 18 041–18 050. [49] M. Li, W. Zuo, S. Gu, D. Zhao, and D. Zhang, “Learning convolutional networks for content-weighted image compression,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition ,2018, pp. 3214–3223. [50] Y. Qian, M. Lin, X. Sun, Z. Tan, and R. Jin, “Entroformer: Atransformer-based entropy model for learned image compression,” in 
+
+International Conference on Learning Representations , 2022. [51] A. B. Koyuncu, H. Gao, A. Boev, G. Gaikov, E. Alshina, and E. Stein-bach, “Contextformer: A transformer with spatio-channel attention for context modeling in learned image compression,” in European Confer-ence on Computer Vision . Springer, 2022, pp. 447–463. [52] K. Nakanishi, S.-i. Maeda, T. Miyato, and D. Okanohara, “Neural multi-scale image compression,” arXiv preprint arXiv:1806.06550 , 2018. [53] Z. Duan, M. Lu, J. Ma, Y. Huang, Z. Ma, and F. Zhu, “QARV: Quantization-aware resnet vae for lossy image compression,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 46, no. 1, pp. 436–450, 2024. [54] Y. Zhang, Y. Huang, and F. Zhu, “Qarv++: An improved hierarchical vae for learned image compression,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 36, no. 6, pp. 7921–7936, 2026. [55] Y. Dubois, B. K´ egl, F. Bach, and S. Chandar, “Lossy compression for lossless prediction,” in Advances in Neural Information Processing Systems , vol. 34, 2021, pp. 14 014–14 028. [56] E. Bourtsoulatze, D. B. Kurka, and D. G¨ und¨ uz, “Deep joint source-channel coding for wireless image transmission,” IEEE Transactions on Cognitive Communications and Networking , vol. 5, no. 3, pp. 567–579, 2019. [57] Y.-H. Chen, Y.-C. Weng, C.-H. Kao, C. Chien, W.-C. Chiu, and W.-H. Peng, “Transtic: Transferring transformer-based image compression from human perception to machine perception,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2023, pp. 23 297–23 307. [58] X. Zhang, M. Lu, Y. Chen, and Z. Ma, “Perception-oriented latent coding for high-performance compressed domain semantic inference,” in 2025 IEEE International Conference on Multimedia and Expo (ICME) . IEEE, 2025, pp. 1–6. [59] R. Yang and S. Mandt, “Lossy image compression with conditional dif-fusion models,” in Advances in Neural Information Processing Systems ,vol. 36, 2023. [60] L. Relic, R. Azevedo, M. Gross, and C. Schroers, “Lossy image compression with foundation diffusion models,” in European Conference on Computer Vision , 2024. [61] X. Li, J. Zhang, J. Shi, M. Lu, and Z. Ma, “Yoda: Yet another one-step diffusion-based video compressor,” arXiv preprint arXiv:2601.01141 ,2026. [62] Z. Li, Y. Zhou, H. Wei, C. Ge, and J. Jiang, “Toward extreme image compression with latent feature guidance and diffusion prior,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 35, no. 1, pp. 888–899, 2024. [63] M. Horowitz, “1.1 computing’s energy problem (and what we can do about it),” in IEEE International Solid-State Circuits Conference Digest of Technical Papers , 2014, pp. 10–14. [64] Y. Choukroun, E. Kravchik, F. Yang, and P. Kisilev, “Low-bit quantiza-tion of neural networks for efficient inference,” in 2019 IEEE/CVF In-ternational Conference on Computer Vision Workshop (ICCVW) . IEEE, 2019, pp. 3009–3018. [65] A. Bhandare, V. Sripathi, D. Karkada, V. Menon, S. Choi, K. Datta, and V. Saletore, “Efficient 8-bit quantization of transformer neural machine language translation model,” arXiv preprint arXiv:1906.00532 , 2019. [66] L. Wei, Z. Ma, C. Yang, and Q. Yao, “Advances in the neural network quantization: A comprehensive review,” Applied Sciences , vol. 14, no. 17, p. 7445, 2024. [67] T. Dettmers, M. Lewis, Y. Belkada, and L. Zettlemoyer, “Gpt3. int8 (): 8-bit matrix multiplication for transformers at scale,” Advances in neural information processing systems , vol. 35, pp. 30 318–30 332, 2022. [68] J. Shi, Z. Chen, H. Li, Q. Zhao, M. Lu, T. Chen, and Z. Ma, “On quantizing neural representation for variable-rate video coding,” arXiv preprint arXiv:2502.11729 , 2025. [69] Z. Dong, Z. Yao, A. Gholami, M. W. Mahoney, and K. Keutzer, “Hawq: Hessian aware quantization of neural networks with mixed-precision,” in Proceedings of the IEEE/CVF international conference on computer vision , 2019, pp. 293–302. [70] B. Noune, P. Jones, D. Justus, D. Masters, and C. Luschi, “8-bit numeri-cal formats for deep neural networks,” arXiv preprint arXiv:2206.02915 ,2022. [71] S. Kim, C. Hooper, A. Gholami, Z. Dong, X. Li, S. Shen, M. W. Ma-honey, and K. Keutzer, “Squeezellm: Dense-and-sparse quantization,” in JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 14 
+
+Proceedings of the 41st International Conference on Machine Learning ,vol. 235. PMLR, 2024, pp. 23 901–23 923. [72] G. Xiao, J. Lin, M. Seznec, H. Wu, J. Demouth, and S. Han, “Smoothquant: Accurate and efficient post-training quantization for large language models,” in International conference on machine learning .PMLR, 2023, pp. 38 087–38 099. [73] S. Ashkboos, A. Mohtashami, M. L. Croci, B. Li, P. Cameron, M. Jaggi, D. Alistarh, T. Hoefler, and J. Hensman, “Quarot: Outlier-free 4-bit inference in rotated llms,” Advances in Neural Information Processing Systems , vol. 37, pp. 100 213–100 240, 2024. [74] Z. Liu, C. Zhao, I. Fedorov, B. Soran, D. Choudhary, R. Krishnamoorthi, V. Chandra, Y. Tian, and T. Blankevoort, “Spinquant: Llm quantization with learned rotations,” in International Conference on Learning Rep-resentations , 2025. [75] A. Tseng, J. Chee, Q. Sun, V. Kuleshov, and C. De Sa, “QuIP#: Even better LLM quantization with hadamard incoherence and lattice codebooks,” in Proceedings of the 41st International Conference on Machine Learning , vol. 235. PMLR, 2024, pp. 48 630–48 656. [76] J. Ball´ e, N. Johnston, and D. Minnen, “Integer networks for data compression with latent-variable models,” in International Conference on Learning Representations , 2019. [77] G. W. Jeon, S. E. Yu, and J. S. Lee, “Integer quantized learned image compression,” in Proceedings of the IEEE International Conference on Image Processing , 2023, pp. 2755–2759. [78] M. A. F. Hossain and F. Zhu, “Structured pruning and quantization for learned image compression,” in Proceedings of the IEEE International Conference on Image Processing , 2024, pp. 3730–3736. [79] F. Ye, L. Li, and D. Liu, “Variable-rate learned image compression with integer-arithmetic-only inference,” Journal of Visual Communication and Image Representation , vol. 113, p. 104634, 2025. [80] J. Seberry and M. Yamada, Hadamard Matrices: Constructions using number theory and linear algebra . John Wiley & Sons, 2020. [81] L. T. DeCarlo, “On the meaning and use of kurtosis.” Psychological methods , vol. 2, no. 3, p. 292, 1997. [82] G. Hatem, J. Zeidan, M. Goossens, and C. Moreira, “Normality testing methods and the importance of skewness and kurtosis in statistical analysis,” BAU Journal-Science and Technology , vol. 3, no. 2, p. 7, 2022. [83] D. Hendrycks and K. Gimpel, “Gaussian error linear units (gelus),” arXiv preprint arXiv:1606.08415 , 2016. [84] J. Ball´ e, V. Laparra, and E. P. Simoncelli, “Density modeling of images using a generalized normalization transformation,” arXiv preprint arXiv:1511.06281 , 2015. [85] A. Hedayat and W. D. Wallis, “Hadamard matrices and their applica-tions,” The annals of statistics , pp. 1184–1238, 1978. [86] M. Nagel, R. A. Amjad, M. van Baalen, C. Louizos, and T. Blankevoort, “Up or down? adaptive rounding for post-training quantization,” in 
+
+International Conference on Machine Learning . PMLR, 2020, pp. 7197–7206. [87] Y. Li, R. Gong, X. Tan, Y. Yang, P. Hu, Q. Zhang, F. Yu, W. Wang, and S. Gu, “BRECQ: Pushing the limit of post-training quantization by block reconstruction,” in International Conference on Learning Representations , 2021. [88] J. Shi, Z. Chen, H. Li, Q. Zhao, M. Lu, T. Chen, and Z. Ma, “On quantizing neural representation for variable-rate video coding,” in 
+
+International Conference on Learning Representations , 2025. [89] W. Jiang, J. Yang, Y. Zhai, P. Ning, F. Gao, and R. Wang, “Mlic: Multi-reference entropy model for learned image compression,” in Proceedings of the 31st ACM International Conference on Multimedia , 2023, pp. 7618–7627. [90] E. Agustsson and R. Timofte, “Ntire 2017 challenge on single image super-resolution: Dataset and study,” in The IEEE Conference on Com-puter Vision and Pattern Recognition (CVPR) Workshops , July 2017. [91] E. Kodak, “Kodak lossless true color image suite (photocd pcd0992),” 
+
+URL http://r0k. us/graphics/kodak , vol. 6, no. 2, p. 5, 1993. [92] N. Asuni, A. Giachetti et al. , “Testimages: a large-scale archive for testing visual devices and basic image processing algorithms.” in STAG ,2014, pp. 63–70. [93] G. Toderici, W. Shi, R. Timofte, L. Theis, J. Balle, E. Agustsson, N. Johnston, and F. Mentzer, “Workshop and challenge on learned image compression (clic2020),” in CVPR , 2020. [94] G. Bjontegaard, “Calculation of average psnr differences between rd-curves,” ITU SG16 Doc. VCEG-M33 , 2001. [95] J. Steepleton, “Constructions of hadamard matrices,” Master’s thesis, University of Tennessee, Knoxville, 2019. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 15 
+
+# Supplementary Material 
+
+# Hadamard-Domain Model Quantization for Learned Image Coding 
+
+This supplementary material provides the Hadamard con-structions, the function-preserving padded forms of double-Hadamard (DH) and weight-only Hadamard (WH) quantiza-tion, and the integer realization for bias terms and general nonlinearities. The notation follows the main paper. In partic-ular, a linear or unfolded convolutional layer is written as 
+
+Yl = XlW ⊤ 
+
+> l
+
++ bl, Xl ∈ RNl×Dl , Wl ∈ RCout ,l ×Dl ,
+
+(31) where the bias bl is broadcast over the Nl rows. VII. H ADAMARD CONSTRUCTION AND PADDED 
+
+EQUIVALENCE 
+
+A. Supported Hadamard Orders 
+
+An unnormalized Hadamard matrix eHm ∈ {− 1, +1 }m×m
+
+and its normalized form Hm satisfy 
+
+eHm eH⊤ 
+
+> m
+
+= mI m, Hm = 1
+
+√m eHm, (32) 
+
+HmH⊤ 
+
+> m
+
+= H⊤
+
+> m
+
+Hm = Im. (33) For power-of-two orders, the Sylvester construction is 
+
+eH1 = [1] , eH2m =
+
+" eHm eHm
+
+eHm − eHm
+
+#
+
+. (34) Its butterfly structure evaluates the unnormalized transform using O(m log m) additions and subtractions. To accommodate channel dimensions close to non-power-of-two orders, we also use Paley constructions [80], [95]. For an odd prime power q, Paley-I provides order q + 1 when 
+
+q ≡ 3 (mod 4) , whereas Paley-II provides order 2( q+1) when 
+
+q ≡ 1 (mod 4) . Kronecker products of available matrices provide further valid orders. We denote the resulting set of supported orders by MH ; no existence assumption is made for unsupported orders. For a channel dimension C, the transform order is selected as 
+
+C4(C) = 4 
+
+ C
+
+4
+
+
+
+, m(C) = min {m ∈ M H | m ≥ C4(C)} .
+
+(35) 
+
+B. Padding for DH and WH 
+
+Let m = m(C) ≥ C and define 
+
+PC = IC 0 ∈ RC×m,
+
+Tin  
+
+> C
+
+= PC Hm, Tout  
+
+> C
+
+= PC H⊤
+
+> m
+
+. (36) Both transforms have orthonormal rows: 
+
+Tin 
+
+> C
+
+ Tin 
+
+> C
+
+⊤ = Tout 
+
+> C
+
+ Tout 
+
+> C
+
+⊤ = IC . (37) The orientations in Eq. (36) agree with the input- and output-side Hadamard transforms used for DH and WH, respectively. For a fully connected layer, set Tin  
+
+> l
+
+= Tin  
+
+> Cin ,l
+
+. For a Kh ×
+
+Kw convolution after patch unfolding, set 
+
+Tin  
+
+> l
+
+= IKhKw ⊗ Tin  
+
+> Cin ,l
+
+. (38) In both cases, Tin  
+
+> l
+
+(Tin  
+
+> l
+
+)⊤ = IDl . The padded DH identity is therefore 
+
+Yl =  XlTin 
+
+> l
+
+   WlTin 
+
+> l
+
+⊤ + bl. (39) Thus, padding expands only the contracted representation and does not change the full-precision operator. For WH, let Tout  
+
+> l
+
+= Tout  
+
+> Cout ,l
+
+and define 
+
+W l =  Tout 
+
+> l
+
+⊤ Wl, bl = blTout  
+
+> l
+
+. (40) Using Eq. (37), the WH identity is 
+
+Yl =
+
+
+
+XlW ⊤ 
+
+> l
+
++ bl
+
+  Tout 
+
+> l
+
+⊤ . (41) The intermediate WH output has m(Cout ,l ) channels, and the final semi-orthogonal transform restores the original Cout ,l -channel output. 
+
+C. Deployment Realization 
+
+The transformed weights and, for WH, the transformed bias in Eqs. (39)–(41) are input-independent and can be stored after offline transformation. An activation-side DH transform is a fixed channel transform. For convolutional features, it can be represented by a bias-free 1 × 1 convolution that simultaneously performs padding and channel mixing, thereby using standard graph operators for every order in MH .For a Sylvester order, a dedicated butterfly implementation can replace the dense transform. Its normalization 1/√m is absorbed into the adjacent quantization scale, leaving additions and subtractions in the transform itself. Paley-based orders may use the portable fixed-transform representation unless a specialized kernel is available. VIII. B IAS AND GENERAL INTEGER NONLINEARITIES 
+
+Let sx,l be the scale of the integer activation operand consumed by layer l, and let sw,l,c be the weight scale of accumulator channel c. Integer multiply–accumulate produces 
+
+aint ,l,c with scale 
+
+sA,l,c = sx,l sw,l,c . (42) The following derivation assumes symmetric integer codes. The affine case is addressed at the end of this section. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 16 
+
+A. Integer Basis Conversions 
+
+Let mout  
+
+> l
+
+and min  
+
+> l+1
+
+denote the actual Hadamard orders, including padding. The unnormalized output-side operator 
+
+Hout  
+
+> l
+
+restores the original output basis after a WH layer and is the identity after a DH layer. Similarly, Hin  
+
+> l+1
+
+generates the Hadamard-domain input for a DH next layer and is the identity for a WH next layer. Their normalization factors are 
+
+γout  
+
+> l
+
+=
+
+(
+
+1, l is DH ,
+
+pmout  
+
+> l
+
+, l is WH ,γin  
+
+> l+1
+
+=
+
+(q 
+
+min 
+
+> l+1
+
+, l + 1 is DH ,
+
+1, l + 1 is WH . (43) The unnormalized transforms use only additions and subtrac-tions. When padding is present, they also apply the projections implicit in Eq. (36). 
+
+B. Bias Handling 
+
+For DH, define bl = bl. For WH, the accumulator is in the output Hadamard basis, so bl is the transformed bias in Eq. (40). The bias code for accumulator channel c is 
+
+bint ,l,c = round 
+
+ bl,c 
+
+sA,l,c 
+
+
+
+. (44) It is added to the integer accumulator before output-basis conversion and requantization. 
+
+C. General Nonlinearities 
+
+Let ϕ be a nonhomogeneous activation, such as SiLU, GELU, GDN, or IGDN. Because a common scale factor cannot be propagated through ϕ, we introduce an integer preactivation zint ,l with scale sz,l and an integer activation output uint ,l with scale su,l .Choose integer multipliers and shifts such that 
+
+sA,l,c 
+
+γout  
+
+> l
+
+sz,l 
+
+≈ M out 
+
+> l,c
+
+2nout 
+
+> l
+
+. (45) Because accumulator scales can differ across channels, M out 
+
+> l
+
+is applied before the output-side transform: 
+
+zint ,l = clamp round 
+
+" Hout 
+
+> l
+
+ M out  
+
+> l
+
+⊙ aint ,l 
+
+
+
+2nout 
+
+> l
+
+#
+
+, q min , q max 
+
+!
+
+.
+
+(46) Applying the transform before channel-wise scale alignment would mix integer values representing different real-valued scales. The integer nonlinear operator implements 
+
+uint ,l = ϕint (zint ,l ; sz,l , s u,l )
+
+≈ clamp 
+
+
+
+round 
+
+ ϕ (sz,l zint ,l )
+
+su,l 
+
+
+
+, q min , q max 
+
+
+
+. (47) An integer lookup table, piecewise approximation, or fixed-point kernel can realize ϕint without materializing an interme-diate real-valued tensor. The activation is then converted to the operand scale sx,l +1 
+
+of the next layer. Choose 
+
+su,l 
+
+γin 
+
+> l+1
+
+sx,l +1 
+
+≈ M in 
+
+> l
+
+2nin 
+
+> l
+
+, (48) which gives 
+
+xint ,l +1 = clamp round 
+
+" Hin 
+
+> l+1
+
+ M in  
+
+> l
+
+uint ,l 
+
+
+
+2nin 
+
+> l
+
+#
+
+, q min , q max 
+
+!
+
+.
+
+(49) For a WH next layer, Hin  
+
+> l+1
+
+= I and γin  
+
+> l+1
+
+= 1 . For a DH next layer, the integer input-side Hadamard transform and its actual order are used. Under affine activation quantization, each multiply– accumulate and Hadamard transform uses the centered code 
+
+xint − zx, and the destination zero-point is added after requan-tization. The Hadamard normalization factors remain absorbed into the fixed-point multiplier–shift pairs. Intermediate accu-mulator widths must cover the growth of the unnormalized transforms to avoid overflow.
