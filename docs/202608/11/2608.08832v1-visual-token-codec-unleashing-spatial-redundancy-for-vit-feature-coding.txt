@@ -1,0 +1,554 @@
+Title: Visual Token Codec: Unleashing Spatial Redundancy for ViT Feature Coding
+
+URL Source: https://arxiv.org/pdf/2608.08832v1
+
+Published Time: Tue, 11 Aug 2026 01:30:41 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+> IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 1
+
+# Visual Token Codec: Unleashing Spatial Redundancy for ViT Feature Coding 
+
+Donghui Feng, Fengxi Zhang, Changsheng Gao, Member, IEEE , Wenhan Yang, Member, IEEE , Qi Wang, Qunshan Gu, Hongwei Hu, Zhengxue Cheng, Member, IEEE , Li Song, Senior Member, IEEE 
+
+Abstract —Distributed deployment of large vision foundation models often partitions a ViT backbone and exchanges interme-diate token features between computing nodes, making efficient feature compression critical under bandwidth and computation constraints. Existing ViT feature codecs typically flatten het-erogeneous global and patch tokens into an L × C pseudo image, causing entropy models to mainly capture sequence-axis dependencies while overlooking the native two-dimensional patch-grid structure. In this paper, we show that ViT patch tokens retain strong local spatial correlations on the original grid. To exploit this structural prior, we propose the Visual Token Codec (VTC), a dual-path learned codec that separates global and patch tokens into dedicated coding paths. Global tokens are compressed with a lightweight factorized prior, whereas patch tokens are encoded on the patch-token grid using a spatial–channel context entropy model. To support intermediate-layer compression and practical rate adaptation, VTC further incorporates feature-matching supervision after subsequent ViT blocks and variable-rate modules within a single codec. Experiments on DINOv2 and SAM3 show that VTC consistently outperforms representative ViT feature coding baselines on classification, segmentation, and detection tasks. At 90% of uncompressed-feature performance, VTC reduces bitrate by 15.7 ×–37.4 × across these tasks. We fur-ther provide intermediate-layer rate–utility analyses for practical transmission- and storage-oriented deployment scenarios. 
+
+Index Terms —feature coding, coding for machine, vision foun-dation model 
+
+I. I NTRODUCTION 
+
+Recent years have witnessed breakthroughs in large visual foundation models, notably Vision Transformers (ViTs) [1]– [5], across diverse vision tasks. However, their high compu-tational demand poses a major challenge for on-device and edge deployment. A natural solution is distributed deploy-ment, which partitions the ViT backbone across two or more computing nodes [6], [7]: a prefix of the model runs on the sender side, and the intermediate features from a selected layer are passed to the receiver side for the remaining computation. While this design shifts part of the computation away from resource-constrained devices, it introduces a new communi-cation bottleneck: once inference is partitioned, system cost is determined not only by FLOPs, but also by the bandwidth 
+
+Donghui Feng, Fengxi Zhang, Zhengxue Cheng, Li Song are with the School of Electronic Information and Electrical Engineering, Shanghai Jiao Tong University, Shanghai, China (e-mail: {faymek, zhangfengxi, zxcheng, song li }@sjtu.edu.cn). Changsheng Gao is with the College of Computing and Data Science, Nanyang Technological University, Singapore (email: chang-sheng.gao@ntu.edu.sg) Wenhan Yang is with Pengcheng Laboratory, Shenzhen, Guangdong, China (email: yangwh@pcl.ac.cn) Qi Wang, Qunshan Gu and Hongwei Hu are with the Ant Group, Hangzhou, China. (e-mail: {qw.qq, qunshan.gu, Hongwei.huhw }@antgroup.com). [GLOBAL][PATCH] AVG. 0.526 0.013 0.013 [PATCH] AVG.     
+
+> up to 37X savings
+> 0.498 0.498 0.498
+> bpfp @ mIoU=43.5 bpfp @ mIoU=43.5
+> Our method: H-W correlation for patch tokens Previous works: L-C correlation for all vit tokens Chunked tokens
+> [GLOBAL]
+
+Fig. 1. Sliding-window 2D Pearson correlations in ViT tokens. Existing methods treat the token sequence (of length L and channel C) as a 2D input, merely capturing correlations along the length ( L) dimension. In contrast, we identify that the dominant patch tokens retain strong spatial correlations (H × W ), leading to substantial bpfp (bits per feature point) reduction. 
+
+and latency required to exchange high-dimensional activations. Efficient compression of intermediate ViT features is therefore a practical prerequisite for deploying large ViTs in bandwidth-and computation-constrained environments. 
+
+ViT feature coding addresses this bottleneck by formulat-ing intermediate ViT representations as coding targets. Given a selected compression layer, the ViT prefix transforms the input image into intermediate tokens; a feature encoder maps these tokens into quantized latents and compresses them into a compact bitstream; the receiver decompresses the bitstream, reconstructs the tokens, and feeds them into the remaining ViT layers and frozen downstream heads. Different from image coding, whose fidelity is measured mainly in the pixel domain, ViT feature coding minimizes bitrate while preserving the utility of reconstructed features for subsequent model com-putation. The central objective is therefore rate–distortion op-timization in the feature domain, where distortion is reflected by representation fidelity or downstream task performance. 
+
+Existing ViT feature codecs remain high bitrate, failing to exploit the structural prior of ViT tokens. Intermediate ViT features contain a few global tokens ([CLS] , [REG] ) [8] and many patch tokens arranged on the image patch grid [1], [2]. However, prior codecs [7], [9], [10] typically flatten these heterogeneous tokens into an L × C pseudo image for traditional [11] or learned [12], [13] image codecs. As shown by the sliding-window Pearson correlations in Fig. 1, such a sequence-oriented layout mainly captures dependence along arXiv:2608.08832v1 [cs.CV] 9 Aug 2026 IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 2Head          
+
+> ❄
+> tasks
+> ViT prefix ViT suffix
+> Edge Cloud
+> Enc Dec
+> Shallow split • Task-Specific • One-time use
+> ViT suffix ViT prefix
+> On-device machine vision Cloud Cloud
+> Enc Dec
+> ❄
+> Head LLM
+> Storage VLM train / infer Edge Patchify
+> ❄
+> ... Encoder Decoder ViT prefix ... ViT suffix Classification Segmentation Reconstruction Vision-LLM Preprocess (Optional)
+> ❄
+> Transmit Cloud Analysis
+> Head
+> Resize
+> Transmission Oriented
+> Deep split • Multi-task compatiable • Multi-time reuse
+> Storage Oriented
+> Image
+> Fig. 2. Overview of ViT feature coding and its two deployment paradigms. The upper part illustrates the generic feature coding pipeline, where an input image is processed by a ViT prefix, compressed into a compact bitstream by a feature encoder, transmitted or stored, and then decoded for the remaining ViT layers and frozen downstream heads. The lower-left part shows the transmission-oriented paradigm, which compresses shallow intermediate features for one-time, task-specific edge–cloud inference under bandwidth-constrained links. The lower-right part shows the storage-oriented paradigm, which tends to compress deeper features to generate reusable, multi-task-compatible representations that can be stored once and consumed repeatedly by different downstream tasks.
+
+the token-length dimension, while missing the strong local dependence of patch tokens on the original 2D grid. This mismatch leaves patch-grid redundancy insufficiently modeled and limits rate–distortion performance. 
+
+Existing studies also lack a systematic analysis of intermediate-layer feature coding. Practical deployments may impose different computation, bandwidth, latency, and reusability requirements, making the preferred compressed layer dependent on the deployment objective. However, most prior work focuses on compressing final-layer ViT features, while intermediate layers are rarely examined as coding tar-gets. As illustrated in Fig. 2, transmission-oriented feature coding targets one-time, task-specific edge–cloud inference and often favors compressing a shallow layer to limit on-device computation, whereas storage-oriented feature coding 
+
+tends to favor compressing a deeper layer to produce reusable representations that can be stored once and consumed by different downstream tasks. As a result, it remains unclear how to choose the compressed layer that best balances bitrate, on-device computation, and downstream utility. To address these limitations, we introduce the Visual Token Codec (VTC) , a dual-path framework that routes global and patch tokens through separate entropy models. Global tokens are compressed with a lightweight factorized prior, while patch tokens are encoded by a Spatial-Channel Context (SCCTX) entropy model [13] on the patch-token grid. By matching the entropy model to the heterogeneous structure of ViT tokens, VTC explicitly exploits patch-grid spatial priors for higher feature-domain coding efficiency. To support intermediate-layer compression, we further introduce a feature-matching 
+
+loss that aligns deeper features after subsequent ViT blocks, thereby reducing the propagation of quantization-induced dis-tortions. For practical deployment, VTC integrates variable-rate modules within a single codec. We instantiate VTC on DINOv2 and SAM3 image encoders to analyze rate–utility trade-offs across compressed layers under both transmission-oriented and storage-oriented scenarios. The main contributions of this paper are as follows:  
+
+> •
+
+Visual Token Codec : We propose VTC, a learned codec for ViT intermediate features that separates global and patch tokens into dedicated coding paths. It combines fac-torized global-token coding, patch-grid context modeling, feature-matching supervision, and variable-rate modules.  
+
+> •
+
+Efficient Feature Coding : For final-layer feature coding, VTC substantially reduces the bitrate required to preserve downstream performance. At 90% of uncompressed-feature performance, VTC achieves 15.7 ×–37.4 × bitrate reduction over LaMoFC VTM, mainly by exploiting the patch-grid structural prior that flattened pseudo-image layouts overlook (Fig. 1).  
+
+> •
+
+Intermediate-Layer Deployment Study : Beyond final-layer compression, we provide RD curves for coding different intermediate layers, revealing the importance of the feature-matching supervision layer. We further instantiate lightweight-encoder and lightweight-decoder cases to offer initial bitrate–computation–utility trade-offs for practical ViT feature coding (Fig. 2). The remainder of this paper is organized as follows. Sec-tion II reviews learned image compression and feature cod-ing for CNNs and ViTs. Section III presents the dual-path VTC framework, feature-matching training, and Variable-Rate Model. Section IV reports rate–distortion results on DINOv2 and SAM3, together with intermediate-layer analyses and ablation studies. Section V concludes the paper and discusses limitations and future work. IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 3
+
+II. R ELATED WORKS 
+
+A. Learning-Based Image Compression 
+
+Over the past decade, learning-based image compression has emerged as a dominant paradigm, often referred to as nonlinear transform coding (NTC [14]). In NTC, neural-network based nonlinear analysis and synthesis transforms map the image into a latent representation and back, aiming to decorrelate the image signal; an entropy model then captures the latent distribution for efficient coding. Below we briefly review these two core components. 
+
+Non-linear transform networks: Early methods com-monly adopted convolutional neural networks (CNNs) with generalized divisive normalization (GDN) [12], [15], [16] in the analysis and synthesis transforms. Subsequent works enhanced representational capacity by integrating attention mechanisms and residual blocks into variational autoencoder architectures [17], or by exploring variants such as invert-ible networks [18], [19] and wavelet-like transforms [20]. Motivated by the success of Transformers in computer vi-sion, recent codecs incorporate architectures such as Swin Transformers [21], hybrid CNN–Transformer designs [22], and frequency-aware Transformers [23] into the transform networks. To mitigate the quadratic cost of self-attention, some studies explore efficient attention alternatives [24]–[29]. For practical deployment, recent low-complexity works [30]– [32] further balance rate–distortion performance against en-coder/decoder cost. Overall, learned codecs have trended to-ward stronger nonlinear transforms that consistently improve decorrelation and rate–distortion performance. 
+
+Entropy modeling: Entropy modeling is crucial for learned image compression because it removes remaining redundancy in latent representations. Balle et al. first proposed a factorized prior [15] to model marginal distributions, and subsequently introduced a hyperprior [12] that uses side information to parameterize a conditional Gaussian distribution. Remain-ing redundancy is further reduced with autoregressive priors that split latents along spatial or channel dimensions and predict unencoded part from already encoded part, thereby modeling conditional distributions and exploiting spatial and channel correlations. These approaches can be categorized into spatial autoregressive [16], [17], [33], channel autore-gressive [34], or combined spatial–channel designs [13], [35], [36]. Transformer- and context-based entropy models [37]– [40] further refine distribution estimation by exploiting broader spatial and channel contexts. 
+
+B. Feature Coding for CNNs 
+
+The rise of Convolutional Neural Networks (CNNs) in computer vision created a demand for compressing and trans-mitting intermediate features for machine analysis, giving rise to feature coding as a branch of Video Coding for Machines [41]–[43]. This has led to standardization efforts, with MPEG-FCM [44] being a notable example, where the evaluation protocol jointly considers bitrate and task accuracy. Existing methods typically derive from established image or video codecs and can be grouped by their coding framework. 
+
+Codec-based packing. One common approach adapts tra-ditional video codecs to feature compression. These methods quantize and pack multi-layer feature maps into a pseudo-video frame, which is then encoded by a standard codec such as VTM [11]. A representative work by Chen et al. [45] is widely used as an anchor in MPEG-FCM. Learned video codecs [32], [46]–[48] provide complementary options when feature maps are packed as pseudo-video. 
+
+Learned feature compression. Another line of research designs neural networks to transform or fuse input features into a compact latent representation for entropy coding. Kim et al. [49] propose a framework that fuses multi-scale features, also analyzing task-specific versus reconstruction-oriented training and adopting feature-level MSE for cross-task generality. Liu et al. [50] introduce a coding strategy where compressed lower-scale features help predict higher-scale ones, exploiting inter-scale redundancy. Other works exploit feature-specific properties more directly, such as channel-wise sensitivity for bit allocation [51] and 3D sparse convolutions for low-spatial, high-channel, and sparse feature tensors [52]. 
+
+Task-aware coding. While many learned methods optimize generic feature distortion (e.g., MSE), several works tailor the compression objective to downstream tasks. Choi et al. [53] structure the latent space so that a subset of channels supports object detection under a task-specific rate–distortion term, while the full representation enables input reconstruction. Gao et al. [54], [55] go further by replacing instance-level MSE with discrimination- and identity-level metrics, explicitly optimizing for retrieval and re-identification accuracy. Recent studies further question whether gains come from joint opti-mization itself or the downstream semantic parser [56], and introduce compressed feature quality assessment to quantify semantic degradation beyond simple feature distances [57]. 
+
+Scalable coding. Orthogonal to the choice of distortion, scalability organizes the bitstream into layers to serve different quality or task requirements. Scalable image codecs often split the bitstream into a base and an enhancement layer, e.g., a deep-feature base with a texture residual for face images [58], [59], or semantics-to-signal coding with learned structural representations [60], [61]. For intermediate features, Chen et al. [62] learn scalable multilayer compression across network stages, enabling machine vision at different bit budgets. 
+
+C. Feature Coding for Vision Transformers 
+
+In the era of vision foundation models, large pretrained Vi-sion Transformers (ViTs)—such as DINOv2 [2], SigLIP2 [3], and SAM2/SAM3 [4], [5]—provide robust and generalizable intermediate features that are widely used across diverse vision tasks. Compressing these ViT features is therefore crucial for efficient distributed training and inference, where intermediate representations must be transferred or stored. Recent studies on large-model feature coding further show that modern models produce heterogeneous features with different distributions and compression tolerances, motivating unified benchmarks and codecs beyond conventional CNN feature coding [7], [63]. Early exploration in this area was often task- or model-specific. For instance, an initial study [64] focused solely on IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 4
+
+compressing the [CLS] token of DINOv2 for image classi-fication. To establish a common ground for evaluation, com-prehensive benchmarks [7], [63] are introduced, compressing features from diverse models (e.g., DINOv2, LLaMA-3, SD3) across multiple tasks and split-computing settings. Building upon this direction, universal coding frameworks are proposed to improve generalization across feature sources: DT-UFC [9] employs a learned distribution transformation to align features from different models into a common space, while cross-architecture feature coding [65] further studies distribution alignment between CNN and Transformer features. Despite these advances, existing approaches predominantly focus on modeling token distributions or feature-value align-ment while largely neglecting the spatial organization of ViT tokens. LaMoFC [7] treats the L × C token sequence as a pseudo-image and compresses it with a hyperprior, but it does not distinguish between the globally aggregated [CLS] 
+
+token and patch tokens. DT-UFC [9] and cross-architecture alignment [65] improve distribution compatibility, yet their coding pipelines still do not explicitly exploit 2D patch-token locality. VQFC [10] adopts vector quantization under the as-sumption of weak spatial redundancy; however, our empirical observations on dense ViT features reveal that strong local correlations still exist in the patch token grid. This oversight makes it challenging to achieve high compression efficiency without compromising task performance, highlighting the need for more effective coding strategies tailored to the structural prior of ViT features. III. P ROPOSED METHOD 
+
+A. Overall Framework 
+
+As shown in Fig. 2, we partition the ViT backbone into the prefix part and suffix part and insert the codec between them. On the encoder side, the prefix part receives an input image, extracts intermediate features, and passes them to the codec, which compresses the features into a bitstream. On the decoder side, the codec receives the bitstream, reconstructs the features, and then forwards them through the suffix part to extract the features needed for downstream tasks. These features are finally fed into lightweight task heads (conv or linear layer) to perform downstream tasks such as image classification and semantic segmentation. 
+
+B. Dual-Path Visual Token Codec 
+
+ViT tokens are heterogeneous: a few [CLS] /[REG] tokens encode global semantics, while the majority are [PATCH] 
+
+tokens on an H × W grid with strong local spatial correlation (Fig. 1). Compressing both groups with one layout, whether a flattened sequence or a single pseudo-image rasterization, forces one entropy model to adopt priors that fit only one token type. Thus, we propose routing global and patch tokens through separate coding paths. Given an input image x and a chosen compressed layer index n, the ViT first applies a patch embedding Emb( ·),followed by the first n blocks to get the intermediate feature 
+
+tn. t0 = Emb( x),
+
+tn = Block 1: n(t0), (1) To compress tn, it is first transformed by fa(·) into latent 
+
+τ n, then passed through the dual-path codec to obtain recon-structed latent ˆτ n, and finally mapped back to the original token space as ˆtn via fs(·):
+
+τ n = fa(tn),
+
+τ n = τ (1d)  
+
+> n
+
+, τ (2d) 
+
+> n
+
+,
+
+ˆtn = fs(ˆ τ n).
+
+(2) Here, fa(·) and fs(·) consist of several learnable ViT blocks that serve as the primary nonlinear transforms. We split τ n
+
+for dual-path coding: τ (1d)  
+
+> n
+
+collects the [CLS] and [REG] 
+
+tokens and is compressed with a lightweight factorized entropy model, while τ (2d)  
+
+> n
+
+stacks all [PATCH] tokens and is com-pressed by a Spatial-Channel Context (SCCTX) 2D entropy model proposed in ELIC [13]. Decoded patch and global branches are merged before fs, so both paths must recon-struct adequately for downstream ViT blocks to approximate uncompressed activations. 
+
+C. Global Tokens Coding 
+
+To compress the global-token branch τ (1d)  
+
+> n
+
+, an analysis transform g(1d)  
+
+> a
+
+(·) first maps it to a lower-dimensional latent representation e, which is then quantized to ˆe = Q(e)
+
+and entropy-coded at a rate R(ˆ e). The decoded tokens are reconstructed by a synthesis transform g(1d)  
+
+> s
+
+(·). The overall process is: 
+
+e = g(1d)  
+
+> a
+
+(τ (1d)  
+
+> n
+
+),
+
+ˆe = Q(e),
+
+ˆτ (1d)  
+
+> n
+
+= g(1d)  
+
+> s
+
+(ˆ e).
+
+(3) 
+
+Factorized Prior. We model the distribution of ˆe using a learned factorized prior [12]. A factorized prior models each latent element independently with a univariate parametric density. For a scalar latent variable, its cumulative distribution function (CDF) C is constructed as a composition of K
+
+learnable transformation layers: 
+
+C = fK ◦ fK−1 ◦ · · · ◦ f1, (4) where each fk typically consists of linear mapping and mono-tonic nonlinear activation. From the CDF, the probability mass function (PMF) of the quantized latent ˆe is obtained by: 
+
+p(ˆ e) = C(ˆ e + 12 ) − C(ˆ e − 12 ), (5) The expected bit-rate for ˆe is then given by: 
+
+R(ˆ e) = E [− log 2 p(ˆ e)] . (6) 
+
+D. Patch Tokens Coding 
+
+To compress the patch-token branch τ (2d)  
+
+> n
+
+, the analysis transform g(2d)  
+
+> a
+
+(·) first maps it to a lower-dimensional latent y,which is then quantized and decoded by a synthesis transform 
+
+g(2d)  
+
+> s
+
+(·):
+
+y = g(2d)  
+
+> a
+
+(τ (2d)  
+
+> n
+
+),
+
+ˆy = Q(y),
+
+ˆt(2d)  
+
+> n
+
+= g(2d)  
+
+> s
+
+(ˆ y).
+
+(7) IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 5AE AD QConv Conv ViT Block ViT Block ViT Block ViT Block Conv Conv Linear AE AD QLinear 
+
+(c) VBR Module Bank 
+
+> QP
+
+(a) Visual Token Codec Factorized Prior SCCTX Entropy Model 
+
+> ❄
+> latter blocks align codec
+
+(d) Feature Matching Loss  
+
+> REG
+> 1d tokens global semantics 2d tokens local structures
+> CLS REG
+
+(b) Tokens Reshape 
+
+Fig. 3. Overview and key components of the proposed Visual Token Codec (VTC). (a) Overall architecture. The input feature t is first transformed into 
+
+τ by ViT transform blocks and then compressed through two parallel branches: a global-token path with factorized entropy coding and a patch-token path with spatial–channel context modeling. (b) Token Reshape. Global tokens are kept as a short 1D sequence, while patch tokens are restored to their native 2D patch grid to expose strong local spatial redundancy. (c) VBR Module Bank. A QP-conditioned module bank modulates the codec features and enables multiple bit rates with a single model. (d) Feature Matching Loss. The reconstructed tokens are propagated through subsequent frozen ViT blocks, and the loss is computed on deeper features to reduce representation drift after decoding. 
+
+SCCTX Entropy Model. To effectively capture the 2D correlations of ˆy, we adopt the existing Spatial-Channel Con-text (SCCTX) model [13] along with the hyperprior model [12]. For the hyperprior, a hyper encoder ha(·) produces hyper latents that provide side information for entropy modeling, and a hyper decoder hs(·) maps the quantized hyper latents into a hyperprior context: 
+
+z = ha(y),
+
+ˆz = Q(z),
+
+Φhp = hs(ˆ z),
+
+(8) where ˆz is entropy-coded with another factorized prior at rate 
+
+R(ˆ z). The latent y retains redundancies along both spatial and channel axes. To exploit these correlations, we partition 
+
+ˆy into multiple groups and sequentially encode each group conditioned on previously decoded ones. For the channel dimension, we split the features into K chunks. The channel context for the k-th chunk is computed by a channel-context network g(k)ch (·) as: 
+
+Φ(k)ch = g(k)ch 
+
+ ˆy<k  , k = 2 , . . . , K, (9) where ˆy<k = {ˆy(1) , . . . , ˆy(k−1) } denotes the set of previously encoded channel chunks. In the spatial dimension, we adopt a checkerboard parti-tioning that divides each chunk into anchor and non-anchor positions. Anchor positions are encoded without spatial con-text, so we set Φ(k)sp = 0. For non-anchor positions, we compute spatial context from already decoded neighbors using a checkerboard mask Mcb and a spatial-context network g(k)sp :
+
+Φ(k)sp = g(k)sp 
+
+ Mcb ⊙ ˆy(k). (10) The spatial, channel, and hyperprior contexts are concate-nated channel-wise and fed into a parameter network gep to predict location-wise Gaussian parameters: 
+
+Θ(k) 
+
+> i
+
+= gep 
+
+
+
+Φ(k)sp ,i , Φ(k)ch ,i , Φhp ,i 
+
+
+
+=  μ(k) 
+
+> i
+
+, σ(k)
+
+> i
+
+, (11) where i indexes spatial positions. Using these parameters, the latent y(k) 
+
+> i
+
+is quantized as: 
+
+ˆy(k) 
+
+> i
+
+= round  y(k) 
+
+> i
+
+− μ(k)
+
+> i
+
+ + μ(k) 
+
+> i
+
+. (12) Once decoded, ˆy(k) 
+
+> i
+
+updates the context for subsequent coding steps, iterating until all latents are encoded. By concatenating all local entropy parameters, we model the overall distribution of ˆy given the hyperprior ˆz as a conditional Gaussian: 
+
+pˆy|ˆz(ˆ y | ˆz) ∼ N  μ, diag( σ2), (13) and the resulting rate for ˆy is given by: 
+
+R(ˆ y) = E − log 2 pˆy|ˆz(ˆ y | ˆz) . (14) IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 6channel split  
+
+> Concatenate & Param Aggregation
+> spatial split
+> Factorized Prior
+> Fig. 4. Hyperprior and Spatial-Channel Context (SCCTX) entropy model for patch-token coding. The hyperprior provides side information, while spatial and channel contexts are combined to predict local Gaussian parameters for entropy coding [13].
+
+E. Rate–Distortion Optimization 
+
+Previous feature compression methods typically measure distortion at the compressed layer: 
+
+Lbase D = ∥tn − ˆtn∥22, (15) which penalizes token-wise error but does not constrain how quantization noise propagates through later ViT blocks. Small compressed-layer MSE can still yield large drift in deep features. 
+
+Feature-matching loss. We supervise the compression us-ing deeper features of the subsequent j blocks after the compressed layer 
+
+tn+j = Block n+1: n+j (tn),
+
+ˆtn+j = Block n+1: n+j (ˆ tn), (16) When calculating loss, we decompose them into patch tokens t(2 d) 
+
+> n+j
+
+and global tokens t(1 d) 
+
+> n+j
+
+, and define the feature-matching distortion term as: 
+
+LD = ∥t(2 d) 
+
+> n+j
+
+− ˆt(2 d) 
+
+> n+j
+
+∥22 + ∥t(1 d) 
+
+> n+j
+
+− ˆt(1 d) 
+
+> n+j
+
+∥22, (17) Finally, we optimize a rate–distortion objective that accounts for the bit-rates of global-token latents ˆe, hyper latents ˆz, and patch latents ˆy:
+
+L = LD + λ ·  R(ˆ e) + R(ˆ z) + R(ˆ y) = LD + λ · Rtotal , (18) where λ is the Lagrangian multiplier to control the rate-distortion trade-off. The same λ weights both the 1D (global) and 2D (patch) rate terms. 
+
+Balancing global and patch tokens. A natural concern is that global tokens are far fewer than patch tokens and might be under-optimized when using the same λ for both branches. Equivalently, with R1d = R(ˆ e) and R2d = R(ˆ z) + R(ˆ y),
+
+L = ( λ · R1d + D1d ) + ( λ · R2d + D2d ), (19) where D1d and D2d denote the global- and patch-token parts of LD.Let N denote the total number of supervised tokens, with a
+
+global tokens and N − a patch tokens ( N ≫ a). A token-count–weighted MSE would be MSE total = aN MSE 1d +  
+
+> N−aN
+
+MSE 2d , whereas our distortion uses LD = MSE 1d +MSE 2d . This assigns a much higher effective weight to global-token error relative to their count, encouraging accu-rate reconstruction of semantically critical global tokens. The 
+
+1:1 weighting between MSE 1d and MSE 2d is an empirical choice that jointly supports classification (global-heavy) and segmentation (patch-heavy). 
+
+F. Variable-Rate Model 
+
+To enable flexible deployment, we integrate a single-model variable-rate mechanism [32], [66], [67]. Learning-based codecs often train separate models per rate point; instead, we condition the same weights on a quantization parameter QP that selects a Lagrange multiplier λ in Eq. (18). The core idea is that, for a fixed quantization step size, scaling the magnitude of the latent y changes the output bitrate. To allow a single model to support multiple rates, we condition it on the Lagrange multiplier λ, which governs the rate-distortion trade-off during training. Concretely, we predefine a set of λ coefficients, each corresponding to a quantization parameter (QP) value. During forward propagation, the input QP is mapped through an embedding layer to four modulation vectors q1 to q4, as depicted in the module bank of Fig. 3. These vectors perform channel-wise feature weighting, thereby adjusting the effective information content and enabling variable-rate coding within a single model. IV. E XPERIMENTS 
+
+A. Experimental Setup 
+
+We validate our Visual Token Codec (VTC) on two ViT backbone families—DINOv2 and SAM3—with frozen back-bones and downstream heads. Each codec is trained once per backbone size and evaluated with frozen backbone weights and frozen task heads. 
+
+1) SAM3 Backbone: We use publicly released pretrained SAM3 weights [5] and compress intermediate tokens from the 
+
+image encoder after its 32 ViT blocks, before three parallel multi-scale convolutional heads. Reconstructed tokens pass through these heads and the remaining detector/segmentation modules. For SAM3, VTC encodes only patch tokens; the latent dimension is reduced to 48, with SCCTX using three channel- and two spatial-autoregressive steps. 
+
+2) DINOv2 Backbones: We evaluate our method on both the standard DINOv2 and its register-enhanced variant (DI-NOv2 Reg4) [2], [8], implemented via the timm library with patch size 16. We compress last-layer tokens after all ViT blocks and before the last norm layer. For multi-task-compatible settings, we compress from the third-to-last layer IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 7
+
+(Layer 09), reconstruct the last four layers after decoding, and jointly feed them to downstream task heads for better performance. For the small (S), base (B), and large (L) variants of the DINOv2 backbone, the feature dimensions are 384, 768, and 1024, respectively. In the codec, we reduce the features to latent dimensions of 48, 48, and 120, respectively. Note that the Large model keeps a higher dimension to avoid an overly strict information bottleneck. The SCCTX entropy model performs 3, 3, and 5 channel-wise autoregressive steps for S, B, and L models, respectively. 
+
+3) Training Protocol: DINOv2 codecs are trained on the ImageNet-1K training split [68] for 20 epochs using Adam on a single NVIDIA RTX 4090. We supervise MSE on the final outputs of the last normalization layer. We apply random resized-crop augmentation during training, and feature targets are extracted online from frozen DINOv2 weights. SAM3 codecs are trained on the COCO2017 training split [69], following the same procedure. They supervise MSE on the final multi-scale convolutional outputs, with a scalar α
+
+balancing scale-wise loss magnitudes. For variable-rate coding, we first pretrain a single-rate model at high bitrate and then continue VBR training from that checkpoint. During VBR training, each iteration uniformly samples a QP and its paired Lagrange multiplier λ. Specifi-cally, λ is sampled from 65 logarithmically spaced values in 
+
+[1 , 256] , corresponding to QP values in [0 , 64] .
+
+4) Baselines: We compare VTC with an uncompressed upper bound and two feature-coding baselines. Bypass directly uses uncompressed intermediate features and serves as the performance upper bound. LaMoFC-VTM [7] is the primary baseline: it reshapes the token sequence into a pseudo image, clips and quantizes the values to a 10-bit range, and com-presses the result with VTM [11]. We do not report LaMoFC-Hyperprior because it performs worse than the VTM-based variant in the original study. VQFC [10] is additionally included: it partitions the feature tensor into 2D chunks and maps each chunk to a shared codebook. 
+
+5) Evaluation Protocols: Table I summarizes the per-task settings used in our evaluation, including the backbone, task, preprocessing, feature shape, and test dataset. 
+
+a) Task-specific setting.: This setting covers SAM3 Det/InsSeg and DINOv2 Cls/SemSeg/Rec. For SAM3, images are resized to 1008 ×1008 , producing a fixed 72 ×72 patch-token grid, and features are extracted from the specified ViT layer of the image encoder. For DINOv2-B/16-Reg4, inputs follow the task-specific preprocessing in Table I: Cls uses resized 256 ×256 images, SemSeg uses resized inputs with sliding-window inference, and Rec uses padded inputs. Because DINOv2-Reg4 contains one CLS token and four register tokens in addition to patch tokens, the feature shapes include five extra tokens, e.g., 261=16 ×16+5 for 256 ×256 
+
+classification inputs and (H×W/ 256+5) for padded variable-size inputs. 
+
+b) Multi-task compatible setting.: This setting uses only simple padding ( PadMultiple ) without task-specific re-sizing or sliding-window extraction. The resulting features preserve the input image layout up to padding and can there-fore be reused by different downstream tasks from a single compressed bitstream. 
+
+c) Rate metrics.: For task-specific fixed-resolution pro-tocols, we follow LaMoFC [7] and report bits per feature point (bpfp), which normalizes bitrate by the number of feature points. For the multi-task compatible protocol, we report bits per pixel (bpp), where bitrate is normalized by the original image resolution and therefore better reflects practical bandwidth and storage costs. 
+
+d) Task metrics and BD analysis.: Cls reports top-1 accuracy, SemSeg reports mIoU on ADE20K [70], and SAM3 Det/InsSeg report COCO-style box mAP and mask AP on MSCOCO [69], respectively. To quantify coding efficiency, we use Bjontegaard-Delta (BD) metrics [71], which require sufficient overlap between two rate–performance curves. BD-Rate (lower is better) measures the average bitrate reduction at equivalent performance, while BD-Acc , BD-mIoU , and BD-mAP (higher is better) measure the average performance gain at equivalent bitrate. We report BD metrics only when curves overlap sufficiently; otherwise, entries are marked “–”. 
+
+e) Test Dataset: Prior work argues that small subsets (e.g., 100 or 500 images) suffice to reveal compression trends. We find such tiny subsets unstable, as they often yield noisy rate–performance curves for complex models. Therefore, we use more than 1000 images for each task whenever possible (Table I). Most tasks directly use the corresponding validation split; for ImageNet, we use a 2K-image subset selected from the validation split, denoted as ImageNet sel2k. 
+
+B. Main Results 
+
+We first quantify coding performance under increasingly general evaluation protocols. Unless otherwise stated, all com-parisons use the baselines defined in Sec. IV-A4. 
+
+1) Task-Specific Feature Coding: Most existing ViT feature coding methods focus on compressing final-layer features under task-specific preprocessing (Table I). Fig. 5 reports rate–performance curves on SAM3 Det/InsSeg and DINOv2 Cls/SemSeg. Because the curves of different methods have limited overlap, BD metrics cannot be computed reliably here; we therefore compare the bitrate required to reach 90% of the bypass (uncompressed-feature) performance (Table II). Across all four tasks, VTC substantially reduces the bitrate needed to reach 90% of bypass performance, with relative gains ranging from 15.7 × (SAM3 InsSeg) to 37.4 × (DINOv2 SemSeg). On SAM3, VTC reaches the Det target at 0.009 bpfp versus 0.179 bpfp for LaMoFC-VTM, suggesting that directly applying image codecs to reshaped ViT tokens is inefficient for detection-oriented features. InsSeg remains more sensitive than Det because mask prediction depends more strongly on spatial and multi-scale details, yet VTC still preserves task-relevant token structure at much lower bitrate. On DINOv2, VTC remains close to bypass accuracy well into the low-bitrate region for Cls, whereas VTM-based coding degrades much earlier. The largest gain on SemSeg indicates that explicit 2D patch-token modeling is especially important for dense prediction tasks. IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 8
+
+TABLE I PER -TASK EXPERIMENTAL SETTINGS FOR SAM3-L AND DINO V2-B-R EG 4, INCLUDING INPUT PREPROCESSING , FEATURE TENSOR SHAPE , AND EVALUATION DATA .Task Preprocess Feature Shape Test Dataset SAM3-L/14 (32 layers) Object Detection (Det) Resize(1008,1008) 5184 , 1024 MSCOCO 2017 val, 5k Instance Segmentation (InsSeg) Resize(1008,1008) 5184 , 1024 MSCOCO 2017 val, 5k DINOv2-B/16-reg4 (12 layers) Image Classification (Cls) Resize(256,256) 261 , 768 ImageNet selected, 2k Semantic Segmentation (SemSeg) Resize(512), Slide n, 1029 , 768 ADE20K val, 2k Subjective Reconstruction (Rec) PadMultiple (H ∗ W/ 256 + 5) , 768 Any Multi-Task PadMultiple (H ∗ W/ 256 + 5) , 768 Any 10 −2 10 −1 10 0
+
+Bitrate (bpfp) 010 20 30 40 50 60 AP (Object Detection) 
+
+SAM3 Object Detection on COCO2017-val Bypass LaMoFC-VTM VTC 10 −2 10 −1 10 0
+
+Bitrate (bpfp) 010 20 30 40 50 AP (Instance Segmentation) 
+
+SAM3 Instance Segmentation on COCO2017-val Bypass LaMoFC-VTM VTC 10 −2 10 −1 10 0
+
+Bitrate (bpfp) 60 65 70 75 80 85 90 95 Accuracy (%) 
+
+DINOv2 Image Classification on ImageNet-sel2k Bypass LaMoFC-VTM VQFC VTC 10 −2 10 −1 10 0
+
+Bitrate (bpfp) 15 20 25 30 35 40 45 50 mIoU (%) 
+
+DINOv2 Semantic Segmentation on ADE20K-val Bypass LaMoFC-VTM VQFC VTC 
+
+Fig. 5. Rate–performance under task-specific feature coding for two foundation models and four tasks. Bypass: uncompressed features; LaMoFC VTM: VTM-compressed features; VTC: our compressed features. Top-left: SAM3 object detection (Det). Top-right: SAM3 instance segmentation (InsSeg). Bottom-left: 
+
+DINOv2 image classification (Cls). Bottom-right: DINOv2 semantic segmentation (SemSeg). TABLE II BITRATE COMPARISON AT 90% OF BYPASS PERFORMANCE UNDER TASK -SPECIFIC PROTOCOLS . B ITRATE IS REPORTED IN BPFP .Task Performance LaMoFC VTM VTC Relative SAM3 Det AP@50.8 0.179 0.009 20.3 ×
+
+SAM3 InsSeg AP@42.3 0.164 0.010 15.7 ×
+
+DINOv2 Cls Acc@83.2 0.375 ≤0.013 28.4 ×
+
+DINOv2 SemSeg mIoU@43.5 0.498 0.013 37.4 ×
+
+2) Multi-Task Compatible Coding: We next evaluate whether a single compressed feature bitstream can support multiple downstream tasks without task-specific resizing. Un-der the multi-task-compatible protocol, images keep their orig-inal resolution with only minimal padding ( PadMultiple ), and bitrate is reported in bpp. The same DINOv2-Base-Reg4 bitstream is used for subjective reconstruction (Rec) and semantic segmentation (SemSeg) on ADE20K val [70] (Fig. 6). For SemSeg, VTC maintains a clear advantage over LaMoFC-VTM, consistent with the task-specific results. We also reproduce VQFC under this variable-resolution setting but observe worse performance than LaMoFC-VTM, likely because VQFC was originally designed for fixed-resolution feature tensors and does not adapt well to variable-size token maps. For Rec, decoded features are fed to a frozen RAE decoder [72] without fine-tuning and evaluated with LPIPS. Although VTC does not reach a near-lossless reconstruction regime within the evaluated rate points, it uses 17.7 × less bitrate than LaMoFC-VTM at the same LPIPS =0.484, while still leaving a gap to bypass reconstruction. This highlights a practical trade-off: task-oriented coded features preserve semantics needed for Seg, but may lose pixel-level details less critical for dense prediction. IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 910 −2 10 −1 10 0 10 1                       
+
+> Bitrate (bpp) 0.3 0.4 0.5 0.6 0.7 0.8 0.9 LPIPS
+> DINOv2 Subjective Reconstruction on ADE20K-val Bypass LaMoFC-VTM VQFC VTC 10 −2 10 −1 10 010 1
+> Bitrate (bpp) 10 20 30 40 50 mIoU (%)
+> DINOv2 Semantic Segmentation on ADE20K-val Bypass LaMoFC-VTM VQFC VTC
+> Fig. 6. Rate–performance under the multi-task-compatible setting using DINOv2-Base-Reg4 features on ADE20K val. Bypass: uncompressed features; LaMoFC VTM: VTM-compressed features; VTC: our compressed features. Left: subjective reconstruction measured by LPIPS. Right: semantic segmentation measured by mIoU. 0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 Bitrate (bpp) 10 20 30 40 50 mIoU (%)
+> DINOv2 Semantic Segmentation on ADE20K-val layer03 spv06 layer06 spv09 layer09 spv12 layer12 spv12 0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 Bitrate (bpp) 10 20 30 40 50 mIoU (%)
+> DINOv2 Semantic Segmentation on ADE20K-val layer00 spv06 layer03 spv06 layer06 spv09 layer09 spv09 layer06 spv12 layer09 spv12 layer12 spv12
+> Fig. 7. Rate–performance curves under different compressed-layer choices on ADE20K semantic segmentation. Left: varying the compressed input layer. Right: varying the feature-matching supervision layer.
+
+C. Intermediate-Layer Analysis for Deployment 
+
+The compressed layer determines which intermediate fea-tures are coded, thereby coupling rate–distortion behavior with the sender/receiver computation budget in distributed deployment (Fig. 2). We analyze compressed-layer choices on DINOv2-B-Reg4 with ADE20K SemSeg under the multi-task-compatible protocol. Input denotes the ViT layer whose features are compressed, and Spv denotes the supervision layer used in the feature-matching loss. After intermediate features are decompressed, the decoder reconstructs the remaining layers and feeds them jointly to the task head. Fig. 7 first examines the rate–performance effect of chang-ing Input and Spv . Among the tested compressed layers, deeper input features are generally easier to compress than early features, since they contain richer semantics and less low-level detail. However, directly compressing the final layer is not optimal for ADE20K SemSeg: compressing Layer 9 and reconstructing the last four layers provides stronger dense-prediction cues than coding the final representation alone. The supervision layer further shapes the RD trend, as curves with different Input layers but the same Spv layer exhibit similar trajectories. This suggests that feature-matching supervision largely determines what information the codec is encouraged to preserve. Table III further relates these RD trends to system cost. BD metrics are computed against the default multi-task operating point in row 3 (Input =9, Spv =12, fa=fs=2 ). Rows 1– 3 vary the compressed input layer with the same codec-transform depth, rows 6–7 represent extreme compressed-layer choices, and rows 4–5 are included for the codec-block ablation later discussed in Sec. IV-E. FLOPs are measured on 
+
+512 ×512 images and divided into backbone prefix , entropy 
+
+compress /decompress , and backbone+codec suffix .These operating points clarify how different compressed layers instantiate the two deployment paradigms in Fig. 2. 
+
+Transmission-oriented feature coding. For one-time, task-specific edge–cloud inference, compressing shallow features is attractive because it limits sender-side computation while offloading most ViT processing to the receiver. Row 7 gives an extreme shallow-layer example: the prefix costs only ∼0.6 G FLOPs, but the suffix grows to ∼87.5 G FLOPs and the RD penalty becomes large. This operating point is therefore suit-able when reducing on-device computation is more important than achieving the best compression efficiency. 
+
+Storage-oriented feature coding. For large-scale feature banks, retrieval, or repeated offline analysis, compressing deeper features is more natural because the expensive prefix can be executed once and the compressed representation can IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 10 
+
+TABLE III COMPRESSED -LAYER TRADE -OFFS ON ADE20K S EM SEG UNDER THE MULTI -TASK -COMPATIBLE PROTOCOL . W E REPORT FLOP S MEASURED ON 
+
+512 ×512 IMAGES AND BD METRICS RELATIVE TO ROW 3. E NCODING COMPRISES PREFIX AND COMPRESS STAGES ; DECODING COMPRISES    
+
+> DECOMPRESS AND SUFFIX STAGES
+
+. R OWS 4–5 ARE LATER DISCUSSED AS CODEC -TRANSFORM ABLATIONS IN SEC . IV-E. Layer index #Blocks Sender FLOPs (G) Receiver FLOPs (G) Performance Input Spv fa fs prefix compress decompress suffix BD-rate BD-mIoU 3 6 2 2 22.477 15.099 15.089 65.635 357.88% -17.99 6 9 2 2 44.350 15.099 15.089 43.762 111.22% -6.33 9 12 2 2 66.223 15.099 15.089 21.889 0.00% 0.00 9 12 1 1 66.223 7.808 7.798 21.889 55.30% -2.49 9 12 0 0 66.223 0.517 0.507 21.889 – -15.51 12 12 2 2 88.097 15.099 15.089 0.004 180.08% -3.54 0 12 0 2 0.604 0.517 15.089 87.508 404.89% -5.26 0.00 0.02 0.04 0.06 0.08 0.10 Bitrate (bpfp) 82 84 86 88 90 92 94 96 Accuracy (%) 
+
+DINOv2 Image Classification on ImageNet-sel2k Bypass: DINOv2-S-Reg4 Bypass: DINOv2-B-Reg4 Bypass: DINOv2-L-Reg4 VTC: DINOv2-S-Reg4 VTC: DINOv2-B-Reg4 VTC: DINOv2-L-Reg4 0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 Bitrate (bpp) 82 84 86 88 90 92 94 96 Accuracy (%) 
+
+DINOv2 Image Classification on ImageNet-sel2k Bypass: DINOv2-S-Reg4 Bypass: DINOv2-B-Reg4 Bypass: DINOv2-L-Reg4 VTC: DINOv2-S-Reg4 VTC: DINOv2-B-Reg4 VTC: DINOv2-L-Reg4 0.00 0.02 0.04 0.06 0.08 0.10 Bitrate (bpfp) 35.0 37.5 40.0 42.5 45.0 47.5 50.0 mIoU (%) 
+
+DINOv2 Semantic Segmentation on ADE20K-val Bypass: DINOv2-S-Reg4 Bypass: DINOv2-B-Reg4 Bypass: DINOv2-L-Reg4 VTC: DINOv2-S-Reg4 VTC: DINOv2-B-Reg4 VTC: DINOv2-L-Reg4 0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 Bitrate (bpp) 35.0 37.5 40.0 42.5 45.0 47.5 50.0 mIoU (%) 
+
+DINOv2 Semantic Segmentation on ADE20K-val Bypass: DINOv2-S-Reg4 Bypass: DINOv2-B-Reg4 Bypass: DINOv2-L-Reg4 VTC: DINOv2-S-Reg4 VTC: DINOv2-B-Reg4 VTC: DINOv2-L-Reg4 
+
+Fig. 8. Rate–performance curves for VTC with different DINOv2-Reg4 backbone scales. Horizontal lines indicate uncompressed baselines. Top: ImageNet sel2k classification; bottom: ADE20K val segmentation. Left: bpfp; right: bpp. 
+
+be stored and reused by different downstream tasks. Row 6 (Input =12) illustrates this regime: the prefix costs ∼88 G FLOPs, but the suffix is almost negligible ( ∼0.004 G FLOPs). Its 180.08% BD-Rate trade-off suggests that final-layer storage is not always the most RD-efficient point, but it aligns with the storage-oriented goal of producing high-level reusable representations. Overall, row 3 provides the best RD efficiency among the tested configurations, while shallow and deep compressed layers expose explicit computation–bandwidth op-erating points for different deployment constraints. 
+
+D. Backbone Scale 
+
+DINOv2 provides multiple backbone scales distilled from larger teacher models. To study how backbone capacity affects feature coding, we evaluate VTC on the DINOv2-S/B/L-Reg4 family under the same protocol. As shown in Fig. 8, increasing the backbone scale generally improves the achievable classification accuracy and segmenta-tion mIoU under both bpfp and bpp. Overall, larger backbones tend to provide stronger coded features, but the comparison between Base and Large reveals an important metric effect. In IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 11                           
+
+> TABLE IV BD METRICS OF VTC WITH DIFFERENT DINO V2-R EG 4BACKBONE SCALES ,USING DINO V2-S-R EG 4AS THE ANCHOR . I MAGE NET BD-RATE IS OMITTED BECAUSE THE RATE –ACCURACY CURVES HAVE INSUFFICIENT OVERLAP .VTC ADE20K val ImageNet sel2k BD-rate BD-mIoU BD-rate BD-Acc DINOv2-S-Reg4 0.0% 0.00 -0.00 DINOv2-B-Reg4 -57.20% 3.57 -4.62 DINOv2-L-Reg4 -28.41 % 2.31 –7.47
+
+bpfp curves, DINOv2-L-Reg4 appears better than DINOv2-B-Reg4; however, in bpp-based BD metrics, DINOv2-B-Reg4 achieves better coding efficiency on ADE20K. This is because bpfp normalizes by feature points and can understate the cost of higher-dimensional features, whereas bpp is normalized by original image pixels. We therefore recommend bpp for cross-model comparison. Table IV reports BD metrics for DINOv2-Reg4 models, using DINOv2-S-Reg4 as the anchor. On ImageNet, the rate– accuracy curves are nearly horizontal in the evaluated range, so we report BD-Acc only. These results indicate that, in distributed deployment scenarios, the largest backbone is not necessarily the best choice for feature coding. Instead, the backbone scale should be selected according to the target task, rate metric, and deployment objective. 
+
+E. Ablation Study and Analysis 
+
+The following studies isolate codec design choices on DINOv2-B-Reg4 under the multi-task-compatible ADE20K Seg protocol unless noted. Table III is introduced in Sec. IV-C; here we focus on rows 4–5 and additional layout/latency comparisons. 
+
+1) Effect of ViT Blocks in the Codec: As shown in Ta-ble III (rows 3–5), we analyze ViT blocks inside fa and fs
+
+at Input =9. Removing blocks weakens the nonlinear analy-sis/synthesis transforms that decorrelate tokens before entropy coding. One block costs 2.49 BD-mIoU; removing all blocks collapses to a near-linear pipeline and −15.51 BD-mIoU, indicating that feature coding needs capacity beyond a pure entropy model on raw tokens. 
+
+2) Necessity of Dual-Path Design: To verify that separate 1D/2D entropy models are needed (rather than a single layout for all tokens), we fix the ViT transform blocks and vary only token arrangement: (i) All-1D : flatten all tokens into one sequence and compress with a factorized-prior model; (ii) All-2D : arrange tokens with zero-padded global/register tokens in the top row followed by patch tokens, then compress with SCCTX; (iii) Dual-path (ours): global tokens via factorized prior, patch tokens via SCCTX. In Fig. 9, all-1D performs worst because it ignores patch spatial structure; all-2D im-proves but padded global/register tokens pollute the SCCTX neighborhoods. Dual-path keeps globals on a factorized 1D path and patches on SCCTX, matching token statistics and yielding the best RD curve. 
+
+3) Wall-Clock Coding Latency: Table V reports end-to-end encoding/decoding time (seconds per image) on an RTX 4090 0.000 0.025 0.050 0.075 0.100 0.125 0.150 0.175 0.200 Bitrate (bpp) 30.0 32.5 35.0 37.5 40.0 42.5 45.0 mIoU (%)              
+
+> DINOv2 Semantic Segmentation on ADE20K-val VTC (Dual-Path) VTC (Single-Path 2D) VTC (Single-Path 1D)
+> Fig. 9. Rate–performance comparison of dual-path vs. all-1D or all-2D token layouts for entropy modeling. TABLE V WALL -CLOCK CODING TIME IN SECONDS PER IMAGE UNDER THE ALIGNED SETTING . R UNTIME IS MEASURED ON A SINGLE NVIDIA RTX 4090 GPU WITH AN AMD EPYC 7Y43 CPU HOST .Method LaMoFC VTM VQFC VTC Enc Time (s) 580.884 0.018 0.091 Dec Time (s) 0.464 0.018 0.046
+
+under the variable resolution setting. LaMoFC-VTM relies on VTM, a traditional codec designed for video coding, and becomes computationally expensive when applied to high-dimensional feature tensors, limiting its practicality for de-ployment. VQFC is much faster, requiring only 0.018 s, but typically operates at around 4 bpp, which is substantially higher than JPEG image coding ( ∼0.5 bpp). Such a feature storage cost, exceeding that of storing the original images, is undesirable for large-scale deployment. In contrast, VTC preserves high downstream task performance at ∼0.1 bpp with moderate encoding and decoding complexity, making it suitable for storage-oriented scenarios on large datasets. V. C ONCLUSION 
+
+We presented Visual Token Codec (VTC), a deployment-oriented framework for compressing intermediate Vision Transformer features in distributed inference and feature-storage scenarios. Instead of treating ViT tokens as a flattened pseudo image, VTC separates global and patch tokens, applies spatial–channel context modeling on the native patch-token grid, and uses feature-matching supervision to preserve down-stream semantics after decoding. Experiments on DINOv2 and SAM3 show that VTC consistently improves rate–performance trade-offs over existing feature coding baselines across five downstream tasks, reducing the bitrate required to reach 90% of uncompressed-feature performance by 15.7 ×–37.4 ×. The multi-task, intermediate-layer, and backbone-scale analyses further indicate that VTC can produce reusable bitstreams, support practical computation–bandwidth trade-offs, and en-able variable-rate coding within a single model. Future work will focus on faster entropy decoding, more reconstruction-aware objectives, and broader validation across foundation models and deployment constraints. IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 12 
+
+REFERENCES [1] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly, J. Uszkoreit, and N. Houlsby, “An image is worth 16x16 words: Transformers for image recognition at scale,” in ICLR , 2021. [2] M. Oquab, T. Darcet, T. Moutakanni, H. V. Vo, M. Szafraniec, V. Khali-dov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby, M. Assran, N. Ballas, W. Galuba, R. Howes, P.-Y. B. Huang, S.-W. Li, I. Misra, M. G. Rabbat, V. Sharma, G. Synnaeve, H. Xu, H. J´ egou, J. Mairal, P. Labatut, A. Joulin, and P. Bojanowski, “Dinov2: Learning robust visual features without supervision,” ArXiv , vol. abs/2304.07193, 2023. [3] M. Tschannen, A. Gritsenko, X. Wang, M. F. Naeem, I. M. Alab-dulmohsin, N. Parthasarathy, T. Evans, L. Beyer, Y. Xia, B. Mustafa, O. H’enaff, J. Harmsen, A. Steiner, and X.-Q. Zhai, “Siglip 2: Multilin-gual vision-language encoders with improved semantic understanding, localization, and dense features,” ArXiv , vol. abs/2502.14786, 2025. [4] N. Ravi, V. Gabeur, Y.-T. Hu, R. Hu, C. K. Ryali, T. Ma, H. Khedr, R. R¨ adle, C. Rolland, L. Gustafson, E. Mintun, J. Pan, K. V. Alwala, N. Carion, C.-Y. Wu, R. B. Girshick, P. Doll’ar, and C. Feichten-hofer, “Sam 2: Segment anything in images and videos,” ArXiv , vol. abs/2408.00714, 2024. [5] N. Carion, L. Gustafson, Y.-T. Hu, R. Hu, D. Suris, C. Ryali, T. Ma 
+
+et al. , “SAM 3: Segment anything with concepts,” arXiv preprint arXiv:2511.16719 , 2025. [6] R. Ye, W. Wang, J. Chai, D. Li, Z. Li, Y. Xu, Y. Du, Y. Wang, and S. Chen, “OpenFedLLM: Training Large Language Models on Decentralized Private Data via Federated Learning,” in Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , ser. KDD ’24. Association for Computing Machinery, 2024, pp. 6137–6147. [7] C. Gao, Y. Ma, Q. Chen, Y. Xu, D. Liu, and W. Lin, “Feature coding in the era of large models: Dataset, test conditions, and benchmark,” in Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , Oct. 2025, pp. 1068–1077. [Online]. Available: https://arxiv.org/abs/2412.04307 [8] T. Darcet, M. Oquab, J. Mairal, and P. Bojanowski, “Vision transformers need registers,” in International Conference on Learning Representations (ICLR) , 2024. [Online]. Available: https://openreview. net/forum?id=2dnO3LLiJ1 [9] C. Gao, Z. Liu, L. Li, D. Liu, X. Sun, and W. Lin, “DT-UFC: Universal Large Model Feature Coding via Peaky-to-Balanced Distribution Trans-formation,” Proceedings of the 33rd ACM International Conference on Multimedia , pp. 5198–5207, Oct. 2025. [10] Q. Chen, C. Gao, L. Li, and D. Liu, “Transform-Free Feature Coding via Entropy-Constrained Vector Quantization,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 40, no. 1. AAAI Press, 2026. [11] B. Bross, Y. Wang, J. Ye, Y. Chen, H. Chen, G. J. Sullivan, and J.-R. Ohm, “VVC and VTM 11.0: The Versatile Video Coding standard and its reference software,” in Proceedings of the ACM International Conference on Multimedia , 2021. [12] J. Ball´ e, D. Minnen, S. Singh, S. J. Hwang, and N. Johnston, “Variational image compression with a scale hyperprior,” in International Conference on Learning Representations , 2018. [13] D. He, Z. Yang, W. Peng, R. Ma, H. Qin, and Y. Wang, “ELIC: Efficient Learned Image Compression with Unevenly Grouped Space-Channel Contextual Adaptive Coding,” in 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2022, pp. 5708– 5717. [14] J. Balle, P. A. Chou, D. Minnen, S. Singh, N. Johnston, E. Agustsson, S. J. Hwang, and G. Toderici, “Nonlinear Transform Coding,” IEEE Journal of Selected Topics in Signal Processing , vol. 15, no. 2, pp. 339–353, Feb. 2021. [15] J. Ball´ e, V. Laparra, and E. P. Simoncelli, “End-to-end optimized image compression,” in 5th International Conference on Learning Representations, ICLR 2017, Toulon, France, April 24-26, 2017, Conference Track Proceedings . OpenReview.net, 2017. [Online]. Available: https://openreview.net/forum?id=rJxdQ3jeg [16] D. Minnen, J. Ball´ e, and G. Toderici, “Joint Autoregressive and Hierar-chical Priors for Learned Image Compression,” in Advances in Neural Information Processing Systems 31: Annual Conference on Neural Information Processing Systems 2018, NeurIPS 2018, 3-8 December 2018, Montr´ eal, Canada. , 2018, pp. 10 794–10 803. [17] Z. Cheng, H. Sun, M. Takeuchi, and J. Katto, “Learned Image Com-pression With Discretized Gaussian Mixture Likelihoods and Attention Modules,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020, pp. 7939–7948. [18] Y. Xie, K. L. Cheng, and Q. Chen, “Enhanced Invertible Encoding for Learned Image Compression,” pp. 162–170, 2021. [Online]. Available: https://dl.acm.org/doi/10.1145/3474085.3475213 [19] H. Tu, S. Wu, L. Li, W. Zhou, and H. Li. Multi-Scale Invertible Neural Network for Wide-Range Variable-Rate Learned Image Compression. [20] H. Ma, D. Liu, N. Yan, H. Li, and F. Wu, “End-to-End Optimized Versatile Image Compression With Wavelet-Like Transform,” pp. 1–1. [21] Y. Zhu, Y. Yang, and T. Cohen, “Transformer-based Transform Coding,” in Proceedings of the International Conference on Learning Represen-tations (ICLR) , 2021. [22] J. Liu, H. Sun, and J. Katto, “Learned Image Compression with Mixed Transformer-CNN Architectures,” in 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE, 2023, pp. 14 388–14 397. [23] H. Li, S. Li, W. Dai, C. Li, J. Zou, and H. Xiong, “Frequency-Aware Transformer for Learned Image Compression,” in Proceedings of the International Conference on Learning Representations (ICLR) , 2023. [24] M. Lu, F. Chen, S. Pu, and Z. Ma. High-Efficiency Lossy Image Coding Through Adaptive Neighborhood Information Aggregation. [25] S. Qin, J. Wang, Y. Zhou, B. Chen, T. Luo, B. An, T. Dai, S. Xia, and Y. Wang. MambaVC: Learned Visual Compression with Selective State Spaces. [26] F. Zeng, H. Tang, Y. Shao, S. Chen, L. Shao, and Y. Wang, “MambaIC: State Space Models for High-Performance Learned Image Compres-sion,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 18 041–18 050. [27] Z. Wu, H. Du, S. Wang, M. Lu, H. Sun, Y. Guo, and X. Yu. CMamba: Learned Image Compression with State Space Models. [28] Y. Chen, Z. Lyu, B. He, H. Hu, Q. Wang, Y. Tian, L. Song, W. Zhang, and G. Lu. CMIC: Content-Adaptive Mamba for Learned Image Com-pression. [29] D. Feng, Z. Cheng, S. Wang, R. Wu, H. Hu, G. Lu, and L. Song, “Linear Attention Modeling for Learned Image Compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 7623–7632. [30] S. Wang, Z. Cheng, D. Feng, Q. Wang, G. Lu, L. Song, and W. Zhang, “Distilling complexity-scalable learned image compression models via neural architecture search,” IEEE Transactions on Circuits and Systems for Video Technology , 2026. [Online]. Available: https://ieeexplore.ieee.org/document/11421658 [31] G.-H. Wang, J. Li, B. Li, and Y. Lu, “EVC: Towards Real-Time Neural Image Compression with Mask Decay,” in International Conference on Learning Representations (ICLR) , 2023. [Online]. Available: https://openreview.net/forum?id=XUxad2Gj40n [32] Z. Jia, B. Li, J. Li, W. Xie, L. Qi, H. Li, and Y. Lu, “Towards practical real-time neural video compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 12 543–12 552. [33] D. He, Y. Zheng, B. Sun, Y. Wang, and H. Qin, “Checkerboard context model for efficient learned image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2021, pp. 14 771–14 780. [34] D. Minnen and S. Singh, “Channel-Wise Autoregressive Entropy Models for Learned Image Compression,” in 2020 IEEE International Confer-ence on Image Processing (ICIP) . IEEE, 2020, pp. 3339–3343. [35] W. Jiang, J. Yang, Y. Zhai, P. Ning, F. Gao, and R. Wang, “MLIC: Multi-Reference Entropy Model for Learned Image Compression,” pp. 7618–7627. [36] W. Jiang, J. Yang, Y. Zhai, F. Gao, and R. Wang, “MLIC++: Linear Complexity Multi-Reference Entropy Modeling for Learned Image Compression.” [37] Y. Qian, M. Lin, X. Sun, Z. Tan, and R. Jin. Entroformer: A Transformer-based Entropy Model for Learned Image Compression. [38] A. B. Koyuncu, H. Gao, A. Boev, G. Gaikov, E. Alshina, and E. Stein-bach, “Contextformer: A Transformer with Spatio-Channel Attention for Context Modeling in Learned Image Compression,” in Computer Vision – ECCV 2022 , S. Avidan, G. Brostow, M. Ciss´ e, G. M. Farinella, and T. Hassner, Eds., vol. 13679. Springer Nature Switzerland, pp. 447– 463. [39] A. B. Koyuncu, H. Gao, A. Boev, G. Gaikov, E. Alshina, E. Steinbach, A. B. Koyuncu, P. Jia, A. Boev, E. Alshina, and E. Steinbach, “Efficient Contextformer: Spatio-Channel Window Attention for Fast Context Modeling in Learned Image Compression,” vol. 34, no. 8, pp. 7498– 7511. [40] M. Li, K. Zhang, W. Zuo, R. Timofte, and D. Zhang. Learning Context-Based Non-local Entropy Modeling for Image Compression. [Online]. Available: http://arxiv.org/abs/2005.04661 IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY 13 
+
+[41] L. Duan, J. Liu, W. Yang, T. Huang, and W. Gao, “Video coding for machines: A paradigm of collaborative compression and intelligent analytics,” IEEE Transactions on Image Processing , vol. 29, pp. 8680– 8695, 2020. [42] W. Yang, H. Huang, Y. Hu, L.-Y. Duan, and J. Liu, “Video coding for machines: Compact visual representation compression for intelligent collaborative analytics,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 46, no. 7, pp. 5174–5191, 2024. [43] H. Li, X. Zhang, S. Wang, S. Wang, and J. Pan, “Human-Machine Collaborative Image and Video Compression: A Survey,” vol. 13, no. 6. [44] W. April, “Call for proposals on feature compression for video coding for machines,” ISO/IEC JTC , vol. 1, 2023. [Online]. Available: https://www.mpeg.org/standards/Explorations/34/ [45] Z. Chen, K. Fan, S. Wang, L. Duan, W. Lin, and A. C. Kot, “Toward Intelligent Sensing: Intermediate Deep Feature Compression,” IEEE Transactions on Image Processing , vol. 29, pp. 2230–2243, 2020. [46] Y. Shi, Y. Ge, J. Wang, and J. Mao, “AlphaVC: High-Performance and Efficient Learned Video Compression,” in Computer Vision – ECCV 2022: 17th European Conference, Tel Aviv, Israel, October 23–27, 2022, Proceedings, Part XIX . Springer-Verlag, pp. 616–631. [47] J. Xiang, K. Tian, and J. Zhang, “MIMT: Masked Image Modeling Transformer for Video Compression,” 2023. [Online]. Available: https://openreview.net/forum?id=j9m-mVnndbm [48] C. Zhang, H. Sun, and J. Katto, “FLAVC: Learned Video Compression with Feature Level Attention,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 28 019–28 028. [Online]. Available: https://openaccess. thecvf.com/content/CVPR2025/html/Zhang FLAVC Learned Video Compression with Feature Level Attention CVPR 2025 paper.html [49] Y. Kim, H. Jeong, J. Yu, Y. Kim, J. Lee, S. Y. Jeong, and H. Y. Kim, “End-to-End Learnable Multi-Scale Feature Compression for VCM,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 5, pp. 3156–3167, 2024. [Online]. Available: https://arxiv.org/abs/2306.16670 [50] T. Liu, M. Xu, S. Li, C. Chen, L. Yang, and Z. Lv, “Learnt Mutual Feature Compression for Machine Vision,” in ICASSP 2023 - 2023 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2023, pp. 1–5. [Online]. Available: https://doi.org/10.1109/ICASSP49357.2023.10094830 [51] Y. Hu, S. Xia, W. Yang, and J. Liu, “Sensitivity-aware bit allocation for intermediate deep feature compression,” in 2020 IEEE International Conference on Visual Communications and Image Processing (VCIP) .IEEE, 2020. [52] Y. Ma, C. Gao, Q. Chen, L. Li, D. Liu, and X. Sun, “Feature compression with 3d sparse convolution,” in 2024 IEEE International Conference on Visual Communications and Image Processing (VCIP) . IEEE, 2024. [53] H. Choi and I. V. Baji´ c, “Latent-Space Scalability for Multi-Task Collaborative Intelligence,” in 2021 IEEE International Conference on Image Processing (ICIP) , 2021, pp. 3562–3566. [Online]. Available: https://arxiv.org/abs/2105.10089 [54] C. Gao, Y. Jiang, L. Li, D. Liu, and F. Wu, “DMOFC: Discrimination Metric-Optimized Feature Compression,” in 2024 Picture Coding Symposium (PCS) . IEEE, 2024, pp. 1–5. [Online]. Available: https://arxiv.org/abs/2405.04044 [55] C. Gao, Y. Jiang, S. Wu, Y. Ma, L. Li, and D. Liu, “IMOFC: Identity-Level Metric Optimized Feature Compression for Identification Tasks,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 35, no. 2, pp. 1855–1869, 2025. [Online]. Available: https://ieeexplore.ieee.org/document/10689643 [56] C. Gao, Z. Li, L. Li, D. Liu, F. Wu, and W. Lin, “Rethinking joint optimization in feature compression: Insights from person re-identification,” in 2025 IEEE International Conference on Multimedia and Expo (ICME) . IEEE, 2025, pp. 1–6. [57] C. Gao, W. Zhou, G. Lin, and W. Lin, “Compressed feature quality assessment: Dataset and baselines,” in ACMMM 2025 , 2025. [58] S. Wang, S. Wang, X. Zhang, S. Wang, S. Ma, and W. Gao, “Scalable Facial Image Compression with Deep Feature Reconstruction,” in 2019 IEEE International Conference on Image Processing (ICIP) , 2019, pp. 2691–2695. [59] S. Yang, Y. Hu, W. Yang, L. Duan, and J. Liu, “Towards coding for human and machine vision: Scalable face image coding,” IEEE Transactions on Multimedia , vol. 23, pp. 2957–2971, 2021. [60] N. Yan, C. Gao, D. Liu, H. Li, L. Li, and F. Wu, “SSSIC: Semantics-to-Signal Scalable Image Coding With Learned Structural Representations,” 
+
+IEEE Transactions on Image Processing , vol. 30, pp. 8939–8954, 2021. [61] K. Liu, D. Liu, L. Li, N. Yan, and H. Li, “Semantics-to-Signal Scalable Image Compression with Learned Revertible Representations,” Interna-tional Journal of Computer Vision , vol. 129, no. 9, pp. 2605–2621, 2021. [62] Q. Chen, C. Gao, and D. Liu, “End-to-End Learned Scalable Multilayer Feature Compression for Machine Vision Tasks,” in 2024 IEEE International Conference on Image Processing (ICIP) , 2024, pp. 1781–1787. [Online]. Available: https://cmsworkshops.com/ICIP2024/ view paper.php?PaperNum=1835 [63] Y. Pang, C. Gao, D. Liu, H. Lu, and W. Lin, “Towards large model feature coding,” arXiv preprint arXiv:2605.24025 , 2026. [64] Z. Duan and F. M. Zhu, “Compression of Self-Supervised Representa-tions for Machine Vision,” in 2024 IEEE 26th International Workshop on Multimedia Signal Processing (MMSP) , 2024, pp. 1–6. [65] C. Gao, S. Liu, F. Wu, and W. Lin, “Cross-architecture universal feature coding via distribution alignment,” in ICIP 2025 , 2025. [66] H. Xu, X. Wu, and X. Zhang, “Multirate Neural Image Compression with Adaptive Lattice Vector Quantization,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 7633–7642. [Online]. Available: https://openaccess.thecvf.com/content/CVPR2025/html/Xu Multirate Neural Image Compression with Adaptive Lattice Vector Quantization CVPR 2025 paper.html [67] H. Zhang, Y. Li, L. Li, and D. Liu. Learning Switchable Priors for Neural Image Compression. [68] O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma, Z. Huang, A. Karpathy, A. Khosla, M. Bernstein, A. C. Berg, and L. Fei-Fei, “ImageNet large scale visual recognition challenge,” International Journal of Computer Vision , vol. 115, no. 3, pp. 211–252, 2015. [69] T.-Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, D. Ramanan, P. Doll´ ar, and C. L. Zitnick, “Microsoft COCO: Common objects in context,” in ECCV , 2014. [70] B. Zhou, H. Zhao, X. Puig, S. Fidler, A. Barriuso, and A. Torralba, “Scene parsing through ADE20K dataset,” in CVPR , 2017. [71] G. Bjontegaard, “Calculation of average psnr differences between rd-curves,” ITU-T SG16, Doc. VCEG-M33 , 2001. [72] B. Zheng, N. Ma, S. Tong, and S. Xie, “Diffusion transformers with representation autoencoders,” arXiv preprint arXiv:2510.11690 , 2025.

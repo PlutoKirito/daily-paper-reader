@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-09</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-11</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 15 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>4</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>10</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-09 21:01:13 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-11 21:26:49 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读4篇、速读4篇，重点聚焦神经视频压缩与生成式压缩的跨平台部署优化。最值得关注的两项9分工作：混合精度流式视频压缩，以及面向码本生成压缩的率-算力调度。若时间有限，建议优先了解这两篇的高效压缩思路，再延伸至模型量化与剪枝的速读内容。</p>
+<p>今日精读聚焦神经网络量化，两篇高分论文分别提出Hadamard域量化与低维子空间优化方案；速读则覆盖视频生成、知识蒸馏及剪枝等效率方向。最值得关注的是量化技术突破，兼顾压缩率与性能。建议优先阅读精读列表中的两篇量化论文，把握前沿压缩思路。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Streamable Neural Video Compression: A Mixed Precision Approach for Cross-Platform Deployment">Streamable Neural Video Compression: A Mixed Precision Approach for Cross-Platform Deployment</span></li><li><span class="dpr-home-dashboard-paper-title" title="GVCCTurbo: Rate-Compute Quality Scheduling for Codebook Driven Generative Compression">GVCCTurbo: Rate-Compute Quality Scheduling for Codebook Driven Generative Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="GVC-RT: Towards Real-Time Generative Video Compression at Ultra-Low Bitrates">GVC-RT: Towards Real-Time Generative Video Compression at Ultra-Low Bitrates</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hadamard-Domain Model Quantization for Learned Image Coding">Hadamard-Domain Model Quantization for Learned Image Coding</span></li><li><span class="dpr-home-dashboard-paper-title" title="Low-Dimensional High-Leverage Subspace Optimization: Beyond Full-Parameter Coupled Training for Neural Network Quantization">Low-Dimensional High-Leverage Subspace Optimization: Beyond Full-Parameter Coupled Training for Neural Network Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="Intrinsic-Hybrid Latent Diffusion Models for Generative Modeling on Unknown Manifolds">Intrinsic-Hybrid Latent Diffusion Models for Generative Modeling on Unknown Manifolds</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>3</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">10 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hadamard-Domain Model Quantization for Learned Image Coding">Hadamard-Domain Model Quantization for Learned Image Coding</span></li><li><span class="dpr-home-dashboard-paper-title" title="F-WANDA: Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models">F-WANDA: Fisher-Reweighted Post-Training Pruning for Sustainable Deployment of Large Language Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Estimating SSIM from MSE for DCT-Based Compressed Images">Estimating SSIM from MSE for DCT-Based Compressed Images</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Token Radius Attention for Efficient Video Generation">Token Radius Attention for Efficient Video Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Channel-wise Dynamic Knowledge Distillation via Adaptive Sample Generation for Action Recognition">Channel-wise Dynamic Knowledge Distillation via Adaptive Sample Generation for Action Recognition</span></li><li><span class="dpr-home-dashboard-paper-title" title="Domain-Aware Pruning: Sparsity and Domain Generalization via Regularized Probabilistic Masking">Domain-Aware Pruning: Sparsity and Domain Generalization via Regularized Probabilistic Masking</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>3</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span></div>
 </section>
 </div>
 

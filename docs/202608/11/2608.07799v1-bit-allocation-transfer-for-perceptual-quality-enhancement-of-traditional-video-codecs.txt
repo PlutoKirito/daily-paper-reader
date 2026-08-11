@@ -1,0 +1,247 @@
+Title: Bit Allocation Transfer for Perceptual Quality Enhancement of Traditional Video Codecs
+
+URL Source: https://arxiv.org/pdf/2608.07799v1
+
+Published Time: Tue, 11 Aug 2026 00:18:20 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+To be presented at the International Workshop on Multimedia Signal Processing 2026, Istanbul, T¨ urkiye, September 2026 
+
+> © 2026 IEEE. Personal use of this material is permitted. Permission from IEEE must be obtained for all other uses, in any current or future media, including reprinting/republishing this material for advertising or promotional purposes, creating new collective works, for resale or redistribution to servers or lists, or reuse of any copyrighted component of this work in other works.
+
+# Bit Allocation Transfer for Perceptual Quality Enhancement of Traditional Video Codecs 
+
+Runyu Yang 
+
+School of Engineering Science Simon Fraser University 
+
+Burnaby, BC, Canada runyuy@sfu.ca 
+
+Ivan V. Baji´ c
+
+School of Engineering Science Simon Fraser University 
+
+Burnaby, BC, Canada ibajic@sfu.ca 
+
+Abstract —Traditional block-based video codecs, such as H.264/AVC, H.265/HEVC and H.266/VVC, rely on hand-crafted Rate-Distortion Optimization (RDO) processes that primarily minimize Mean Squared Error (MSE), which correlates poorly with human perceptual quality. While neural video compression methods can easily optimize perceptually aligned metrics like MS-SSIM, their high computational complexity limits practical deployment. This paper proposes a novel bit allocation transfer framework that bridges these two paradigms to enhance the perceptual quality of conventional video codecs. Specifically, we train a quantization step generation model using a perceptual loss within a neural video compression framework (DCVC-FM). The model takes the original frame and a motion-compensated prediction as input and outputs a quantization step map. We then derive a block-wise bit ratio from this map and convert it into a Quantization Parameter (QP) map for a traditional video codec. Experimental results on the HEVC B ∼D dataset demonstrate that our method achieves 20.20%, 8.25%, and 8.37% bitrate savings in terms of MS-SSIM compared with the standard reference software JM-19.0, HM-16.20, and VTM-23.0, respectively, with additional gains when utilizing predicted frames. Our approach effectively transfers the implicit perceptual importance learned by neural video compression models to guide block-level bit allocation in traditional video codecs without modifying their core decoding syntax. 
+
+Index Terms —bit allocation, neural video compression, tradi-tional video codecs, H.266/VVC, perceptual quality. 
+
+I. I NTRODUCTION 
+
+Contemporary video compression standards, such as H.264/AVC, H.265/High Efficiency Video Coding (HEVC) [1], and H.266/Versatile Video Coding (VVC) [2], all adhere to a block-based hybrid coding framework. A central challenge in designing an encoder for any of these standards is achieving an optimal balance between compression efficiency (bitrate) and reconstruction quality. Formally, this is known as the Rate-Distortion Optimization (RDO) problem: 
+
+min D subject to R ≤ Rc, (1) where D denotes the distortion (inversely related to quality), 
+
+R is the actual bitrate consumed, and Rc represents the target bitrate constraint. Block-based coding inherently allows fine-grained RDO decisions at the block level. For each block, the encoder must make critical choices, including selecting 
+
+This work was supported in part by the SFU-Huawei Joint Lab on Visual Computing. Original  video 
+
+QP map 
+
+Enc  Dec 
+
+MSE loss optimized 
+
+neural video  compression 
+
+β estimation 
+
+Quantization 
+
+β
+
+Traditioanl  video  codec 
+
+Quantization step generation 
+
+Q ×÷
+
+Quantization step map 
+
+Original  video 
+
+Enc  Dec 
+
+Reciprocal taking 
+
+Normalization 
+
+Training flow 
+
+Inference flow 
+
+(Perceptual loss) 
+
+Bit ratio map 
+
+𝑥 𝑡 
+
+𝑥 𝑡−1 
+
+𝑥 𝑡 
+
+Optical flow 
+
+model  Warping 
+
+Predicted frame 
+
+Optical flow 
+
+Fig. 1. The proposed video coding framework with perceptual quality enhancement via transferring from neural video compression bit allocation. Note that the modules inside the dotted box are not used in I-frame coding. 
+
+the optimal prediction mode, determining the best partition size, and choosing an appropriate Quantization Parameter (QP) value. Crucially, the formulation and evaluation of distortion ( D)play a decisive role in determining optimization performance. Mean Squared Error (MSE) and its logarithmic counterpart, Peak Signal-to-Noise Ratio (PSNR), have long been the dom-inant quality metrics because of their mathematical simplicity and analytical convenience. Nevertheless, extensive psycho-visual studies have demonstrated that MSE/PSNR exhibits weak correlation with human perceptual judgments of visual quality [3], [4]. To address this limitation, a wide range of perceptually-oriented quality metrics have been proposed to better capture characteristics of the human visual system. Representative examples include the Structural Similarity In-arXiv:2608.07799v1 [eess.IV] 7 Aug 2026 Quantization step generation model 
+
+> Conv  64 ×5×5/1
+> Residual Block 64
+> Conv 64 ×5×5/2↓
+> Residual Block 64
+> Conv 1 ×3×3/1
+> Softplus
+> Residual Block N
+> Conv N ×3×3/1
+> ReLU
+> Conv N ×3×3/1
+
+⊕
+
+𝑥 𝑡 
+
+෤𝑥 𝑡 
+
+> Concat
+
+× 4 Fig. 2. Left: Quantization step generation model; Right: Residual Block. The predicted frame ˜xt inside the dotted box is not used in I-frame coding. 
+
+dex (SSIM) [5], the multi-scale variant MS-SSIM [6], and learning-based perceptual metrics such as the Learned Per-ceptual Image Patch Similarity (LPIPS) [7]. Although these perceptual metrics consistently outperform MSE in terms of subjective quality correlation, they generally lack the addi-tive decomposability and block-wise independence properties that make MSE particularly suitable for conventional RDO optimization. As a result, incorporating complex perceptual objectives such as MS-SSIM or LPIPS into block-level RDO optimization introduces substantial computational challenges and is often incompatible with the standard optimization framework, thereby limiting their practical deployment despite their superior perceptual fidelity. Recently, neural video compression has emerged as a com-pelling alternative to traditional video coding frameworks [8]– [10]. Unlike conventional codecs, this paradigm relies on deep neural networks to jointly model the entire encoder–decoder pipeline in an end-to-end manner. Consequently, its rate-distortion optimization (RDO) strategy differs fundamentally from that of classical approaches: optimization is performed globally during offline training over large-scale video datasets rather than locally at the block level during encoding. One notable advantage of neural compression frameworks is their flexibility in distortion modeling. Any distortion metric that is differentiable with respect to the network parameters can be directly integrated into the gradient-based optimization process. This property enables perceptually-oriented objec-tives, such as MS-SSIM or LPIPS, to be incorporated far more naturally and efficiently than in conventional codecs. Furthermore, neural networks trained under different optimiza-tion criteria often produce substantially different spatial bit-allocation behaviors for the same input video. These learned allocation patterns implicitly encode the model’s understand-ing of the relative perceptual significance of different spatial regions under the target quality metric. Previous works [11]–[13] have demonstrated the implicit knowledge of perceptual block importance learned by learned image compression models can be extracted and transferred to guide RDO decisions within traditional block-based image codecs. This paper expands upon that foundational concept, presenting a bit allocation transfer framework for perceptual quality enhancement of traditional video codecs. The rest of this paper is organized as follows. Section II describes the proposed perceptual quality enhancement frame-work. Section III provides the detailed experimental results. Finally, Section IV concludes this paper. II. P ROPOSED METHOD 
+
+The overall framework of our method is introduced in Section II-A, followed by detailed descriptions of various components in subsequent sections. 
+
+A. Overall framework 
+
+Fig. 1 presents the overall bit allocation transfer framework. Our goal is to generate a QP map for block-based video compression standards such as VVC in order to enhance perceptual quality. First, we train a quantization step gen-eration model using a perceptual loss. The model takes as input the original frame together with the predicted frame, which is derived from warping the previous frame according to the estimated optical flow, and outputs a quantization step map. The reciprocal of this map serves as an estimate of the block-wise bit allocation ratio. After normalization for rate alignment, a bit ratio map is obtained. Subsequently, the target QP map is derived from the bit ratio map based on the R-
+
+λ model [14]. Finally, the conventional video codec utilizes the generated QP map to perform adaptive bit allocation for perceptual quality enhancement. 
+
+B. Neural video compression 
+
+Our framework is model-agnostic and only requires the underlying neural compression architecture to support block-wise bit allocation. In this work, we adopt DCVC-FM for im-plementation [9]. The model is optimized using the following joint rate-distortion objective: 
+
+L = λD + R. (2) Here, λ balances the trade-off between bitrate and distortion, where D denotes the distortion term measured by MSE or perceptual metrics, and R represents the bitrate associated with the quantized latent representations and hyperpriors. The hyperpriors provide side information for entropy coding. The spatial resolution of the latent features is downsampled by a factor of 16 with respect to the original frame resolution. In addition, we directly reuse the optical flow model from DCVC-FM within our proposed framework. 
+
+C. Quantization step generation 
+
+The bitrate required for encoding quantized latent features is closely related to their magnitudes, where larger feature values generally correspond to higher bitrates, similar to the behavior of quantized coefficients in VVC. To achieve adaptive bit allocation, we introduce a quantization step generation model that outputs a quantization step map. This map inversely controls the magnitudes of the quantized latent features: values greater than one suppress the feature magnitudes and reduce bitrate consumption, whereas values smaller than one increase the feature magnitudes and increase the bitrate. As illustrated in Fig. 2, the proposed model consists of stacked residual blocks and convolutional layers with stride 2(a) BasketballDrill (b) BQMall Fig. 3. The relationship between bit ratio and the reciprocal of the quantization step on BasketballDrill and BQMall in Class C. The red line indicates a linear relationship with a slope of 1. 
+
+2. The output resolution matches that of the latent features. To guarantee positive outputs suitable for quantization step scaling, we adopt the softplus function as the final activation function, which is defined as softplus (x) = ln(1 + ex). (3) During training, the parameters of the neural video com-pression model are kept fixed, while only the quantization step generation model is optimized. Two separate quantization step generation models are trained and applied to I-frames and P-frames, respectively. 
+
+D. QP adaptation 
+
+To allocate bits adaptively for each block according to the quantization step map, the generated quantization steps must be converted into a corresponding QP map. We follow the strategy proposed in [12], which relies on a block-wise bit allocation ratio. Empirically, we observe that the bit ratio is approximately proportional to the reciprocal of the quantiza-tion step as shown in Fig. 3 (granularity of 64 ×64 block, take the average step of 4 ×4). Accordingly, the bit ratio can be estimated as 
+
+rk ≈ 1
+
+QS k
+
+, (4) where k denotes the block index, rk represents the block-wise bit allocation ratio used for adaptive bit assignment, and QS k
+
+is the block-wise quantization step derived from averaging the quantization step values within the corresponding block region. To determine the bitrate R from the Lagrange multiplier λ,we adopt the R-λ model [14], which is formulated as 
+
+λ = α · Rβ , (5) where α and β are content-dependent hyperparameters. In the original formulation, both λ and R are defined at the frame level. Since our method performs QP adaptation on a block basis and the parameters α and β vary across blocks, the model can be extended to 
+
+λ = αk · Rβk 
+
+> k
+
+, (6) where k indicates the block index. To incorporate the target block-wise bit ratio rk, the cor-responding block-wise Lagrange multiplier λk can be derived as 
+
+λk = αk · (rkRk)βk (7) 
+
+= rβk 
+
+> k
+
+· αk · Rβk 
+
+> k
+
+(8) 
+
+= rβk 
+
+> k
+
+· λ. (9) The parameter βk is estimated using the neural network proposed in [15]. Based on the relationship between QP and 
+
+λ, the QP value for the k-th block can be expressed as QP k = QP + N log 2
+
+ λk
+
+λ
+
+
+
+(10) 
+
+= QP + 3 log 2
+
+
+
+rβk
+
+> k
+
+
+
+(11) 
+
+≈ QP − 3 log 2
+
+
+
+QS βk
+
+> k
+
+
+
+, (12) where N is set to 3 following the AVC, HEVC, and VVC con-figuration. The corresponding block-wise Lagrange multiplier 
+
+λk is then updated as 
+
+λk = λ · 2(QP k −QP )/3. (13) III. E XPERIMENTS 
+
+A. Settings 
+
+The training strategy and network architecture for βk esti-mation follow the same settings as those in [12]. The training data for the quantization step generation model is derived from the Vimeo-90k dataset [16], which contains 90,000 randomly cropped patches with a resolution of 192 ×192. We evaluate our method using JM-19.0, HM-16.20, and VTM-23.0, which are the reference software implementations for AVC, HEVC, and VVC, respectively. The QP adaptation block size is configured as 16 ×16 for JM-19.0, and 64 ×64 for both HM-16.20 and VTM-23.0. For comparison with Percep-tQPA [17] in VTM-23.0, we replace its original block-wise QP adaptation module while retaining its chroma-aware bit allocation mechanism. To alleviate potential blocking artifacts, the maximum QP offset is constrained to 5. We adopt 1 − MS-SSIM as the perceptual loss function during training. The neural video compression model is ini-tialized using pre-trained MSE-optimized weights, while the quantization step generation model is trained for five epochs using the Adam optimizer with an initial learning rate of 
+
+1 × 10 −4.The evaluation metrics include RGB PSNR and MS-SSIM. Experiments are conducted on the standard HEVC Class B ∼Dtest sequences under low-delay coding configurations [18]. 
+
+B. Results 
+
+Tables I–III present the BD-rate performance of the pro-posed method on AVC, HEVC, and VVC reference codecs, respectively. The results demonstrate that the proposed per-ceptual bit allocation strategy consistently improves perceptual quality in terms of MS-SSIM while maintaining competitive PSNR performance. 3For AVC in Table I, the proposed method achieves an average MS-SSIM BD-rate reduction of 20.20% with only a 7.67% BD-rate increase measured in terms of PSNR relative to JM-19.0. Compared with the variant without the predicted frame, incorporating the predicted frame generally leads to further perceptual gains, improving the overall MS-SSIM BD-rate reduction from 18.36% to 20.20%. The improvement is particularly evident on sequences with strong temporal correlations, such as BQTerrace and BQSquare . These results indicate that the predicted frame provides useful temporal guidance for perceptual bit allocation. In addition, the pro-posed method achieves substantial perceptual improvements across all classes, demonstrating good robustness under dif-ferent spatial resolutions and motion characteristics. Table II reports the experimental results on HM-16.20. The proposed method achieves an overall MS-SSIM BD-rate reduction of 8.25% while introducing only a modest PSNR BD-rate increase of 4.88%. Compared with AVC, the gains on HEVC are relatively smaller because HEVC already includes more advanced coding tools and larger QP adaptation block size. Nevertheless, the proposed method still consistently improves perceptual quality across most sequences. Incorpo-rating the predicted frame again provides additional benefits in several sequences. For example, the MS-SSIM BD-rate reduction on BQTerrace improves from 16.97% to 17.52% af-ter introducing temporal prediction information. These results confirm that the proposed quantization step generation model remains effective even in modern hybrid coding frameworks. Table III compares the proposed method with PerceptQPA on VTM-23.0. Because perceptQPA does not support block-wise QP adaptation for 480p, we evaluate only on Class B and Class C. PerceptQPA achieves an overall MS-SSIM BD-rate reduction of 6.98%, whereas the proposed method further improves the performance to 8.37%. In contrast, the PSNR increase of the proposed method remains comparable to that of PerceptQPA. This demonstrates that the proposed framework achieves perceptual quality enhancement without causing excessive degradation in distortion-oriented quality metrics. Moreover, compared with the variant without the predicted frame, the full model consistently achieves slightly better MS-SSIM performance, validating the effectiveness of incorporating temporal prediction information into the quan-tization step generation process. Overall, the experimental results verify that the proposed method generalizes well across different coding standards and provides superior perceptual bit allocation performance compared with existing QP adaptation approaches. Visual comparisons between our method and PerceptQPA implemented in VTM-23.0 are shown in Fig. 4. We can observe that our method decreases the QP of motionless and low-texture regions which can improve the perceptual quality without significant increase in bitrate. Regarding computational complexity, we measured the run-time of the proposed QP map generation on a desktop PC running Windows 11 (64-bit), equipped with AMD Ryzen 7 5800H CPU, 16 GB RAM, and an NVIDIA GeForce GTX                                                                                                                                             
+
+> TABLE I BD-RATE RESULTS (%) OF OUR METHOD AND OUR METHOD WITHOUT THE PREDICTED FRAME ,COMPARED TO JM-19.0 Class Sequence Ours w/o pred. frame Ours PSNR MS-SSIM PSNR MS-SSIM BBasketballDrive 6.16 −12.42 6.17 −14.17 BQTerrace 11.70 −36.86 11.09 −40.45 Cactus 17.91 −12.30 22.34 −13.66 CBasketballDrill 4.94 −18.99 4.42 −20.73 BQMall 8.53 −13.01 9.36 −14.24 PartyScene 9.87 −10.07 10.79 −9.95 RaceHorses 4.44 −12.98 5.14 −13.78 DBasketballPass −6.63 −27.52 −7.54 −28.83 BlowingBubbles 5.32 −13.63 7.55 −16.61 BQSquare 4.30 −31.73 2.53 −37.17 RaceHorses 7.68 −10.33 7.00 −9.97 Class B 11.92 −20.53 13.20 −22.76 Class C 6.95 −13.76 7.43 −14.68 Class D 2.67 −20.80 2.39 −23.15 Overall 7.18 −18.36 7.67 −20.20 TABLE II BD-RATE RESULTS (%) OF OUR METHOD AND OUR METHOD WITHOUT THE PREDICTED FRAME ,COMPARED TO HM-16.20 Class Sequence Ours w/o pred. frame Ours PSNR MS-SSIM PSNR MS-SSIM BBasketballDrive 4.76 −8.33 6.83 −6.92 BQTerrace 9.51 −18.67 7.97 −20.36 Cactus 8.68 −7.54 10.14 −8.37 CBasketballDrill 8.67 −8.74 8.15 −9.20 BQMall 3.89 −5.04 4.03 −5.17 PartyScene 3.56 −3.50 3.82 −3.59 RaceHorses 2.63 −4.32 1.88 −4.17 DBasketballPass −2.10 −11.69 −2.29 −12.92 BlowingBubbles 2.14 −0.90 2.82 −1.54 BQSquare 4.25 −9.37 4.11 −11.36 RaceHorses 4.42 −3.51 2.84 −3.49 Class B 7.65 −11.51 8.31 −11.88 Class C 4.69 −5.40 4.47 −5.53 Class D 2.18 −6.37 1.87 −7.33 Overall 4.84 −7.76 4.88 −8.25
+
+1080 Ti GPU, using PyTorch 2.0.0. For a single 1080p frame, the proposed method requires approximately 0.2 s on the GPU and 5.3 s on the CPU. This overhead represents only a small fraction of the overall VVC encoding time, which exceeds 1 min per frame at QP 37. IV. C ONCLUSION 
+
+This paper presents a novel bit allocation transfer frame-work that bridges neural video compression and traditional video codecs to enhance perceptual quality. By extracting the implicit knowledge of perceptual importance learned by neural compression models—specifically, the block-wise bit allocation patterns optimized for perceptually aligned metrics like MS-SSIM—we generate quantization step maps that guide adaptive QP adaptation within conventional codecs such as H.266/VVC. Experimental results on the HEVC B ∼D dataset demonstrate that our approach achieves 20.20%, 8.25%, and 8.37% bitrate savings in terms of MS-SSIM compared with the reference implementations JM-19.0, HM-16.20 and VTM-23.0, respectively, with additional gains when utilizing pre-dicted frames. These findings confirm that perceptual opti-4TABLE III BD-RATE RESULTS (%) OF OUR METHOD , OUR METHOD WITHOUT THE PREDICTED FRAME AND PERCEPT QPA, COMPARED TO VTM-23.0 Class Sequence PerceptQPA Ours w/o pred. frame Ours PSNR MS-SSIM PSNR MS-SSIM PSNR MS-SSIM BBasketballDrive 1.96 −7.84 3.03 −7.42 4.57 −7.13 BQTerrace 8.28 −15.87 9.84 −16.97 9.60 −17.52 Cactus 7.87 −6.41 7.96 −5.97 8.58 −6.92 CBasketballDrill 10.46 −6.55 5.82 −8.67 5.54 −8.99 BQMall 4.49 −6.29 2.49 −6.98 2.47 −7.03 PartyScene 3.95 −2.45 2.58 −4.84 2.90 −4.99 RaceHorses 6.36 −0.34 1.42 −4.11 0.53 −3.88 Class B 6.04 −10.04 6.94 −10.12 7.58 −10.52 Class C 6.32 −3.91 3.08 −6.15 2.86 −6.22 Overall 6.18 −6.98 5.01 −8.14 5.22 −8.37 𝑥 𝑡  𝑥 𝑡+1  𝑥 𝑡+2 
+
+PerceptQPA 
+
+544.650kb/s, MS -SSIM:0.9381 
+
+552.500kb/s, MS -SSIM:0.9420 
+
+Ours 
+
+Fig. 4. Visual results of reconstruction frames in our method and perceptQPA. 
+
+mization strategies from neural video compression can be ef-fectively transferred to improve the rate-distortion performance of traditional video codecs. Future work will explore extending this framework to task-oriented optimization objectives. REFERENCES [1] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, “Overview of the high efficiency video coding (hevc) standard,” IEEE Transactions on circuits and systems for video technology , vol. 22, no. 12, pp. 1649– 1668, 2012. [2] B. Bross, J. Chen, J.-R. Ohm, G. J. Sullivan, and Y.-K. Wang, “Devel-opments in international video coding standardization after AVC, with an overview of versatile video coding (VVC),” Proceedings of the IEEE ,vol. 109, no. 9, pp. 1463–1493, Jan. 2021. [3] B. Girod, “What’s wrong with mean-squared error?” in Digital Images and Human Vision . Cambridge, MA, USA: MIT Press, 1993, pp. 207– 220. [4] Z. Wang and A. C. Bovik, “Mean squared error: Love it or leave it? A new look at signal fidelity measures,” IEEE Signal Processing Magazine ,vol. 26, no. 1, pp. 98–117, Jan. 2009. [5] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: From error visibility to structural similarity,” IEEE Transa. Image Processing , vol. 13, no. 4, pp. 600–612, Apr. 2004. [6] Z. Wang, E. P. Simoncelli, and A. C. Bovik, “Multiscale structural similarity for image quality assessment,” in Asilomar Conference on Signals, Systems & Computers , Nov. 2003, pp. 1398–1402. [7] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR) , Jun. 2018, pp. 586–595. [8] J. Li, B. Li, and Y. Lu, “Neural video compression with diverse contexts,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2023, pp. 22 616–22 626. [9] ——, “Neural video compression with feature modulation,” in Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 26 099–26 108. [10] J. Liao, Y. Wu, C. Lin, Z. Deng, L. Li, D. Liu, and X. Sun, “Ehvc: Efficient hierarchical reference and quality structure for neural video coding,” in Proceedings of the 33rd ACM International Conference on Multimedia , 2025, pp. 12 083–12 091. [11] R. Yang, D. Liu, S. Ma, F. Wu, and W. Gao, “Knowledge distillation from end-to-end image compression to VVC intra coding for perceptual quality enhancement,” in IEEE Int. Conf. Image Processing (ICIP) , Sep. 2021, pp. 3438–3442. [12] ——, “Perceptual quality-oriented rate allocation via distillation from end-to-end image compression,” ACM Trans. Multimedia Computing, Communications and Applications , vol. 20, no. 7, pp. 1–22, 2024. [13] R. Yang and I. V. Baji´ c, “Bit allocation transfer for perceptual quality enhancement of VVC intra coding,” in Proc. Picture Coding Symposium (PCS) , 2025, pp. 1–5. [14] B. Li, H. Li, L. Li, and J. Zhang, “ λ domain rate control algorithm for high efficiency video coding,” IEEE Trans. Image Processing , vol. 23, no. 9, pp. 3841–3854, Sep. 2014. [15] Y. Li, B. Li, D. Liu, and Z. Chen, “A convolutional neural network-based approach to rate control in HEVC intra coding,” in IEEE Visual Communications and Image Processing (VCIP) . IEEE, Dec. 2017, pp. 1–4. [16] T. Xue, B. Chen, J. Wu, D. Wei, and W. T. Freeman, “Video enhance-ment with task-oriented flow,” International Journal of Computer Vision ,vol. 127, no. 8, pp. 1106–1125, 2019. [17] C. Helmrich, H. Schwarz, D. Marpe, and T. Wiegand, “Ahg10: Im-proved perceptually optimized QP adaptation and associated distortion measure,” JVET, Tech. Rep. JVET-K0206, Jul. 2018. [18] F. Bossen, “Common test conditions and software reference configura-tions,” JCTVC, Tech. Rep. JCTVC-L1100, 2013. 
+
+5
