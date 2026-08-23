@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-22</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-23</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 15 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>4</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-22 20:36:08 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-23 20:45:27 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日聚焦15篇压缩与多模态前沿，精读2篇，速读11篇，核心方向为神经视频编码与图像语义传输。最值得关注的是BiCRVC双向神经视频编码框架（10分满分）及结合视觉语言模型的个性化语义通信（8分），显示高效编码与智能语义融合正成主流。建议普通读者优先关注视频压缩效率提升及语义通信在实际传输中的落地潜力。</p>
+<p>今日速读5篇论文，无精读；重点关注稳健图像压缩、知识蒸馏与边缘AI部署。最值得看的是《Fast Test-Time Refinement》提出的测试时优化思路，以及《Large Models for Small Devices》对边缘部署的实证分析。建议普通读者优先从这两篇入手，理解模型压缩与高效推理的实用方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="BiCRVC: An Efficient Bidirectional Neural Video Compression Framework via Coupled Representation Coding">BiCRVC: An Efficient Bidirectional Neural Video Compression Framework via Coupled Representation Coding</span></li><li><span class="dpr-home-dashboard-paper-title" title="Personalized Digital Semantic Communication for Image Transmission with Vision-Language Models">Personalized Digital Semantic Communication for Image Transmission with Vision-Language Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="UniTAC: Universal Task-Aware Compression via Weighted Distortion Measures">UniTAC: Universal Task-Aware Compression via Weighted Distortion Measures</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">11 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Practical Lossless Volumetric Medical Image Compression via Tri-plane Context Tree Learning">Practical Lossless Volumetric Medical Image Compression via Tri-plane Context Tree Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Breaking the Compression Barrier: Cross-Architecture Compression Boundary Learning via Reverse Regrowth">Breaking the Compression Barrier: Cross-Architecture Compression Boundary Learning via Reverse Regrowth</span></li><li><span class="dpr-home-dashboard-paper-title" title="CamWorldQA: Perceptual Quality Assessment of Camera-Controlled World Video Generation">CamWorldQA: Perceptual Quality Assessment of Camera-Controlled World Video Generation</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Fast Test-Time Refinement for Robust Learned Image Compression">Fast Test-Time Refinement for Robust Learned Image Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Distributional View of Knowledge Distillation">The Distributional View of Knowledge Distillation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Large Models for Small Devices: Recent Advances and Empirical Analysis of Edge AI Deployment">Large Models for Small Devices: Recent Advances and Empirical Analysis of Edge AI Deployment</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>6</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>4</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
