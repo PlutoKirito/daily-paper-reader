@@ -1,0 +1,554 @@
+Title: Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks
+
+URL Source: https://arxiv.org/pdf/2608.22891v1
+
+Published Time: Tue, 25 Aug 2026 02:09:19 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks 
+
+Xinyue Hu, Ziyan Wu, Jiaxiang Tang, Wei Ye, Qixin Zhang, Eman Ramadan, Ali Anwar, Zhi-Li Zhang 
+
+University of Minnesota Twin Cities, Minneapolis, USA 
+
+{hu000007, wu000598, tang0836, ye000094, zhan8548, eman, aanwar, zhzhang }@umn.edu 
+
+Abstract —5G networks employ multiple radio channels to meet growing demands for bandwidth and high-resolution video streaming for emerging applications. However, existing multipath video systems are largely designed around monolithic codecs, which require sufficiently complete chunk delivery, or layered codecs, which depend on timely base-layer delivery. Under fast-varying 5G conditions with blockage, handovers, and heteroge-neous path capacities, we observe that decoding dependencies in existing codecs make multipath delivery fragile: transient under-delivery of critical video data can directly trigger stalls and degrade QoE. This paper proposes NeuralMDC, a neural multiple-description video codec co-designed with multipath streaming for dynamic 5G networks. NeuralMDC encodes each video chunk into independently-decodable and mutually-refinable description streams, each spanning the full chunk. This design changes the multipath delivery unit from dependent packets or layers to independent chunk-level streams, so missing streams primarily reduce quality rather than making the chunk undecodable. Built on NeuralMDC, we develop a user-space multipath streaming system that maps description streams to heterogeneous 5G paths with simple yet effective scheduling logic. Across trace-driven emulation and operational 5G experiments, NeuralMDC improves QoE by 26%–44% over existing monolithic, layered, and neural streaming systems, improves video quality by up to 41.8%, and keeps stall ratios below 0.32%. 
+
+I. I NTRODUCTION 
+
+Video streaming is central to mobile applications rang-ing from conventional video services to cloud gaming, augmented/virtual/extended reality (A/V/XR), tele-operated robots, autonomous driving, and Digital Twins, where stream-ing of either pre-recoded or real-time video is central. 5G net-works, with Gbps peak throughput [1]–[3], offer the potential to support ultra-high-resolution video streaming. To increase coverage and support growing bandwidth requirements, 5G networks employ multiple radio channels from diverse radio bands and multiple operators [4], [5], suggesting the possibility of utilizing multiple 5G channels from either the same or multiple operators to improve throughput and robustness as required by emerging applications ( e.g., CellFusion system [6] for tele-operated driving). Multipath video streaming has been extensively stud-ied, but existing studies largely assume that each video chunk is encoded into multiple single bitstreams at different quality levels using monolithic codecs such as Advanced Video Coding (AVC/H.264) or High Efficiency Video Coding (HEVC/H.265). Once a quality level is selected, the key challenge lies in path mapping : deciding how to distribute each encoded chunk across paths with heterogeneous and time-varying bandwidths while meeting playback deadlines. Previous studies have shown that standard multipath trans-port protocols such as MPTCP [7] and MP-QUIC [8], [9] are ineffective for multipath video streaming over wireless networks [10]–[12]. More sophisticated systems such as Cho-rus [11] couple QoE optimization with path mapping through coarse-grained decisions and fine-grained packet scheduling. However, Chorus was conducted under moderate-throughput settings with one WiFi path and one 4G/5G path, where aggregate chunk throughput remains below 70 Mbps. 5G multipath streaming faces more challenges, especially when mobility is involved [13], [14]: i) diverse radio char-acteristics across 5G channels, with bandwidth ranging from 20 MHz to 100 MHz; ii) highly dynamic channel conditions that cause rapid and significant throughput fluctuations; iii) temporary link failures due to blockage or handovers – the 
+
+“bad” path problem; and iv) the absence of a consistently superior 5G channel (see §II-B). Such channel heterogeneity and dynamics make multipath streaming with monolithic cod-ing particularly problematic: over-estimating available band-width and “bad” paths lead to incomplete chunk delivery that directly causes video stalls and degrades overall QoE. They also limit layered coding such as SVC/SHVC: although late enhancement layers can be discarded, playback still depends on timely base-layer delivery. Striping layers across paths leaves the base layer vulnerable to “bad” paths, while pinning 
+
+layers requires reliably selecting the best path and accurately matching uneven layer sizes to fluctuating path bandwidth. Therefore, neither monolithic coding nor layered coding is best suited for multipath streaming over 5G networks. In this paper, we tackle the challenges in multipath video streaming over 5G networks through a video codec–streaming system co-design. We revisit Multiple Description Coding (MDC), a long-standing coding principle that generates in-dependently decodable descriptions, and show why this ab-straction is best suited for streaming high-resolution videos utilizing multiple 5G channels (§III). However, traditional MDC designs [15], [16] are difficult to use in our setting: they often incur high coding overhead, support only a small number of descriptions, require complex multi-decoder architectures, or provide limited control over description sizes. To overcome these limitations, we design NeuralMDC , a novel neural 
+
+MDC video codec using masked transformers, which encodes 979-8-3195-0662-7/26/$31.00 ©2026 IEEE arXiv:2608.22891v1 [cs.NI] 24 Aug 2026 each video chunk into multiple independently-decodable and 
+
+mutually-refinable descriptions. Each description spans the full chunk and is transmitted as one stream 1; additional de-scriptions progressively improve reconstruction quality. Our NeuralMDC is efficient, offering fine-grained control over stream size distribution, enabling flexible combinations of streams and robust recovery from missing descriptions with modest compression overhead (see §IV). Built on NeuralMDC codec, we develop a user-space mul-tipath MDC video streaming system for 5G networks (§V). The key insight is that NeuralMDC changes the unit of mul-tipath delivery: instead of striping packets from a monolithic encoded chunk or assigning dependent codec layers to paths, the system schedules independently decodable chunk-level description streams. As a result, transient under-delivery on a path primarily reduces video quality rather than making the chunk undecodable. Unlike generic packet-loss recovery [17], NeuralMDC targets deadline-driven partial delivery in 5G multipath streaming: fast-varying and heterogeneous paths may deliver only a subset of scheduled descriptions before playback, and any received subset remains useful for chunk-level reconstruction. This property simplifies path mapping: instead of protecting a monolithic whole chunk or a critical base layer, the scheduler maps independently useful streams to heterogeneous paths. While NeuralMDC works with both striping and pinning, our evaluation results show that pinning offers the best QoE performance with nearly zero stalls: each independent stream is delivered over a single path, so a “bad” path only affects its assigned streams without trig-gering dependency-driven retransmission over other channels, or cascading stalls. Thanks to the fine-grained control over stream size distribution using Pyramid Source Coding (§IV-B), independent streams of varying sizes can be flexibly combined, greatly simplifying dynamic stream-to-path mapping. The independent decodability and loss-resiliency of NeuralMDC reduce the need for accurate bandwidth estimation and path quality monitoring, making the system robust to estimation errors and wrong decisions. Through extensive trace-driven evaluations using real-world 5G traces and experiments over operational 5G networks, we demonstrate how our multipath NeuralMDC streaming system can better cope with rapidly varying 5G channels and deliver superior performance over existing multipath monolithic cod-ing and layered coding streaming systems. In emulated 5G net-works, NeuralMDC streaming system enhances overall QoE by 26%-44%, achieving up to 15.4% improvement in video bitrate, a 41.8% increase in video quality, and keeping video stalls below 0.32%. Real-world experiments further validate its effectiveness, demonstrating a 25.0% QoE improvement and near-zero average stall time. In summary, this paper makes the following contributions:  
+
+> •
+
+We identify why monolithic and layered coding are poorly matched to dynamic 5G multipath delivery.          
+
+> 1We use description to refer to the codec-level independently decodable unit, and stream to refer to its transmitted bitstream in the streaming system; unless otherwise noted, the two terms correspond one-to-one. ………
+> 4K/8K (𝒍 𝟏 +𝒍 𝟐 +..+ 𝒍 𝑳 )480p ( 𝒍 𝟏 +𝒍 𝟐 )360p ( 𝒍 𝟏 )
+> Video segment numbers
+> Layered Coding
+> 12 … N ………12 … N
+> Rate_L (4K) Rate_2 (480p) Rate_1 (360p)
+> 𝑸 !
+> 𝑸 𝟐
+> 𝑸 𝟏
+> Video segment numbers
+> Monolithic Coding
+> Quality Level
+> Enh. Layer 𝒍 𝑳
+> Enh. Layer 𝒍 𝟐
+> Base Layer 𝒍 𝟏
+> …………
+> 4K/8K ( 𝐶 $𝑲 )480p ( 𝐶 $𝟐 )360p ( 𝐶 $𝟏 )
+> Video segment numbers
+> Multiple Description Coding
+> 12 … N Stream 𝒔 𝑳
+> Stream 𝒔 𝟐
+> Stream 𝒔 𝟏
+> …………
+
+Fig. 1: Three types of video codecs to encode a video at different quality levels.  
+
+> •
+
+We design NeuralMDC , a neural MDC video codec that realizes MDC abstraction as fine-grained, configurable, independently decodable, and mutually refinable chunk-level descriptions, overcoming the limited scalability and inflexible stream sizing of traditional MDC designs.  
+
+> •
+
+We develop a user-space multipath streaming system that exploits NeuralMDC’s chunk-level independent decod-ability to simplify path mapping over heterogeneous 5G channels. Missing streams reduce reconstruction quality rather than making a chunk undecodable, improving robustness to bandwidth variation, blockage, handovers, and path-estimation errors.  
+
+> •
+
+We evaluate NeuralMDC with trace-driven emulation and operational 5G experiments, showing 26%–44% QoE gains and stall ratios below 0.32%. II. B ACKGROUND AND MOTIVATION 
+
+A. Video Codecs and Video Streaming 
+
+Video codecs fall broadly into three categories (see Fig. 1): (i) monolithic coding ( e.g., AVC/H.264 and HEVC/H.265), which encodes video into a single bitstream that must be received in full for correct decoding; (ii) layered coding ( e.g., 
+
+SVC [18] and SHVC [19]), which encodes video into a base layer and enhancement layers, allowing decoding from the base layer alone while progressively improving quality as additional layers are received; and (iii) multiple description coding (MDC) [20], [21], which encodes the video into mul-tiple independently decodable and mutually refinable streams, so that any subset of streams can be used to reconstruct the video. Both traditional layered codecs (e.g., SVC/SHVC) and multiple description coding schemes are largely extensions of AVC/HEVC and have not been widely used due to their high complexity and significant bitrate overhead. SVC/SHVC introduces inter-layer dependencies and signaling overhead, and suffers from reduced compression efficiency because inter-layer frame prediction is largely avoided to prevent reconstruc-tion drift. Existing MDC codecs [15], [16] rely on cumbersome multi-decoder architectures, scale poorly beyond two streams, and offer limited loss resilience due to de-correlated nature of DCT transforms and complex state synchronization. With rapid advances in deep learning, many neural video codecs have been proposed to improve compression efficiency: for example, those in [22]–[24] are neural monolithic codecs; SWIFT [25] is a neural layered codec. In contrast, neural MDC codecs remain largely unexplored, with the only prior work [26] proposing a GNN-based super-resolution method to enhance the reconstruction quality of a traditional MDC codec. Today’s video streaming systems employ adaptive bit rate 
+
+(ABR) algorithms to dynamically select the quality level of the next (monolithic-encoded) video chunk or the number of layers/streams of the next (layered/MDC encoded) video chunk. The ABR decision is typically based on client buffer occupancy and estimated network throughput, aiming to op-timize overall QoE [27], [28]. Differences in various video streaming systems lie primarily in their ABR algorithms. ABR algorithms have been extensively studied for both mono-lithic [27] and layered codecs [25], [29], although the latter have not been deployed yet in practice. 
+
+B. 5G: Opportunities and Challenges 
+
+5G networks employ a diverse set of radio channels from low/mid-band frequency ranges to high-band (mmWave) fre-quency ranges to support various applications. With wide deployments of 5G networks, in a typical urban location, there are often multiple channels offered by different operators [30]– [32]. For example, according to the analysis of [30] based on measurement studies conducted in the US and Europe [33], there are at least four radio channels available in each location under study. Furthermore, multiple 5G operators often coexist, offering competing 5G services [33]. By establishing multiple connections (“paths”) using multiple channels (either from the same operator or different operators), it is now feasible to support applications that require streaming of ultra-high-resolution videos over 5G networks. Combining multiple 5G channels not only increases the overall system throughput, but also helps mitigate challenges posed by individual chan-nels. This path diversity is particularly valuable for high-bandwidth and mission-critical applications such as immer-sive XR services, UAV video feeds, and autonomous vehicle sensor sharing. In practice, emerging Dual-SIM Dual-Active (DSDA) technologies [34], [35] enable simultaneous use of two independent 5G data connections on a single platform. While offering great opportunities, 5G networks also pose significant challenges for multipath video streaming, as out-lined in §I. Using publicly released 5G measurement data from [31], Figs. 2 and 3 illustrate throughput traces from three radio channels of the same operator (n25, n41, n71 bands) and from three different operators, respectively. The traces show that throughput of each channel fluctuates significantly, can drop to near zero, and no single channel consistently outperforms others. These challenges make multipath video streaming over 5G networks using monolithic and layered codecs ineffective, as we elaborate next. Effectively tackling these 5G challenges motivates us to design a novel neural MDC codec and advocate for multipath neural MDC video streaming over 5G networks .
+
+C. Limitations of Monolithic and Layered Codecs for Multi-path Streaming 
+
+Multipath streaming introduces an additional design compo-nent beyond ABR: Path Mapping , that decides what video data must be transmitted over which path. This creates interesting interplay among multipath characteristics, video codecs, and ABR algorithms that have not been explored before. 0 25 50 75 100 125 150 175   
+
+> Timestamps
+> 0100 200 300 400
+> Throughput (Mbps)
+> n71 n25 n41
+
+Fig. 2: Traces of different bands. 0 25 50 75 100 125 150 175   
+
+> Timestamps
+> 0200 400 600 800
+> Throughput (Mbps)
+> Verizon T-Mobile AT&T
+
+Fig. 3: Traces of different op-erators. When streaming monolithic-encoded videos, striping the single video bitstream across paths is the only option. As already stated in the introduction, multipath monolithic video streaming (with striping) over 5G networks suffers significant QoE degradation due to two primarily reasons: 1) Fast varying 5G channels make it difficult to accurately estimate the channel bandwidth; over-estimating the aggregate throughput not only causes video stalls, but may also have a cascading impact on the timely delivery of future chunks. 2) Temporary path failures (“bad” paths) further exacerbate the problem, leading to prolonged video stalls. When streaming layered encoded videos, we can employ either striping or pinning , but neither is well-suited for 5G multipath streaming. 
+
+Layered-Codec w. Striping . Multipath layered streaming with 
+
+striping can mitigate path dynamics and “bad” paths when disruptions affect only enhancement layers, allowing playback to fall back to lower-quality layers without stalling. How-ever, failures during base-layer delivery require rescheduling remaining packets across paths and may still cause stalls if the entire base layer cannot be received before the playback deadline. Thus, striping inherits the limitations of monolithic streaming, albeit to a lesser extent, while offering improved resilience to bandwidth overestimation by discarding late enhancement layers. 
+
+Layered-Codec Streaming w. Pinning . Layered streaming with pinning can avoid the “bad” path problem if the “best” path is selected for the base layer, the next “best” path is selected for the first enhancement layer, and so forth. However, this requires: 1) best path selection & ordering, and 2) careful video-to-path mapping based on layer bitrates and path qual-ities. In 5G networks, there may not always be a consistently “best” path. Moreover, due to layered codec designs and path diversity, the mismatch between layer bitrate requirements and available path bandwidths is often inevitable 2. The diverse and fast-varying 5G channel characteristics and dependency among video layers make designing accurate path quality monitoring mechanisms for best path selection and effective bandwidth estimation for dynamic path mapping all the more daunting. III. S YSTEM OVERVIEW 
+
+The problems plaguing multipath monolithic-encoded and layered-encoded video streaming over 5G networks lead us 
+
+> 2For example, due to the limitation of its neural codec design, SWIFT’s [25] base layer is significantly larger than its enhancement layers. Pinning it to the “best” path may not be feasible if the path’s bandwidth is insufficient, requiring striping across multiple “best/next-best” paths.
+
+TABLE I: NeuralMDC features and mechanisms      
+
+> Features Mechanisms
+> Dependency-free decoding Utilizes conditional-coding compression No motion vectors, residuals, or I-frames Adjustable stream sizing Pyramid Source Information Splitting Compression efficiency Entropy encoding w/ more accurate distribution estimation by Transformer Any (partial) stream combination Masked Transformer to reconstruct frames w/ any amount of tokens Runtime Model quantization, batch processing
+
+to advocate jointly co-designing video codec and multipath streaming using MDC. To overcome the limitations of con-ventional MDC codecs, we propose a neural MDC codec (NeuralMDC). We also develop a novel multipath neural MDC video streaming system, specifically designed to overcome the challenges posed by 5G networks. 
+
+NeuralMDC Codec Overview. Our NeuralMDC is designed with four goals: 1) Dependency free decoding : ensure video streams are independent, allowing any combination to be decoded for enhanced video quality. 2) Adjustable stream size : split video information into multiple streams of varying sizes to adapt to 5G throughput dynamics. 3) Compression efficiency : maintain good compression efficiency, and 4) Run-time : minimize compression latency overhead. To this end, we leverage the conditional-coding compression technique, an emerging paradigm in neural compression [36]–[38]. NeuralMDC employs an AutoEncoder [39] to transform video frames into correlated latent tokens, which are split into multiple descriptions and independently entropy-encoded into bitstreams using a Masked Transformer [40], [41]. Each stream is independently decodable; when any streams are missing, the transformer infers the missing tokens from the received ones. Any combination of received streams enhances token accuracy and decoded frame quality. NeuralMDC distributes tokens across descriptions in a pyramidal structure, generating streams of varying sizes. Model quantization and batch pro-cessing are applied to accelerate encoding/decoding. Table I lists the main features and key mechanisms (details in §IV). 
+
+Multipath NeuralMDC Streaming System Overview. Our multipath MDC video streaming system leverages three key features of our NeuralMDC codec: i) independently decodable video streams eliminate the need for best path selection and minimize the impact of “bad” paths on the overall video chunk delivery; ii) flexible, fine-grained control over stream number and their sizes (bitrates) simplifies dynamic stream-to-path mapping; and iii) resilience to data losses – even 
+
+partial streams are decodable (see §VII-A) – reduces the need for accurate bandwidth estimation and precise path quality monitoring, making the system more robust to estimation errors and wrong decisions. Together, these features enable more “aggressive” streaming decisions while minimizing their negative impacts, allowing the system to fully utilize the high aggregate bandwidth offered by multiple 5G channels while more effectively accommodating and coping with their diverse characteristics and fast-varying dynamics. Table II lists the major design challenges and advantages of multipath MDC streaming over multipath monolithic & layered streaming. TABLE II: Multipath Streaming: monolithic coding vs. layered coding vs. MDC              
+
+> Codec Path Mapping Path Dynamics Path Failures Monolithic codec Striping Require accurate estimation Overestimation degrades QoE Complete stalls
+> Layered codec Striping Require best path selection Complex path mapping Stall w/o base layer Pinning
+> MDC codec
+> Striping No need for accurate estimation Robust to wrong decisions Minimal Stalls Pinning Solve Bad Path (Nearly) No stalls
+
+IV. N EURAL MDC This section presents the design details of NeuralMDC. Fig. 4 depicts the architecture of NeuralMDC. We first de-scribe the overall encoding and decoding processes before detailing each component. 
+
+A. Encoding & Decoding Process 
+
+Encoding process: NeuralMDC Encoder uses an AutoEn-coder [39] to independently transform each input frame xt
+
+into a quantized latent representation yt = ⌊E(xt)⌋. Unlike DCT transforms in H.26x, which decorrelate coefficients, the AutoEncoder transforms retain spatial-temporal correlations in the latent domain [40], [42]. The tokens of latent repre-sentation yt are then split into multiple descriptions (§IV-B). Masked transformers (§IV-C) are then used to estimate the distribution of the current latent representation based on the prior one, p(yt|yt−1). The distribution, combined with Arith-metic Coding [43], is used to independently entropy-encode each description into a bitstream. 
+
+Decoding process: NeuralMDC Decoder uses the same Masked Transformer to estimate the distribution p(yt|eyt−1),Arithmetic Coding then uses the estimated distribution to entropy-decode each bitstream into latent tokens. Since each stream is independently entropy encoded, each is indepen-dently decodable. Next, the reconstructed latent tokens are merged together (§IV-B). In case of missing streams, their tokens are assigned with a special masked token and predicted by the Masked Transformer using the estimated distribution (§IV-C). The AutoEncoder [39] then decodes the reconstructed latent representation eyt to generate the frame ext = D(eyt).Any combination of received streams improves the latent representation accuracy and thus the decoded frame quality. 
+
+B. Pyramid Source Information Splitting 
+
+To create asymmetric MDC streams and enable fine-grained bitrate adaptation for varying 5G channels, we distribute different amounts of latent tokens across multiple streams in a pyramidal manner [44]. The splitting process begins by randomly and evenly distributing tokens across S node descriptions. Each node description is then further divided into 
+
+m streams with token ratios following a pyramid structure. The value of m follows a pyramid structure as well. The first stream contains the most amount of tokens ( i.e., source information) and thus has the largest bitrate, with progressively fewer tokens added in subsequent streams. Fig. 4 illustrates an example of forming six MDC streams and merging three of them. We implement token-to-description assignment using a seed-controlled pseudo-random permutation over latent-token 𝒚 𝑡         
+
+> Latent
+> Representation
+> Random
+> Split Stream 4
+> Stream 3
+> 𝒚 𝑡−1 ෥𝒚 𝑡−1
+> Merge
+> ෥𝒚 𝑡
+> Stream 1& 2
+> Encoder
+> Q
+> 𝒙 𝑡
+> Input
+> Frame
+> Masked Transformer
+> AE
+> (𝝁, 𝝈, 𝝎)
+> Entropy Encode
+> 0…1
+> 101….1
+> 1010….0111
+> Masked Transformer
+> AD
+> (𝝁, 𝝈, 𝝎)
+> Entropy
+> Decode
+> Decoder
+> ෝ𝒙 𝒕
+> Decoded Frame
+> Neural MDC Encoding
+> Neural MDC
+> Decoding
+> 3 Network Paths
+> Infer
+> Mask
+> Tokens
+> Stream 1
+> Stream 2,3
+> Stream 4-6 0….1
+> MM
+> MMM
+> MMM
+
+Fig. 4: NeuralMDC Workflow: an example that 1) encodes a video frame to 6 streams and transmits 4 of them over 3 network paths to match path bandwidth; 2) decodes 3 received streams, infers missing streams, and decodes the frame. indices. The seed is included in stream metadata, allowing the decoder to regenerate and invert the permutation to recover received tokens to their original latent positions. When a description stream is missing, NeuralMDC assigns a special mask token to the corresponding token positions. Note that NeuralMDC exclusively uses the latent represen-tation as source information, because other types of source information, such as motion, optical flow, and residuals [17], [22], [37], [45], carry different important source information and lack strong correlations with each other. Consequently, the loss of one type ( e.g., motion) cannot be efficiently estimated from the received other types ( e.g., residual). 
+
+C. Masked Transformer for Entropy Coding and Inference 
+
+By avoiding motion-residual wrapping, NeuralMDC uses masked transformers to leverage spatial-temporal correlations between frames to improve compression efficiency. It uses masked transformers to estimate the conditional distribution of the latent representations to allow entropy coding to allocate fewer bits to more likely symbols. Given a chunk of frames 
+
+{xt}Tt=1 and their latent representations {yt}Tt=1 , where each is split into M descriptions yt = {yt,m }Mm=1 , the masked transformer predicts the conditional distribution of each de-scription p(yt,m |yt−1), which is used to entropy code the description yt,m into a bitstream. The average bitrate of an MDC stream is ≈ Eyt,m ∼Q[− log 2 p(yt,m |yt−1)] , where Q is the true symbol distribution of the description [46]. We model the conditional distribution as a mixture of Gaussians with 3
+
+mixtures, each parameterized by a mean μ, scale σ, and weight 
+
+ω. The transformer runs independently on each description, trading reduced spatial context for parallel execution. For the first frame, distributions are predicted by padding with zeros. 
+
+Training: We train the Autoencoder and Masked Transformer to minimize the rate-distortion loss function 
+
+E(x1,x 2)∼pX1:2 [− log 2 p(y2,m |y1,m ) + λM SE (x2, ex2)] (1) where (x1, x 2) ∼ pX1:2 are two adjacent video frames drawn from the training dataset, the parameter λ with a larger value results in a higher bitrate but lower pixel distortion of the reconstructed frame. To simulate arbitrary missing descriptions during training, we randomly sample a subset ( 0% to 100% )of tokens in y and replace them with a special learnable mask token. The masked transformer is trained to predict the removed tokens. 
+
+Inferring Missing Streams: The masked transformer predicts the distribution of missing tokens p(yt,M |eyt,M , eyt−1), where 
+
+eyt,M represents the received tokens and, along with the pre-vious representation, provide temporal and spatial context for the transformer. Each missing token eyjt is inferred by sampling from its most probable values. 
+
+eyjt = argmax 
+
+> yjt
+
+p(yt,M |eyt,M , eyt−1) (2) 
+
+D. Implementation and Optimization 
+
+We implement NeuralMDC in Pytorch by extending M2T [41], a masked transformer-based image codec. Unlike M2T, NeuralMDC uses masked modeling to realize video MDC. We train NeuralMDC on an Nvidia A6000 GPU using the Vimeo-90K dataset [47].To achieve various bitrate control, we optimize the training loss for six λ values (0.0001 to 1). The encoding and decoding latency of NeuralMDC pri-marily stems from the Autoencoder and Masked Transformer runtimes. Two runtime optimizations are applied: (1) ONNX export with FP16 quantization [48] to reduce the precision of neural network weights from 32-bit to 16-bit, nearly halving computation time; and (2) batch processing [49], where the Autoencoder processes a batch of frames in parallel to reduce the Transformer’s idle time, since each frame is converted to its latent representation independently. For edge deployment on mobile devices and unmanned ground vehicles, we follow Qualcomm AI Hub’s edge deployment pipeline [50]. We first convert the PyTorch model into a TorchScript-traced representation and then export it into ONNX format to achieve platform-agnostic deployment. We apply post-training FP16 
+
+quantization to reduce computation and memory overhead. We further apply ONNX graph optimizations [51], including constant folding, redundant-node elimination, operator fu-sion where supported, and hardware-specific kernel selection, before compiling hardware-specific executables for efficient NPU inference [52]. We discuss the compute, memory, and deployment implications of NeuralMDC in §IX. V. M ULTIPATH MDC S TREAMING 
+
+A. Multipath NeuralMDC Video Streaming 
+
+Our multipath neural MDC video stream system architecture is schematically depicted in Fig. 5. It comprises three main components: 1) Bandwidth Estimation ; 2) ABR Controller ; and 3) Path Monitoring and Mapping . Our system also includes Encoded Video Streams  
+
+> Raw Video
+> Video Server Video Player
+> Path Mapping & Monitoring
+> ABR Controller
+> Rendered Video Chunks
+> Buffer Bandwidth
+> Estimation
+> Neural MDC Encoder
+> Video Streams
+> Neural MDC Decoder
+> Bitrate
+> Decision
+> Playback
+
+Fig. 5: NeuralMDC Streaming System Architecture an (optional) playback logic to further optimize QoE at (near-) playback time. We will briefly describe the design of each component below. Both path striping or pinning can be used, although our extensive evaluations show multipath MDC streaming with pinning provides the best performance results. 
+
+Bandwidth Estimation. We use the harmonic mean method (as in [11]) to estimate per-path bandwidth. Although more accurate algorithms such as deep learning-based 5G through-put prediction [13], [31], [53], [54] exist, these algorithms are sophisticated and computationally expensive, and we find the robustness afforded by NeuralMDC renders them unnecessary for meaningful QoE gains, so we opt for simpler designs. 
+
+ABR Controller. This module decides the overall bitrate of video streams/chunks to prefetch on a chunk-by-chunk basis to optimize the overall QoE performance by balancing video quality, stall ratio, and smoothness. NeuralMDC is compatible with any ABR algorithms. Following Chorus [11], a recent mobile multipath monolithic video streaming system, we also adopt (robust) Model Predictive Control (MPC) [27]. Based on the estimated aggregate path bandwidth, MPC decides the 
+
+overall bitrate of the next chunk; what and how many streams to be fetched will then be left to the path mapping and dynamic scheduling module. 
+
+Path Monitoring and Mapping. We monitor individual paths using standard methods such as minRTT [7]. Given the target bitrate from the ABR controller and the manifest file spec-ifying stream bitrate distribution, this module selects which streams to fetch based on the estimated per-path bandwidth. The pyramid source coding scheme in NeuralMDC (§IV-B), together with the flexibility to combine independent streams of varying sizes, makes this process straightforward. In the case of multipath streaming with pinning , the module selects and assigns video streams to paths such that each stream’s bitrate does not exceed the path’s estimated band-width; if no suitable stream exists, the closest larger stream is chosen. The aggregate bitrate of the selected streams matches the target bitrate set by the ABR controller. To enhance robustness, streams are chosen from different sub-branches of the pyramid to maximize diversity. For example, if the base stream size is 1 unit and a path has an estimated bandwidth of 7 units, the module may assign streams of 4, 2, and 1 units from different sub-branches, ensuring both efficient bandwidth utilization and diversity. For striping , a similar approach is applied using the aggregate bandwidth of all paths, with the additional constraint that streams of different bitrates are selected to maintain diversity. Each stream is packetized and fetched sequentially (starting with the smallest). When path conditions change drastically, the current stream is aborted if its playback deadlines cannot be met; otherwise, its remaining packets are dynamically rescheduled to a higher-capacity path. 
+
+B. Implementation 
+
+We implement two user-space versions of our multipath MDC streaming system for evaluations in controlled and real-world 5G environments. 
+
+Emulation Testbed. For performance evaluation in a con-trolled environment, we have built a testbed comprising a video server and a client video player in Python. The client and server are connected via the Mahimahi network sim-ulator [55], where Mahimahi Linkshell replays commercial 5G channel bandwidth traces (§VI-A). Our implementation is adapted from the state-of-the-art video streaming simulation platforms [25], [56]. We employ a path-aware MPC algo-rithm [27] for the basic ABR decision logic, as in Chorus [11]. To ensure fair comparison, we have implemented the CD and FC algorithms 3 from Chorus [11] for multipath streaming 
+
+with striping . Hence, apart from different codecs, the mecha-nisms used are the same. For multipath layered video stream-ing with pinning, algorithms for the best path selection and dynamic layer-to-path mapping (and base layer re-injection) based on changing path dynamics are implemented. For mul-tipath MDC with pinning, we implement the path mapping and dynamic stream scheduling algorithms as outlined earlier. 
+
+Real-World Multipath Video Streaming. To evaluate op-erational 5G networks, we have implemented an end-to-end prototype using Go and Python. The server runs on an AWS EC2 instance hosting pre-encoded video chunks via HTTP. The video client is implemented in the user space and runs on a Linux laptop tethered (via USB) to multiple 5G Android smartphones, with one persistent HTTP connection per phone. For single-operator experiments, each phone is locked to a specific 5G band; for multi-operator experiments, each phone connects to a different operator 4. To support seamless multi-path communication, we implement the dataplane in Go and expose it to the Python client via a gopy-compiled module. The Go module spawns per-path goroutines with dedicated HTTP client instances bound to different source IPs (one per phone), dispatching download requests and collecting feedback via Go channels. We export a single function to Python that takes multipath download requests, handles request schedul-ing, concurrent downloads, feedback aggregation, and timeouts internally, and returns the downloaded data along with per-path throughput to the ABR layer. This design avoids Python’s GIL contention and the overhead of multi-process IPC (Inter-Process Communication) or external queuing services, while providing efficient parallelism and asynchronous coordination.         
+
+> 3Implementation code for Chorus is not publicly available.
+> 4Devices with Dual-SIM Dual-Active capability can also enable dual simultaneous data streams [34], [35], but such devices were not available during our experiments.
+
+VI. M ULTIPATH STREAMING EVALUATION 
+
+This section evaluates multipath video streaming with Neu-ralMDC in emulated and real-world 5G networks. 
+
+A. Experiment Setup 
+
+We conducted experiments using a Linux laptop with a 14-core Intel Ultra CPU and three Samsung S21 Ultra phones. The video player was configured with a 30-second playback buffer and a path-aware MPC algorithm [11]. 
+
+Baselines: We compare NeuralMDC multipath streaming with the following codec and streaming combinations:  
+
+> •
+
+H.265-Stripe: Monolithic codec H.265 via FFmpeg [57] with path-striping, representing Chorus [11].  
+
+> •
+
+SHVC-Stripe/Pin: Layered codec SHVC [58], a layered extension of H.265, with both path-striping and path-pinning scheduling algorithms.  
+
+> •
+
+Swift-Stripe/Pin: Neural layered codec Swift [25], con-structed using a chain of AutoEncoders, with both scheduling algorithms.  
+
+> •
+
+GRACE-Stripe: Single-stream neural codec GRACE [17] with packet-level loss recovery, using a deadline-aware multipath striping that prioritizes sending a small prefix of packets for all frames in a chunk before transmitting additional packets 5.
+
+Test Videos: We evaluate on two raw video datasets: UVG [59] and MCL-JCV [60], totaling 37 videos with res-olutions from 1080p to 4K. Videos are segmented into 4-second chunks and compressed offline using the above codecs. To account for 5G throughput characteristics, we configure H.265 and GRACE to encode each chunk into 8 bitrates 6. We configure SHVC to encode each chunk into eight layers 7 at similar bitrates. The layer size of Swift is not configurable and Swift encodes each chunk into 10 layers 8. For NeuralMDC, we encode each chunk into 15 independent streams with varying sizes 9. Note, we do not use arbitrarily many streams because adaptation gains eventually saturate, while metadata, scheduling, and coding overheads increase. 
+
+Network Traces: We use XCAL [61] to collect network traces from the three major U.S. 5G operators concurrently. The recorded bandwidth fluctuates between 0 and 1.9 Gbps. Each trace also includes carrier aggregation (CA) components and round-trip time (RTT). In addition to 5G traces, our dataset contains periods where a device falls back to LTE/4G; we use these LTE/4G portions as the 4G traces. We filter out traces to ensure non-trivial bitrate selection. The final dataset consists of 63 traces, each with a duration of 500 seconds. 
+
+Metrics: We measure video quality using Multi-Scale Struc-tural Similarity Index Measure (MS-SSIM) [62] and overall streaming QoE as QoE = P Q(k) − μ P T (k) − P |Q(k +  
+
+> 5This reduces the probability that later frames receive no packets.
+> 6H.265 and GRACE bitrate: [4.1, 14.5, 24.5, 44, 94, 148, 250, 336] Mbps
+> 7The SHVC implementation we use [58] supports up to 8 layers.
+> 8Swift layer sizes are [66, 60, 52, 44, 36.8, 29.2, 22, 17, 11, 4] Mbps. The total bitrate of 10 layers is 342 Mbps.
+> 9MDC stream sizes are [4, 8, 8, 12, 12, 16, 19, 19, 23, 23, 28, 28, 38, 38, 56] Mbps. The total bitrate of 15 streams is 332 Mbps. QoE Stall MS-SSIM 0.0 0.2 0.4 0.6 0.8 1.0 Normalized value MDC-Pin SHVC-Pin Swift-Pin MDC-Stripe SHVC-Stripe Swift-Stripe h265-Stripe GRACE-Stripe
+
+Fig. 6: Overall emulated streaming performance. 020 40 60 Stall Ratio(%) 0.94 0.96 0.98 MS-SSIM  
+
+> (a) 5G+5G 0510 Stall Ratio(%) 0.94 0.95 0.96 0.97 MS-SSIM
+> MDC-Pin MDC-Stripe SHVC-Pin SHVC-Stripe Swift-Pin Swift-Stripe h265-Stripe GRACE-Stripe (b) 5G+4G
+
+Fig. 7: Performance using: 1) two unstable 5G channels and 2) one unstable 5G channel and one stable 4G. 
+
+1) − Q(k)|, where Q(k) is the quality of k-th chunk, T (k) is the stall time, and |Q(k + 1) − Q(k)| is the quality variation. Following [28], Q() uses MS-SSIM and μ = 100 .
+
+B. Trace-Driven Evaluation 
+
+We first evaluate video streaming performance with Neu-ralMDC in emulated 5G networks using the collected traces. 
+
+Overall Performance: Fig. 6 shows the streaming perfor-mance across all emulated 5G networks. Results show that NeuralMDC effectively improves streaming QoE regardless of the path mapping algorithm used. Specifically, NeuralMDC achieves 26% and 44% higher average QoE compared to H.265 and GRACE, respectively, delivering higher (1.0%-41.8%) visual quality while dramatically reducing rebuffering (cutting stall time by 99.4% relative to H.265, while maintain-ing near-zero stalls comparable to GRACE). These gains come from both improved compression efficiency and NeuralMDC’s chunk-level description design: each description spans the full chunk, whereas GRACE remains sensitive to frame-level packet scheduling under bursty path under-delivery. Compared to streaming using SHVC and Swift, NeuralMDC improves average QoE by 34% and 39.5%, with 14.1%-28.1% higher video quality and 34%-92% lower stall time. 
+
+Impact of Channel Stability: Fig 7 shows streaming per-formance across different 5G multipath scenarios. Under two 5G channels (Fig. 7(a)), streaming with NeuralMDC provides the lowest stall time, reducing stalls by 90.56% compared to SHVC. While no single channel consistently outperforms the other, rapid 5G fluctuations make it difficult to accurately map SHVC layers to proper channels; incorrectly dispatching the base layer to a deteriorating channel leads to high stalls for SHVC, with worse impacts on Swift, due to its larger base layer, and H.265, which requires full reception for decoding. Replacing one 5G channel with a 4G channel (Fig. 7(b)) re-duces stalls across all schemes, as the reliable 4G path anchors 0510 Stall Ratio(%) 0.97 0.98 0.99 MS-SSIM 
+
+> Striping
+> MDC-Stripe SHVC-Stripe Swift-Stripe 0510 Stall Ratio(%) 0.97 0.98 0.99 MS-SSIM
+> Pinning
+> MDC-Pin SHVC-Pin Swift-Pin
+
+Fig. 8: Streaming performance: striping vs. pinning. QoE Stall MS-SSIM 0.0 0.2 0.4 0.6 0.8 1.0 Normalized value MDC-Pin SHVC-Pin Swift-Pin MDC-Stripe SHVC-Stripe Swift-Stripe h265-Stripe GRACE-Stripe    
+
+> (a) Average Performance 0510 Stall Ratio (%) 0.7 0.8 0.9 1.0 CDF  MDC-Pin MDC-Stripe SHVC-Pin SHVC-Stripe GRACE-Stripe (b) Tail Performance
+
+Fig. 9: Real-world streaming performance. delivery; however, 4G’s lower throughput reduces the overall aggregated bandwidth, leading to lower video quality. MDC-Pin achieves near-zero stalls while maintaining the highest quality, and GRACE similarly achieves low stalls though at lower quality due to its weaker compression efficiency. 
+
+Path Pinning vs Path Striping: Fig. 8 shows that path-pinning improves stall performance for all codecs, but gains depend on codec design. NeuralMDC benefits the most, as its independent, fine-grained streams can be flexibly matched to paths of varying bandwidth without dependency constraints. SHVC improves more modestly, since layer dependencies and size mismatches still cause occasional stalls. Swift improves the least, as its disproportionately large base layer remains a bottleneck. Pinning, however, slightly reduces quality due to imperfect stream–path capacity matching, leaving some band-width underutilized. Overall, the benefit of pinning depends on stream independence and flexible stream-to-path matching. NeuralMDC also scales well with more paths (see Fig. 16). 
+
+C. Real-World Evaluation 
+
+We evaluate video streaming with NeuralMDC over real-world 5G networks, namely AT&T, T-Mobile, and Verizon, randomly shuffled and denoted as OpX, OpY, and OpZ. 
+
+Experimental Setup. We evaluate streaming schemes un-der stationary, walking, and driving mobility patterns, and conducted tests using: 1) different bands from the same operator and 2) different operators. In the multiple-operator scenario, we evaluate streaming schemes exclusively under driving mobility, reflecting autonomous vehicles that rely on multiple operators. Despite the non-repeatability of real-world experiments, we test seven streaming schemes 12 times per scenario under identical conditions. Our evaluation includes 336 mobile streaming sessions. 
+
+Average & Tail Performance Fig. 9 presents the overall real-world streaming performance. The performance is consistent with the emulation results. Fig. 9(a) shows the average perfor-mance. Video streaming with NeuralMDC achieves lower stall time, higher visual quality and a 25.0% QoE improvement over the best existing scheme. In comparison, H.265 attains similar visual quality but incurs significantly more stalls. GRACE exhibits minimal stalls, yet delivers much lower visual quality. SHVC, configured with a smaller base layer, significantly reduces stalls compared to Swift, which features a large base layer. Fig. 9(b) shows the stall ratio distributions of SHVC, GRACE, and NeuralMDC. NeuralMDC achieves better tail performance (96.6% reduction of stall ratio at 99-percentile) than GRACE. This is because streaming with NeuralMDC preserves chunk-level decodability from any subset of streams, whereas GRACE requires receiving packets for each frame within a chunk and is therefore more sensitive to packet scheduling and burst losses. Note that real-world performance is generally lower than emulation because operational deploy-ments introduce additional variability not captured by trace replay, including radio scheduling changes, device thermal behavior, background traffic, and carrier-side policies. 
+
+Stationary vs. Walking vs. Driving. Fig 10 shows single-operator (SO) performance across mobility conditions. As mobility increases, visual quality degrades, and stall ratios rise. However, NeuralMDC with path-pinning consistently achieves the best performance, maintaining the highest visual quality and keeping stall ratio below 0.32%. H.265 stalls escalate sharply with mobility, as frequent throughput drops prevent timely full-chunk delivery. SHVC stalls also increase with mobility, and neither pinning nor striping dominates across all conditions, highlighting the challenge of designing effective path mapping for layered codecs under varying dynamics. GRACE maintains low stalls in static (0.01%) but degrades under driving (0.76%), as burst losses increasingly leave frames with no received packets. 
+
+Single Operator vs. Multiple Operators Fig. 10 shows MO-Driving and SO-Driving performance. We find that although using multiple independent operators improves aggregated net-work throughput and reliability, which enables higher-quality video streaming, the throughput dynamics of each operator still make bitrate adaptation challenging for H.265 and proper layer-to-path allocation difficult for SHVC, leading to video stalls. In contrast, NeuralMDC’s fine-grained streams and dependency-free decoding effectively leverage the benefits of multiple operators while adapting to throughput fluctuations, resulting in higher video quality and nearly zero stall time. VII. C ODEC PROPERTIES FOR MULTIPATH STREAMING 
+
+This section evaluates the codec-level properties of Neu-ralMDC that underpin its streaming performance: independent decodability, mutual refinability, compression efficiency, and runtime overhead. We use the same test videos and baseline codecs as in §VI-A. In addition, we compare with VCT [38], a transformer-based neural monolithic codec 10 , and H.264 via FFmpeg [57]. We use bits per pixel (bpp) to measure video size after compression and Peak Signal to Noise Ratio (PSNR) and MS-SSIM [62] for visual quality. 
+
+> 10 VCT lacks public training code and pretrained checkpoints; we report only its published rate–distortion results. 024Stall Ratio(%) 0.94 0.95 0.96 0.97 0.98 MS-SSIM
+> SO-Stationary
+> MDC-Stripe MDC-Pin h265-Stripe SHVC-Stripe SHVC-Pin GRACE-Stripe 0.0 2.5 5.0 7.5 10.0 Stall Ratio(%) 0.93 0.94 0.95 0.96 0.97 MS-SSIM
+> SO-Walking 0510 15 Stall Ratio(%) 0.92 0.94 0.96 0.98 MS-SSIM
+> SO-Driving 0.0 2.5 5.0 7.5 10.0 Stall Ratio(%) 0.94 0.95 0.96 0.97 0.98 MS-SSIM
+> MO-Driving
+
+Fig. 10: Performance in the 4 real-world 5G network scenarios. Error bars show 95% confidence intervals. 2 4 6 8 10 Number of Streams 0.85 0.90 0.95 MS-SSIM     
+
+> NeuralMDC Swift SHVC 246810 Number of Streams 27.5 30.0 32.5 35.0 37.5 PSNR
+> NeuralMDC Swift SHVC
+
+Fig. 11: Impact of stream number on video quality. 20 40 60 80 100 Partial Stream Received (%) 0.80 0.85 0.90 0.95 MS-SSIM     
+
+> GRACE NeuralMDC 20 40 60 80 100 Partial Stream Received (%) 30 32 34 36 38 PSNR
+> GRACE NeuralMDC
+
+Fig. 12: Impact of partial stream on video quality. 
+
+A. Impact of Stream Number on Video Quality 
+
+Both NeuralMDC and layered codecs adapt bitrate on the fly by adjusting the number of streams or layers. We compress videos into 10 streams/layers 11 at comparable total bpp. The maximum number of layers SHVC can generate is 8. SHVC layers are configured with quantization parameters to achieve a pyramid structure similar to NeuralMDC. Fig. 11 shows video quality across different numbers of streams. Since each MDC stream can be combined with any other, we plot the minimum, average, and maximum qualities of all combinations (see red error bars in Fig. 11). The results show that video quality improves for all codecs as the number of streams/layers increases. However, Swift exhibits a different pattern where higher layers contribute less to quality improvement. This is because the entropy ( i.e., 
+
+video information) is very high in Swift’s initial layers and decreases in later layers, resulting in progressively smaller layer sizes (see Fig. 21 in §Appendix D ). For NeuralMDC, video quality of a single stream depends on which stream is selected. As more streams are added, the quality variance narrows. Overall, NeuralMDC achieves higher MS-SSIM and PSNR than Swift and SHVC at similar total bpp, indicating superior rate-distortion performance. 
+
+B. Impact of Partial Stream on Video Quality 
+
+In layered codecs, each layer must be fully received to be decodable, as a partial layer disrupts the dependency 
+
+> 11 We set stream number to 10 to match the maximum layers Swift can generate.
+
+structure and results in unusable data. In contrast, NeuralMDC compresses tokens within a stream independently and there is no dependency structure among tokens, so a partial stream can be decoded and combined with other streams. To evaluate the video quality of partial streams, we compare NeuralMDC with GRACE [17], a loss-resilient single-stream neural codec. We set both codecs to have similar bpp and configure streams to be partially received (from 20% to 100%). Fig. 12 shows that NeuralMDC achieves better video quality than GRACE at the same reception percentage. This superior performance stems from NeuralMDC’s equally important and correlated tokens, whereas in GRACE, motion and residual vectors carry different levels of information and are weakly correlated, making it more difficult to efficiently estimate the lost one. Reconstructed frames by NeuralMDC with partial reception are shown in Fig. 23 in Appendix E. 
+
+C. Compression Efficiency 
+
+Fig. 13 shows the rate-distortion performance of all codecs. We compare the visual quality at different compression rates in terms of bits per pixel. NeuralMDC improves compression efficiency by 13% over H.265 and 27% over Swift. The superior performance of NeuralMDC stems from its context-based conditional coding framework, which leverages trans-formers to capture richer inter-frame contexts than motion prediction and warping [36], [38]. However, compared to VCT, NeuralMDC incurs reduced compression efficiency because splitting source information into multiple descriptions lowers intra-description correlation. GRACE’s compression efficiency is content-dependent; it underperforms H.264 on videos with high spatial and temporal complexity [17], and our test videos exhibit high SI and TI (see Table III in Appendix C). 
+
+D. Microbenchmarking 
+
+Latency Breakdown. Fig. 14 shows that splitting and merging descriptions incur negligible time costs. The time costs of AutoEncoder are amortized across a batch of frames. The main source of latency is the Masked Transformer. With the optimizations in §IV-D, NeuralMDC achieves 70 fps encoding and 34 fps decoding for 1080p on an Nvidia A6000 GPU. 
+
+Deployability. We further benchmark NeuralMDC with two weight precisions (FP32, FP16) on a high-end desktop GPU (NVIDIA RTX 4070) and a resource-constrained mobile phone (Samsung S23, Snapdragon 8 Gen 2). Fig. 15 shows that the quantization optimizations are crucial for enabling real-time video processing across this hardware spectrum. For one 0.0 0.2 0.4 0.6 Bpp 0.92 0.94 0.96 0.98 MS-SSIM    
+
+> NeuralMDC Swift SHVC VCT GRACE H.265 H.264 0.0 0.2 0.4 0.6 Bpp 30.0 32.5 35.0 37.5 40.0 PSNR
+> NeuralMDC Swift SHVC VCT GRACE H.265 H.264
+
+Fig. 13: Compression efficiency. 0 10 20 30 Latency(ms) Decoding Encoding  
+
+> AE encoder Token splitting Entropy encoding Entropy decoding Token merging Token inferring AE decoder
+
+Fig. 14: Runtime for a1080p video frame. FP32 FP16  
+
+> Weight Precision
+> 010 20 30
+> Latency (ms)
+> 23.2 11.7 31.2 20.4
+> RTX 4070 Samsung S23 FP32 FP16
+> Weight Precision
+> 020 40 60
+> PSNR (dB)
+> 57.1 27.8
+
+Fig. 15: Performance Optimization Compari-son. 
+
+224 ×224 resolution video frame, on RTX 4070, FP16 reduces per-frame latency from 23.2ms to 11.7ms ( 2.0× speedup). On mobile NPU, latencies are 31.2ms (FP32) and 20.4ms (FP16). FP16 also halves model size (334.8MB → 167.5MB), sug-gesting feasibility on accelerator-equipped mobile platforms. VIII. R ELATED WORK 
+
+Multipath Video Streaming: Studies [31], [63]–[65] show that mobile networks are inherently heterogeneous, spanning various frequency bands and operator-specific infrastructures. Multi-path video streaming has emerged as a crucial technique for enhancing video transmission quality. Multipath tech-niques, such as MPTCP [66], MPQUIC [67], and XLINK [9], dynamically distribute video segments across different paths, but were originally designed for wired networks with similar path characteristics, making them less effective in adapt-ing to heterogeneous wireless links with highly dynamic conditions. The subsequent work, MuSher [10], optimizes MPTCP scheduling for heterogeneous channels. Chorus [11] coordinates multipath scheduling with adaptive streaming via cross-layer feedback control loops between the server and client. Habitus [68] further enhances streaming by leveraging viewer pose to predict mmWave throughput. More recently, PDStream [69] mitigates long-tail latency via pseudo-dual streaming with separate keyframe and non-keyframe deliv-ery. However, these methods require tight server–client syn-chronization, protocol modifications, or additional hardware sensing inputs. In contrast, our approach is a user-space design that does not depend on extra sensory devices and remains compatible with unmodified HTTP-based video de-livery. COMPACT [70] and STORM [71] improve mobile video delivery via tile-aware adaptation and transport-layer scheduling; NeuralMDC is complementary, focusing on codec-level stream independence for robust 5G multipath delivery. 
+
+Video Compression: Video compression has long been stud-ied to reduce spatial and temporal redundancy, using intra-frame coding, inter-frame prediction, transform and entropy coding. Standardized codecs such as AVC/HEVC [57] have achieved high compression efficiency, while extensions in-cluding SVC/SHVC [18], [19] and MDC codecs [20], [21] aim to improve adaptability and robustness under network impairments. Classical MDC codecs split source information in the spatial [72], temporal [73], or transform domains [74], but these designs often incur high redundancy, multi-decoder complexity, limited scalability, and inflexible rate allocation. Neural video codecs [22]–[24], [36]–[38], [75], [76] replace handcrafted modules with neural networks for improved rate-distortion performance. Recent neural MDC work mainly targets image coding [77], while neural MDC video coding remains largely unexplored, with prior work [26] primarily improving reconstruction quality for traditional MDC video codecs. More recently, neural codec streaming systems inte-grate learned codecs into streaming pipelines: GRACE [17] en-hances single-stream delivery with loss recovery via denoising and packet-level redundancy, while SWIFT [25] improves the compression efficiency of layered codecs by chaining multiple autoencoders. In contrast, NeuralMDC targets multipath deliv-ery by generating multiple independently decodable and mu-tually refinable streams, enabling graceful quality refinement from any subset of received streams. Unlike SWIFT, which preserves inter-layer dependencies, NeuralMDC produces fully independent streams with flexible rate allocation, making it better suited for heterogeneous and dynamic wireless channels. IX. C ONCLUSION 
+
+NeuralMDC improves robustness by shifting multipath de-livery from dependent packets/layers to independently decod-able descriptions, but this benefit comes with computational overhead. Our current prototype targets accelerator-equipped clients or edge-assisted deployment rather than CPU-only execution on commodity smartphones. Nevertheless, compute, memory, and energy consumption remain important deploy-ment constraints, especially for sustained high-resolution mo-bile streaming. Further model compression, hardware-aware compilation, mobile NPU optimization, and adaptive edge offloading are important directions for making NeuralMDC practical on more resource-constrained devices. In conclusion, our novel neural network-based MDC video codec, combined with a simple yet effective multipath map-ping algorithm, significantly improves the resilience and per-formance of video streaming over real-world dynamic 5G environments. By encoding video frames into multiple inde-pendent and mutually refinable streams, our system enables flexible, fine-grained mapping of streams to network paths, thereby overcoming the limitations of traditional monolithic coding and layered coding streaming methods. Our approach reduces video stalls and improves video quality, demonstrating superior performance across key QoE metrics. This enhanced robustness and adaptability to fluctuating 5G network condi-tions make our multi-stream video streaming system a strong candidate for NextG applications. REFERENCES [1] K.-L. Wong, “5g/b5g multi-gbps antennas for user terminals and their throughput verification,” in 2020 IEEE Asia-Pacific Microwave Confer-ence (APMC) . Hong Kong: IEEE, 2020, pp. 366–368. [2] D. Xu, A. Zhou, X. Zhang, G. Wang, X. Liu, C. An, Y. Shi, L. Liu, and H. Ma, “Understanding operational 5g: A first measurement study on its coverage, performance and energy consumption,” in Proceedings of the Annual Conference of the ACM Special Interest Group on Data Communication on the Applications, Technologies, Architectures, and Protocols for Computer Communication , ser. SIGCOMM ’20. New York, NY, USA: Association for Computing Machinery, 2020, p. 479–494. [Online]. Available: https://doi .org/10 .1145/3387514 .3405882 [3] A. Narayanan, E. Ramadan, J. Carpenter, Q. Liu, Y. Liu, F. Qian, and Z.-L. Zhang, “A first look at commercial 5g performance on smartphones,” in Proceedings of The Web Conference 2020 . New York, NY, USA: Association for Computing Machinery, 2020, pp. 894–905. [4] G. Liu, Y. Huang, Z. Chen, L. Liu, Q. Wang, and N. Li, “5g deployment: Standalone vs. non-standalone from the operator perspective,” IEEE Communications Magazine , vol. 58, no. 11, pp. 83–89, 2020. [5] P. Ahokangas, M. Matinmikko-Blue, S. Yrj¨ ol¨ a, V. Sepp¨ anen, H. H¨ amm¨ ainen, R. Jurva, and M. Latva-Aho, “Business models for local 5g micro operators,” IEEE Transactions on Cognitive Communications and Networking , vol. 5, no. 3, pp. 730–740, 2019. [6] Y. Ni, Z. Zheng, X. Lin, F. Gao, X. Zeng, Y. Liu, T. Xu, H. Wang, Z. Zhang, S. Du et al. , “Cellfusion: Multipath vehicle-to-cloud video streaming with network coding in the wild,” in Proceedings of the ACM SIGCOMM 2023 Conference . New York, NY, USA: Association for Computing Machinery, 2023, pp. 668–683. [7] A. Ford, C. Raiciu, M. Handley, and O. Bonaventure, “Tcp extensions for multipath operation with multiple addresses,” Internet Engineering Task Force, Tech. Rep., 2013. [8] Q. De Coninck and O. Bonaventure, “Multipath quic: Design and evaluation,” in Proceedings of the 13th international conference on emerging networking experiments and technologies . New York, NY, USA: Association for Computing Machinery, 2017, pp. 160–166. [9] Z. Zheng, Y. Ma, Y. Liu, F. Yang, Z. Li, Y. Zhang, J. Zhang, W. Shi, W. Chen, D. Li, Q. An, H. Hong, H. H. Liu, and M. Zhang, “Xlink: Qoe-driven multi-path quic transport in large-scale video services,” in Proceedings of the 2021 ACM SIGCOMM 2021 Conference , ser. SIGCOMM ’21. New York, NY, USA: Association for Computing Machinery, 2021, p. 418–432. [Online]. Available: https://doi .org/10 .1145/3452296 .3472893 [10] S. Aggarwal, S. K. Saha, I. Khan, R. Pathak, D. Koutsonikolas, and J. Widmer, “Musher: An agile multipath-tcp scheduler for dual-band 802.11ad/ac wireless lans,” IEEE/ACM Transactions on Networking ,vol. 30, no. 4, pp. 1879–1894, 2022. [11] G. Lv, Q. Wu, Y. Liu, Z. Li, Q. Tan, F. Yang, W. Chen, Y. Ma, H. Guo, Y. Chen et al. , “Chorus: Coordinating mobile multipath scheduling and adaptive video streaming,” in Proceedings of the 30th Annual International Conference on Mobile Computing and Networking . New York, NY, USA: Association for Computing Machinery, 2024, pp. 246– 262. [12] Q. De Coninck and O. Bonaventure, “Multipathtester: Comparing mptcp and mpquic in mobile environments,” in 2019 Network Traffic Measure-ment and Analysis Conference (TMA) , IEEE. Paris, France: IEEE, 2019, pp. 221–226. [13] A. Narayanan, E. Ramadan, R. Mehta, X. Hu, Q. Liu, R. A. Fezeu, U. K. Dayalan, S. Verma, P. Ji, T. Li et al. , “Lumos5g: Mapping and predicting commercial mmwave 5g throughput,” in Proceedings of the ACM internet measurement conference . New York, NY, USA: Association for Computing Machinery, 2020, pp. 176–193. [14] H. Zhang, N. Liu, X. Chu, K. Long, A.-H. Aghvami, and V. C. M. Leung, “Network slicing based 5g and future mobile networks: Mo-bility, resource management, and challenges,” IEEE Communications Magazine , vol. 55, no. 8, pp. 138–145, 2017. [15] N. Franchi, M. Fumagalli, R. Lancini, and S. Tubaro, “Multiple descrip-tion video coding for scalable and robust transmission over ip,” IEEE Transactions on circuits and systems for video technology , vol. 15, no. 3, pp. 321–334, 2005. [16] T. H. Le, M. Antonini, M. Lambert, and K. Alioua, “Multiple description video coding for real-time applications using hevc,” in 2023 IEEE International Conference on Image Processing (ICIP) . IEEE, 2023, pp. 2580–2584. [17] Y. Cheng, Z. Zhang, H. Li, A. Arapin, Y. Zhang, Q. Zhang, Y. Liu, K. Du, X. Zhang, F. Y. Yan et al. , “ {GRACE }:{Loss-Resilient }{ Real-Time } video through neural codecs,” in 21st USENIX Symposium on Networked Systems Design and Implementation (NSDI 24) . Santa Clara, CA: USENIX Association, 2024, pp. 509–531. [18] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the scalable video coding extension of the h. 264/avc standard,” IEEE Transactions on circuits and systems for video technology , vol. 17, no. 9, pp. 1103–1120, 2007. [19] J. M. Boyce, Y. Ye, J. Chen, and A. K. Ramasubramonian, “Overview of shvc: Scalable extensions of the high efficiency video coding standard,” 
+
+IEEE Transactions on Circuits and Systems for Video Technology ,vol. 26, no. 1, pp. 20–34, 2015. [20] V. K. Goyal, “Multiple description coding: Compression meets the network,” IEEE Signal processing magazine , vol. 18, no. 5, pp. 74–93, 2001. [21] M. Kazemi, S. Shirmohammadi, and K. H. Sadeghi, “A review of multiple description coding techniques for error-resilient video delivery,” 
+
+Multimedia Systems , vol. 20, pp. 283–309, 2014. [22] G. Lu, W. Ouyang, D. Xu, X. Zhang, C. Cai, and Z. Gao, “Dvc: An end-to-end deep video compression framework,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition .Long Beach, CA, USA: IEEE, 2019, pp. 11 006–11 015. [23] Z. Hu, D. Xu, G. Lu, W. Jiang, W. Wang, and S. Liu, “Fvc: An end-to-end framework towards deep video compression in feature space,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 45, no. 4, pp. 4569–4585, 2023. [24] O. Rippel, A. G. Anderson, K. Tatwawadi, S. Nair, C. Lytle, and L. Bourdev, “Elf-vc: Efficient learned flexible-rate video coding,” in 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision . Montreal, QC, Canada: IEEE, 2021, pp. 14 479–14 488. [25] M. Dasari, K. Kahatapitiya, S. R. Das, A. Balasubramanian, and D. Samaras, “Swift: Adaptive video streaming with layered neural codecs,” in 19th USENIX Symposium on Networked Systems Design and Implementation (NSDI 22) . Renton, WA: USENIX Association, 2022, pp. 103–118. [26] X. Hu, Y. Pan, Y. Wang, L. Zhang, and S. Shirmohammadi, “Multiple description coding for best-effort delivery of light field video using gnn-based compression,” IEEE Transactions on Multimedia , vol. 25, pp. 690–705, 2021. [27] X. Yin, A. Jindal, V. Sekar, and B. Sinopoli, “A control-theoretic approach for dynamic adaptive video streaming over http,” in 
+
+Proceedings of the 2015 ACM Conference on Special Interest Group on Data Communication , ser. SIGCOMM ’15. New York, NY, USA: Association for Computing Machinery, 2015, p. 325–338. [Online]. Available: https://doi .org/10 .1145/2785956 .2787486 [28] F. Y. Yan, H. Ayers, C. Zhu, S. Fouladi, J. Hong, K. Zhang, P. Levis, and K. Winstein, “Learning in situ: a randomized experiment in video streaming,” in 17th USENIX Symposium on Networked Systems Design and Implementation (NSDI 20) . Santa Clara, CA: USENIX Association, 2020, pp. 495–511. [Online]. Available: https://www .usenix .org/conference/nsdi20/presentation/yan [29] Y. Liu, B. Jiang, T. Guo, R. K. Sitaraman, D. Towsley, and X. Wang, “Grad: Learning for overhead-aware adaptive video streaming with scalable video coding,” in Proceedings of the 28th ACM International Conference on Multimedia . New York, NY, USA: Association for Computing Machinery, 2020, pp. 349–357. [30] A. Hassan, W. Ye, A. Zhang, J. Carpenter, R. Zhu, S. Jin, F. Qian, Z. M. Mao, and Z.-L. Zhang, “The case for boosting mobile application qoe via smart band switching in 5g/xg networks,” in Proceedings of the 25th International Workshop on Mobile Computing Systems and Applications , ser. HOTMOBILE ’24. New York, NY, USA: Association for Computing Machinery, 2024, p. 127–132. [Online]. Available: https://doi .org/10 .1145/3638550 .3641132 [31] W. Ye, X. Hu, S. Sleder, A. Zhang, U. K. Dayalan, A. Hassan, R. A. K. Fezeu, A. Jajoo, M. Lee, E. Ramadan, F. Qian, and Z.-L. Zhang, “Dissecting carrier aggregation in 5g networks: Measurement, qoe implications and prediction,” in Proceedings of the ACM SIGCOMM 2024 Conference , ser. ACM SIGCOMM ’24. New York, NY, USA: Association for Computing Machinery, 2024, p. 340–357. [Online]. Available: https://doi .org/10 .1145/3651890 .3672250 [32] M. Ghoshal, I. Khan, Z. J. Kong, P. Dinh, J. Meng, Y. C. Hu, and D. Koutsonikolas, “Performance of cellular networks on the wheels,” in Proceedings of the 2023 ACM on Internet Measurement Conference , ser. IMC ’23. New York, NY, USA: Association for Computing Machinery, 2023, p. 678–695. [Online]. Available: https://doi .org/10 .1145/3618257 .3624814 [33] R. A. K. Fezeu, C. Fiandrino, E. Ramadan, J. Carpenter, L. C. de Freitas, F. Bilal, W. Ye, J. Widmer, F. Qian, and Z.-L. Zhang, “Unveiling the 5g mid-band landscape: From network deployment to performance and application qoe,” in Proceedings of the ACM SIGCOMM 2024 Conference , ser. ACM SIGCOMM ’24. New York, NY, USA: Association for Computing Machinery, 2024, p. 358–372. [Online]. Available: https://doi .org/10 .1145/3651890 .3672269 [34] “Seamless car connectivity via dual-sim dual-active,” https://www .gi-de .com/en/digital-security/connectivity-iot/automotive/dual-sim-dual-active#our-dsda-solution, accessed: 2025-07-18. [35] “Two birds, one stone: Unleashing the full potential for simultaneous 5g cellular connections, thanks to our new qualcomm dsda gen 2 with dual data,” https://www .qualcomm .com/news/onq/2023/05/unleashing-full-potential-for-simultaneous-5g-cellular-connections-qualcomm-dsda-gen-2-with-dual-data, accessed: 2025-07-18. [36] J. Li, B. Li, and Y. Lu, “Deep contextual video compression,” Advances in Neural Information Processing Systems , vol. 34, pp. 18 114–18 125, 2021. [37] ——, “Neural video compression with diverse contexts,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition .Vancouver, BC, Canada: IEEE, 2023, pp. 22 616–22 626. [38] F. Mentzer, G. Toderici, D. Minnen, S. J. Hwang, S. Caelles, M. Lucic, and E. Agustsson, “Vct: a video compression transformer,” in Pro-ceedings of the 36th International Conference on Neural Information Processing Systems , ser. NIPS ’22. Red Hook, NY, USA: Curran Associates Inc., 2022. [39] D. He, Z. Yang, W. Peng, R. Ma, H. Qin, and Y. Wang, “Elic: Efficient learned image compression with unevenly grouped space-channel contextual adaptive coding,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . New Orleans, LA, USA: IEEE, 2022, pp. 5718–5727. [40] L. Yu, Y. Cheng, K. Sohn, J. Lezama, H. Zhang, H. Chang, A. G. Hauptmann, M.-H. Yang, Y. Hao, I. Essa, and L. Jiang, “Magvit: Masked generative video transformer,” in 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . Vancouver, BC, Canada: IEEE, 2023, pp. 10 459–10 469. [41] F. Mentzer, E. Agustson, and M. Tschannen, “M2t: Masking trans-formers twice for faster decoding,” in Proceedings of the IEEE/CVF International Conference on Computer Vision . Paris, France: IEEE, 2023, pp. 5340–5349. [42] T. Li, H. Chang, S. Mishra, H. Zhang, D. Katabi, and D. Krishnan, “Mage: Masked generative encoder to unify representation learning and image synthesis,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023, pp. 2142–2152. [43] I. H. Witten, R. M. Neal, and J. G. Cleary, “Arithmetic coding for data compression,” Communications of the ACM , vol. 30, no. 6, pp. 520–540, 1987. [44] E. H. Adelson, C. H. Anderson, J. R. Bergen, P. J. Burt, and J. M. Ogden, “Pyramid methods in image processing,” RCA engineer , vol. 29, no. 6, pp. 33–41, 1984. [45] J. Xiang, K. Tian, and J. Zhang, “Mimt: Masked image modeling transformer for video compression,” in The Eleventh International Conference on Learning Representations , 2022. [46] D. Minnen and S. Singh, “Channel-wise autoregressive entropy models for learned image compression,” in 2020 IEEE International Conference on Image Processing (ICIP) , IEEE. Abu Dhabi, United Arab Emirates: IEEE, 2020, pp. 3339–3343. [47] T. Xue, B. Chen, J. Wu, D. Wei, and W. T. Freeman, “Video enhance-ment with task-oriented flow,” International Journal of Computer Vision ,vol. 127, pp. 1106–1125, 2019. [48] ONNX Runtime, “Accelerated mobile machine learning.” https:// onnxruntime .ai/, 2025, accessed: 2025-03-11. [49] B. Chen, Z. Yan, Y. Zhang, Z. Yang, and K. Nahrstedt, “LiFteR: Unleash learned codecs in video streaming with loose frame referencing,” in 21st USENIX Symposium on Networked Systems Design and Implementation (NSDI 24) . Santa Clara, CA: USENIX Association, Apr. 2024, pp. 533–548. [Online]. Available: https: //www .usenix .org/conference/nsdi24/presentation/chen-bo [50] “Video-mae,” https://aihub .qualcomm .com/models/video mae, accessed: 2025-07-18. [51] ONNX Runtime, “Transformer model optimization tool overview.” https: //onnxruntime .ai/docs/performance/transformers-optimization .html, 2024, accessed: 2026-08-21. [52] “Unlocking on-device generative ai with an npu and heterogeneous computing,” https://www .qualcomm .com/content/dam/qcomm-martech/dm-assets/documents/Unlocking-on-device-generative-AI-with-an-NPU-and-heterogeneous-computing .pdf, accessed: 2025-07-18. [53] E. Ramadan, A. Narayanan, U. K. Dayalan, R. A. K. Fezeu, F. Qian, and Z.-L. Zhang, “Case for 5g-aware video streaming applications,” in 
+
+Proceedings of the 1st Workshop on 5G Measurements, Modeling, and Use Cases , ser. 5G-MeMU ’21. New York, NY, USA: Association for Computing Machinery, 2021, p. 27–34. [Online]. Available: https://doi .org/10 .1145/3472771 .3474036 [54] D. Minovski, N. ¨ Ogren, K. Mitra, and C. ˚ Ahlund, “Throughput predic-tion using machine learning in lte and 5g networks,” IEEE Transactions on Mobile Computing , vol. 22, no. 3, pp. 1825–1840, 2023. [55] R. Netravali, A. Sivaraman, S. Das, A. Goyal, K. Winstein, J. Mickens, and H. Balakrishnan, “Mahimahi: accurate {Record-and-Replay } for 
+
+{HTTP },” in 2015 USENIX Annual Technical Conference (USENIX ATC 15) . USA: USENIX Association, 2015, pp. 417–429. [56] H. Mao, R. Netravali, and M. Alizadeh, “Neural adaptive video stream-ing with pensieve,” in Proceedings of the conference of the ACM special interest group on data communication . New York, NY, USA: Association for Computing Machinery, 2017, pp. 197–210. [57] S. Tomar, “Converting video formats with ffmpeg,” Linux journal , vol. 2006, no. 146, p. 10, 2006. [58] Fraunhofer HHI, “A reference implementation of shvc (scalable ex-tension to hevc),” https://hevc .hhi .fraunhofer .de/shvc, 2025, accessed: 2025-03-30. [59] A. Mercat, M. Viitanen, and J. Vanne, “Uvg dataset: 50/120fps 4k sequences for video codec analysis and development,” in Proceedings of the 11th ACM Multimedia Systems Conference . New York, NY, USA: Association for Computing Machinery, 2020, pp. 297–302. [60] H. Wang, W. Gan, S. Hu, J. Y. Lin, L. Jin, L. Song, P. Wang, I. Katsavounidis, A. Aaron, and C.-C. J. Kuo, “Mcl-jcv: a jnd-based h. 264/avc video quality assessment dataset,” in 2016 IEEE international conference on image processing (ICIP) . Phoenix, AZ, USA: IEEE, 2016, pp. 1509–1513. [61] Accuver, “XCAL,” https://www .accuver .com/sub/products/ view .php?idx=6&ckattempt=2, accessed: 2025-08-18. [62] Z. Wang, E. P. Simoncelli, and A. C. Bovik, “Multiscale structural similarity for image quality assessment,” in The thrity-seventh asilomar conference on signals, systems & computers, 2003 , vol. 2. Ieee, 2003, pp. 1398–1402. [63] M. I. Rochman, W. Ye, Z.-L. Zhang, and M. Ghosh, “A comprehensive real-world evaluation of 5g improvements over 4g in low-and mid-bands,” in 2024 IEEE International Symposium on Dynamic Spectrum Access Networks (DySPAN) . Washington, DC, USA: IEEE, 2024, pp. 257–266. [64] R. A. K. Fezeu, J. Carpenter, C. Fiandrino, E. Ramadan, W. Ye, J. Widmer, F. Qian, and Z.-L. Zhang, “Mid-band 5g: A measurement study in europe and us,” 2023. [Online]. Available: https://arxiv .org/ abs/2310 .11000 [65] F. Chen, M. Ghoshal, E. Nan, P. Dinh, I. Khan, Z. Jonny Kong, Y. Char-lie Hu, and D. Koutsonikolas, “A large-scale study of the potential of multi-carrier access in the 5g era,” in International Conference on Passive and Active Network Measurement , Springer. virtual: Springer Nature Switzerland, 2025, pp. 469–484. [66] Wikipedia contributors, “Multipath TCP – Wikipedia, The Free Encyclopedia,” 2025, accessed: 2025-02-08. [Online]. Available: https://en .wikipedia .org/wiki/Multipath TCP [67] T. Viernickel, A. Froemmgen, A. Rizk, B. Koldehofe, and R. Steinmetz, “Multipath quic: A deployable multipath transport protocol,” in 2018 IEEE International Conference on Communications (ICC) . Kansas City, MO, USA: IEEE, 2018, pp. 1–7. [68] A. Zhang, C. Wang, Y. Hu, A. Hassan, Z. Zhang, B. Han, F. Qian, and S. Xu, “Habitus: boosting mobile immersive content delivery through full-body pose tracking and multipath networking,” in Proceedings of the 21st USENIX Symposium on Networked Systems Design and Implementation , ser. NSDI’24. USA: USENIX Association, 2024. [69] X. Xiao, Y. Zuo, M. Yan, K. Liu, and W. Wang, “Pdstream: Slashing long-tail delay in interactive video streaming via pseudo-dual streaming,” in IEEE INFOCOM 2025-IEEE Conference on Computer Communica-tions . IEEE, 2025, pp. 1–10. [70] S. Chaudhary, N. Mishra, K. Gambhir, T. Rajore, A. Bhattacharya, and M. Maity, “Compact: Content-aware multipath live video streaming for online classes using video tiles,” in Proceedings of the 16th ACM Multimedia Systems Conference , 2025, pp. 201–213. [71] L. Hu and C. Li, “ {STORM }: a multipath {QUIC } scheduler for quick streaming media transport under unstable mobile networks,” in 2025 USENIX Annual Technical Conference (USENIX ATC 25) , 2025, pp. 851–866. [72] S. Shirani, “Content-based multiple description image coding,” IEEE transactions on multimedia , vol. 8, no. 2, pp. 411–419, 2006. [73] I. Radulovic, P. Frossard, Y.-K. Wang, M. M. Hannuksela, and A. Hal-lapuro, “Multiple description video coding with h. 264/avc redundant pictures,” IEEE Transactions on Circuits and Systems for Video Tech-nology , vol. 20, no. 1, pp. 144–148, 2009. [74] N. Conci and F. G. De Natale, “Real-time multiple description intra-coding by sorting and interpolation of coefficients,” Signal, Image and Video Processing , vol. 1, no. 1, pp. 1–10, 2007. [75] T. Ladune, P. Philippe, W. Hamidouche, L. Zhang, and O. D´ eforges, “Conditional coding and variable bitrate for practical learned video coding,” arXiv preprint arXiv:2104.09103 , 2021. [76] J. Li, B. Li, and Y. Lu, “Hybrid spatial-temporal entropy modelling for neural video compression,” in Proceedings of the 30th ACM Interna-tional Conference on Multimedia , 2022, pp. 1503–1511. [77] T. H. Le, X. Pic, and M. Antonini, “Inr-mdsqc: Implicit neural rep-resentation multiple description scalar quantization for robust image coding,” in 2023 IEEE 25th International Workshop on Multimedia Signal Processing (MMSP) . IEEE, 2023, pp. 1–6. 2 3 4 5   
+
+> Number of Paths
+> 012345
+> Stalling Ratio (%)  h265-Stripe SHVC-Pin Swift-Pin MDC-Pin 2345
+> Number of Paths
+> 100 200 300
+> Average Bitrate (Mbps)
+
+Fig. 16: Performance comparison over path numbers APPENDIX 
+
+A. More Emulated 5G Video Streaming Results 
+
+Impact of Path Number: We simulate the impact of in-creasing the number of available paths. Additional paths are introduced by randomly sampling from existing traces, with per-path throughputs proportionally scaled to hold aggregate bandwidth constant. As shown in Fig. 16, NeuralMDC and SHVC both sustain near-zero stall ratios across all path counts as the number of paths grow, while Swift remains stable at around 0.5–0.7%. H.265 degrades markedly with additional paths: stall ratios increase from ∼0.5% to ∼3.5%, and average bitrate falls from ∼165 Mbps to ∼50 Mbps. This degradation arises because striping distributes each chunk across all paths, so the completion time is dominated by the slowest path; with more paths, the probability of encountering a degraded path at any given time grows accordingly. Pinning schemes are insulated from this effect since each stream is confined to a single path. A slight decline in bitrate is nonetheless observed for NeualMDC and layered codecs as the number of paths grows, reflecting increasing mismatch between discrete stream/layer sizes and individual path bandwidths. NeualMDC consistently achieves the highest bitrate ( ∼300–325 Mbps) across all configurations, and its margin over SHVC widens with more paths. In the following, we provides detailed case studies that explain the rationale behind NeuralMDC performance gains and demonstrate how it simplifies multi-path video streaming over 5G. 
+
+Case Study1: Simplifying Dynamic Scheduling. During significant traffic fluctuations, striping-based path mapping requires frequent rescheduling for H.265 and layered codecs, as both require full chunk delivery (H.265) or a complete base layer (layered codecs) before playback can continue. Fig. 17 illustrates stalls in streaming with Swift and H.265 caused by a sudden drop in a particular 5G channel. Around 18–19 seconds, a sudden network drop disrupts H.265 and Swift, hindering downloading and depleting playback buffer. In contrast, NeuralMDC recovers more easily due to its finer-grained stream size and partial decodability. For simplicity, we omit SHVC, as its base layer, though small, can still be affected by network fluctuations due to the decoding dependency on the base layer. 
+
+Case Study2: Simplifying Video-Stream-to-Path Mapping. 
+
+Focusing on path pinning, we observe that Swift can still be 0500 1000 1500 Throughput (Mbps)  Path 0 Path 1            
+
+> Sudden Drop
+> 020 40 60 80 100 120 Time (s) 010 20 Buffer Level (s)  Swift-Stripe h265-Stripe MDC-Stripe
+> Stall (H265, Swift)
+> 16 18 20 Time (s) 678Quality Level H.265 Chunk 10 15 16 17 18 Time (s) 8910 Quality Level Swift Chunk 10 Download Period Buffering Playback Period Wasted Download
+
+Fig. 17: H.265 and Swift struggle to maintain buffer size during network fluctuations when chunk/base layer bitrate exceeds throughput. 0500 1000 1500 Throughput (Mbps)  Path 0 Path 1             
+
+> Dominant Path Changes
+> 020 40 60 80 100 120 Time (s) 010 20 Buffer Level (s)  Swift-Pin MDC-Pin Chunk 3 Stalls (Swift)
+> 345Time (s) 0123456789Layer ID
+> 7.7MB 6.8MB 6.0MB 5.1MB 4.2MB 3.4MB 2.6MB
+> Swift Chunk 3 Downloading Timeline Path 0 Path 1
+> 23456Time (s) 0300 600 900 1200 1500 Throughput (Mbps)
+> Bandwidth Estimation at 3s
+> Actual Path 0 Pred Path 0 (208.0) Actual Path 1 Pred Path 1 (120.0) Request
+
+Fig. 18: Incorrect path mapping for Swift causes the lower layer to arrive last, resulting in rebuffering. vulnerable to suboptimal path selection. Fig. 18 shows that during the transmission of chunk 3, historical performance data incorrectly favored path 0 over path 1. As a result, the critical lower-layer data for Swift is transmitted through the weaker path, precipitating a stall. In contrast, NeuralMDC does not depend on exact throughput predictions because every arriving stream is useful for the codec. This independence from precise path quality estimation makes NeuralMDC more robust to mapping missteps. 
+
+Case Study3: Simplifying QoE Decision Making. The inde-pendent decodability of NeuralMDC streams also simplifies the task of QoE decision making compared with the rigid layer dependencies of SHVC. An analysis shown in Figure 19 using two ABR strategies—MPC and RobustMPC—reveals that under the aggressive MPC strategy, SHVC inefficiently 0500 1000 1500      
+
+> Throughput (Mbps)
+> Path 0 Path 1
+> 0500
+> Bitrate (Mbps)
+> SHVC-Pin MDC-Pin
+> Aggressive (MPC)
+> 020 40 60 80 100
+> Time (s)
+> 0500
+> Bitrate (Mbps)
+> SHVC-Pin MDC-Pin
+> Conservative (RobustMPC)
+
+(a) Bitrate loss of SHVC compared to NeuralMDC 0 10 20          
+
+> Time (s)
+> 036912 15
+> Stream ID  92% 91% 61% 82%
+> MDC (RobustMPC)
+> 010 20
+> Time (s)
+> 036912 15
+> Stream ID
+> 90% 72% 34% 43% 80% 67% 90% 91% 71% 82%
+> MDC (MPC)
+> 10 15 20
+> Time (s)
+> 0246
+> Layer ID
+> 91% 40% 91%
+> SHVC (RobustMPC)
+> Request Time Playback Time Playable Not Playable
+> 10 15 20
+> Time (s)
+> 0246
+> Layer ID
+> 30% 30% 51%
+> SHVC (MPC)
+> Request Time Playback Time Playable Not Playable
+
+(b) Transmission Timeline Analysis for Chunk 23 
+
+Fig. 19: Simplifying QoE Decision Making: SHVC has to abort layer data, causing wasteful transmission. 20 22 24 26 28 30 010 Stall Time(s)  MDC-Stripe                       
+
+> 20 22 24 26 28 30 510 15 n25 Rate (Mbps)
+> 20 22 24 26 28 30 Chunk Index 050 100 n41 Rate (Mbps)
+> download request 46 48 50 52 54 0.00 0.05 0.10 Stall Time(s)  MDC-Pin
+> 46 48 50 52 54 2.5 5.0 n25 Rate (Mbps)
+> 46 48 50 52 54 Chunk Index 050 100 n41 Rate (Mbps)
+> download request
+
+Fig. 20: A snapshot of streaming under similar 5G net-work conditions. Path-striping encounters a large stall due to throughput temporarily dropping to zero in the n41 band, while Path-pinning experiences a slight stall despite the n41 throughput dropping to zero. selects enhancement layers that cannot be fully sustained (for example, Layer 4 achieves only 51% transfer by playback, rendering subsequent layers ineffective). In contrast, Neu-ralMDC effectively leverages all available data, substantially reducing wasted bandwidth. Even with the more conservative RobustMPC, SHVC still encounters issues related to overes-timation and under-utilization during fluctuations, resulting in an inferior bitrate compared to NeuralMDC. 
+
+B. Real-world 5G Video Streaming Case Study 
+
+Path-Pinning vs Path-Striping When comparing the two NeuralMDC variants, the path-pinning scheduling algorithm decouples multiple paths to independently deliver streams and hence mitigates the impact of sudden throughput drops in a 5G band. In contrast, the path-striping scheduling algorithm may suffer from longer stream completion times due to slow paths and inappropriate load distribution. Fig. 20 illustrates a detailed comparison of streaming be-haviors between the two NeuralMDC variants in a walking scenario, where both schemes experience similar 5G network conditions (with a chunk throughput cosine similarity of 0.76). In the path-striping streaming session, the n41 bandwidth drops to nearly zero at the 25th chunk, while in the path-pinning session, this occurs at the 49th chunk. Consequently, path-striping incurs a stall time of 13.7 seconds when down-loading the 25th chunk due to inappropriately distributing a portion of each stream to n41. In contrast, path-pinning encounters only a 0.1-second stall at the 49th chunk, as the chunk can be decoded as long as at least one stream, distributed to the n25 band, is fully received. The temporarily inactive n41 band does not impact stream completion time in this case. 
+
+C. Spatio-temporal Complexity of Test Videos 
+
+Table III shows that the test videos span a broad range of spatiotemporal complexity, with SI values from 8.80 to 114.06 and TI values from 2.79 to 66.25, covering low-motion close-up sequences and high-motion complex scenes. As reported in [17], GRACE achieves favorable compres-sion efficiency relative to H.264 only on content with low spatial complexity; for videos with SI exceeding 22 and TI approaching 10, GRACE’s rate-distortion performance falls below H.264. Since the majority of our test videos exceed these thresholds, GRACE underperforms H.264 on our test set, which is consistent with the codec evaluation results in §VII-C. 
+
+D. NeuralMDC Codec Microbenchmarking 
+
+Stream Size Distribution Fig. 21 shows the bpp of each stream/layer for MDC, SHVC, and Swift, all with 10 streams/layers at comparable total bpp. NeuralMDC’s pyramid splitting (§IV-B) produces streams of progressively increasing TABLE III: Spatial Information (SI) and Temporal Information (TI) of test videos. 
+
+Video SI TI UVG Beauty 22.36 10.75 UVG Bosphorus 31.69 5.84 UVG HoneyBee 25.23 2.79 UVG Jockey 35.13 29.65 UVG ReadySteadyGo 79.66 37.77 UVG ShakeNDry 29.77 8.42 UVG YachtRide 54.88 14.42 MCL-JCV videoSRC01 21.49 5.89 MCL-JCV videoSRC02 38.21 29.75 MCL-JCV videoSRC03 41.59 12.37 MCL-JCV videoSRC04 97.57 33.05 MCL-JCV videoSRC05 79.70 30.86 MCL-JCV videoSRC06 27.20 10.13 MCL-JCV videoSRC07 33.07 17.16 MCL-JCV videoSRC08 33.93 17.23 MCL-JCV videoSRC09 82.12 18.13 MCL-JCV videoSRC10 96.30 58.58 MCL-JCV videoSRC11 52.79 31.43 MCL-JCV videoSRC12 66.60 5.07 MCL-JCV videoSRC13 114.06 8.59 MCL-JCV videoSRC14 47.72 30.05 MCL-JCV videoSRC15 56.07 12.34 MCL-JCV videoSRC16 25.60 11.08 MCL-JCV videoSRC17 27.75 17.42 MCL-JCV videoSRC18 66.70 26.93 MCL-JCV videoSRC19 57.54 31.08 MCL-JCV videoSRC20 53.31 57.07 MCL-JCV videoSRC21 37.46 38.64 MCL-JCV videoSRC22 54.09 56.15 MCL-JCV videoSRC23 42.59 16.60 MCL-JCV videoSRC24 47.82 18.87 MCL-JCV videoSRC25 85.44 61.38 MCL-JCV videoSRC26 47.17 66.25 MCL-JCV videoSRC27 56.66 64.81 MCL-JCV videoSRC28 53.67 6.00 MCL-JCV videoSRC29 8.80 15.22 MCL-JCV videoSRC30 23.25 15.67 MDC SHVC SWIFT 0.0 0.2 0.4 BPP 
+
+> S1 S2 S3 S4 S5 S6 S7 S8 S9 S10
+
+Fig. 21: Stream/Layer size. 2 4 6 8 10 12 Number of Streams 020 40 60 80 Bpp Overhead (%)  SHVC NeuralMDC Fig. 22: bpp overhead vs. one stream. size from S1 to S10, providing fine-grained control over the bitrate contribution of each stream. SHVC also offers configurable layer sizes by adjusting the layer quantization parameters. In contrast, Swift’s distribution is heavily skewed: S1 (the base layer) alone accounts for roughly half the total bpp, with subsequent layers shrinking rapidly as residual entropy decreases. This concentration of information in the base layer underpins Swift’s vulnerability to path failures and bandwidth fluctuations, as the base layer must be fully received before any decoding can proceed. 
+
+Bitrate Overhead. Fig. 22 shows the relative bitrate increase of NeuralMDC and SHVC as the number of streams increases, measured against the single-stream baseline at equal visual quality 12 . SHVC is known for significant cross-layer com-pression overheads. NeuralMDC also incurs bitrate overhead as adding more streams reduces latent tokens per stream, decreasing intra-stream correlation and compression efficiency. However, this overhead reaches an upper limit as more streams are added, since the previous frame provides the primary temporal-spatial context for compressing latent tokens. Com-pared to SHVC, Neural MDC incurs a more acceptable bitrate overhead. 
+
+E. Inference Example with Partial Reception 
+
+Fig. 23 presents reconstruction examples from NeuralMDC under 50% token reception alongside the corresponding origi-nal frames. Across content types with varying spatiotemporal complexity, NeuralMDC produces perceptually coherent re-constructions: a close-up scene (PSNR: 33.68 dB, MS-SSIM: 0.96), an outdoor scene (PSNR: 32.85 dB, MS-SSIM: 0.96), and a fast-motion scene (PSNR: 29.92 dB, MS-SSIM: 0.88). The relatively lower quality on the fast-motion content is consistent with the inherent difficulty of inferring missing tokens under high temporal variation, where the conditional distribution estimated from the previous frame is a less accu-rate prior. 
+
+> 12
+
+Swift encodes only the residuals from previous layers, without incurring any cross-layer compression overhead [25]. (a) Original (b) Original (c) Original 
+
+(d) PSNR: 33.68 MS-SSIM: 0.96, NeuralMDC (e) PSNR: 29.92 MS-SSIM: 0.88, Neu-ralMDC 
+
+(f) PSNR: 32.85 MS-SSIM: 0.96, NeuralMDC 
+
+Fig. 23: Inference examples from NeuralMDC with 50% tokens reception.

@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-24</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-24 21:04:51 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-30 23:09:05 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精选8篇压缩领域论文，重点聚焦生成式视频压缩与跨架构压缩边界学习。</p>
-<p>最值得精读的是《DiffVC-ONE》，用单步视频扩散Transformer实现生成式视频压缩，或为实时编码打开新路径；速读中“跨架构压缩边界学习”也值得留意。</p>
-<p>建议普通读者优先了解扩散模型在视频压缩中的应用，关注其速度与质量的平衡突破。</p>
+<p>今日聚焦视频编码与流媒体，精读两篇高分解码方案，另涉视频插帧、网络压缩及多模态推荐。</p>
+<p>最值得关注：多路径自适应流媒体结合多描述神经视频编解码器在5G下的应用，以及“保留或丢弃”的紧凑视频表示自适应分词器，双双获9.0高分。</p>
+<p>建议优先围观这两篇论文的算法思路，未来可关注其开源代码与实际部署效果。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="DiffVC-ONE: Diffusion-based Generative Video Compression with One-Step Video Diffusion Transformer">DiffVC-ONE: Diffusion-based Generative Video Compression with One-Step Video Diffusion Transformer</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks">Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks</span></li><li><span class="dpr-home-dashboard-paper-title" title="Keep-or-Drop? Adaptive Tokenizer for Compact Video Representation">Keep-or-Drop? Adaptive Tokenizer for Compact Video Representation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Breaking the Compression Barrier: Cross-Architecture Compression Boundary Learning via Reverse Regrowth">Breaking the Compression Barrier: Cross-Architecture Compression Boundary Learning via Reverse Regrowth</span></li><li><span class="dpr-home-dashboard-paper-title" title="UniTAC: Universal Task-Aware Compression via Weighted Distortion Measures">UniTAC: Universal Task-Aware Compression via Weighted Distortion Measures</span></li><li><span class="dpr-home-dashboard-paper-title" title="QuARC-GS: Quantized Anchored Residual Coding for Compact Dynamic Scene Streaming with Gaussian Splatting">QuARC-GS: Quantized Anchored Residual Coding for Compact Dynamic Scene Streaming with Gaussian Splatting</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Following Motion for Sequential Modeling in Video Frame Interpolation">Following Motion for Sequential Modeling in Video Frame Interpolation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Pruning Binarized Neural Networks: A Dedicated Framework and Globally Weighted Algorithms">Pruning Binarized Neural Networks: A Dedicated Framework and Globally Weighted Algorithms</span></li><li><span class="dpr-home-dashboard-paper-title" title="SA-RSQ: A Versatile Sparse Representation Framework for Multi-modal Recommender Systems">SA-RSQ: A Versatile Sparse Representation Framework for Multi-modal Recommender Systems</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span></div>
 </section>
 </div>
 
