@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-31</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-30 23:09:05 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-01 00:46:21 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日聚焦视频编码与流媒体，精读两篇高分解码方案，另涉视频插帧、网络压缩及多模态推荐。</p>
-<p>最值得关注：多路径自适应流媒体结合多描述神经视频编解码器在5G下的应用，以及“保留或丢弃”的紧凑视频表示自适应分词器，双双获9.0高分。</p>
-<p>建议优先围观这两篇论文的算法思路，未来可关注其开源代码与实际部署效果。</p>
+<p>今日精选6篇速读，聚焦高效视觉模型压缩与剪枝，其中3篇进入重点观察。</p>
+<p>最值得关注《CrossMambaTuning》与《Cut-ViT》（均7.0/10），分别从跨层适配与剪枝一致性切入，兼顾性能与效率。</p>
+<p>下一步可围绕移动端推理优化，深入对比这两项技术在真实设备上的收益与部署成本。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks">Multipath Adaptive Video Streaming with Multiple Description Neural Video Codec over 5G Networks</span></li><li><span class="dpr-home-dashboard-paper-title" title="Keep-or-Drop? Adaptive Tokenizer for Compact Video Representation">Keep-or-Drop? Adaptive Tokenizer for Compact Video Representation</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Following Motion for Sequential Modeling in Video Frame Interpolation">Following Motion for Sequential Modeling in Video Frame Interpolation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Pruning Binarized Neural Networks: A Dedicated Framework and Globally Weighted Algorithms">Pruning Binarized Neural Networks: A Dedicated Framework and Globally Weighted Algorithms</span></li><li><span class="dpr-home-dashboard-paper-title" title="SA-RSQ: A Versatile Sparse Representation Framework for Multi-modal Recommender Systems">SA-RSQ: A Versatile Sparse Representation Framework for Multi-modal Recommender Systems</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CrossMambaTuning: Synergistic Spatial and Cross-Layer Adaptation for Machine Vision Compression">CrossMambaTuning: Synergistic Spatial and Cross-Layer Adaptation for Machine Vision Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Cut-ViT: Task-Specific Model Pruning via Gram Anchoring Subspace Consistency">Cut-ViT: Task-Specific Model Pruning via Gram Anchoring Subspace Consistency</span></li><li><span class="dpr-home-dashboard-paper-title" title="Group-Shared Low-Rank Approximation for Mobile-Efficient Pointwise Convolutions in Large-Kernel CNNs">Group-Shared Low-Rank Approximation for Mobile-Efficient Pointwise Convolutions in Large-Kernel CNNs</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 </div>
 
