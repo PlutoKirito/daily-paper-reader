@@ -1,0 +1,1319 @@
+1
+ReLViC: Loss-Resilient Learned Video Coding with
+Dispersed Packetization and Controllable Packet
+Dependencies
+Xuyang Chen, Student Member, IEEE, Daquan Feng, Member, IEEE, Xianfu Chen, Senior Member, IEEE, and
+Xiang-Gen Xia, Fellow, IEEE
+Abstract—Packet loss can severely impair learned video coding
+because missing latent tokens compromise both spatial recon-
+struction and temporal prediction. We present ReLViC, a loss-
+resilient learned video coding framework that jointly addresses
+latent coding and packet-loss recovery. ReLViC disperses spa-
+tially adjacent latent tokens across packets and employs a dual-
+purpose Transformer to estimate entropy-model parameters dur-
+ing coding and reconstruct missing latent tokens at the receiver.
+It controls packet dependencies through a periodic-reset packet-
+context topology parameterized by the segment length, thereby
+tuning the trade-off between compression efficiency and error-
+propagation range without retraining. A three-stage progressive
+training procedure establishes single-frame coding, learns tempo-
+ral context for entropy modeling, and then optimizes the recovery
+of masked latent tokens under simulated packet loss. Experiments
+using burst-loss traces evaluate ReLViC against H.265 protected
+by Reed–Solomon forward error correction (FEC) and GRACE,
+a loss-resilient learned video codec. ReLViC delivers more stable
+reconstruction and outperforms both baselines under severe
+packet loss.
+Index Terms—Loss-resilient video coding, learned video com-
+pression, dispersed latent packetization, packet-loss recovery,
+error propagation
+I. INTRODUCTION
+Interactive video services, including video conferencing,
+cloud gaming, and remote collaboration, require frames to
+arrive before strict playback deadlines [1], [2]. To meet these
+deadlines, systems may have to sacrifice visual quality when
+congestion or wireless channel variations cause packet loss.
+Burst losses are particularly damaging because they can trig-
+ger decoding failures, freezes, and error propagation across
+subsequent frames [3], [4].
+Conventional video codecs achieve high compression effi-
+ciency through tightly coupled prediction, transform coding,
+quantization, and entropy coding. Advanced Video Coding
+(AVC), High Efficiency Video Coding (HEVC), and Versatile
+Video Coding (VVC) exploit spatial and temporal redundancy,
+with later coding decisions often conditioned on earlier re-
+constructed syntax elements and reference pictures [5]–[7].
+These dependencies improve efficiency when the bitstream is
+Xuyang Chen and Daquan Feng are with the College of Electronics and
+Information Engineering, Shenzhen University, Shenzhen 518060, China (e-
+mail: chenxuyang2021@email.szu.edu.cn; fdquan@szu.edu.cn).
+Xianfu Chen is with Shenzhen CyberAray Network Technology Company
+Ltd., Shenzhen 518038, China (e-mail: xianfu.chen@ieee.org).
+Xiang-Gen Xia is with the Department of Electrical and Computer
+Engineering, University of Delaware, Newark, DE 19716 USA (e-mail:
+xxia@ee.udel.edu).
+received intact, but they also make compressed video sensitive
+to packet loss. A lost packet may damage the current frame
+and propagate errors to subsequent frames through inter-frame
+prediction, causing persistent visual artifacts.
+Learned video compression replaces many hand-designed
+coding tools with end-to-end optimized latent representations
+and probability models. Early end-to-end frameworks jointly
+optimize motion and residual coding [8], after which deep
+contextual video compression (DCVC) shifts the field toward
+conditional coding with learned feature-domain contexts [9].
+More recent feature-modulated and efficiency-oriented archi-
+tectures support wider quality ranges, longer prediction chains,
+and real-time operation, bringing neural codecs closer to
+practical video delivery [10], [11]. Their efficiency neverthe-
+less relies on structured latent representations and accurate
+spatiotemporal context. Entropy decoding and reconstruction
+generally assume that all required latent tokens are available at
+the receiver. When a packet is lost, part of the latent represen-
+tation becomes unavailable, which may degrade reconstruction
+quality and disrupt the decoding of tokens that depend on the
+missing information.
+Traditional error-control mechanisms have to balance delay
+against bandwidth. Automatic repeat request (ARQ) and hy-
+brid ARQ (HARQ) react only after loss detection and cannot
+guarantee recovery before the playback deadline when the
+remaining delay budget is insufficient [12]. Forward error
+correction (FEC) sends redundancy proactively, but selecting
+an effective redundancy level requires predicting the severity
+and duration of the next loss burst [13]. Modern interactive
+streaming systems therefore optimize initial transmissions,
+retransmissions, and redundancy jointly to reduce deadline
+misses and bandwidth cost [14]. Source partitioning, interleav-
+ing, intra refresh, and decoder-side error concealment can limit
+visual damage, but they either reduce coding efficiency or are
+tailored to the syntax and tools of particular codecs [15]–[17].
+Recent neural approaches make the codec itself aware of
+loss. GRACE jointly trains its encoder and decoder over simu-
+lated packet losses to obtain graceful degradation [18]. Reparo
+performs generative completion from received video tokens
+to reduce freezes in video conferencing [19]. NeuralMDC
+combines correlated multiple descriptions with masked token
+prediction for unreliable multipath networks [20]. Morphe uses
+vision foundation models and a loss-resilient streaming system
+for high-fidelity generative video delivery [21]. At the image
+level, ResiComp shows that a shared masked Transformer can
+arXiv:2608.30202v1  [eess.IV]  31 Aug 2026
+
+
+2
+support both entropy modeling and feature-domain packet-
+loss recovery [22]. However, existing approaches do not fully
+resolve temporal error propagation in video codecs, the trade-
+off between compression efficiency and loss resilience, rapid
+adaptation to changing network conditions, or recovery from
+sustained burst losses.
+We develop ReLViC, a loss-resilient learned video coding
+framework for digital packet networks. Dispersed latent pack-
+etization assigns spatially adjacent latent tokens to different
+packets so that a single packet loss does not create a large con-
+tiguous region of missing tokens. A dual-purpose Transformer
+estimates conditional distributions during coding and recon-
+structs missing latent tokens using shared context. A periodic-
+reset context rule controls packet dependencies through the
+segment length g, with a maximum error-propagation span
+of g −1 packets. A three-stage progressive training strategy
+successively establishes single-frame coding, temporal context
+modeling, and packet-loss recovery. The main contributions
+are summarized below.
+• We propose ReLViC, an end-to-end loss-resilient learned
+video coding framework that jointly optimizes latent
+coding, dispersed packetization, entropy modeling, and
+packet-loss recovery for digital packet networks.
+• We develop a dual-purpose Transformer and a three-stage
+progressive training strategy. The shared context model
+estimates conditional distributions for entropy coding and
+reconstructs missing latent tokens from received spatial
+and temporal evidence.
+• We introduce dispersed latent packetization and con-
+trollable packet dependencies. Together, they transform
+concentrated packet erasures into spatially distributed
+patterns of missing tokens and allow the codec to balance
+compression efficiency and error-propagation range by
+selecting the segment length g without retraining.
+• Experiments using real-world network traces demonstrate
+that ReLViC provides stable reconstruction over a wide
+range of loss rates and outperforms H.265+FEC and
+GRACE under severe packet loss.
+The remainder of this paper is organized as follows. Sec-
+tion II reviews related work on video coding and loss re-
+silience. Section III presents ReLViC. Section IV describes
+the experimental setup and discusses the results. Section V
+concludes the paper.
+II. RELATED WORK
+This section reviews learned video compression and loss-
+resilient video transmission, which are two strands of literature
+most relevant to ReLViC. We first examine the dependency
+structures that enable efficient neural coding, and then discuss
+conventional and learning-based mechanisms for packet-loss
+protection and recovery.
+A. Learned Video Compression
+Learned video compression replaces hand-crafted coding
+modules with trainable transforms, temporal prediction, and
+entropy models optimized under a rate–distortion objective.
+The end-to-end low-latency codec in [23] jointly compresses
+the signals required for learned compensation and main-
+tains a learned temporal state rather than relying exclusively
+on conventional motion-compensated reference frames. The
+DCVC family provides a representative evolution of con-
+ditional learned video coding. The original DCVC replaces
+explicit pixel-domain residual coding with feature-domain
+conditional coding, allowing learned temporal context to assist
+representation learning, reconstruction, and entropy model-
+ing [9]. DCVC-TCM subsequently propagates intermediate
+features in addition to reconstructed frames and extracts multi-
+scale temporal contexts for different coding modules [24].
+In parallel, DCVC-HEM introduces a hybrid spatial–temporal
+entropy model that combines a temporal latent prior with
+parallel-friendly spatial priors and content-adaptive quantiza-
+tion [25]. These developments progressively move temporal
+information from an external prediction signal into the learned
+representation and probability model.
+DCVC-DC further increases context diversity in both tem-
+poral and spatial dimensions through hierarchical quality pat-
+terns, group-based offset diversity, and quadtree-partitioned
+spatial contexts [26]. The companion image codec EVC ad-
+dresses a different aspect of practicality by using mask decay
+to construct efficient single-model variable-rate codecs [27].
+DCVC-FM then uses feature modulation to support a wide
+quality range and periodically refreshes temporal features to
+stabilize long prediction chains [10]. Finally, DCVC-RT tar-
+gets deployment efficiency through implicit temporal model-
+ing, a single low-resolution latent representation, cross-device
+integerization, and module-bank-based rate control [11].
+Overall, learned video compression has advanced from
+end-to-end residual coding toward increasingly context-rich,
+variable-rate, and real-time conditional codecs. However, these
+models primarily optimize rate–distortion performance and
+computational efficiency for intact coded streams. Their spa-
+tial, temporal, and entropy-model dependencies are not explic-
+itly designed around packet erasures.
+B. Loss-Resilient Video Transmission
+Conventional loss resilience is commonly provided through
+retransmission and channel coding. In delivery using the Real-
+time Transport Protocol (RTP), a receiver can report missing
+packets and the sender can transmit them in a separate re-
+transmission stream [28]. ARQ consequently avoids proactive
+redundancy when no loss occurs, whereas HARQ combines
+retransmission with error-correcting codes and receiver-side
+combining [29]. Both mechanisms depend on feedback and
+sufficient time before the playback deadline. Recent produc-
+tion systems accordingly coordinate loss detection, retransmis-
+sion control, and opportunistic FEC rather than treating them
+as independent functions [30].
+FEC generates repair packets from groups of source packets
+so that a receiver can recover losses without waiting for a
+retransmission round trip. RTP FEC supports different pro-
+tection lengths, group sizes, and unequal protection levels to
+accommodate media importance and channel conditions [31].
+Tambur [32] adapts this principle to video conferencing to
+improve recovery from burst losses under strict decoding
+
+
+3
+Fig. 1. Overview of ReLViC.
+deadlines. The benefit is immediate recovery, but redundancy
+is transmitted before the realized loss pattern is known, and
+the protection strength must be selected against a time-varying
+channel.
+Source-coding tools provide complementary protection.
+Loss-aware packetization and interleaving disperse spatially
+adjacent coding units across packets, converting a burst loss
+into separated damaged regions that are easier to conceal [33].
+Intra refresh periodically codes selected regions without tem-
+poral prediction, thereby limiting error propagation at the
+cost of additional rate [34]. When recovery information is
+unavailable, decoder-side error concealment estimates missing
+content from received spatial or temporal evidence. For exam-
+ple, neural concealment has been incorporated into VVC de-
+coding to reconstruct missing frames from previously decoded
+frames [35]. Error concealment can reconstruct an approximate
+replacement for missing content and mitigate downstream
+distortion, but it does not recover the lost syntax elements
+or guarantee encoder–decoder reference consistency.
+Learning-based transmission systems increasingly co-design
+the transmitted representation and its reconstruction mecha-
+nism for specific channel conditions. DeepWiVe jointly learns
+video source coding and wireless channel coding by mapping
+video directly to channel symbols [36], while Gemino uses
+reference-conditioned neural reconstruction to sustain video
+conferencing at extremely low bitrates [37]. A recent resilient
+video tokenizer further learns to reconstruct incomplete token
+sequences and adapts source–channel coding to channel condi-
+tions [38]. These approaches either target analog joint source–
+channel transmission or are limited to specific scenarios.
+III. PROPOSED RELVIC FRAMEWORK
+ReLViC is motivated by two effects of packet loss in
+learned video coding: spatially concentrated missing latents
+and dependency-driven error propagation. It addresses them
+by dispersing adjacent tokens across packets and periodically
+resetting cross-packet context, preserving reconstruction evi-
+dence while balancing compression efficiency against propaga-
+tion range. A shared spatiotemporal Transformer supports both
+entropy modeling and missing-token recovery, while receiver
+feedback synchronizes the encoder and decoder states after
+loss. These considerations motivate the architecture described
+below.
+A. System Overview
+Fig. 1 illustrates ReLViC, which comprises a learned video
+codec, a token partitioner, a dispersed packetization module,
+a controllable packet-dependency mechanism, and a dual-
+purpose Transformer. The framework further employs receiver
+feedback to synchronize the temporal reference states of the
+encoder and decoder under packet loss.
+• Learned video codec: At time t, the analysis transform
+maps an input frame xt ∈RH×W ×3 to a continuous
+latent map yt = Ga(xt, θa) ∈Rh×w×C, where Ga(·)
+denotes the encoder that performs the analysis transfor-
+mation, and θa denotes its parameters, and C is the num-
+ber of latent channels. This nonlinear transform follows
+the design principles of ELIC [39]. Strided convolutions
+reduce the spatial resolution by a factor of 16, yielding
+h = H/16 and w = W/16. Uniform scalar quantization
+produces the quantized latent map ˆyt = Q(yt), which
+is subsequently entropy-coded. The synthesis transform
+reconstructs the frame as ˆxt = Gs(ˆyt, θs), where Gs(·)
+is the decoder that performs the synthesis transformation,
+and θs denotes its parameters.
+• Token partitioning: We employ a Transformer to es-
+timate latent-token distributions. Because a Transformer
+operates on sequential inputs, directly computing atten-
+tion over an entire video frame would incur prohibitive
+computational cost. Inspired by conventional block-based
+video coding, the partitioner reorganizes the quantized
+latent map and applies a sliding-window mechanism to
+
+
+4
+Fig. 2. Temporal entropy coding and latent recovery model.
+shorten the input sequence. Given ˆyt ∈Rh×w×C, the
+partitioner divides it into h
+P × w
+P nonoverlapping P × P
+windows using ˆypatch
+t
+= Patch(ˆyt, P) ∈RB×L×C,
+where B = nh × nw, L = P 2, nh =
+h
+P , nw =
+w
+P ,
+and Patch(·) denotes the partition operation. Each spatial
+position within a window corresponds to a C-dimensional
+latent token, so each window comprises L latent tokens.
+A linear projection embeds these tokens into the Trans-
+former dimension as ˆyemb
+t
+= ˆypatch
+t
+W emb ∈RB×L×D,
+where W emb is a learnable projection matrix, and D
+denotes the Transformer dimension. This partitioning
+restricts attention computation to the window-level se-
+quence length, thereby substantially reducing computa-
+tional complexity.
+• Dispersed packetization: Under conventional segment-
+based partitioning, packet loss produces large contiguous
+regions of missing latent tokens that are difficult to recon-
+struct. The dispersed packetizer assigns spatially adjacent
+latent tokens to different packets whenever possible.
+Consequently, the missing token positions after a packet
+loss are sparsely distributed over the two-dimensional
+latent map, enabling the dual-purpose Transformer to
+reconstruct them from surrounding received tokens. The
+latent tokens are divided into K network packets.
+• Controllable packet dependencies: Interpacket depen-
+dencies determine the context available for entropy de-
+coding. Independent packets prevent cross-packet error
+propagation but cannot exploit cross-packet redundancy.
+Using previously decoded packets as references improves
+compression efficiency, but the loss of a reference packet
+can affect subsequent dependent tokens. ReLViC uses
+a segment-length parameter g and a matrix Gg
+∈
+{0, 1}K×K, which depends on g as we shall see in
+more details later, to define a periodic-reset finite-segment
+dependency topology. Selecting g controls the maximum
+error-propagation span without retraining.
+• Dual-purpose Transformer: The shared Transformer
+Tcur is the core module for predicting latent-token prob-
+ability distributions and reconstructing missing latent to-
+kens. It uses the historical context representation zhist de-
+rived from the preceding N latent maps when processing
+the current latent map. By jointly encoding these N latent
+maps, zhist summarizes the complete historical window.
+Through self-attention over the current latent tokens and
+cross-attention to zhist, Tcur either predicts probability
+distributions or reconstructs missing latent tokens. Dur-
+ing training, a random mask matrix M ∈{0, 1}B×L
+simulates token loss, where M ij = 1 indicates that the
+(i, j)-th latent token is masked. Each masked token is
+replaced by a learned vector e ∈RC.
+• Packet-loss detection and state synchronization: In
+a practical deployment, the receiver identifies lost or
+corrupted packets using packet identifiers and cyclic
+redundancy checks. After the decoding deadline of frame
+t, the receiver sends a reliable, frame-indexed loss bitmap
+to the sender. The encoder and decoder then update their
+temporal reference states according to the same packet-
+loss pattern before processing frame t+1. This feedback-
+assisted update prevents the temporal contexts maintained
+at the two endpoints from diverging after packet loss.
+B. Spatiotemporal Context Modeling for Latent Tokens
+Fig. 2 illustrates the extraction of the historical context
+representation and the architecture and processing pipeline of
+Tcur.
+
+
+5
+1) Asymmetric Tokenization: We employ asymmetric to-
+kenization to provide a broad historical receptive field. The
+two preceding latent maps, ˆyt−2 and ˆyt−1, are partitioned
+into ωp × ωp windows, whereas the current latent map ˆyt is
+partitioned into smaller ωc × ωc windows. The current-frame
+windows are nonoverlapping, while the historical windows
+overlap with a stride of ωc because ωp > ωc. This design
+incorporates a larger neighborhood of textures and structures
+into each current-frame window, providing richer context for
+probability-distribution prediction. For clarity, Fig. 2 illustrates
+ωp = 4 and ωc = 2, whereas the implementation uses ωp = 8
+and ωc = 4.
+2) Joint Context Encoder: The two preceding frames pro-
+vide the temporal context, i.e., N = 2. Tokenization and
+projection yield ˆyemb
+t−2 and ˆyemb
+t−1 , to which spatial positional
+embeddings are added. The spatial Transformer Tsep then
+processes each frame independently. Its outputs are concate-
+nated along the sequence dimension, augmented with temporal
+positional embeddings, and passed to Tjoint. The resulting
+zhist is the historical context representation that summarizes
+the joint spatiotemporal context of the two preceding frames.
+3) Dual-Purpose Transformer: Tcur estimates latent-token
+distributions and reconstructs missing latent tokens. The cur-
+rent latent map is tokenized as ˆypatch
+t
+and projected to ˆyemb
+t
+,
+after which positional embeddings are added. Multihead self-
+attention and cross-attention jointly process the current latent
+tokens and zhist, with zhist serving as the keys and values in
+cross-attention. The density head fdensity comprises a multi-
+layer perceptron (MLP) and nonlinear activation functions and
+outputs the mean and unconstrained scale parameters as
+µt, ˜σt = fdensity (Tcur (ct, zhist)) .
+(1)
+The outputs satisfy µt, ˜σt ∈RB×L×C, and ct denotes the
+context in ˆypatch
+t
+that is visible to the decoder. A positive scale
+is obtained as σt = log
+ 1 + e˜σt
+∈RB×L×C
+>0
+. Assuming
+conditional independence across channels, the coding cost of
+the current frame is
+R = −
+B
+X
+b=1
+L
+X
+i=1
+C
+X
+c=1
+log2 P ˆY
+
+ˆypatch
+t,b,i,c | µt,b,i,c, σt,b,i,c
+
+,
+(2)
+where P ˆY (·) is the conditional probability mass function of
+a quantized latent symbol. The entropy model predicts the
+parameters of a continuous Gaussian distribution, whereas
+arithmetic coding requires discrete probabilities. We therefore
+integrate the distribution over the quantization interval. For a
+quantization step size ∆,
+P ˆY
+ ˆypatch
+t,b,i,c | µt,b,i,c, σt,b,i,c
+
+=
+Z k+ ∆
+2
+k−∆
+2
+N
+ u | µt,b,i,c, σ2
+t,b,i,c
+
+du
+= Φ
+ 
+k + ∆
+2 −µt,b,i,c
+σt,b,i,c
+!
+−Φ
+ 
+k −∆
+2 −µt,b,i,c
+σt,b,i,c
+!
+,
+(3)
+where k = ˆypatch
+t,b,i,c, and Φ(·) denotes the standard Gaussian
+cumulative distribution function. The recovery head fPLR pre-
+dicts the missing latent tokens. Although distribution estima-
+tion and latent-token recovery use different visibility patterns,
+both functions rely on the same spatiotemporal evidence.
+Sharing the backbone for spatiotemporal context extraction
+substantially reduces the parameter count and computational
+cost. The recovery head comprises an MLP and nonlinear
+activation functions and is given by
+ˆypred
+t
+= fPLR (Tcur (ct, zhist)) ,
+(4)
+where ˆypred
+t
+∈RB×L×C. The final latent representation
+obtained via the combination of predicted and received tokens
+is expressed as
+˜ypatch
+t,M
+= ˆypred
+t
+⊙M + ˆypatch
+t
+⊙(1 −M) ,
+(5)
+where ⊙denotes elementwise multiplication.
+C. Three-Stage Progressive Training
+We adopt a three-stage progressive training strategy that ex-
+tends single-frame latent compression to temporal conditional
+modeling and subsequently introduces loss resilience. Stage I
+establishes single-frame rate–distortion coding by training Ga
+and Gs while freezing the context modules. Stage II freezes
+the image codec and trains Tsep, Tjoint, and Tcur to predict
+the current-frame distribution from historical latent context.
+Stage III jointly fine-tunes all modules using random masks.
+1) Stage I: Single-Frame Compression: Stage I excludes
+temporal modeling and trains the spatial codec backbone,
+comprising Ga and Gs, under a single-frame rate–distortion
+objective. It also produces stable latent representations for sub-
+sequent training. The Stage I loss includes both the conditional
+main-latent rate and the hyperlatent rate:
+LE = Ext∼pdata
+
+−log2 p
+
+ˆypatch
+t
+| ˆzt
+
+−log2 p (ˆzt)
++ λ1d (xt, ˆxt)
+
+.
+(6)
+The first two terms in the bracket of the right-hand side of
+(6) estimate the main-latent and hyperlatent rates, respec-
+tively. ˆzt denotes the quantized hyperlatent. λ1 controls the
+rate–distortion trade-off. The function d(·) denotes the mean
+squared error (MSE). This stage optimizes θa, θs, and the
+hyperprior parameters. The hyperprior module is used only in
+Stage I and is discarded in the subsequent stages.
+2) Stage II: Temporal Entropy Modeling: Stage II freezes
+the Stage I codec and trains Tsep, Tjoint, and Tcur. The model
+learns the conditional distributions of current-frame tokens
+from historical context, thereby reducing the entropy-coding
+rate. Because no historical frame is available for the first
+frame, a learnable reference frame is introduced as a virtual
+reference frame during training. Entropy decoding proceeds
+autoregressively. We use an upper-triangular causal mask
+M causal ∈{0, 1}L×L, where [M causal]ij = 1{i<j}. i indexes
+the query position, j indexes the key position, and a mask
+value of one prevents position i from attending to position j.
+Therefore, all future positions j > i are masked, whereas the
+current and preceding positions j ≤i remain visible. Together
+with the one-position right shift and the learned start token
+s0 ∈RC, this construction ensures that the distribution of
+
+
+6
+token i is predicted using only the previously decoded tokens
+1, . . . , i −1. The Stage II loss is
+LV = −Ext∼pdata log2 p
+
+ˆypatch
+t
+
+.
+(7)
+This stage optimizes θsep, θjoint, and θcur, the parameters of
+Tsep, Tjoint, and Tcur, respectively.
+3) Stage III: Packet-Loss Recovery: Stage III jointly fine-
+tunes all parameters through masked latent modeling. At each
+iteration, the masking ratio is sampled as r ∼U(0.05, 0.99).
+The masked part of ˆypatch
+t
+is replaced by the learned latent
+vector e ∈RC, yielding the masked sequence ˆypatch
+t,M , which
+serves as ct in (4). Unlike the causal setting in Stage II,
+recovery permits bidirectional interactions among all received
+tokens. Applying the recovery head and combining the pre-
+dicted and received tokens according to (5) yields the re-
+covered sequence ˜ypatch
+t,M . We use the following two-branch
+distortion objective to balance reconstruction quality without
+packet loss against recovery quality:
+dtotal = d (xt, ˆxt) + αd (xt, ˆxt,M)
+1 + α
+,
+(8)
+where ˆxt,M = Gs
+ ˆyt,M
+
+is the reconstruction from recovered
+tokens. The hyperparameter α weights the recovery objective,
+with a larger value assigning greater importance to the masked
+reconstruction. ˆyt,M is computed as
+ˆyt,M = Unpatch
+
+˜ypatch
+t,M , nh, nw
+
+,
+(9)
+where Unpatch(·, nh, nw) reassembles the patched tokens into
+a latent map of dimensions h × w × C. The Stage III loss is
+L = Ext∼pdata
+"
+X
+∀M ij=1
+−log2 p
+
+ˆypatch
+t,i,j
+| ˆypatch
+t,M
+
++ λ3dtotal
+#
+.
+(10)
+The first term in the bracket of the right-hand side of (10)
+represents the rate of the masked tokens, and λ3 controls
+the rate–distortion trade-off. The unmasked tokens need not
+be explicitly optimized for rate. Instead, their values pro-
+vide conditional context that reduces the coding rate of the
+masked tokens. Because the mask locations are randomized
+at every iteration, each token is selected as a masked token
+and optimized across different iterations, enabling global joint
+optimization. This design incorporates compression efficiency
+and loss resilience into a unified training objective.
+D. Dispersed Latent Packetization and Controllable Packet
+Dependencies
+1) Dispersed Latent Packetization: Dispersed packetization
+maps the two-dimensional latent tokens to K packets. A
+contiguous assignment places neighboring tokens in the same
+packet, so a single packet erasure can produce a large con-
+tiguous region of missing tokens. By contrast, a dispersed
+assignment places nearby tokens in different packets, con-
+verting a single erasure into a spatially distributed pattern of
+missing tokens. The remaining received tokens thus provide
+Fig. 3. Dispersed latent packetization patterns.
+local evidence for recovery. This pattern is also consistent with
+the random masks used during training.
+Let Mpack(x, y) ∈{0, 1, . . . , K −1} denote the packet
+index assigned to the token at spatial location (x, y). The token
+set of packet k is
+Yk = {ˆyt(x, y) | Mpack(x, y) = k} .
+(11)
+Here, ˆyt(x, y) denotes the token at location (x, y). Fig. 3 illus-
+trates quantized low-discrepancy sequence (QLDS), random,
+and spatial interleaving assignments.
+Random packetization first applies a fixed random permu-
+tation π(·) to the row-major index r(x, y) = xw + y and then
+maps the permuted indices to packet identifiers as follows:
+Mrand(x, y) = π(r(x, y)) mod K.
+(12)
+Random packetization probabilistically disperses tokens across
+packets. A sufficiently uniform permutation generally main-
+tains favorable loss-recovery performance. However, the as-
+signment depends on a random seed and may form local
+clusters. A deterministic mapping provides more controlled
+spatial coverage.
+Spatial interleaving separates neighboring tokens using a
+regular two-dimensional grid. We factor the packet grid as
+K = KhKw and define the assignment as
+Mgrid(x, y) = (x mod Kh) Kw + (y mod Kw) .
+(13)
+Spatial interleaving provides strictly regular spacing. However,
+its fixed periodic structure may produce directional or periodic
+loss patterns when coupled with the latent-map dimensions,
+packet count, or image structure. QLDS-based packetization
+uses a deterministic low-discrepancy sequence to define a two-
+dimensional traversal order, avoiding both the seed dependence
+of random assignment and the periodicity of regular interleav-
+ing. We therefore use QLDS as the default mapping. Let ρ
+denote the plastic constant. The sampling coordinates are
+
+
+
+
+
+
+
+xn =
+
+0.5 + n1
+ρ
+
+mod 1
+
+· h + 1
+2
+
+mod h,
+yn =
+
+0.5 + n 1
+ρ2
+
+mod 1
+
+· w + 1
+2
+
+mod w.
+(14)
+⌊·⌋denotes the floor operator, n is the iteration index, and h
+and w are the height and width of the latent map, respectively.
+The location (xn, yn) is generated at iteration n. The matrix
+O ∈Rh×w records the traversal order, with O(x, y) specifying
+the order of location (x, y). When the traversal reaches an
+unvisited location (xn, yn), we assign it the current order m
+by setting O(xn, yn) = m. The normalized order is
+ˆO(x, y) = O(x, y)
+hw
+.
+(15)
+
+
+7
+TABLE I
+OVERVIEW OF THE THREE-STAGE PROGRESSIVE TRAINING STRATEGY
+Stage
+Optimized modules
+Loss
+Mask type
+Context frames
+Stage I
+Ga, Gs, hyperprior
+LE (single-frame rate–distortion)
+None
+0
+Stage II
+Tsep, Tjoint, Tcur
+LV
+(temporal conditional rate opti-
+mization)
+Causal autoregressive
+mask
+2
+Stage III
+Joint fine-tuning of all
+modules
+L (masked latent recovery and two-
+branch distortion)
+Random mask
+2
+The packet assignment is then obtained as
+Mpack(x, y) =
+j
+ˆO(x, y) · K
+k
+.
+(16)
+This mapping spatially disperses the tokens assigned to each
+packet, thereby reducing the risk of a connected missing region
+after a single erasure. QLDS is not the only viable layout.
+Random and spatial-interleaving assignments also perform
+well when they provide sufficient dispersion. We adopt QLDS
+because it is deterministic, reproducible, and requires no layout
+search.
+2) Packet-Context Modes: Fig. 4 illustrates three represen-
+tative packet-context configurations induced by the segment
+length g. Setting g = 1 removes interpacket references, an
+intermediate g periodically resets the reference chain, and
+g = K allows each packet to use all preceding packets in
+the frame.
+Let Yi denote the tokens in packet i. The shared Trans-
+former Tcur estimates their conditional distributions. By the
+monotonicity of conditional entropy,
+H (Yi) ≥H (Yi | Y1) ≥H (Yi | Y1, Y2)
+≥· · · ≥H (Yi | Y1, . . . , Yi−1) .
+(17)
+Additional visible context reduces conditional entropy and can
+improve compression efficiency, but it also lengthens the paths
+of error propagation. Inspired by conventional video error-
+concealment designs [15], [16], we unify the packet-context
+design by dividing the K packets into finite segments of length
+g. With m = 0, . . . , ⌈K/g⌉−1, define
+Sm = {mg + 1, . . . , min ((m + 1)g, K)} .
+(18)
+The dependency matrix Gg ∈{0, 1}K×K is
+Gg(i, j) =
+
+
+
+1,
+j < i,
+i −1
+g
+
+=
+j −1
+g
+
+,
+0,
+otherwise.
+(19)
+Thus, the first packet in every segment is independent, each
+later packet uses all earlier packets in the same segment, and
+different segments are completely independent. The matrix is
+strictly lower triangular, so decoding packet i never uses the
+current or a future packet. If a packet is lost, only later packets
+in its segment can inherit the resulting decoding error. Thus,
+the maximum propagation span is g−1 packets. For the general
+matrix form, let Ln be the n × n strictly lower-triangular all-
+ones matrix. If K = qg + r with 0 ≤r < g, then
+Gg = blkdiag
+
+
+Lg, . . . , Lg
+|
+{z
+}
+q blocks
+, Lr
+
+
+,
+(20)
+where the final block Lr is omitted when r = 0.
+Fig. 5 visualizes the resulting dependency matrices for
+g = 1, 4, 7, and K. As g increases, the lower-triangular blocks
+become larger, providing richer cross-packet context while
+extending the possible error-propagation path. The loss of
+any referenced packet propagates along the dependency chain,
+rendering all subsequent dependent packets undecodable. All
+packets that are either physically lost or rendered undecodable
+are uniformly recovered by fPLR.
+IV. EXPERIMENTAL SETUP AND RESULTS
+A. Experimental Setup
+Training details: All three stages are trained on the Vimeo-
+90k septuplet dataset, which contains 91,701 sequences of
+seven consecutive frames. Each training input is randomly
+cropped to 256 × 256. In Stage I, a λ warm-up multiplies
+λ1 in (6) by 10 during the first 15% of the iterations,
+prioritizing reconstruction quality while the latent represen-
+tation is initialized. We set λ1
+= 0.01 in Stage I and
+use λ3 ∈{0.00125, 0.01, 0.02, 0.04, 0.08} in Stage III. The
+models are optimized using AdamW. The learning rate is
+increased linearly to 10−4 over the first 2% of the iterations
+and decayed to 10−5 after 85% of the iterations. Training is
+performed using two NVIDIA A100 GPUs.
+Baselines: We compare ReLViC with H.265 protected by
+Reed–Solomon (RS) FEC and GRACE [18]. The notation
+H.265 + x%FEC denotes an H.265 stream with a redun-
+dancy ratio of x = Nr/(Nk + Nr) × 100, where Nk and
+Nr are the numbers of source and parity packets, respec-
+tively. The RS code recovers the source data upon receiving
+any Nk of the Nk + Nr transmitted packets. We evaluate
+x ∈{0, 10, 30, 50, 70}. GRACE is an advanced mask-trained
+learned video codec that masks motion-vector and residual
+tensors during training to support recovery from packet loss.
+Evaluation details: We evaluate all methods on the Ultra
+Video Group (UVG) dataset [40], which contains seven 1080p
+videos, and measure reconstruction quality using peak signal-
+to-noise ratio (PSNR). The plastic constant ρ used in (14)
+is 1.324717957 [41]. To balance reconstruction quality and
+decoding delay, each frame is divided into 10 packets. The
+H.265+FEC baseline uses an effective payload budget of 1460
+bytes per packet. To improve H.265 decodability, we allocate
+FEC redundancy non-uniformly among parameter-set network
+abstraction layer units (VPS/PPS/SPS) and I-frames, P-frames,
+and B-frames using weights of 6:5:3:1, respectively. This
+strategy prioritizes the decodability of critical data types and
+
+
+8
+(a) g = 1, Intra-slice coding
+(b) g = K
+2 , Segmented coding
+(c) g = K, Layered coding
+Fig. 4. Packet-context modes.
+(a) g = 1
+(b) g = 4
+(c) g = 7
+(d) g = K
+Fig. 5. Packet-context dependency matrices.
+Fig. 6. Three-state Markov loss model.
+substantially improves evaluation stability. For frames that fail
+to decode, we apply a penalty to their PSNR values.
+Loss simulation: We simulate burst losses using the three-
+state Markov model in Fig. 6, which is widely adopted
+for wireless packet-loss modeling [42], [43]. The states SG,
+SB, and SI represent loss-free transmission, packet loss, and
+intermittent availability, respectively. Packets are always lost in
+SB and delivered in SG and SI. From SI, the link can remain
+temporarily available or return to SB, modeling intermittent
+recovery within a loss burst. We use four loss patterns derived
+from mobile Internet traces [44]. Table II lists their transition
+parameters, average loss rate ϵ, and average burst length γ.
+The four patterns represent light long bursts, light short bursts,
+moderate short bursts, and heavy short bursts.
+TABLE II
+PARAMETERS OF THE THREE-STATE MARKOV LOSS MODEL
+Pattern
+pG
+pB
+pI
+pB→G
+ϵ
+γ
+EP1
+0.99968
+0.8462
+0
+0.1538
+0.002
+6.5
+EP2
+0.9798
+0.3372
+0.3333
+0.6304
+0.031
+1.51
+EP3
+0.9363
+0.4072
+0.5662
+0.3631
+0.138
+1.69
+EP4
+0.8507
+0.6305
+0.2
+0.2982
+0.324
+2.71
+B. Results
+Visual quality: Fig. 7 compares ReLViC with GRACE at
+a 50% packet-loss rate. ReLViC operates in the intra-slice
+packet-context mode. Although GRACE preserves recogniz-
+able content in the initial frames, distortions and artifacts
+accumulate along its reference path. In this example, ReLViC
+retains more visible structure because Tcur reconstructs miss-
+ing latent tokens from the received current-frame tokens and
+temporal context.
+Fig. 8 presents reconstructed frames and error maps at dif-
+ferent packet-loss rates. The reconstruction error changes only
+slightly at low loss rates, whereas the degradation becomes
+more pronounced at loss rates of 70% and 90%. The model
+estimates the missing content from both the received current-
+frame latents and the historical latent context.
+Fig. 9 shows the temporal evolution of reconstruction at a
+90% packet-loss rate. Because the first frame has no preceding-
+frame context, it contains visible artifacts and large regions of
+smeared color. The next two frames exploit received current-
+frame tokens and recovered historical context. This additional
+evidence improves reconstruction and reduces the highlighted
+regions in the error maps.
+Fig. 11 visualizes cross-attention to historical frames under
+the layered packet-context mode. From left to right, the maps
+correspond to the first three coded frames. The latent maps
+at t −1 and t −2 provide temporal context, and pN denotes
+the packet currently being encoded. When encoding the first
+packet of the first frame, no historical frame is available as a
+reference. Consequently, the cross-attention heatmap exhibits
+no discernible structure. By the tenth packet of the first frame,
+previously decoded packets are available as references, and the
+attention map begins to reveal image-content structure. For
+subsequent frames, the attention maps indicate that the model
+identifies motion regions and allocates attention to different
+spatial areas. Moreover, the attention maps for frames t−1 and
+t −2 are complementary, suggesting that the model balances
+information from the two preceding frames. For example, it
+assigns more attention to the background in frame t −1 and
+
+
+9
+Fig. 7. Visual reconstruction comparison at 50% packet-loss rate.
+Fig. 8. Visual reconstruction comparison across packet-loss rates.
+to the face and hair in frame t −2.
+Performance analysis: Fig. 10 compares ReLViC with the
+baselines under the four loss traces. Although EP1 has a
+low loss rate, its average burst length is relatively long. The
+FEC scheme therefore requires substantial redundancy, such as
+70%, to maintain reasonable performance. Without sufficient
+redundancy, packet-decoding failures produce severe visual
+artifacts and sharply reduce PSNR. For GRACE, we evaluate
+group-of-pictures (GOP) sizes of 8, 16, and 32. A smaller GOP
+shortens the error-propagation path and consequently improves
+recovery quality. Across bitrates of approximately 0.1–0.6 bits
+per pixel (bpp), GRACE performs comparably to ReLViC.
+Under EP2, the performance of GRACE decreases as the loss
+probability increases, whereas ReLViC performs better than
+GRACE and H.265 + FEC. Under EP3 and EP4, which have
+relatively high loss rates, ReLViC exhibits a clear advantage.
+Even with 70% redundancy, the FEC scheme experiences
+numerous decoding errors, while GRACE remains decodable
+but exhibits markedly lower recovery quality.
+EP1 and EP2 have relatively low loss rates. Under these con-
+ditions, packet-context modes that use interpacket references,
+such as layered coding and segmented coding, outperform
+intra-slice coding, which uses no such references. Under
+EP3 and EP4, which have high loss rates, intra-slice coding
+performs better because it does not depend on other packets
+and therefore avoids interpacket error propagation. The perfor-
+mance differences among the packet-context modes show that
+selecting the segment length g directly controls the trade-off
+between compression efficiency and error-propagation range.
+Switching among these modes therefore enables a flexible
+balance between compression efficiency and transmission re-
+silience under different network conditions without retraining.
+Fig. 12 presents the reconstruction quality of different
+packet-context modes at different packet-loss rates. Intra-
+
+
+10
+Fig. 9. Temporal evolution of reconstruction at 90% packet-loss rate.
+(a) EP1 (average loss rate 0.2%, average burst length 6.5)
+(b) EP2 (average loss rate 3.1%, average burst length 1.51)
+(c) EP3 (average loss rate 13.8%, average burst length 1.69)
+(d) EP4 (average loss rate 32.4%, average burst length 2.71)
+Fig. 10. Rate–distortion performance under four burst-loss traces.
+slice coding exhibits greater transmission resilience than the
+other reference modes. Reference-based coding schemes, such
+as layered coding, require fewer bits under low packet-loss
+rates. Overall, as the packet-loss rate increases, coding modes
+with longer reference chains suffer more rapid performance
+degradation.
+Ablation studies: To investigate the effect of spatial disper-
+sion on packet-loss concealment, we compare ReLViC with the
+three token-packetization baselines shown in Fig. 13. Raster-
+scan packetization fills packets contiguously in row-major
+order and represents a typical contiguous-region packetiza-
+tion method. Row-interleaved packetization assigns packets
+cyclically along each row, reducing the extent of contigu-
+ous missing regions but providing limited two-dimensional
+dispersion. Hilbert packetization orders tokens according to
+a Hilbert-curve traversal. Although this approach preserves
+spatial locality, tokens within the same packet remain strongly
+clustered. These methods provide contiguous or weakly dis-
+persed baselines for evaluating how spatial clusters of miss-
+ing tokens affect recovery quality. By comparison, random
+packetization, spatial-interleaving packetization, and QLDS-
+based packetization represent probabilistic dispersion, regular-
+
+
+11
+Fig. 11. Cross-attention heatmaps of the dual-purpose Transformer.
+Fig. 12.
+Reconstruction performance of packet-context modes across loss
+rates.
+grid dispersion, and deterministic low-discrepancy dispersion,
+respectively.
+Fig. 14 shows the reconstruction performance with different
+packetization schemes. QLDS-based packetization, random
+packetization, and spatial-interleaving packetization achieve
+comparable performance under the intra-slice mode, where
+no interpacket reference dependency is introduced. This re-
+sult indicates that effective packetization depends less on
+a particular sequence than on whether missing tokens are
+sufficiently dispersed over the two-dimensional latent map. By
+contrast, row-scan, row-interleaved, and Hilbert packetization
+retain pronounced spatial clustering or directional structure,
+increasing the likelihood of contiguous regions of missing
+tokens after a single packet loss and consequently degrading
+recovery performance. Although random packetization pro-
+vides spatially dispersed packet allocation in expectation, its
+performance remains subject to randomness and may occa-
+sionally degrade sharply, as illustrated in Fig. 14b and Fig. 14c.
+As the segment length increases, interpacket dependencies
+Fig. 13. Packetization baselines.
+(a) g = 1, Intra-slice coding
+(b) g = 4, Segmented coding
+(c) g = 7, Segmented coding
+(d) g = K, Layered coding
+Fig. 14. Reconstruction performance of different packetization modes.
+cause a physical packet loss to propagate along the reference
+chain within a segment, resulting in an effective packet-loss
+rate substantially higher than the channel packet-loss rate
+and, consequently, a more rapid PSNR degradation. QLDS-
+based packetization achieves consistently strong performance
+across different coding modes. This advantage may stem from
+the nonperiodic, uniform coverage of the low-discrepancy
+sequence. Specifically, QLDS avoids the incidental local clus-
+tering of random packetization and mitigates the fixed periodic
+structure of regular-grid interleaving, making the spatial distri-
+bution of missing tokens more closely resemble the random-
+mask recovery target used during training.
+Fig. 15 shows the effect of α in (8), which balances
+compression performance against loss resilience. A smaller
+α places greater emphasis on reconstruction quality without
+packet loss than on transmission resilience. As the packet-loss
+rate increases from 0.1 to 0.9, the intra-slice mode with α = 1
+exhibits a 3.16 dB smaller PSNR drop than that with α = 0.01.
+In the layered mode, the error-propagation chain is the longest,
+causing the reconstruction performance to degrade rapidly as
+the packet loss rate increases. When α = 0.01, the model
+exhibits limited robustness to packet loss, further resulting in
+inferior performance under this mode.
+Loss-free performance and complexity: Fig. 16 compares
+the reconstruction quality of ReLViC and the baselines in
+the absence of packet loss. It can be observed that GRACE
+improves transmission robustness at the cost of some com-
+pression efficiency. In contrast, ReLViC achieves compres-
+
+
+12
+TABLE III
+MODEL SIZE AND COMPUTATIONAL COMPLEXITY
+Parameters
+Encoding complexity
+Decoding complexity
+Encoding time
+Encoding speed
+ReLViC
+231.155 M
+32.849 TFLOPs
+32.862 TFLOPs
+≈0.8294 s/frame
+≈1.2 FPS
+Fig. 15. Effect of α in (8) on compression and loss resilience.
+Fig. 16. Reconstruction performance without packet loss.
+sion performance comparable to, or even slightly better than,
+H.265 under loss-free conditions, while providing substantially
+greater resilience to packet loss than GRACE.
+Table III reports the model size and computational com-
+plexity. The model contains 231.155 M parameters, and its
+encoding and decoding costs are approximately 32.8 tera
+floating-point operations (TFLOPs). Spatiotemporal latent-
+context modeling accounts for most of this computation. On an
+RTX 4090, the model encodes a 1080p frame in approximately
+0.8294 s, corresponding to approximately 1.2 frames per
+second (FPS).
+V. CONCLUSION
+This paper has presented ReLViC, a loss-resilient learned
+video coding framework that incorporates both latent recovery
+and packet-level organization. ReLViC couples compression
+and recovery through a dual-purpose Transformer, so that
+the spatiotemporal context learned for entropy modeling also
+provides the evidence needed to infer missing latent tokens.
+The progressive training procedure first establishes single-
+frame coding and then learns a temporal entropy model and
+the recovery of masked latent tokens. At the packet level,
+dispersed packetization prevents a single erasure from creating
+a large contiguous region of missing latent tokens, while
+controllable packet dependencies provide different trade-offs
+between compression efficiency and error-propagation range.
+In particular, selecting the segment length g changes the
+maximum propagation span to g−1 packets without retraining.
+Experimental results demonstrate that ReLViC substantially
+outperforms H.265+FEC and GRACE under heavy packet loss
+and maintains favorable reconstruction quality at a packet-loss
+rate of 90%. Switching among packet-context modes enables
+ReLViC to balance compression efficiency and transmission
+resilience under different network conditions.
+REFERENCES
+[1] S. Afzal, V. Testoni, C. E. Rothenberg, P. Kolan, and I. Bouazizi,
+“A holistic survey of multipath wireless video streaming,” Journal of
+Network and Computer Applications, vol. 212, p. 103581, 2023.
+[2] C. Baena, O. Pe˜naherrera-Pulla, R. Barco, and S. Fortes, “Measuring and
+estimating key quality indicators in cloud gaming services,” Computer
+Networks, vol. 231, p. 109808, 2023.
+[3] T. Fujihashi, T. Koike-Akino, and T. Watanabe, “Soft delivery: Survey
+on a new paradigm for wireless and mobile multimedia streaming,” ACM
+Comput. Surv., vol. 56, no. 2, Sep. 2023.
+[4] M. K. Sharma, I. Farhat, C.-F. Liu, N. Sehad, W. Hamidouche, and
+M. Debbah, “Real-time immersive aerial video streaming: A comprehen-
+sive survey, benchmarking, and open challenges,” IEEE Open Journal
+of the Communications Society, vol. 5, pp. 5680–5705, 2024.
+[5] T. Wiegand, G. J. Sullivan, G. Bjontegaard, and A. Luthra, “Overview of
+the H.264/AVC video coding standard,” IEEE Transactions on Circuits
+and Systems for Video Technology, vol. 13, no. 7, pp. 560–576, 2003.
+[6] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, “Overview of the
+high efficiency video coding (HEVC) standard,” IEEE Transactions on
+Circuits and Systems for Video Technology, vol. 22, no. 12, pp. 1649–
+1668, 2012.
+[7] B. Bross, J. Chen, S. Liu, and Y.-K. Wang, “Overview of the versatile
+video coding (VVC) standard and its applications,” IEEE Transactions
+on Circuits and Systems for Video Technology, vol. 31, no. 10, pp. 3736–
+3764, 2021.
+[8] G. Lu, W. Ouyang, D. Xu, X. Zhang, C. Cai, and Z. Gao, “DVC: An
+end-to-end deep video compression framework,” in Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition,
+2019.
+[9] J. Li, B. Li, and Y. Lu, “Deep contextual video compression,” in
+Advances in Neural Information Processing Systems, vol. 34, 2021,
+Conference Proceedings, pp. 18 114–18 125.
+[10] ——, “Neural video compression with feature modulation,” in 2024
+IEEE/CVF Conference on Computer Vision and Pattern Recognition
+(CVPR), 2024, pp. 26 099–26 108.
+[11] Z. Jia, B. Li, J. Li, W. Xie, L. Qi, H. Li, and Y. Lu, “Towards practical
+real-time neural video compression,” in Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition (CVPR), June
+2025, pp. 12 543–12 552.
+[12] S. Lin, D. J. Costello, and M. J. Miller, “Automatic-repeat-request error-
+control schemes,” IEEE Communications Magazine, vol. 22, no. 12, pp.
+5–17, 1984.
+
+
+13
+[13] J. Wu, C. Yuen, N.-M. Cheung, J. Chen, and C. W. Chen, “Streaming
+mobile cloud gaming video over TCP with adaptive source–FEC cod-
+ing,” IEEE Transactions on Circuits and Systems for Video Technology,
+vol. 27, no. 1, pp. 32–48, 2017.
+[14] Z. Meng, X. Kong, J. Chen, B. Wang, M. Xu, R. Han, H. Liu, V. Arun,
+H. Hu, and X. Wei, “Hairpin: Rethinking packet loss recovery in edge-
+based interactive video streaming,” in 21st USENIX Symposium on
+Networked Systems Design and Implementation (NSDI 24). Santa Clara,
+CA: USENIX Association, Apr. 2024, pp. 907–926.
+[15] Y. Wang and Q.-F. Zhu, “Error control and concealment for video
+communication: a review,” Proceedings of the IEEE, vol. 86, no. 5,
+pp. 974–997, 1998.
+[16] Y. Wang, S. Wenger, J. Wen, and A. Katsaggelos, “Error resilient video
+coding techniques,” IEEE Signal Processing Magazine, vol. 17, no. 4,
+pp. 61–82, 2000.
+[17] T. Wang, Z. Zheng, Y. Lin, S. Yao, and X. Xie, “Reliable and robust un-
+manned aerial vehicle wireless video transmission,” IEEE Transactions
+on Reliability, vol. 68, no. 3, pp. 1050–1060, 2019.
+[18] Y. Cheng, Z. Zhang, H. Li, A. Arapin, Y. Zhang, Q. Zhang, Y. Liu,
+K. Du, X. Zhang, F. Y. Yan, A. Mazumdar, N. Feamster, and J. Jiang,
+“GRACE: Loss-resilient real-time video through neural codecs,” in 21st
+USENIX Symposium on Networked Systems Design and Implementation
+(NSDI 24).
+Santa Clara, CA: USENIX Association, 2024, Conference
+Proceedings, pp. 509–531.
+[19] T. Li, V. Sivaraman, P. Karimi, L. Fan, M. S. Alizadeh, and D. Katabi,
+“Reparo: Loss-resilient generative codec for video conferencing,” in
+Proceedings of Machine Learning and Systems (MLSys), vol. 8, 2026,
+pp. 1701–1718.
+[20] X. Hu, W. Ye, J. Tang, E. Ramadan, and Z.-L. Zhang, “Robust multiple
+description neural video codec with masked transformer for dynamic
+and noisy networks,” arXiv preprint arXiv:2412.07922, 2024.
+[21] T. Gong, Z. Cao, Z. Zhang, J. Wu, X. Zhang, S. Cui, and F. Wang,
+“Morphe: High-Fidelity generative video streaming with vision founda-
+tion model,” in 23rd USENIX Symposium on Networked Systems Design
+and Implementation (NSDI 26).
+Renton, WA: USENIX Association,
+2026, pp. 301–317.
+[22] S. Wang, J. Dai, X. Qin, K. Yang, K. Niu, and P. Zhang, “ResiComp:
+Loss-resilient image compression via dual-functional masked visual
+token modeling,” IEEE Transactions on Circuits and Systems for Video
+Technology, vol. 35, no. 7, pp. 7181–7195, 2025.
+[23] O. Rippel, S. Nair, C. Lew, S. Branson, A. G. Anderson, and L. Bour-
+dev, “Learned video compression,” in Proceedings of the IEEE/CVF
+International Conference on Computer Vision (ICCV), Oct. 2019, pp.
+3454–3463.
+[24] X. Sheng, J. Li, B. Li, L. Li, D. Liu, and Y. Lu, “Temporal context min-
+ing for learned video compression,” IEEE Transactions on Multimedia,
+vol. 25, pp. 7311–7322, 2023.
+[25] J. Li, B. Li, and Y. Lu, “Hybrid spatial-temporal entropy modelling for
+neural video compression,” in Proceedings of the 30th ACM Interna-
+tional Conference on Multimedia, 2022, pp. 1503–1511.
+[26] ——, “Neural video compression with diverse contexts,” in Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-
+tion (CVPR), Jun. 2023, pp. 22 616–22 626.
+[27] G.-H. Wang, J. Li, B. Li, and Y. Lu, “EVC: Towards real-time neural
+image compression with mask decay,” in International Conference on
+Learning Representations, 2023.
+[28] J. Rey, D. Leon, A. Miyazaki, V. Varsa, and R. Hakenberg, “RTP re-
+transmission payload format,” Internet Engineering Task Force, Request
+for Comments 4588, Jul. 2006.
+[29] A. Ahmed, A. Al-Dweik, Y. Iraqi, H. Mukhtar, M. Naeem, and
+E. Hossain, “Hybrid automatic repeat request (HARQ) in wireless
+communications systems and standards: A contemporary survey,” IEEE
+Communications Surveys & Tutorials, vol. 23, no. 4, pp. 2711–2752,
+2021.
+[30] J. Wang, X. Kong, Y. Ni, N. Wen, J. Zhang, C. Miao, and H. Liu,
+“From source to solution: Tackling packet losses in large-scale cloud
+gaming systematically and precisely,” in 23rd USENIX Symposium on
+Networked Systems Design and Implementation (NSDI 26).
+Renton,
+WA: USENIX Association, May 2026, pp. 1191–1206.
+[31] A. Li, “RTP payload format for generic forward error correction,”
+Internet Engineering Task Force, Request for Comments 5109, Dec.
+2007.
+[32] M. Rudow, F. Y. Yan, A. Kumar, G. Ananthanarayanan, M. Ellis, and
+K. V. Rashmi, “Tambur: Efficient loss recovery for videoconferencing
+via streaming codes,” in 20th USENIX Symposium on Networked Sys-
+tems Design and Implementation (NSDI 23).
+Boston, MA: USENIX
+Association, Apr. 2023, pp. 953–971.
+[33] H. Hadizadeh and I. V. Bajic, “Burst-loss-resilient packetization of
+video,” IEEE Transactions on Image Processing, vol. 20, no. 11, pp.
+3195–3206, Nov. 2011.
+[34] H. Chen, C. Zhao, M.-T. Sun, and A. Drake, “Adaptive intra-refresh for
+low-delay error-resilient video coding,” Journal of Visual Communica-
+tion and Image Representation, vol. 31, pp. 294–304, Aug. 2015.
+[35] M. Benjak, Y. Samayoa, and J. Ostermann, “Neural network-based
+error concealment for VVC,” in 2021 IEEE International Conference
+on Image Processing (ICIP), 2021, pp. 2114–2118.
+[36] T.-Y. Tung and D. Gunduz, “DeepWiVe: Deep-learning-aided wireless
+video transmission,” IEEE Journal on Selected Areas in Communica-
+tions, vol. 40, no. 9, pp. 2570–2583, 2022.
+[37] V. Sivaraman, P. Karimi, V. Venkatapathy, M. Khani, S. Fouladi,
+M. Alizadeh, F. Durand, and V. Sze, “Gemino: Practical and robust
+neural compression for video conferencing,” in 21st USENIX Symposium
+on Networked Systems Design and Implementation (NSDI 24).
+Santa
+Clara, CA: USENIX Association, Apr. 2024, pp. 569–590.
+[38] Z. Liu, Y. Ma, R. Tafazolli, and Z. Ding, “Resi-VidTok: An efficient
+and decomposed progressive tokenization framework for ultra-low-rate
+and lightweight video transmission,” arXiv preprint arXiv:2510.25002,
+2025.
+[39] D. He, Z. Yang, W. Peng, R. Ma, H. Qin, and Y. Wang, “ELIC:
+Efficient learned image compression with unevenly grouped space-
+channel contextual adaptive coding,” in 2022 IEEE/CVF Conference
+on Computer Vision and Pattern Recognition (CVPR), 2022, pp. 5708–
+5717.
+[40] A. Mercat, M. Viitanen, and J. Vanne, “UVG dataset: 50/120fps 4K
+sequences for video codec analysis and development,” in Proceedings
+of the 11th ACM Multimedia Systems Conference, ser. MMSys ’20. New
+York, NY, USA: Association for Computing Machinery, 2020, pp. 297—
+-302.
+[41] V. Iliopoulos, “The plastic number and its generalized polynomial,”
+Cogent Mathematics, vol. 2, no. 1, p. 1023123, 2015.
+[42] M. Yajnik, S. Moon, J. Kurose, and D. Towsley, “Measurement and mod-
+elling of the temporal dependence in packet loss,” in IEEE INFOCOM
+’99. Conference on Computer Communications. Proceedings. Eighteenth
+Annual Joint Conference of the IEEE Computer and Communications
+Societies. The Future is Now (Cat. No.99CH36320), vol. 1, 1999, pp.
+345–352 vol.1.
+[43] L. Carvalho, J. Angeja, and A. Navarro, “A new packet loss model of
+the IEEE 802.11g wireless network for multimedia communications,”
+IEEE Transactions on Consumer Electronics, vol. 51, no. 3, pp. 809–
+814, 2005.
+[44] B. Milner and A. James, “An analysis of packet loss models for
+distributed speech recognition,” in 8th International Conference on
+Spoken Language Processing (Interspeech 2004), 2004, pp. 1549–1552.

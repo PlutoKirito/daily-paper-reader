@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-31</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-05</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-01 00:46:21 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-05 21:06:01 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精选6篇速读，聚焦高效视觉模型压缩与剪枝，其中3篇进入重点观察。</p>
-<p>最值得关注《CrossMambaTuning》与《Cut-ViT》（均7.0/10），分别从跨层适配与剪枝一致性切入，兼顾性能与效率。</p>
-<p>下一步可围绕移动端推理优化，深入对比这两项技术在真实设备上的收益与部署成本。</p>
+<p>今日聚焦5篇前沿论文，精读2篇高分视频压缩工作，另涉2篇编码与模型量化速读。</p>
+<p>最值得关注的一步式实时视频压缩与基于形变对齐的神经视频编码，均获9.0高分。</p>
+<p>建议读者优先追踪精读中两项视频压缩技术，并留意其与损失鲁棒编码的潜在结合点。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="VoRTeC: Taming Foundation Flow for One-step Real time Video Compression">VoRTeC: Taming Foundation Flow for One-step Real time Video Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Neural Video Compression Based on Deformable Temporal Alignment and Difference-aware Fusion">Neural Video Compression Based on Deformable Temporal Alignment and Difference-aware Fusion</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization">A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CrossMambaTuning: Synergistic Spatial and Cross-Layer Adaptation for Machine Vision Compression">CrossMambaTuning: Synergistic Spatial and Cross-Layer Adaptation for Machine Vision Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Cut-ViT: Task-Specific Model Pruning via Gram Anchoring Subspace Consistency">Cut-ViT: Task-Specific Model Pruning via Gram Anchoring Subspace Consistency</span></li><li><span class="dpr-home-dashboard-paper-title" title="Group-Shared Low-Rank Approximation for Mobile-Efficient Pointwise Convolutions in Large-Kernel CNNs">Group-Shared Low-Rank Approximation for Mobile-Efficient Pointwise Convolutions in Large-Kernel CNNs</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies">ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies</span></li><li><span class="dpr-home-dashboard-paper-title" title="SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness">SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
 </div>
 
