@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-05</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-06</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>3</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-05 21:06:01 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-06 22:28:47 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日聚焦5篇前沿论文，精读2篇高分视频压缩工作，另涉2篇编码与模型量化速读。</p>
-<p>最值得关注的一步式实时视频压缩与基于形变对齐的神经视频编码，均获9.0高分。</p>
-<p>建议读者优先追踪精读中两项视频压缩技术，并留意其与损失鲁棒编码的潜在结合点。</p>
+<p>今日共读6篇论文，精读2篇聚焦视频编码，速读3篇涉及量化与压缩。</p>
+<p>最值得关注：损失弹性视频编码框架ReLViC（9.0/10）及神经视频编码质量评估基准（8.0/10），方向为鲁棒视频传输与客观评测。</p>
+<p>建议普通读者优先精读上述两篇高质量工作，可快速把握视频编码前沿与评测标准。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="VoRTeC: Taming Foundation Flow for One-step Real time Video Compression">VoRTeC: Taming Foundation Flow for One-step Real time Video Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Neural Video Compression Based on Deformable Temporal Alignment and Difference-aware Fusion">Neural Video Compression Based on Deformable Temporal Alignment and Difference-aware Fusion</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization">A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies">ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies</span></li><li><span class="dpr-home-dashboard-paper-title" title="Neural video codecs quality assessment dataset and benchmark">Neural video codecs quality assessment dataset and benchmark</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies">ReLViC: Loss-Resilient Learned Video Coding with Dispersed Packetization and Controllable Packet Dependencies</span></li><li><span class="dpr-home-dashboard-paper-title" title="SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness">SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization">A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tree-Structured Vector Quantization For Efficient And Progressive Image Compression">Tree-Structured Vector Quantization For Efficient And Progressive Image Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Target-Centric Survey of Quantization-Aware Training">A Target-Centric Survey of Quantization-Aware Training</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 </div>
 
