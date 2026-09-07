@@ -1,0 +1,527 @@
+Title: Compressing Streaming Neural Audio Encoders via Latent-Space Distillation
+
+URL Source: https://arxiv.org/pdf/2609.04102v1
+
+Published Time: Fri, 04 Sep 2026 01:22:21 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Compressing Streaming Neural Audio Encoders via Latent-Space Distillation 
+
+Prasanth Yadla ∗, Mohammad Samragh Razlighi ∗, Dongseong Hwang , Mingbin Xu , Yuanyuan Zhang ,
+
+Chung-Cheng Chiu , Yongqiang Wang †, Yuan Liu †, Zhen Huang , Xiaodan Zhuang 
+
+Apple  
+
+> ∗These authors contributed equally to this work. †Work done while at Apple.
+
+System-wide Dictation on Apple devices runs entirely on-device, and the speech it transcribes reaches the foundation model through a tokenizer: an encoder that maps short windows of waveform onto the representation the language model reads. Because that model is sparsely activated under Instruction-Following Pruning, only a small subset of its experts occupies DRAM at any time, so the always-on tokenizer competes for the same memory, and its parameter count bears directly on power and latency. In this work we study how to compress such a tokenizer by distillation, taking as the supervision target neither the discrete token nor the output distribution but the pre-quantizer latent the model actu-ally consumes—the last representation the two token interfaces share. We train only the student encoder to regress the teacher’s per-frame latent under a squared-error objective, with a single affine layer absorbing the teacher–student width mismatch. Because the target precedes both the quantizer and the language-model bridge, one recipe covers both token interfaces we support, and applies both to a tokenizer pretrained alone and to one jointly trained with a language model. At 
+
+2.8× compression the distilled student stays within 1.9% relative WER of its teacher on five of six teacher–student pairs without any fine-tuning, and improves on an independently trained tokenizer of identical capacity by 3.9% relative. 
+
+Keywords: audio tokenization, knowledge distillation, speech recognition, on-device inference 
+
+Correspondence: Prasanth Yadla: p_yadla@apple.com; Mohammad Samragh Razlighi: m_samraghrazlighi@apple.com 
+
+Date: September 4, 2026 
+
+# 1 Introduction 
+
+The encoder described in this work serves as the audio front end for system-wide Dictation, running entirely on-device alongside AFM 3 Core Advanced, Apple’s most powerful on-device foundation model (Apple, 2026). AFM 3 Core Advanced is natively multimodal and built on a sparse (Fedus et al., 2022), 20-billion-parameter architecture that uses Instruction-Following Pruning (IFP) (Hou et al., 2025): the full model is stored in flash memory (NAND) (Alizadeh et al., 2024), and for each prompt a lightweight dense block selects a small subset of input-dependent routed experts. These are reselected periodically during generation, and they combine with a set of always-active shared experts to form a dense model in DRAM, with 1–4 billion parameters active at a time. Because only this small active set occupies DRAM at any time, an always-on audio front end must run within a tight memory and latency budget that it shares with the model it feeds. Compressing the tokenizer enough to fit that budget is the problem we address. Multimodal foundation models that accept speech do so through an audio tokenizer: a learned encoder that converts a waveform into the sequence of representations the language model consumes. In our system the tokenizer emits one vector per 80 ms of audio, and the language model either looks up a quantized index of that vector in its embedding table or reads a projected version of the vector directly. Either way, the tokenizer is on the critical path for every audio frame the model ever sees. On-device deployment imposes a fixed memory and compute budget that the tokenizer and the language model must share. Because the tokenizer encoder is resident for every frame, its footprint constrains the admissible size of the language model directly, and therefore bounds attainable system quality prior to any 1arXiv:2609.04102v1 [cs.SD] 3 Sep 2026 consideration of recognition accuracy. Our full-size encoder consumes a share of this budget that leaves the language model underprovisioned. We consequently seek an encoder at least 2.8× smaller in parameters at no cost in recognition accuracy. Training a compact encoder from scratch is feasible but forgoes available structure. The teacher encoder already realizes a well-conditioned acoustic representation, and, where the tokenizer has been trained jointly with a language model, that language model has adapted to the geometry of the representation. Both considerations favor distillation (Hinton et al., 2015) over independent training. The appropriate distillation target, however, is less immediate for a tokenizer than for a conventional encoder, for two reasons. First, the encoder output reaches the language model only through a quantizer or a bridge projection, so discrete token identities are related to the latent by a non-differentiable arg min ; supervising them would require a relaxation or a straight-through estimator (van den Oord et al., 2018; Mentzer et al., 2023). Second, during tokenizer training the encoder is attached to two auxiliary decoders, one for transcrip-tion and one for audio reconstruction, whose combined parameter count is comparable to or larger than that of the encoder; supervising their outputs would allocate student capacity to components the on-device tok-enizer does not contain. We therefore define the objective on the pre-quantizer latent, the final representation common to both token interfaces and the quantity on which downstream accuracy depends. This target is motivated by construction rather than established by ablation against the alternatives. Concretely, we train the student encoder alone to regress the teacher’s per-frame latent under a squared-error objective, with a single affine layer reconciling the width mismatch between teacher and student. Because the target precedes both the quantizer and the bridge, one recipe applies to either token interface; because it is defined on the encoder, neither decoder is instantiated for the student. We apply the recipe at two points in the teacher’s lifecycle: after the tokenizer has been pretrained in isolation, and after it has been jointly trained with a language model. At 2.8× compression or more, the resulting student degrades by at most 1.9% relative WER against its teacher on five of six teacher–student pairs, in each case without student fine-tuning. These pairs span both distillation stages, both token interfaces, and three joint models. The student additionally outperforms an independently trained tokenizer of identical capacity by 3.9% relative, which separates the contribution of the teacher signal from that of the reduced architecture. Throughout we report relative differences, since an absolute WER gap is uninterpretable without its baseline. Controlled comparisons then characterize the influence of distillation stage, token interface, and teacher quality on student accuracy. 
+
+# 2 Related Work 
+
+Learned discrete latents originate with VQ-VAE (van den Oord et al., 2018), and neural audio codecs carried the idea to waveforms: SoundStream (Zeghidour et al., 2021), EnCodec (Défossez et al., 2022) and DAC (Ku-mar et al., 2023) established residual vector quantization (Lee et al., 2022a) as the standard way to turn a continuous encoder output into a compact sequence of integers, and the token inventories they produce are what allow a language model to consume audio directly, as in AudioLM (Borsos et al., 2023) and Moshi (Dé-fossez et al., 2024). A parallel line derives discrete units for recognition rather than reconstruction, beginning with vq-wav2vec (Baevski et al., 2020a) and w2v-BERT (Chung et al., 2021). Closest to our objective are tokenizers that are themselves distilled: SpeechTokenizer (Zhang et al., 2024) aligns the first residual quan-tization level with HuBERT representations, and RepCodec (Huang et al., 2024) learns a codec over speech representations rather than waveforms. Both distill into the tokenizer latent, as we do, but to change what the tokens mean; we distill to shrink the encoder while holding the token inventory fixed. Both interfaces of Section 3.1 are established practice rather than local conventions. AudioPaLM (Rubenstein et al., 2023) places discrete audio tokens directly in the language model’s vocabulary, which is the discrete-token interface. The continuous interface—a projection from encoder output into the embedding space of an otherwise unmodified language model—is the arrangement of (Fathullah et al., 2023) and of SLAM-ASR (Ma et al., 2024), the latter showing that a linear projector suffices for strong recognition, which is the evidence behind our choice of a linear bridge. Qwen2-Audio (Chu et al., 2024) and SALMONN (Tang et al., 2024) adopt the same continuous interface for general audio-conditioned models. Because both routes are in wide 2filterbank   
+
+> 10 ms
+> subsampler
+> 4×
+> Conformer block Conformer block Conformer block
+> × n
+> post-downsample
+> 2×
+> affine
+> dS → dT
+> Encoder
+> RT×dT
+
+Llat    
+
+> quantizer Q
+> bridge G
+> discrete tokens continuous embeddings Interface
+> language model
+> Figure 1
+
+The tokenizer signal path and the two interfaces it feeds. The encoder is the only part that is distilled and the only part that runs on-device; its wedge narrows to indicate the 8× temporal reduction that turns one filterbank frame per 10 ms into one output vector per 80 ms. The affine layer is drawn with a broken outline because it exists only while distilling. The quantizer and the bridge are inherited from the teacher and are never trained: the discrete route emits integer indices, drawn as separate cells, which the language model looks up in its embedding table, while the continuous route emits a projected vector, drawn as a continuous bar, which the model consumes directly. Both branch after the encoder and read the same pre-quantizer latent, which is why the single objective Llat of Figure 2, attached at that point, serves both. 
+
+use, an objective placed before either is portable beyond our system. Distillation transfers behavior from a large model to a small one by supervising the student on the teacher’s output (Hinton et al., 2015). For sequence models the default expectation is sequence-level distillation on teacher hypotheses (Kim and Rush, 2016), which we do not use: our objective needs no decoding and no labels. Since an encoder emits a representation rather than a decision, the productive variants match intermediate features in the manner of FitNets (Romero et al., 2015; Gou et al., 2021), and in language modeling TinyBERT (Jiao et al., 2020) and MiniLM (Wang et al., 2020) regress hidden states across a width mismatch using exactly the affine layer we adopt in Section 3.3. For speech, DistilHuBERT (Chang et al., 2022) and FitHuBERT (Lee et al., 2022b) compress self-supervised encoders such as wav2vec 2.0 (Baevski et al., 2020b) and HuBERT (Hsu et al., 2021), reporting that hidden-layer matching transfers more signal than output matching alone. Two strands of that literature bear directly on our ablations: the teacher–student capacity gap, where a stronger teacher is not always a better teacher for a small student (Cho and Hariharan, 2019; Mirzadeh et al., 2019), and the separation between fidelity to the teacher and generalization (Stanton et al., 2021), which is the distinction our stage-1 results turn on. The nearest compression baselines combine distillation with structured pruning, as in DPHuBERT (Peng et al., 2023), or train elastic supernets over width and depth, as in LightHuBERT (Wang et al., 2022); PARP (Lai et al., 2021) prunes without distilling. Distil-Whisper (Gandhi et al., 2023) compresses Whis-per (Radford et al., 2022) by copying layers and training on pseudo-labels, which differs from our setting in two respects: it requires transcripts, and it distills the decoder we discard. On the architectural side, Squeeze-former (Kim et al., 2022) and Zipformer (Yao et al., 2024) reallocate capacity across depth and temporal resolution in Conformer encoders, which is the same trade we exploit in Section 3.3. What distinguishes our setting is the output boundary: prior work compresses either a self-supervised encoder with no designated output, or a recognition model end to end using labels, whereas the encoder here has its output fixed by a downstream quantizer or bridge, and needs no labels at all. 
+
+# 3 Distilled Tokenizer 
+
+Our distilled tokenizer is a student encoder trained to reproduce the per-frame latent of a large teacher encoder. It is paired with the interface block that connects that latent to the language model, either a quantizer or a bridge projection. The distinctive feature of our approach is the choice of supervision target: the pre-quantizer latent, rather than the discrete token or the output of any decoder head. 3Audio      
+
+> a
+> Teacher Encoder
+> ET(frozen)
+> width dT
+> Student Encoder
+> ES(trained)
+> width dS
+> A
+> affine
+> Llat
+> quantizer / decoders (not distilled)
+> hTt
+> ˆht
+> Figure 2
+
+Latent-space encoder distillation. The teacher is frozen and only its encoder is used; the quantizer and the stage-0 transcription/reconstruction decoders play no role in the objective. An affine layer A maps the student’s width dS onto the teacher’s dT so the two latents are directly comparable. 
+
+3.1 Tokenizer–Model Interface 
+
+The tokenizer contains an internal encoder block that converts every 80 ms of audio into a vector ht ∈ RdT .Two mechanisms connect that vector to the language model, and the choice affects what must be carried alongside the encoder but not the distillation objective itself. Under the first, the discrete-token interface, the vector is mapped to the index of its nearest codebook entry, rt = arg min c∥ht − ec∥2, and the language model treats that index as an entry in its word embedding table. This keeps the input interface identical to text and adds no trained parameters at the boundary. Under the second, the continuous interface, the vector is instead mapped to the language model’s embedding dimensionality by a linear bridge layer, and the model consumes the result directly, bypassing the word embedding table: 
+
+ut = Wbridge ht, Wbridge ∈ RdLM ×dT . (3.1) The continuous interface avoids the information loss of quantization at the cost of a tokenizer-specific param-eter block that lives logically with the language model and must be carried along whenever the tokenizer is extracted from a joint checkpoint. The two are referred to internally as hard and soft tokens; we use the discrete and continuous naming throughout. Figure 1 shows the branch point. Both interfaces read from the same latent ht. Defining the distillation target on ht, before quantization and before the bridge, therefore makes the recipe interface-agnostic. Astudent trained once can be paired with either boundary. 
+
+3.2 Distillation Objective 
+
+The goal is an on-device student tokenizer that reproduces the behavior of the large teacher tokenizer. We train the encoder portion of the student model only , and we supervise it against the teacher’s per-frame latent rather than against any discrete or probabilistic output. Figure 2 summarizes the arrangement. Let a denote an input utterance, ET the frozen teacher encoder producing hTt ∈ RdT , and ES the student encoder producing hSt ∈ RdS . Because the teacher and student hidden dimensions do not match, the student encoder carries an affine layer A : RdS → RdT , playing the role that the regressor plays in FitNets (Romero 4et al., 2015): 
+
+hTt = ET (a)
+
+> t
+
+, (3.2) 
+
+ˆht = A  ES (a)
+
+> t
+
+. (3.3) The training objective is the masked squared error between the teacher and student latent representations, summed over channels and averaged over frames: 
+
+Llat = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+mtdTX
+
+> i=1
+
+ hTt,i − ˆht,i 
+
+2, (3.4) where mt = 1 on valid frames and 0 on padded ones. The average is taken over all T positions rather than over the valid ones alone; Appendix A.3 gives the batched form and the consequences of that choice. Only ES and A receive gradients, so what distillation produces is an encoder rather than a complete tokenizer. The teacher’s quantizer, and in the stage-0 case its transcription and reconstruction decoders, are never distilled; the student inherits the quantizer (discrete interface) or the bridge (continuous interface) from the teacher-side configuration. This keeps the student encoder small, while the full training graph, teacher decoders included, is several times larger. Matching the continuous latent under Eq. 3.4 sidesteps the question of whether the student’s codebook assignments agree with the teacher’s. That objective is harder to optimize, because it requires differentiating through the arg min of quantization (van den Oord et al., 2018; Mentzer et al., 2023), and it is unnecessary, since downstream accuracy depends on the latent the model actually consumes; Appendix A.4 makes that precise. Because the target is a real-valued vector rather than a distribution over classes, the objective uses no temperature, no softmax and no label smoothing. The squared difference is summed over the dT channels and averaged over frames, so the loss scales with the teacher’s width; with no second term in the objective, that scale is absorbed entirely by the learning rate. 
+
+3.3 Student Encoder 
+
+The student is not a uniformly scaled-down teacher. Both encoders are built from the same block type, a convolution-augmented self-attention block with macaron-style feed-forward pairs (Gulati et al., 2020). The student, however, trades width for depth: it is substantially narrower than every teacher ( dS < d T ), and deeper than the depth-pruned teacher C though not than the deepest. Narrowing is the source of the 2.8×
+
+parameter reduction, since block cost grows quadratically in width but only linearly in depth (Kim et al., 2022; Yao et al., 2024). This trade-off does not incur additional computation. The dominant per-frame terms of a block are the macaron feed-forward pair and the attention projections, which scale as 4dd ff + 4 d2. Counting these, the student’s per-frame multiply–accumulate cost is 2.8× lower than the teacher’s, matching the parameter reduction. The student’s improved quality per parameter is therefore not obtained at the cost of additional depth-driven computation. The affine layer A is the only structural addition the student carries relative to a standalone tokenizer of the same shape, and it accounts for well under 1% of the student encoder. It exists to make Eq. 3.4 well-typed, and is either folded into the downstream interface block or dropped, so it costs nothing at inference. 
+
+3.4 Distillation Stages 
+
+The teacher tokenizer is trained in several stages; two are relevant here. Stage 0 trains the tokenizer with no language model present, so that the tokenizer learns to transcribe the audio and to reconstruct it, via two decoder blocks attached to the encoder output. Stage 1 then trains the tokenizer jointly with the language model, initializing the tokenizer from the stage-0 pretrained checkpoint and the language model from its text-pretrained checkpoint. 5For both stages, the teacher tokenizer can be separated from its surrounding graph and used as the frozen target in Eq. 3.4. The result is a smaller tokenizer that drops into the teacher’s place, at teacher-comparable word error rate and without any fine-tuning of the student (Section 4). The two choices are not equivalent in what they commit to. A stage-0 student targets a language-model-agnostic representation and can subsequently be paired with, or jointly trained against, any downstream model. A stage-1 student targets a representation the language model has already co-adapted to, which removes the risk of a distribution mismatch at the boundary but ties the student to that model. We report both. 
+
+# 4 Experiments and Results 
+
+4.1 Data 
+
+Distillation requires no labels, since the objective in Eq. 3.4 is defined against the teacher’s own activations. Students are therefore trained on unlabeled audio drawn from the same multilingual mixture used for teacher pretraining, with the teacher run in inference mode on each batch. Audio is 16 kHz and the encoder emits one latent per 80 ms. Word error rate is reported on LibriSpeech dev-clean and dev-other (Panayotov et al., 2015), TED-LIUM (Her-nandez et al., 2018), VoxPopuli (Wang et al., 2021), AMI (Carletta et al., 2005), and Earnings-22 (Rio et al., 2022) for stage-0 runs, covering read, prepared, parliamentary, meeting, and accented long-form speech. Stage-1 runs use the evaluation suite configured in the joint training job, which replaces the meeting and long-form sets with the aggregate multilingual evaluators MLS (Pratap et al., 2020), Common Voice (Ardila et al., 2020), and FLEURS (Conneau et al., 2022). The two suites differ, so stage-0 and stage-1 numbers are tabulated separately and should not be compared across tables. 
+
+4.2 Distillation Setup 
+
+All students are trained for 500k steps at a global batch size of 1280 with AdamW, a peak learning rate of 10 −3 under an inverse-square-root schedule with 10k warmup steps, gradient-norm clipping at 1.0, and an exponential moving average of the student weights with decay 0.9999 warmed up over 30k steps; the EMA weights are the ones evaluated. Training is in float32 . The teacher is frozen throughout, enforced by a learner rule marking its parameters non-trainable, and only its encoder is instantiated; the quantizer is loaded but receives no gradient, and the two decoders are excluded entirely. We evaluate three stage-0 teachers, labeled by encoder architecture and token interface: A (Conformer, discrete), B (Transformer, continuous) and C (pruned Conformer, continuous). B replaces A’s Conformer blocks with a standard Transformer stack, and C is a depth-pruned variant of A’s Conformer with half as many blocks, differing from it in training as well as in size. The three encoders therefore differ in capacity as well as architecture, so each teacher defines its own compression ratio against the common student capacity. We further evaluate three stage-1 joint models, J1 –J3 : J1 is built on teacher B, J2 and J3 on teacher C’s pruned Conformer, and J3 restricts which parameters receive gradients during joint training. Each teacher yields one distilled student, giving six teacher–student pairs. Since an encoder produces no transcript by itself, WER is measured through the full recognition stack: the teacher’s 262M-parameter transcription decoder for stage-0 pairs, and the 2.8B-parameter joint language model for stage-1 pairs. The encoder is the only component that differs between a teacher and its student, and no student is fine-tuned. As controls we train two students of the same capacity without a teacher, although both inherit four initialized sub-blocks from a distilled model, which makes them conservative rather than clean from-scratch baselines. 
+
+4.3 Results on Stage-0 Distillation 
+
+Table 1 reports the three stage-0 teacher/student pairs. Across all three, the distilled student tracks its teacher to within 1.9% relative WER: +0 .4% for teacher A, +1 .9% for teacher B and +0 .8% for teacher C (absolute +0 .06 , +0 .22 , +0 .10 WER). On several individual sets the student is better than its teacher: AMI 6Table 1 Stage-0 distillation. Word error rate (%), lower is better. Recognition is performed by the teacher’s 262M-parameter transcription decoder, which is identical across every row, so only the encoder differs. Each teacher/student pair is separated by the distillation step only; students are evaluated without fine-tuning. The last block gives same-capacity students trained independently rather than distilled.                                                                     
+
+> Teacher Model lib-clean lib-other TED-LIUM VoxPopuli AMI Earnings-22 Avg.
+> A (Conformer, discrete) teacher 2.61 6.54 7.25 11.73 30.05 29.63 14.64 distilled 2.73 6.65 7.37 11.65 29.87 29.90 14.70 B (Transformer, continuous) teacher 1.92 4.68 5.64 11.06 23.89 22.87 11.68 distilled 1.91 4.82 6.10 11.05 23.54 23.99 11.90 C (Conformer, continuous) teacher 1.85 4.49 5.79 11.02 24.36 23.98 11.91 distilled 1.88 4.80 5.77 11.09 24.05 24.45 12.01
+> no distillation, same student capacity
+> Student capacity, independently trained 2.05 5.14 6.62 11.19 24.14 25.04 12.36 Student capacity, frozen decoder 1.92 4.81 6.10 11.06 24.08 25.90 12.31
+> Table 2
+
+Stage-1 distillation, where the teacher has been jointly trained with the language model. Word error rate (%), lower is better. Recognition is performed by the 2.8B-parameter joint language model, identical across every row, so only the encoder differs. The evaluation suite is the one configured in the joint training job and differs from Table 1.                                                      
+
+> Joint model Model lib-clean lib-other VoxPopuli MLS CommonVoice FLEURS Avg.
+> J1 (Transformer) teacher 2.04 5.07 8.30 10.50 12.52 6.84 7.54 distilled 2.07 5.11 8.42 10.54 12.98 6.80 7.65 J2 (Conformer) teacher 3.38 8.50 9.09 19.77 21.49 11.76 12.33 distilled 3.27 8.13 8.94 18.82 20.14 10.76 11.68
+> J3 (Conformer, restr. grad.) teacher 2.37 5.45 8.49 14.25 13.75 7.74 8.67 distilled 2.50 5.96 8.64 15.63 14.82 8.46 9.34
+
+in all three pairs and VoxPopuli in two. This is consistent with a small regularization effect from regressing a smoothed target rather than optimizing the recognition objective directly (Yuan et al., 2021). 
+
+4.4 Results on Stage-1 Distillation 
+
+Table 2 repeats the experiment where the teacher has already co-adapted to a language model. The outcome is less uniform than at stage 0. For J1 the student is within 1.5% relative WER. For J2 the student is better 
+
+than its teacher on every test set, 11 .68 vs. 12 .33 average—a 5.3% relative improvement from a model with a third of the encoder parameters. For J3 the student is 7.7% relative worse, the largest degradation we observe anywhere. 
+
+4.5 Ablation Studies 
+
+4.5.1 Distillation vs. Independent Training 
+
+The comparison that motivates the recipe is distillation against training the small tokenizer independently. The last block of Table 1 gives two such controls at identical capacity: a student-capacity model trained independently reaches 12.36 average WER and a frozen-decoder variant 12.31, against 11.90 for the distilled student of the same size. Distillation is worth 3.9% relative at fixed capacity ( 0.46 WER absolute). The gap is widest where a small model is most starved for supervision: Earnings-22 ( 23 .99 vs. 25 .04 ) and TED-LIUM ( 6.10 vs. 6.62 ). It is nearly closed on clean read speech ( 1.91 vs. 2.05 ). Distillation therefore yields robustness on the hard conditions rather than accuracy on the easy ones. 
+
+4.5.2 Effect of Teacher Quality 
+
+Across all six pairs, the strongest predictor of student WER is teacher WER, not the distillation configuration. This runs counter to the capacity-gap findings of (Cho and Hariharan, 2019; Mirzadeh et al., 2019), where a 7stronger teacher can transfer less well to a small student. Teacher A in Table 1 is 25% relative worse than teacher B, and its student inherits nearly the whole gap ( 14 .70 vs. 11 .90 , a difference of 2.80). The relationship holds in stage 1 as well: the weakest teacher (J2, 12.33) yields the weakest stage-1 student (11.68), and the strongest teacher (J1, 7.54) yields the strongest student (7.65). The practical implication is that effort spent improving the teacher transfers almost one-for-one to the student, whereas the distillation step itself is already close to lossless and leaves little to recover. The choice of teacher therefore matters more than the details of the distillation procedure.  
+
+> 4.5.3 Discrete vs. Continuous Interfaces
+
+Because the objective is defined before the quantizer, the same recipe applies unchanged to both interfaces and transfers equally well: +0 .4% relative for the discrete-interface pair against +1 .9% and +0 .8% for the continuous ones. The interface need not be fixed before distilling. The large absolute difference between the discrete- and continuous-interface rows in Table 1 is a property of the teachers, not of the distillation: as noted in Section 3.2, quantization loss is incurred on both sides of the teacher/student comparison and therefore cancels.  
+
+> 4.5.4 Effect of the Distillation Stage
+
+All three stage-0 students degrade by similar amounts ( +0 .4% to +1 .9% relative), whereas the three stage-1 students span −5.3% to +7 .7% . We attribute the wider spread to the teacher having co-adapted to a particular language model: the quality of the latent geometry being regressed then depends on how well that joint training went, which varies across the three joint models in a way stage-0 pretraining does not. Stage 0 is also the more reusable: its student targets a language-model-agnostic representation, whereas a stage-1 student is tied to the model it was distilled under. We therefore default to stage 0, and reach for stage 1 only when the tokenizer must match an already-trained joint model. 
+
+# 5 Conclusion 
+
+In this work, we introduced a latent-space distillation recipe for audio tokenizers, which compresses a tokenizer encoder by 2.8× at teacher-comparable word error rate. We studied the importance of each design choice, and showed that supervising the pre-quantizer latent —the last representation the two token interfaces share—is sufficient to make the recipe portable: the same student serves both the discrete and continuous interfaces, and the same objective applies whether the teacher was pretrained alone or jointly trained with a language model. Across six teacher–student pairs, five of six students fall within 1.9% relative WER of their teacher without fine-tuning, and the distilled student outperforms an independently trained tokenizer of identical capacity by 3.9% relative. Our ablations further show that student quality is governed chiefly by teacher quality, that the token interface does not affect how well distillation transfers, and that stage-0 distillation is both more predictable and less constraining than stage-1. The principal result is one of efficiency. The full-size always-on front end could not be accommodated within the memory and latency budget it must share with the foundation model it feeds; a 2.8× smaller encoder, at correspondingly lower compute, can be, and latent-space distillation is what closed that gap without requiring anything downstream of the encoder to be retrained. At that size the encoder operates on-device as the audio front end for system-wide Dictation, feeding a sparsely activated foundation model under the shared DRAM budget that IFP creates. The production configuration is tuned separately from the research configuration reported here and differs from it in several respects; unless stated otherwise every number in this paper refers to the research configuration, and all word error rates are public-benchmark results measured under our research evaluation protocol. 8References 
+
+Keivan Alizadeh, Iman Mirzadeh, Dmitry Belenko, Karen Khatamifard, Minsik Cho, Carlo C Del Mundo, Mohammad Rastegari, and Mehrdad Farajtabar. Llm in a flash: Efficient large language model inference with limited memory, 2024. URL https://arxiv.org/abs/2312.11514 .Apple. Introducing the third generation of Apple’s foundation models. Apple Machine Learning Research technical report, 2026. Rosana Ardila, Megan Branson, Kelly Davis, Michael Henretty, Michael Kohler, Josh Meyer, Reuben Morais, Lindsay Saunders, Francis M. Tyers, and Gregor Weber. Common voice: A massively-multilingual speech corpus, 2020. URL https://arxiv.org/abs/1912.06670 .Alexei Baevski, Steffen Schneider, and Michael Auli. vq-wav2vec: Self-supervised learning of discrete speech repre-sentations, 2020a. URL https://arxiv.org/abs/1910.05453 .Alexei Baevski, Henry Zhou, Abdelrahman Mohamed, and Michael Auli. wav2vec 2.0: A framework for self-supervised learning of speech representations, 2020b. URL https://arxiv.org/abs/2006.11477 .Zalán Borsos, Raphaël Marinier, Damien Vincent, Eugene Kharitonov, Olivier Pietquin, Matt Sharifi, Dominik Roblek, Olivier Teboul, David Grangier, Marco Tagliasacchi, and Neil Zeghidour. Audiolm: a language modeling approach to audio generation, 2023. URL https://arxiv.org/abs/2209.03143 .Jean Carletta, Simone Ashby, Sebastien Bourban, Mike Flynn, Mael Guillemot, Thomas Hain, Jaroslav Kadlec, Vasilis Karaiskos, Wessel Kraaij, Melissa Kronenthal, Guillaume Lathoud, Mike Lincoln, Agnes Lisowska Masson, Iain Mccowan, Wilfried Post, Dennis Reidsma, and Pierre Wellner. The AMI Meeting Corpus: A Pre-announcement ,pages 28–39. 07 2005. ISBN 978-3-540-32549-9. doi: 10.1007/11677482_3. Heng-Jui Chang, Shu wen Yang, and Hung yi Lee. Distilhubert: Speech representation learning by layer-wise distil-lation of hidden-unit bert, 2022. URL https://arxiv.org/abs/2110.01900 .Jang Hyun Cho and Bharath Hariharan. On the efficacy of knowledge distillation, 2019. URL https://arxiv.org/abs/1910. 01348 .Yunfei Chu, Jin Xu, Qian Yang, Haojie Wei, Xipin Wei, Zhifang Guo, Yichong Leng, Yuanjun Lv, Jinzheng He, Junyang Lin, Chang Zhou, and Jingren Zhou. Qwen2-audio technical report, 2024. URL https://arxiv.org/abs/2407. 10759 .Yu-An Chung, Yu Zhang, Wei Han, Chung-Cheng Chiu, James Qin, Ruoming Pang, and Yonghui Wu. W2v-bert: Combining contrastive learning and masked language modeling for self-supervised speech pre-training, 2021. URL 
+
+> https://arxiv.org/abs/2108.06209
+
+.Alexis Conneau, Min Ma, Simran Khanuja, Yu Zhang, Vera Axelrod, Siddharth Dalmia, Jason Riesa, Clara Rivera, and Ankur Bapna. Fleurs: Few-shot learning evaluation of universal representations of speech, 2022. URL https: //arxiv.org/abs/2205.12446 .Alexandre Défossez, Jade Copet, Gabriel Synnaeve, and Yossi Adi. High fidelity neural audio compression, 2022. URL 
+
+> https://arxiv.org/abs/2210.13438
+
+.Alexandre Défossez, Laurent Mazaré, Manu Orsini, Amélie Royer, Patrick Pérez, Hervé Jégou, Edouard Grave, and Neil Zeghidour. Moshi: a speech-text foundation model for real-time dialogue, 2024. URL https://arxiv.org/abs/2410. 00037 .Yassir Fathullah, Chunyang Wu, Egor Lakomkin, Junteng Jia, Yuan Shangguan, Ke Li, Jinxi Guo, Wenhan Xiong, Jay Mahadeokar, Ozlem Kalinli, Christian Fuegen, and Mike Seltzer. Prompting large language models with speech recognition abilities, 2023. URL https://arxiv.org/abs/2307.11795 .William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity, 2022. URL https://arxiv.org/abs/2101.03961 .Sanchit Gandhi, Patrick von Platen, and Alexander M. Rush. Distil-whisper: Robust knowledge distillation via large-scale pseudo labelling, 2023. URL https://arxiv.org/abs/2311.00430 .Jianping Gou, Baosheng Yu, Stephen J. Maybank, and Dacheng Tao. Knowledge distillation: A survey. International Journal of Computer Vision , 129(6):1789–1819, March 2021. ISSN 1573-1405. doi: 10.1007/s11263-021-01453-z. URL http://dx.doi.org/10.1007/s11263-021-01453-z .
+
+9Anmol Gulati, James Qin, Chung-Cheng Chiu, Niki Parmar, Yu Zhang, Jiahui Yu, Wei Han, Shibo Wang, Zhengdong Zhang, Yonghui Wu, and Ruoming Pang. Conformer: Convolution-augmented transformer for speech recognition, 2020. URL https://arxiv.org/abs/2005.08100 .François Hernandez, Vincent Nguyen, Sahar Ghannay, Natalia Tomashenko, and Yannick Estève. TED-LIUM 3: Twice as Much Data and Corpus Repartition for Experiments on Speaker Adaptation , page 198–208. Springer International Publishing, 2018. ISBN 9783319995793. doi: 10.1007/978-3-319-99579-3_21. URL http://dx.doi.org/10. 1007/978-3-319-99579-3_21 .Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network, 2015. URL https: //arxiv.org/abs/1503.02531 .Bairu Hou, Qibin Chen, Jianyu Wang, Guoli Yin, Chong Wang, Nan Du, Ruoming Pang, Shiyu Chang, and Tao Lei. Instruction-following pruning for large language models, 2025. URL https://arxiv.org/abs/2501.02086 .Wei-Ning Hsu, Benjamin Bolte, Yao-Hung Hubert Tsai, Kushal Lakhotia, Ruslan Salakhutdinov, and Abdelrahman Mohamed. Hubert: Self-supervised speech representation learning by masked prediction of hidden units, 2021. URL 
+
+> https://arxiv.org/abs/2106.07447
+
+.Zhichao Huang, Chutong Meng, and Tom Ko. Repcodec: A speech representation codec for speech tokenization, 2024. URL https://arxiv.org/abs/2309.00169 .Xiaoqi Jiao, Yichun Yin, Lifeng Shang, Xin Jiang, Xiao Chen, Linlin Li, Fang Wang, and Qun Liu. Tinybert: Distilling bert for natural language understanding, 2020. URL https://arxiv.org/abs/1909.10351 .Sehoon Kim, Amir Gholami, Albert Shaw, Nicholas Lee, Karttikeya Mangalam, Jitendra Malik, Michael W. Mahoney, and Kurt Keutzer. Squeezeformer: An efficient transformer for automatic speech recognition, 2022. URL https: //arxiv.org/abs/2206.00888 .Yoon Kim and Alexander M. Rush. Sequence-level knowledge distillation, 2016. URL https://arxiv.org/abs/1606.07947 .Rithesh Kumar, Prem Seetharaman, Alejandro Luebs, Ishaan Kumar, and Kundan Kumar. High-fidelity audio compression with improved rvqgan, 2023. URL https://arxiv.org/abs/2306.06546 .Cheng-I Jeff Lai, Yang Zhang, Alexander H. Liu, Shiyu Chang, Yi-Lun Liao, Yung-Sung Chuang, Kaizhi Qian, Sameer Khurana, David Cox, and James Glass. Parp: Prune, adjust and re-prune for self-supervised speech recognition, 2021. URL https://arxiv.org/abs/2106.05933 .Doyup Lee, Chiheon Kim, Saehoon Kim, Minsu Cho, and Wook-Shin Han. Autoregressive image generation using residual quantization, 2022a. URL https://arxiv.org/abs/2203.01941 .Yeonghyeon Lee, Kangwook Jang, Jahyun Goo, Youngmoon Jung, and Hoirin Kim. Fithubert: Going thinner and deeper for knowledge distillation of speech self-supervised learning, 2022b. URL https://arxiv.org/abs/2207.00555 .Ziyang Ma, Guanrou Yang, Yifan Yang, Zhifu Gao, Jiaming Wang, Zhihao Du, Fan Yu, Qian Chen, Siqi Zheng, Shiliang Zhang, and Xie Chen. An embarrassingly simple approach for llm with strong asr capacity, 2024. URL 
+
+> https://arxiv.org/abs/2402.08846
+
+.Fabian Mentzer, David Minnen, Eirikur Agustsson, and Michael Tschannen. Finite scalar quantization: Vq-vae made simple, 2023. URL https://arxiv.org/abs/2309.15505 .Seyed-Iman Mirzadeh, Mehrdad Farajtabar, Ang Li, Nir Levine, Akihiro Matsukawa, and Hassan Ghasemzadeh. Improved knowledge distillation via teacher assistant, 2019. URL https://arxiv.org/abs/1902.03393 .Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur. Librispeech: An asr corpus based on public domain audio books. In 2015 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) ,pages 5206–5210, 2015. doi: 10.1109/ICASSP.2015.7178964. Yifan Peng, Yui Sudo, Shakeel Muhammad, and Shinji Watanabe. Dphubert: Joint distillation and pruning of self-supervised speech models, 2023. URL https://arxiv.org/abs/2305.17651 .Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, and Ronan Collobert. Mls: A large-scale multilingual dataset for speech research. In Interspeech 2020 , interspeech_2020, page 2757–2761. ISCA, October 2020. doi: 10.21437/interspeech.2020-2826. URL http://dx.doi.org/10.21437/Interspeech.2020-2826 .Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine McLeavey, and Ilya Sutskever. Robust speech recognition via large-scale weak supervision, 2022. URL https://arxiv.org/abs/2212.04356 .
+
+10 Miguel Del Rio, Peter Ha, Quinten McNamara, Corey Miller, and Shipra Chandra. Earnings-22: A practical bench-mark for accents in the wild, 2022. URL https://arxiv.org/abs/2203.15591 .Adriana Romero, Nicolas Ballas, Samira Ebrahimi Kahou, Antoine Chassang, Carlo Gatta, and Yoshua Bengio. Fitnets: Hints for thin deep nets, 2015. URL https://arxiv.org/abs/1412.6550 .Paul K. Rubenstein, Chulayuth Asawaroengchai, Duc Dung Nguyen, Ankur Bapna, Zalán Borsos, Félix de Chau-mont Quitry, Peter Chen, Dalia El Badawy, Wei Han, Eugene Kharitonov, Hannah Muckenhirn, Dirk Padfield, James Qin, Danny Rozenberg, Tara Sainath, Johan Schalkwyk, Matt Sharifi, Michelle Tadmor Ramanovich, Marco Tagliasacchi, Alexandru Tudor, Mihajlo Velimirović, Damien Vincent, Jiahui Yu, Yongqiang Wang, Vicky Zayats, Neil Zeghidour, Yu Zhang, Zhishuai Zhang, Lukas Zilka, and Christian Frank. Audiopalm: A large language model that can speak and listen, 2023. URL https://arxiv.org/abs/2306.12925 .Samuel Stanton, Pavel Izmailov, Polina Kirichenko, Alexander A. Alemi, and Andrew Gordon Wilson. Does knowledge distillation really work?, 2021. URL https://arxiv.org/abs/2106.05945 .Changli Tang, Wenyi Yu, Guangzhi Sun, Xianzhao Chen, Tian Tan, Wei Li, Lu Lu, Zejun Ma, and Chao Zhang. Salmonn: Towards generic hearing abilities for large language models, 2024. URL https://arxiv.org/abs/2310.13289 .Aaron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. Neural discrete representation learning, 2018. URL 
+
+> https://arxiv.org/abs/1711.00937
+
+.Changhan Wang, Morgane Rivière, Ann Lee, Anne Wu, Chaitanya Talnikar, Daniel Haziza, Mary Williamson, Juan Pino, and Emmanuel Dupoux. Voxpopuli: A large-scale multilingual speech corpus for representation learning, semi-supervised learning and interpretation, 2021. URL https://arxiv.org/abs/2101.00390 .Rui Wang, Qibing Bai, Junyi Ao, Long Zhou, Zhixiang Xiong, Zhihua Wei, Yu Zhang, Tom Ko, and Haizhou Li. Lighthubert: Lightweight and configurable speech representation learning with once-for-all hidden-unit bert, 2022. URL https://arxiv.org/abs/2203.15610 .Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and Ming Zhou. Minilm: Deep self-attention distillation for task-agnostic compression of pre-trained transformers, 2020. URL https://arxiv.org/abs/2002.10957 .Zengwei Yao, Liyong Guo, Xiaoyu Yang, Wei Kang, Fangjun Kuang, Yifan Yang, Zengrui Jin, Long Lin, and Daniel Povey. Zipformer: A faster and better encoder for automatic speech recognition, 2024. URL https://arxiv.org/abs/2310. 11230 .Li Yuan, Francis E. H. Tay, Guilin Li, Tao Wang, and Jiashi Feng. Revisiting knowledge distillation via label smoothing regularization, 2021. URL https://arxiv.org/abs/1909.11723 .Neil Zeghidour, Alejandro Luebs, Ahmed Omran, Jan Skoglund, and Marco Tagliasacchi. Soundstream: An end-to-end neural audio codec, 2021. URL https://arxiv.org/abs/2107.03312 .Xin Zhang, Dong Zhang, Shimin Li, Yaqian Zhou, and Xipeng Qiu. Speechtokenizer: Unified speech tokenizer for speech large language models, 2024. URL https://arxiv.org/abs/2308.16692 .
+
+# A Formal Description of the Objective 
+
+Section 3.2 states the objective in words. This appendix states it formally, including the reduction order and the masking convention that a reproduction needs. 
+
+A.1 Notation A.2 The encoder as a composition of operators 
+
+Both encoders factor into the same stages. Naming them is worthwhile because the distillation objective attaches at a specific point in the composition. Given filterbank features X ∈ RL×dfb computed at one frame per 10 ms, we apply a causal convolutional subsampler S that reduces the frame rate by 4×, a causal Conformer stack C with speech-context attention, a post-downsample D that reduces the frame rate by a further 2×, and—in the student only—an affine layer 
+
+A. The student encoder is 
+
+ES (X, s) = A D(CnS (S(X), s))  ∈ RT ×dT , T = L 
+
+> 8
+
+, (A.1) 11 Symbol Meaning Domain 
+
+B batch size 1,280 
+
+T output frames per example (one per 80 ms) variable 
+
+L input filterbank frames (one per 10 ms) L = 8 Tdfb filterbank feature dimension 80 
+
+dS student internal Conformer width dS < d T
+
+dT teacher output width, and the interface width —
+
+dLM language-model embedding width —
+
+X filterbank features for one example RL×dfb 
+
+s per-frame segment identifiers ( 0 = padding) ZB×T
+
+Y teacher pre-quantizer latents RB×T ×dT
+
+bY student pre-quantizer latents RB×T ×dT
+
+M validity mask {0, 1}B×T
+
+ET , ES teacher and student encoders —
+
+θS student encoder parameters — 
+
+> Table 3
+
+Notation. Widths are given symbolically; only their ordering and the 2.8× parameter ratio are reported (Section 3.3). 
+
+and the teacher encoder is the same composition without the affine layer, 
+
+ET (X, s) = D(CnT (S(X), s)) ∈ RT ×dT . (A.2) The 8× total temporal reduction is what makes one output vector correspond to 80 ms of audio. The two stacks differ in both depth and width. The student is substantially narrower than every teacher we distill from ( dS < d T ); its depth lies between that of the deepest teacher and that of the depth-pruned one, so the relation between nS and nT is not uniform across pairs. Downstream, the latent reaches the language model by one of two routes, 
+
+Q E(X, s) ∈ ZT
+
+| {z }
+
+> discrete
+
+or G E(X, s) ∈ RT ×dLM 
+
+| {z }
+
+> continuous
+
+, (A.3) where Q is the vector quantizer and G the linear bridge projection. Equation A.3 is the whole argument for the choice of target: both routes take E(X, s) as their only argument, so an objective on E’s output is simultaneously an objective for both. 
+
+A.3 The masked objective 
+
+Write Y = ET (X, s) and bY = ES (X, s), batched to RB×T ×dT . Note that bY already carries the teacher’s width: the affine layer lives inside ES , so the two latents are directly comparable with no external projection. Padding is handled through the segment identifiers rather than a separate padding tensor. The validity mask is 
+
+Mb,t =
+
+(
+
+0 if sb,t = 0 (padded frame ),
+
+1 otherwise , (A.4) and the objective is a masked squared-error latent-matching loss, 
+
+Llat (θS ) = 1
+
+BT 
+
+> B
+
+X
+
+> b=1
+> T
+
+X
+
+> t=1
+> dT
+
+X
+
+> k=1
+
+
+
+Mb,t 
+
+ Yb,t,k − bYb,t,k 
+
+2
+
+, (A.5) minimized over θS only, with the teacher held fixed. In words: take the per-frame difference between teacher and student latents, zero it on padded frames, square it, sum over the dT channels, and average over all BT 
+
+positions. Two properties of Equation A.5 are load-bearing and easy to get wrong when reimplementing. 12 The channel reduction is a sum rather than a mean: the squared difference is summed over the dT channels, so the loss scales with the teacher’s width. With no other term in the objective that scale is absorbed entirely by the learning rate, but it matters if Equation A.5 is ever compared across widths or combined with a second term at a fixed weight. A multi-term successor would be better served by normalizing each term’s gradient to a common scale, as the loss balancer of Défossez et al. (2022) does, so that the weights denote gradient fractions rather than inheriting the arbitrary magnitude of each loss. The position reduction, in turn, divides by BT rather than by P 
+
+> b,t
+
+Mb,t , so padded positions contribute exactly zero to the numerator yet are still counted in the denominator. Writing ρ =  P  
+
+> b,t
+
+Mb,t 
+
+/BT for the fraction of valid frames in a batch, 
+
+Llat = ρ · L norm lat , Lnorm lat = 1
+
+P 
+
+> b,t
+
+Mb,t 
+
+X
+
+> b,t,k
+
+
+
+Mb,t 
+
+ Yb,t,k − bYb,t,k 
+
+2
+
+, (A.6) so the gradient is scaled by a data-dependent factor ρ that varies with the batch’s padding ratio. Under a fixed batching strategy this is a constant and harmless; under variable-length bucketing it mildly upweights densely packed batches. We did not isolate the effect of using Lnorm lat instead. An ℓ1 variant, obtained by replacing the square in Equation A.5 with an absolute value, is a reasonable alternative: it is less sensitive to occasional large per-frame deviations, which in a distillation setting are often frames the teacher itself is uncertain about. All results reported here use Equation A.5; we did not run the comparison. 
+
+A.4 Why matching the latent suffices 
+
+The portability claim can be stated precisely. Let f denote any downstream map applied to the latent—either 
+
+Q followed by an embedding lookup, or G followed by the language model. Suppose the student matches the teacher to within ε at some frame, ∥ˆh − h∥2 ≤ ε. Two regimes follow, one for each interface. The continuous interface degrades smoothly and boundedly. Because the bridge is linear, 
+
+G(ˆh) − G (h) 2 = Wbridge (ˆh − h) 2 ≤ ∥ Wbridge ∥2 ε, (A.7) with ∥·∥ 2 the spectral norm. The perturbation entering the language model is therefore controlled by the latent error, uniformly over inputs. Discrete tokens, by contrast, are exactly invariant below a margin. Letting c⋆ denote the codebook index nearest to h, define the margin 
+
+γ(h) = min 
+
+> c̸=c⋆
+
+ ∥h − ec∥2 − ∥ h − ec⋆ ∥2
+
+ > 0. (A.8) For any c we have ∥ˆh − ec∥2 ≥ ∥ h − ec∥2 − ε and ∥ˆh − ec⋆ ∥2 ≤ ∥ h − ec⋆ ∥2 + ε, so ˆh still selects c⋆ whenever 
+
+∥h − ec∥2 − ε > ∥h − ec⋆ ∥2 + ε for every c̸ = c⋆, that is whenever 
+
+ε < 12 γ(h). (A.9) Below that threshold the emitted token is identical , and the language model cannot distinguish student from teacher at all. Equations A.7 and A.9 are sufficient conditions, not an account of the measured differences: ε is not uniform across frames, and Equation A.9 fails on frames that sit near a Voronoi boundary—precisely the frames where the teacher’s own assignment is least stable. They do explain why one objective placed on h serves both interfaces without modification, and why neither interface transfers systematically better than the other (Section 4). 
+
+A.5 The affine layer 
+
+The student’s Conformer is narrower than the teacher’s. A single affine map closes the gap: 
+
+A(H) = HW + b, W ∈ RdS ×dT , b ∈ RdT , (A.10) 13 appended inside the student encoder so that its declared output width is the teacher’s. The construction is conditional: A exists only if dS̸ = dT , in which case the student’s advertised output width is overwritten with dT . If the widths already match, no affine layer is created and Equation A.5 compares outputs directly. The affine layer costs dS · dT parameters, well under 1% of the student encoder. It also absorbs a change of basis: because Equation A.5 compares in the teacher’s coordinate system, without A the student’s final Conformer layer would have to both compute features and change basis. 
+
+A.6 What is frozen and what is discarded 
+
+The teacher is frozen by an explicit learner rule marking its parameters non-updatable. It is additionally invoked with training mode disabled, so its normalization uses inference statistics and no dropout is applied, and its gradients are never computed. Its quantizer is retained but unused during training: it is loaded, because the evaluation path needs it when the pre-quantizer flag is not set, but it receives no gradient. The student’s decoders are discarded before training begins, leaving ES and nothing else in the student graph. This is deliberate. The teacher’s transcription decoder ( 262 M) and its reconstruction decoder are together larger than its encoder, neither runs on-device, and every student parameter spent reproducing them is a parameter not spent on the encoder that ships. 
+
+# B Training Configuration 
+
+The trainer is cloned from the teacher’s own experiment configuration with the model and learner replaced, so the data pipeline, sharding, and evaluation harness are inherited rather than reimplemented. 
+
+Setting Value 
+
+Optimizer AdamW Peak learning rate ηmax 1 × 10 −3
+
+Schedule inverse-square-root decay, scale = ηmax 
+
+√Twarm 
+
+Warmup steps Twarm 10 ,000 
+
+Gradient clipping global norm 1.0
+
+EMA decay 0.9999 , warmed up over 30 ,000 steps Batch size B 1,280 
+
+Max steps 500 ,000 
+
+Precision float32 
+
+Sample-rate constraint teacher and student must match (asserted)  
+
+> Table 4
+
+Distillation training configuration, identical for every run reported. 
+
+An exponential moving average of the student weights is maintained and is what downstream consumers load. Evaluating the raw weights rather than the EMA weights will not reproduce the reported numbers. 
+
+# C The Recipe in Full 
+
+Algorithm 1 states the procedure end to end. Changing the teacher requires editing exactly two values: the teacher configuration name and the teacher checkpoint path. That is the property which made the recipe reusable across six teacher–student pairs and three joint models. 
+
+> Apple and the Apple logo are trademarks of Apple Inc., registered in the U.S. and other countries and regions.
+
+14 Algorithm 1 Latent-space encoder distillation. 
+
+Require: teacher configuration and checkpoint KT ; student configuration; steps N ; batch size B; EMA decay β
+
+Ensure: distilled student encoder ES
+
+Setup  
+
+> 1:
+
+if KT is a joint tokenizer +language-model checkpoint then  
+
+> 2:
+
+KT ← ExtractTokenizer (KT ) ▷ scope surgery  
+
+> 3:
+
+end if  
+
+> 4:
+
+instantiate ET ; load KT into the teacher scope  
+
+> 5:
+
+set the pre-quantizer flag on ET ▷ read the latent of Eq. A.3  
+
+> 6:
+
+mark every teacher parameter NoUpdate ; disable training mode ▷ App. A.6  
+
+> 7:
+
+instantiate ES ; empty its decoder list  
+
+> 8:
+
+if dS̸ = dT then  
+
+> 9:
+
+append A : RdS → RdT inside ES ▷ Eq. A.10  
+
+> 10:
+
+end if  
+
+> 11:
+
+¯θS ← θS ▷ EMA accumulator 
+
+Training  
+
+> 12:
+
+for i = 1 to N do  
+
+> 13:
+
+draw an unlabeled batch (X, s) of size B 
+
+> 14:
+
+Y ← E T (X, s) ▷ frozen; no gradient  
+
+> 15:
+
+bY ← E S (X, s) 
+
+> 16:
+
+Mb,t ← 1[sb,t ̸ = 0] ▷ Eq. A.4  
+
+> 17:
+
+Llat ← 1
+
+BT 
+
+P
+
+> b,t,k
+
+ Mb,t (Yb,t,k − bYb,t,k )2 ▷ Eq. A.5  
+
+> 18:
+
+g ← ClipGlobalNorm  ∇θS Llat , 1.0 
+
+> 19:
+
+θS ← AdamW (θS , g, η i) ▷ η i per Tab. 4  
+
+> 20:
+
+¯θS ← β ¯θS + (1 − β)θS 
+
+> 21:
+
+end for  
+
+> 22:
+
+return ¯θS ▷ the EMA weights, not θS
+
+15
