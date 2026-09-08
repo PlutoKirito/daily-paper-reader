@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-07</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-08</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 11 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>10</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-07 23:33:37 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-08 22:21:56 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共读11篇论文，精读1篇、速读10篇，核心聚焦神经表示与图像/视频压缩。最值得关注的是《Scalable Neural Video Representation Compression》（9.0分），其可扩展视频神经表示压缩思路值得深读；图像压缩方向可结合树结构向量量化与多尺度表示两篇参照。下一步建议从精读论文入手，关注其编码效率与可扩展性设计，再对照速读列表中的压缩方法。</p>
+<p>今日速读5篇论文，覆盖量化理论、音频编码与视频生成训练，暂无精读深度分析。</p>
+<p>最值得关注的是两篇7.0分工作：统一率失真视角连接标量/乘积/向量量化，以及用潜空间蒸馏压缩流式神经音频编码器。</p>
+<p>建议普通读者优先浏览上述两篇的摘要与结论，理解量化本质与音频压缩效率权衡即可。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Scalable Neural Video Representation Compression">Scalable Neural Video Representation Compression</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">10 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Tree-Structured Vector Quantization For Efficient And Progressive Image Compression">Tree-Structured Vector Quantization For Efficient And Progressive Image Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Multi-scale Image Representation Compression">Multi-scale Image Representation Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Reward-guided Fine-Tuning of One-Step Generative Models via Wasserstein Gradient Flow">Reward-guided Fine-Tuning of One-Step Generative Models via Wasserstein Gradient Flow</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization">A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="Compressing Streaming Neural Audio Encoders via Latent-Space Distillation">Compressing Streaming Neural Audio Encoders via Latent-Space Distillation</span></li><li><span class="dpr-home-dashboard-paper-title" title="DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation">DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>6</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span></div>
 </section>
 </div>
 
