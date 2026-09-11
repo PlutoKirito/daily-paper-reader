@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-10</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-11</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 7 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-10 21:43:31 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-11 21:35:08 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天速读 5 篇论文、精读 0 篇，集中在压缩与量化方向，最高分 6.0。</p>
-<p>其中《A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization》和《DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation》同为 6.0，前者偏理论框架、后者偏视频生成落地，最值得一看。</p>
-<p>普通读者可先从统一率失真视角那篇建立&quot;量化取舍&quot;的直觉，再看视频生成量化如何把方法用起来。</p>
+<p>今日共生成 7 篇推荐（精读 0 篇，速读 7 篇）</p>
+<p>速读：《ToPO: Token-Conditioned Preference Routing for Attention-Based Latent Diffusion Models》（6.0/10）, 《DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation》（6.0/10）, 《Compressing Streaming Neural Audio Encoders via Latent-Space Distillation》（6.0/10）</p>
+<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization">A Unified Rate-Distortion Perspective on Vector, Product, and Scalar Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation">DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Multi-scale Image Representation Compression">Multi-scale Image Representation Compression</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ToPO: Token-Conditioned Preference Routing for Attention-Based Latent Diffusion Models">ToPO: Token-Conditioned Preference Routing for Attention-Based Latent Diffusion Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation">DSAQuant: Denoising-Stage-Aligned Quantization-Aware Training for Video Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Compressing Streaming Neural Audio Encoders via Latent-Space Distillation">Compressing Streaming Neural Audio Encoders via Latent-Space Distillation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>5</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
