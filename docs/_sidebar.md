@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-09-12 <!--dpr-date:20260912-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/12/2609.05081v1-deep-microcompression-structured-pruning-and-bit-packed-quantization-for-microcontrollers" data-sidebar-item="{&quot;title&quot;: &quot;Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.05081v1-deep-microcompression-structured-pruning-and-bit-packed-quantization-for-microcontrollers&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;结构化剪枝与量化感知训练的轻量化压缩&quot;}">Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers</a>
   * 2026-09-11 <!--dpr-date:20260911-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/11/2609.03688v1-topo-token-conditioned-preference-routing-for-attention-based-latent-diffusion-models" data-sidebar-item="{&quot;title&quot;: &quot;ToPO: Token-Conditioned Preference Routing for Attention-Based Latent Diffusion Models&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.03688v1-topo-token-conditioned-preference-routing-for-attention-based-latent-diffusion-models&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;面向注意力潜在扩散模型的偏好优化&quot;}">ToPO: Token-Conditioned Preference Routing for Attention-Based Latent Diffusion Models</a>
