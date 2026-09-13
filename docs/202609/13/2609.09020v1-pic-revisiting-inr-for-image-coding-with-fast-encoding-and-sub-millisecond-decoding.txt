@@ -1,0 +1,446 @@
+Title: PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding
+
+URL Source: https://arxiv.org/pdf/2609.09020v1
+
+Published Time: Wed, 09 Sep 2026 04:08:40 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding 
+
+Xiang Liu 1,3⋆ , Jinxiang Wang 1⋆, Bin Chen 2⋆⋆ , Zimo Liu 3 , Mingyao Hong 3 , Jiawei Li 4 , Yaowei Wang 2,3 , and Shu-tao Xia 1,3 
+
+> 1
+
+Tsinghua University, China  
+
+> 2
+
+Harbin Institute of Technology, Shenzhen, China  
+
+> 3
+
+Peng Cheng Laboratory, China  
+
+> 4
+
+Joy Future Academy, JD Group, China 
+
+Abstract. Implicit neural representation (INR) has achieved remark-able progress in novel view synthesis and image/video coding in recent years. Compared to conventional end-to-end image codecs, INR-based compressors demonstrate significant advantages in decoding complexity. However, their practical application has been hindered by the inferior encoding speed and underutilized decoding efficiency. In this work, we propose a feedforward INR image coding architecture, Practical INR Image Codec (PIC), that computes all the necessary information for INR network in a single forward pass, achieving an encoding speed of 20 FPS. Additionally, we implement a highly optimized decoder that reaches 2000 FPS decoding speed, significantly surpassing JPEG’s per-formance at comparable rate-distortion (RD) performance. To the best of our knowledge, this work presents the first learning-based image codec that simultaneously outperforms or is comparable with JPEG in both RD performance and decoding speed while maintaining practical encod-ing speed. Code is available at https://github.com/actcwlf/PIC .
+
+Keywords: Image Compression · Implicit Neural Representation · Feed Forward Network 
+
+1 Introduction 
+
+Image compression has long been a fundamental topic in signal processing and remains a critical technology underpinning more complex systems such as video coding. With the rapid expansion of Internet data, industrial data, AIGC data, and other forms of data, compression technology remains a critically important research area. Image compression technology has undergone significant evolu-tion, encompassing traditional encoders such as JPEG [48], end-to-end mod-els [1, 2], and recently emerged compression methods utilizing implicit neural representation (INR) [12, 13, 25] or Gaussian Splatting (GS) [21, 27, 54]. Each  
+
+> ⋆
+
+Equal contribution.  
+
+> ⋆⋆
+
+Corresponding author. arXiv:2609.09020v1 [cs.CV] 8 Sep 2026 2 X. Liu et al. 
+
+of these approaches demonstrates distinct strengths and limitations in differ-ent aspects of image compression tasks. Traditional image encoders typically leverage human understanding of signals and visual perception, employing pre-defined rules to discard visually insignificant information for compression. For instance, JPEG exploits the human eye’s reduced sensitivity to certain high-frequency components by decomposing the image into different frequencies using Discrete Cosine Transform (DCT) and selectively retaining the most perceptu-ally critical parts, thereby achieving highly efficient compression. Additionally, its codec design strikes a balance between rate-distortion (RD) performance and encoding/decoding speed. Subsequent traditional encoders further improved RD performance by adopting more sophisticated transformation techniques, such as wavelet transforms [42] and predictive coding [4], although at the cost of in-creased computational complexity and slower processing speeds. Classic end-to-end image compression algorithms [1,2] conceptually follow the transform coding paradigm used in traditional image codecs. The key difference is that traditional compressors incorporate numerous manually designed trans-forming rules, whereas the end-to-end approach employs data-driven method to learn the transformation. Taking advantage of the powerful learning capabil-ity of neural networks, this data-driven nonlinear transformation can effectively model the image distribution prior to the data, thereby achieving RD perfor-mance that surpasses traditional image codecs [16, 20]. Furthermore, significant progress has been made based on generative models [34], particularly in low bit-rate compression scenarios oriented to perceptual metrics [51]. More recently, representation-based methods—such as INRs [12] and 3D Gaussian Splatting [21]—have emerged as promising alternatives. Their key advantage lies in extremely low decoding complexity [25, 31], often achieving orders-of-magnitude speedups over neural codecs [54]. Some variants also rival traditional codecs in rate-distortion performance [22]. However, these gains come at the cost of extremely slow encoding, often requiring minutes or hours to train a model per image, severely limiting real-world deployment. In this paper, we propose a new image compression paradigm, Practical INR Image Codec (PIC), which bridges the gap between these paradigms. PIC di-rectly produces a low-bit-rate neural representation in a single forward pass through an end-to-end trained network, combining fast encoding, ultra-fast de-coding, and competitive rate-distortion performance. Tab. 1 demonstrates the main differences among three paradigms. The primary contributions of this work are summarized below: 
+
+– We propose a novel image coding paradigm PIC that directly generates low-bit-rate neural representation models through neural networks, simul-taneously achieving fast encoding, ultra-fast decoding, and comparative RD performance. 
+
+– We have implemented an optimized decoder that fully translates the low-complexity characteristics of neural representation models into practical high decoding speeds. PIC 3
+
+Table 1: Comparision of different paradigm. E2E and RM are abbreviation for end-to-end and representation model respectively. Feedforward means the method is able to encode an image in one forward pass, instead of a full training process. RD represents rate distortion performance. We selected three representative methods, Factorized [1], Hyperprior [2], COIN [12], Cool-Chic v4.2 (fast) [22,25,26] and GaussianImage [54], for comparison. BD-Rate are calcualted relative to JPEG on Kodak dataset. Other results are representative value from the same experiment. Due to the lack of a fair FLOPs calculation method, the complexity of GaussianImage is left blank. Detailed numerical results of all metrics are shown in Fig. 3 and Fig. 4. Model Paradigm Feedforward BD-Rate ↓ Enc.[ms] ↓ Dec.[ms] ↓ FLOPs/pixels ↓                                       
+
+> Factorized E2E √-47.34% 24.3 35.7 42.175K Hyperprior E2E √-57.58% 141 169 45.546K COIN RM 25.53% 1.40 ×10 63.18 29.057K Cool-Chic v4.2 RM -64.86% 1.77 ×10 5216 1.303K GaussianImage RM 36.55% 6.99 ×10 50.439 -PIC (Our) E2E RM √-12.78% 28.6 0.418 1.074K
+
+– Through comprehensive experiments, we validate the performance of our proposed method, demonstrating significant improvements in both RD per-formance and encoding/decoding speed compared to prior representation-based image coding approaches. Notably, our method surpasses nvJPEG in terms of decoding speed. 
+
+2 Related Work 
+
+2.1 End-to-end Image Compression 
+
+Classic end-to-end image compression extends transform coding paradigm, which use neural network as both analysis transform and synthesis transform [1]. An important feature that distinguishes compression models from other mod-els is the integer symbol constraints in entropy coding, which introduces non-differentiable quantization in training [14]. Ballé et al . [1] pioneered a method to jointly optimize reconstruction loss and bit-rate constraints by maximizing the Evidence Lower Bound (ELBO) and formalizes the compression model op-timization task as 
+
+Lϕg ,θ g = λR + D(gs(Q(ga(x; ϕg )); θg ), x), (1) where ga(·; ϕg ) and gs(·; θg ) are analysis transformation and synthesis trans-formation respectively. Q(·) is quantization operation. To achieve better task performance, several previous works have also explored many differentiable ap-proximation of quantization [1, 14]. R is estimated bit rate. λ balances the re-construction quality and bit-rate. This fundamental architecture has been extensively developed in subsequent research. One important approach is to explore more efficient network architec-4 X. Liu et al. 
+
+tures. Ballé et al . [2] introduced scale hyperpriors to better model latent distribu-tion. More work investigate auto-regressive structure [17, 36, 37] or Transformer model [29,55]. Generative models represent another important category. Mentzer 
+
+et al . [34] leveraged GAN architectures for high-fidelity reconstruction. With the rise of diffusion models, more research has begun exploring compression in ex-tremely low bit-rate scenarios [51]. Although end-to-end methods are limited in practical applications due to computational constraints, their single forward encoding capability offers distinct advantages over INR training-based encoding, and provides valuable inspiration for exploring similar INR encoding schemes. 
+
+2.2 Representation-based Image Compression 
+
+These representation-based methods can be further categorized into several types, with the most prominent paradigm being the direct mapping of positional coor-dinates to target spaces. For instance, NeRF [35] maps ray angles to density and color along the ray, which has significantly impacted the fields of volume ren-dering and novel view synthesis, bringing widespread attention to INR technol-ogy [3]. Subsequently, this paradigm has expanded to other signal representation domains, including neural rendering [44], image representation, video represen-tation, and further into image and video compression [8, 12]. Another approach involves using learnable parameters or grid as inputs in-stead of directly utilizing coordinates. Within the NeRF series, Instant-NGP [38] is a representative work that employs a multi-resolution spatial hash grid to store these learnable parameters. This same concept can be extended to other neu-ral representation tasks. There are many workss have made remarkable progress in representing and compressing textures [45], BRDF [11], etc. Similarly, the COOL-CHIC [25] and its successors [22] have demonstrated impressive perfor-mance in image compression. This methodology also finds broad applications in video compression [24]. The 3D Gaussian Splatting (3DGS) [21] provides a different perspective of representation models. By directly organizing learnable parameters through spe-cific structures, without relying on per-instance overfitted neural networks, 3DGS has demonstrated unique advantages in novel view synthesis tasks. Compared with INR, this representation method often exhibit more interpretable struc-ture, providing unique advantages beyond quantity performance. Similarly, such methods have been successfully applied to tasks including 3D scene representa-tion [19, 32], image compression [54], and video compression [30]. This class of methods has demonstrated unique advantages in compression, such as low decoding complexity, fast decoding speed, and high reconstruction quality. However, these strengths are difficult to achieve simultaneously in a single model. Moreover, the reliance on model training for encoding hinders their practical deployment. In this work, our proposed method explores how to balance multiple metrics to construct a practical encoder. PIC 5
+
+2.3 Hypernetwork for INR 
+
+Previous work has explored the concept of hypernetworks [15,23], which dynam-ically modulate neural network weights during inference. This idea can be traced back to even earlier mechanisms such as Fast Weight Programmers (FWP) [40], and several studies have also investigated its theoretical connections to linear Transformers [39]. Existing research on hypernetworks has predominantly fo-cused on tasks such as continual learning [47], few-shot learning [41] and domain adaptation [46]. In the field of INR related research, the implementation of gen-eralizable INR generation itself can be formulated as a hypernetwork model. This differs to some extent from the task of generalizable 3DGS generation [10]: 3DGS is, to a certain degree, an explicit representation model, whose distri-bution characteristics are closely coupled with the final target information. In contrast, the network parameter space of an INR lacks such a correlation with the signal it encodes, which poses a critical challenge for the design of generaliz-able INR frameworks. In terms of specific algorithm design, hypernetwork-based INR approaches have been explored in various tasks including content genera-tion [43, 52], yet their investigation in compression tasks remains insufficient [7]. This paper addresses this gap by further exploring a generalizable/feedfor-ward INR image encoder based on the hypernetwork mechanism. In particular, targeting the lack of research that simultaneously considers RD performance and coding efficiency, we attempt to design a codec that comprehensively considers performance across all dimensions through this approach, offering new insights into the field of learned image codecs. 
+
+3 Method 
+
+The primary reason for the slow encoding of representation models lies in the fact that the encoding process itself is the training process. Consequently, meth-ods based on implicit neural representations—as well as similar approaches like Gaussian splatting—can only be applied in scenarios where encoding time is highly insensitive. A straightforward idea is to directly generate this represen-tation model itself through a neural network. The proposed PIC follows the idea. Fig. 1 demonstrates the overall architecture of our method. Sec. 3.1 shows the details of transforming a representation to compression models. Sec. 3.2 introduces entropy estimation module. Sec. 3.3 describes the full pipeline and implementation details. 
+
+3.1 Repurposing Representation Models for Compression 
+
+To better introduce the proposed method, we begin with the image representa-tion model gr in Fig. 1. For a H × W image, ˆy is a set of pyramid-like multi-resolution latents 
+
+ˆy = {ˆyi ∈ RHi×Wi , i = 1 , 2, . . . , L }, (2) 6 X. Liu et al. DCT ZpR iDCT QHE HD Conv7x7 GeLU Conv3x3 Conv3x3 Res Conv Res Conv Proj Proj Proj Patchify Unpatchify Bilinear Upsample Conv7x7 GeLU Conv3x3 Res Conv Res Conv Res Conv Res Conv Avg Pool 2x2 Res Conv Res Conv Avg Pool 2x2 Res Conv Res Conv Avg Pool 2x2  Norm Conv3x3 GeLU Conv3x3 Res Conv Block +Norm Conv3x3 Proj iZpR   
+
+> Train Encode Decode Tensor Bitstream Calculate and for each channel Save net weights to bitstream Decode and restore net weights from bitstream
+
+Fig. 1: The framework of PIC. The overall data flow is presented in an S-shaped in the diagram, following ga → ˆy → z → ˆz → gr → gs. ga and gm are latent encoder and modulation net respectively. ˆy = {y1, y 2, . . . y L} are latents generated by latent encoder 
+
+ga. All latents are divided into patches of size 8 × 8 and then concatenated together as z. Similar to other compression methods, z is quantized after DCT transformation. The ZpR module converts the quantized symbols into a more compact form, and we will discuss this module in detail in the Sec. 3.3. HE and HD are Huffman encoder and decoder. iZpR and iDCT are inverse transformation of DCT and ZpR respectively. gr
+
+is part of the decoder and also acts as an image representation model. gs is synthesis network. γ and β are mean and standard deviation of each channel of gm output respectively. 
+
+where Hi = H 
+
+> 2L−i
+
+, W i = W 
+
+> 2L−i
+
+. L is the number of latents. To match the reso-lution of the output image, ˆy is upsamlped to ˆyu ∈ RC×H×W before being fed into the reconstruction network gs. If we apply gr in image representation task, image information will be stored in the weights of the network. All parameters, including ˆy and weights in gs, are trainable and optimized jointly via gradient descent. Obviously, achieving a fast encoding process through training is highly chal-lenging. Therefore, our approach generates all weights of the representation model in a single step. Since the latents inherently lies in a space similar to the image domain, designing a simple yet functional encoder ga is relatively straightforward, as shown in Fig. 1. The primary challenge is generating the network weights of gs. While previous works have explored methods for network PIC 7
+
+weight generation, their performance in compression tasks still leaves room for improvement [9]. In this paper, we adopt a simple strategy called channel-wise normalization and modulation. We first divide gs into shared part MLP s and instance-dependent part MLP i.Suppose N is batch size and f ∈ RN ×C×H×W is the intermediate feature be-tween MLP s and MLP i, the instance-normalized feature is 
+
+¯f = f − mean( f )std( f ) . (3) Then modulate the normalized feature ¯f
+
+˜f = γ ⊙ ¯f + β,  (4) where γ ∈ RN ×C and β ∈ RN ×C are generated by modulation net gm. Fraction and ⊙ represent element-wise division and multiplication at C dimension respec-tively. Note gm will generate corresponding γ and β for each input x. One notable advantage of this transformation is that both the normalization and modulation parameters can ultimately be fused into the network weights of MLP i, thereby achieving the goal of generating corresponding network weights for each input. For detailed derivation, please refer to the Supplementary. 
+
+3.2 Entropy Estimation 
+
+In neural representation models, constrained by the overall model size, it is challenging to incorporate a large entropy estimation network. One solution is to employ a compact neural network to enhance RD performance via auto-regressive methods [25]. However, the decoding speed of such approaches remains limited by their auto-regressive design. Inspired by Luo et al . [33], we estimate the distribution of DCT parameters to achieve rate estimation accordingly. For latents generated by ga
+
+y = {yi ∈ RHi×Wi , i = 1 , 2, . . . , L }, (5) we divide them into patches of size 8 × 8 , concatenate together as z ∈ Rn×8×8
+
+and transform to symbols through DCT 
+
+z = Patchify( y1, . . . , y L), (6) 
+
+s = DCT( z). (7) Let si,k is the k-th DCT component ( k ∈ { 0, . . . , 63 }) of i-th block, the estimated entropy is 
+
+Lentropy = −
+
+> n
+
+X
+
+> i=1 63
+
+X
+
+> k=0
+
+log 2 pθk (si,k + u), u ∼ Uniform( −0.5, 0.5) . (8) 8 X. Liu et al. 41000000001000000000000022-1 000000000000000-3 000000000000010000000 40000000010-3 0000000000000-1 00000100000000000000000000 00001 0 0 00220 41-3 2' -1 1 EE9' 3' 16' n' 11' 4' 22... ... Zigzag pRLE Trim Run length encoded zeros End of block marker 
+
+Fig. 2: The pipeline of ZpR module. ZpR transform quantized DCT coefficients to compact symbols through three steps: zigzag reorder, trim trailing zeros and encode zeros using run length encode (partial RLE). 
+
+We use 64 channels entropy model, which means we model the distribution of DCT components independently. θk is the corresponding parameters of the piecewise linear function for the k-th channel in entropy model [1, 6]. Similar to other compression framework , the entire pipeline is non-differentiable after quantization of s , so we use a simple uniform noise relaxation [1] to build an end-to-end trainable pipeline. 
+
+3.3 Full Pipeline and Hardware-affinity Implementation 
+
+JPEG reduces bit-rate through lossless compression techniques like the zigzag transform and run-length encoding (RLE). In our PIC, we similarly employ 
+
+Zigzag reordering and partial Run-length encoding (ZpR) module to improve RD performance. As shown in Fig. 2, ZpR reduce zeros in zigzag reordered sym-bols. The main difference between ZpR and RLE in JPEG is we only reduce zeros in symbols. This strategy is more straightforward to implement while effectively reducing the bit-rate. Unlike JPEG, our method employs image-specific Huffman coding tables, meaning the storage overhead of the Huffman tables also impacts the final bit-rate performance. To ensure O(1) complexity for decoding one symbol, the cod-ing table includs 2p entries ( p is precision) which covers all possible bitstream pattern for decoding one symbol. For small pictures like those in Kodak dataset, the overhead of storing the code tables is non-negligible. Fortunately, the actual number of symbols used in encoding is typically fewer than 128, allowing for further compression of the code tables to reduce this overhead. Benefiting from the prefix code property of Huffman coding, we can apply RLE to compress the original code table, reducing the number of table entries to match the symbol count and significantly decreasing the storage overhead of the original code table. As illustrated in Fig. 1, we integrated all of the above modules to achieve an trainable codec. The final loss function is 
+
+L = λLentropy + D(x, ˆx), (9) where D is distortion metric, λ balances the trade-off between reconstruction quality and bit-rate. PIC 9
+
+Another important topic is how to implement an optimized decoder. JPEG’s concise design and long-term optimizations have made it one of the fastest en-coders. However, due to its early introduction, JPEG has not fully leveraged the hardware advancements in recent years. Benefiting from recent research on parallel Huffman decoding [50] and the emergence of hardware features like Ten-sor Cores, it has become possible to develop a decoder that surpasses JPEG in performance. In architecture design, we avoided using relatively large synthesis network like COOL-CHIC-family [22, 25] to comply with Tensor Core’s matrix structure requirements. Each layer in our reconstruction network gs maintains a width of 16, precisely matching the warp matrix multiplication of TF32 operations in Tensor Cores. This alignment maximizes hardware utilization and accelerates reconstruction speed. It should be noted that, although our current implemen-tation relies on NVIDIA’s Tensor Cores, other hardware also supports similar types of functionalities, such as AMD’s rocWMMA. We believe such accelera-tion hardware will eventually be supported by more manufacturers’ devices in the future as well. Furthermore, since the precision of TF32 is lower than standard FP32, a gap would arise if training were conducted with FP32 while inference/decoding relied on Tensor Core-accelerated operations. To address this, we draw inspiration from neural rendering techniques and implement the training-phase code using the differentiable shading language Slang [18], which significantly reduces the complexity of integrating inline CUDA code in differentiable framework. This approach ensures consistency between training and inference while maintaining computational efficiency during training. Qualitatively speaking, our decoder’s complexity is actually higher than JPEG’s. However, by fully leveraging hardware capabilities, our decoder has surpassed commercial decoders and provided new insights for the design of image codecs. 
+
+4 Experiments 
+
+4.1 Experiment Setup Dataset. Since the proposed PIC is a generalizable method, it is necessary to train our model on a large dataset like end-to-end methods. We use LSDIR dataset [28] as training set, which includes 84,991 natural images. During train-ing, these images were randomly cropped to a resolution of 512 × 512 . Addition-ally, Our evaluation is conducted on two popular datasets, Kodak 5 and CLIC 6.Kodak dataset includes 24 images of size 768 × 512 . The CLIC dataset contains 41 high-resolution natural images. 
+
+Metrics. We use the peak signal-to-noise ratio (PSNR) in RGB 4:4:4 as distortion metric, which are the most widely used metric in compression. We also report and MS-SSIM [49] LPIPS [53] in main experiment, which is a popular   
+
+> 5http://r0k.us/graphics/kodak
+> 6https://clic.compression.cc/2021/tasks/index.html
+
+10 X. Liu et al. 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 BPP 22 24 26 28 30 32 34 36 38 PSNR [dB]                 
+
+> Better 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 BPP 0.75 0.80 0.85 0.90 0.95 1.00 MS-SSIM
+> Better 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 BPP 0.1 0.2 0.3 0.4 0.5 0.6 0.7 LPIPS
+> Better jpeg hevc COIN Cool-chic 4.2 (fast) GaussianImage GaussianImage++ Factorized Hyperprior PIC (Ours)
+
+(a) Rate-distortion performance on Kodak dataset. 10 1 10 0 10 1 10 2 10 3 10 4 10 5 10 6     
+
+> Encode [ms] 22 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> 20 FPS Better > 10 4× Faster 10 010 110 2
+> Decode [ms] 22 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> 2000 FPS 10 FPS Better > 70 × Faster 10 310 410 5
+> FLOPs/pixel 22 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> Better 1/40 FLOPs jpeg hevc COIN Cool-chic 4.2 (fast) GaussianImage GaussianImage++ Factorized Hyperprior PIC (Ours)
+
+(b) Speed and complexity comparison of all methods on Kodak dataset. 
+
+Fig. 3: Results on Kodak dataset. 
+
+perceptual metric to measure realism. Bit-per-pixel (BPP) is used as coding efficiency metric. To demonstrates the efficiency of PIC, we report encoding, decoding time and complexity as well. 
+
+Implementation Details. Our complete framework is implemented in Py-Torch, with the key distinction that the synthesis network used in training is built upon Slang-torch 7 to simplify Tensor Core programming within the Py-Torch environment. The ZpR module and decoder are CUDA-accelerated, while the Huffman codec is adapted and modified from GPUHD [50]. Other auxiliary components such as bitstream I/O operations are implemented in C++. All ex-periments are performed on a single NVidia RTX 4090D. We jointly optimize the full set of parameters in ga, gm and gs.gs is a 4 layers MLP with ReLU ac-tivation. The final bitstream includes header information, Huffman code table, encoded latents, and parameters of MLP i in FP32 format. 
+
+Hyper-parameters settings. For the proposed PIC, we use total L = 8 
+
+latents. This means that the minimum size of images we can encode is 256 × 256 .This also suggests that encoding smaller images requires reducing the value of 
+
+L. During the training, we set batch size to 16 and randomly cropped the input image to a resolution of 512 × 512 . This optimization is performed separately for each λ = {0.01 , 0.005 , 0.002 , 0.001 } using Adam optimizer and learning rate of 1e-4. All convolution layers have 16 channels. We trained our model for 10 
+
+7 https://github.com/shader-slang/slang-torch PIC 11 0.0 0.2 0.4 0.6 0.8 1.0 1.2 BPP 24 26 28 30 32 34 36 38 PSNR             
+
+> Better 0.0 0.2 0.4 0.6 0.8 1.0 1.2 BPP 0.80 0.85 0.90 0.95 1.00 MS-SSIM
+> Better 0.0 0.2 0.4 0.6 0.8 1.0 1.2 BPP 0.1 0.2 0.3 0.4 0.5 LPIPS
+> Better jpeg hevc COIN Cool-chic 4.2 (fast) GaussianImage GaussianImage++ Factorized Hyperprior PIC (Ours)
+
+(a) Rate-distortion performance on CLIC dataset. 10 0 10 1 10 2 10 3 10 4 10 5 10 6 10 7       
+
+> Encode [ms] 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> 2 FPS > 10 3× Faster Better 10 010 110 210 3
+> Decode [ms] 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> Better 500 FPS 10 FPS > 10 2× Faster 10 310 410 5
+> FLOPs/pixel 24 26 28 30 32 34 36 38 40 PSNR [dB]
+> Better 1/40 FLOPs jpeg hevc COIN Cool-chic 4.2 (fast) GaussianImage GaussianImage++ Factorized Hyperprior PIC (Ours)
+
+(b) Speed and complexity comparison of all methods on CLIC dataset. 
+
+Fig. 4: Results on CLIC dataset. 
+
+epochs in all experiments. Mean squard error (MSE) is used as distortion metric in training. 
+
+Benchmarks. Our method is benchmarked against competitive representa-tion based methods like COIN [12] GaussianImage [54] and GaussianImage++ [27]. We also compares with Cool-Chic v4.2 (fast) [22, 25, 26] which is the state-of-the-art method in representation based image codec. We reproduce all the results using the original source code. Another baselines include pretrained Fac-torized model [1] and Hyperprior [2] in CompressAI [6] and nvJPEG 8, which is a CUDA-accelerated JPEG codec. We also include HEVC in comparison. Note we use MSE as distortion metrics in loss function for PIC in all experiments. For other methods, we follow their original loss function settings, even if they used a loss function different from MSE. 
+
+4.2 Quantity and Quality Results 
+
+Fig. 3 and Fig. 4 shows the main results of different methods on Kodak dataset and CLIC dataset repectively. Fig. 3a and Fig. 4a demonstrate the RD perfor-mance of all methods. All results are averaged on same corresponding hyper-parameters setting for each method. PIC achieves better PSNR at high bit-rate region and comparable MS-SSIM and LPIPS performance with JPEG. PIC also 
+
+8 https://developer.nvidia.com/nvjpeg 12 X. Liu et al.               
+
+> (a) Origin (b) JPEG 34.65 / 1.02
+> (c) Factorized 36.53 / 0.71
+> (d) COIN 33.34 / 1.21
+> (e) GI 32.41 / 1.29
+> (f ) PIC 35.34 / 0.89
+> (g) Origin (h) JPEG 31.34 / 1.71
+> (i) Factorized 32.80 / 1.53
+> (j) COIN 24.67 / 0.24
+> (k) GI 25.27 / 0.51
+> (l) PIC 31.88 / 1.71
+
+Fig. 5: Visualizations on kodim17.png from Kodak dataset and juskteez-vu-1041.png from CLIC dataset. 
+
+outperforms other representation-based methods with similar decoding speed in all quality metrics at high bit rate region. Fig. 3b and and Fig. 4b present comprehensive comparisons of encoding/de-coding speeds across all methods. PIC achieves comparable encoding speed to Factorized model [1] and Hyperprior model [2] but significantly faster decod-ing speed and lower decoding complexity. Compared with other representation-based approaches [12, 25, 54], PIC has an acceleration of exceeding three orders of magnitude. In terms of decoding speed, our approach ranks second only to GaussianImage [54] while outperforming all other alternatives. This not only demonstrates the superiority of our proposed method, but also highlights the unique advantages of grid-based approaches in reconstruc-tion quality. Our experiments further validate the performance advantages of COIN [12] and GaussianImage [54] in the low bit-rate region, while these meth-PIC 13 0.4 0.6 0.8 1.0 1.2 1.4 BPP 22 24 26 28 30 32 34 PSNR [dB]  Full model w/o normalization w/o modulation Shared syn 
+
+(a) Ablation of synthesis net gs architecture. All components are necessary for performance. 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.25 Real BPP 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.25 Estimated BPP kodak = 0.001, = 0.9941               
+
+> kodak = 0.002, = 0.9940
+> kodak = 0.005, = 0.9934
+> kodak = 0.01, = 0.9946
+> clic = 0.001, = 0.9757
+> clic = 0.002, = 0.9711
+> clic = 0.005, = 0.9541
+> clic = 0.01, = 0.9464
+
+(b) Ablation of entropy model. ρ is Pearson cor-relation coefficient. 
+
+Fig. 6: Ablation results. 
+
+ods exhibit weaker quality improvement compared to other approaches as the bit-rate increases. Fig. 5 is the visualization of all methods including JPEG [48], Factorized model [1], COIN [12], GaussianImage (abbreviated as GI) [54] and proposed PIC. Below each image are the corresponding PSNR/bpp results. On juskteez-vu-1041.png, we select the model setting with best quality in original paper for COIN and GaussianImage. Our method demonstrates marginally superior performance compared to JPEG while significantly outperforming COIN and GaussianImage. Our approach also achieves comparable results to JPEG in terms of texture details and artifacts, which can be largely attributed to similar entropy modeling. In contrast, the Factorized model tends to produce overly smoothed outputs. COIN exhibits swirling artifacts, and the GaussiaImage dis-plays Gaussian-like speckled artifacts. Overall, although there is still a certain gap between our method and state-of-the-art approaches in terms of RD performance, PIC has surpassed the widely used JPEG and is a practically deployable approach. For other learning-based methods, the reality is that current architectures, whether based on end-to-end autoencoders or the overfitted Cool-Chic architecture, are constrained by their inherent limitations, making them difficult to deploy in general scenarios. Even the most lightweight Factorized model [1] is hampered by its high computa-tional overhead. For Cool-chic-like models, their excessively slow encoding and decoding speeds render them impractical for most application. Meanwhile, the proposed PIC exhibits no significant weaknesses across key practical metrics. This offers a new perspective for future research on learning-based codec in real-world scenarios. 
+
+4.3 Ablation Study 
+
+Fig. 6a presents the architectural ablation results of the synthesis network gs.“Shared syn” denotes using the same synthesis net gs for all images, in which case our method degenerates into an end-to-end model. Evidently, the model 14 X. Liu et al. 0.0004 0.0005 0.0006 0.0007 0.0008 0.0009 0.0010 Decode [ms] 28 29 30 31 32 33 34 PSNR [dB]   
+
+> Full model Syn width 8 Syn width 32
+> (a) Decoding speed for different width of syn-thesis network Build latent 17.0% Synthesis net 67.9% Huffman decode 15.0% 5.3% 4.0% 3.4% 1.3% 0.7% 2.4% Bilinear Reshape latents Expand zigzag iDCT Memcpy HtoD Others
+> (b) Detailed breakdown of decoding time
+
+Fig. 7: Ablation results of decoding speed. 
+
+performance under this configuration proves significantly inferior due to the lim-ited capacity of decoder network. “W/o normalization” and “w/o modulation” respectively indicate the exclusion of normalization and modulation in gs. Un-surprisingly, such configurations significantly degrade model performance. Only when incorporating all modules does our method achieve the desired perfor-mance. Due to the inherent approximation nature of entropy networks, discrepancies with actual performance are unavoidable. Furthermore, post-processing in the ZpR module may potentially amplify these deviations. Fig. 6b illustrates the differences between the actual bit-rate and the estimated bit-rate. Although some discrepancies exist, overall consistency has been maintained. This finding aligns with prior studies [33]. Developing more accurate entropy estimation models remains an important direction for future improvements. Fig. 7a is the ablation results of decoding speed for different width of synthesis network. Since the minimum matrix size supported by Tensor Cores for the TF32 data type is currently 16, a 16 × 16 matrix padded with zeros is used when the width is 8. Under this configuration, there is no significant difference in decoding speed between a width of 8 and a width of 16. Overall, the configuration with a width of 16 is the optimal choice, taking into account decoding speed, RD performance, and hardware compatibility. Fig. 7b is detailed breakdown of decoding time including host-to-device I/O time. We further analyze the latent representation structure to better understand the model’s performance. The detailed design of the pRLE module and the structural design of the synthesis network are also investigated. The visulization of latents and more results are included in the Supplementary. 
+
+5 Conclusion 
+
+In this work, we introduced PIC, an end-to-end INR image coding framework that generates all network parameters in a single forward pass, leading to an PIC 15 
+
+encoder substantially faster than prior representation-based approaches. We fur-ther designed a highly optimized decoder that outperforms JPEG in speed while delivering comparable rate-distortion performance. Together, these advances es-tablish a new balance between efficiency and quality, setting a milestone for INR-based compression. While there is still headroom for improving RD perfor-mance, our method opens a novel paradigm for practical learning-based image codecs and provides a foundation for extending INR-based compression to other modalities. 
+
+Acknowledgements 
+
+This work is supported in part by the National Science and Technology Major Project under grant 2025ZD1601300, National Natural Science Foundation of China under grant 62301189, 62576122,62571298, Guangdong Basic and Applied Basic Research Foundation under grant 2026A1515011139. 
+
+References 
+
+1. Ballé, J., Laparra, V., Simoncelli, E.P.: End-to-end optimized image compression. In: International Conference on Learning Representations (2017) 2. Ballé, J., Minnen, D., Singh, S., Hwang, S.J., Johnston, N.: Variational image compression with a scale hyperprior. In: International Conference on Learning Representations (2018) 3. Barron, J.T., Mildenhall, B., Verbin, D., Srinivasan, P.P., Hedman, P.: Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 5470–5479 (2022) 4. Bellard, F.: Bpg image format (2018), https://bellard.org/bpg/ 
+
+5. Blard, T., Ladune, T., Philippe, P., Clare, G., Jiang, X., Déforges, O.: Overfitted image coding at reduced complexity. In: 2024 32nd European Signal Processing Conference (EUSIPCO). pp. 927–931. IEEE (2024) 6. Bégaint, J., Racapé, F., Feltman, S., Pushparaja, A.: Compressai: a pytorch library and evaluation platform for end-to-end compression research (2020) 7. Catania, L., Allegra, D.: Nif: A fast implicit image compression with bottleneck layers and modulated sinusoidal activations. In: Proceedings of the 31st ACM International Conference on Multimedia. pp. 9022–9031 (2023) 8. Chen, H., He, B., Wang, H., Ren, Y., Lim, S.N., Shrivastava, A.: Nerv: Neural representations for videos. Advances in Neural Information Processing Systems 
+
+34 , 21557–21568 (2021) 9. Chen, H., Xie, S., Lim, S.N., Shrivastava, A.: Fast encoding and decoding for implicit video representation. In: European Conference on Computer Vision. pp. 402–418. Springer (2024) 10. Chen, Y., Xu, H., Zheng, C., Zhuang, B., Pollefeys, M., Geiger, A., Cham, T.J., Cai, J.: Mvsplat: Efficient 3d gaussian splatting from sparse multi-view images. In: European conference on computer vision. pp. 370–386. Springer (2024) 11. Dou, Y., Zheng, Z., Jin, Q., Ni, B., Chen, Y., Ke, J.: Real-time neural brdf with spherically distributed primitives. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 4337–4346 (2024) 16 X. Liu et al. 12. Dupont, E., Goliński, A., Alizadeh, M., Teh, Y.W., Doucet, A.: Coin: Compression with implicit neural representations. arXiv preprint arXiv:2103.03123 (2021) 13. Dupont, E., Loya, H., Alizadeh, M., Golinski, A., Teh, Y.W., Doucet, A.: Coin++: Data agnostic neural compression. arXiv preprint arXiv:2201.12904 1(2), 4 (2022) 14. Guo, Z., Zhang, Z., Feng, R., Chen, Z.: Soft then hard: Rethinking the quantization in neural image compression. In: International Conference on Machine Learning. pp. 3920–3929. PMLR (2021) 15. Ha, D., Dai, A., Le, Q.V.: Hypernetworks. arXiv e-prints pp. arXiv–1609 (2016) 16. He, D., Yang, Z., Peng, W., Ma, R., Qin, H., Wang, Y.: Elic: Efficient learned im-age compression with unevenly grouped space-channel contextual adaptive coding. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 5718–5727 (2022) 17. He, D., Yang, Z., Peng, W., Ma, R., Qin, H., Wang, Y.: Elic: Efficient learned im-age compression with unevenly grouped space-channel contextual adaptive coding. arXiv e-prints (2022) 18. He, Y., Fatahalian, K., Foley, T.: Slang: language mechanisms for extensible real-time shading systems. ACM Transactions on Graphics (TOG) 37 (4), 1–13 (2018) 19. Huang, B., Yu, Z., Chen, A., Geiger, A., Gao, S.: 2d gaussian splatting for geo-metrically accurate radiance fields. In: ACM SIGGRAPH 2024 conference papers. pp. 1–11 (2024) 20. Jiang, W., Yang, J., Zhai, Y., Ning, P., Gao, F., Wang, R.: Mlic: Multi-reference entropy model for learned image compression. In: Proceedings of the 31st ACM International Conference on Multimedia. pp. 7618–7627 (2023) 21. Kerbl, B., Kopanas, G., Leimkühler, T., Drettakis, G.: 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. 42 (4), 139–1 (2023) 22. Kim, H., Bauer, M., Theis, L., Schwarz, J.R., Dupont, E.: C3: High-performance and low-complexity neural compression from a single image or video. In: Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 9347–9358 (2024) 23. Klocek, S., Maziarka, Ł., Wołczyk, M., Tabor, J., Nowak, J., Śmieja, M.: Hyper-network functional image representation. In: International Conference on Artificial Neural Networks. pp. 496–510. Springer (2019) 24. Kwan, H.M., Gao, G., Zhang, F., Gower, A., Bull, D.: Hinerv: Video compres-sion with hierarchical encoding-based neural representation. Advances in Neural Information Processing Systems 36 , 72692–72704 (2023) 25. Ladune, T., Philippe, P., Henry, F., Clare, G., Leguay, T.: Cool-chic: Coordinate-based low complexity hierarchical image codec. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 13515–13522 (2023) 26. Leguay, T., Ladune, T., Philippe, P., Clare, G., Henry, F.: Low-complexity over-fitted neural image codec. arXiv preprint arXiv:2307.12706 (2023) 27. Li, T., Zhang, X., Ge, X., Xu, T., He, D., Zhang, J., Wang, Y.: Gaussianimage++: Boosted image representation and compression with 2d gaussian splatting. In: Pro-ceedings of the AAAI Conference on Artificial Intelligence. vol. 40, pp. 6442–6449 (2026) 28. Li, Y., Zhang, K., Liang, J., Cao, J., Liu, C., Gong, R., Zhang, Y., Tang, H., Liu, Y., Demandolx, D., et al.: Lsdir: A large scale dataset for image restoration. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 1775–1787 (2023) 29. Liu, J., Sun, H., Katto, J.: Learned image compression with mixed transformer-cnn architectures. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 1–10 (2023) PIC 17 30. Liu, X., Chen, B., Liu, Z., Wang, Y., Xia, S.T.: An exploration with entropy con-strained 3d gaussians for 2d video compression. In: The Thirteenth International Conference on Learning Representations (2025) 31. Liu, X., Chen, J., Chen, B., Liu, Z., An, B., Xia, S.T., Wang, Z.: An efficient implicit neural representation image codec based on mixed autoregressive model for low-complexity decoding. arXiv preprint arXiv:2401.12587 (2024) 32. Lu, T., Yu, M., Xu, L., Xiangli, Y., Wang, L., Lin, D., Dai, B.: Scaffold-gs: Struc-tured 3d gaussians for view-adaptive rendering. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 20654–20664 (2024) 33. Luo, X., Talebi, H., Yang, F., Elad, M., Milanfar, P.: The rate-distortion-accuracy tradeoff: Jpeg case study. arXiv preprint arXiv:2008.00605 (2020) 34. Mentzer, F., Toderici, G.D., Tschannen, M., Agustsson, E.: High-fidelity generative image compression. Advances in neural information processing systems 33 , 11913– 11924 (2020) 35. Mildenhall, B., Srinivasan, P.P., Tancik, M., Barron, J.T., Ramamoorthi, R., Ng, R.: Nerf: Representing scenes as neural radiance fields for view synthesis (2020) 36. Minnen, D., Ballé, J., Toderici, G.: Joint autoregressive and hierarchical priors for learned image compression (2018) 37. Minnen, D., Singh, S.: Channel-wise autoregressive entropy models for learned image compression (2020) 38. Müller, T., Evans, A., Schied, C., Keller, A.: Instant neural graphics primitives with a multiresolution hash encoding. ACM Transactions on Graphics (ToG) 41 (4), 1– 15 (2022) 39. Schlag, I., Irie, K., Schmidhuber, J.: Linear transformers are secretly fast weight programmers. In: International conference on machine learning. pp. 9355–9366. PMLR (2021) 40. Schlag, I., Schmidhuber, J.: Gated fast weights for on-the-fly neural program gen-eration. In: NIPS Metalearning Workshop (2017) 41. Sendera, M., Przewięźlikowski, M., Karanowski, K., Zięba, M., Tabor, J., Spurek, P.: Hypershot: Few-shot learning by kernel hypernetworks. In: Proceedings of the IEEE/CVF winter conference on applications of computer vision. pp. 2469–2478 (2023) 42. Skodras, A., Christopoulos, C., Ebrahimi, T.: The jpeg 2000 still image compression standard. IEEE Signal processing magazine 18 (5), 36–58 (2001) 43. Skorokhodov, I., Ignatyev, S., Elhoseiny, M.: Adversarial generation of continu-ous images. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 10753–10764 (2021) 44. Sztrajman, A., Rainer, G., Ritschel, T., Weyrich, T.: Neural brdf representation and importance sampling. In: Computer Graphics Forum. vol. 40, pp. 332–346. Wiley Online Library (2021) 45. Vaidyanathan, K., Salvi, M., Wronski, B., Akenine-Möller, T., Ebelin, P., Lefohn, A.: Random-access neural compression of material textures. ACM Transactions on Graphics (2023) 46. Volk, T., Ben-David, E., Amosy, O., Chechik, G., Reichart, R.: Example-based hy-pernetworks for out-of-distribution generalization. arXiv preprint arXiv:2203.14276 (2022) 47. Von Oswald, J., Henning, C., Grewe, B.F., Sacramento, J.: Continual learning with hypernetworks. arXiv preprint arXiv:1906.00695 (2019) 48. Wallace, G.K.: The jpeg still picture compression standard. IEEE transactions on consumer electronics 38 (1), xviii–xxxiv (1992) 18 X. Liu et al. 49. Wang, Z., Simoncelli, E.P., Bovik, A.C.: Multiscale structural similarity for im-age quality assessment. In: The Thrity-Seventh Asilomar Conference on Signals, Systems & Computers, 2003. vol. 2, pp. 1398–1402. Ieee (2003) 50. Weißenberger, A., Schmidt, B.: Massively parallel huffman decoding on gpus. In: Proceedings of the 47th International Conference on Parallel Processing. pp. 1–10 (2018) 51. Xia, Y., Zhou, Y., Wang, J., An, B., Wang, H., Wang, Y., Chen, B.: Diffpc: Diffusion-based high perceptual fidelity image compression with semantic refine-ment. In: The Thirteenth International Conference on Learning Representations (2025) 52. You, T., Kim, M., Kim, J., Han, B.: Generative neural fields by mixtures of neural implicit functions. Advances in Neural Information Processing Systems 36 , 20352– 20370 (2023) 53. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 54. Zhang, X., Ge, X., Xu, T., He, D., Wang, Y., Qin, H., Lu, G., Geng, J., Zhang, J.: Gaussianimage: 1000 fps image representation and compression by 2d gaussian splatting. arXiv preprint arXiv:2403.08551 (2024) 55. Zou, R., Song, C., Zhang, Z.: The devil is in the details: Window-based attention for image compression. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 17492–17501 (2022) 
+
+A Fusing Modulations to Synthesis Net 
+
+In the encoding process, both the normalization and modulation parameters are fused into the parameters of MLP i. The modulated network parameters subsequently included as part of the bitstream. Suppose f ∈ RC×H×W is the output feature of MLP s
+
+f = MLP s(ˆ yu), (10) where ˆyu is upsampled latents shown in Fig. 1 in main text. Note we omit batch dimensions for clarity. The modulated features is 
+
+¯f = f − μσ , (11) 
+
+˜f = γ ⊙ ¯f + β,  (12) where μ = mean( f ), σ = std( f ). Here we normalize f at H and W channel. Fraction represents element-wise division at C dimension. ⊙ is element-wise multiplication at C dimension. γ ∈ RC and β ∈ RC are modulation vectors. The first layer of MLP i can be expanded as 
+
+f ′ =wT ˜f + b (13) 
+
+=wT (γ ⊙ ¯f ) + wT β + b (14) 
+
+= wT (γ ⊙ f )
+
+σ − wT (γ ⊙ μ)
+
+σ + wT β + b.  (15) PIC 19 
+
+The net weight and bias included in bitstream are 
+
+w′ = γT ⊙ wσT , (16) 
+
+b′ = − wT (γ ⊙ μ)
+
+σ + wT β + b.  (17) In decoding phase, only w′ and b′ are required, with no need for normalization and modulation. In our experiments, we use first 3 layer as MLP s and last layer as MLP i.
+
+B More Implementation Detatils 
+
+B.1 Fast Chunking Algorithms 
+
+Algo. 1 is a fast chunking algorithm that splits the symbol stream based on end-of-block markers (eob_marker) and expands the zero symbols according to the pRLE code table. This function requires precomputing the offsets of all eob_marker to enable parallel processing. We use thrust::copy_if to efficiently obtain all offsets. For synthesis network gs, we fuse all layers in a single CUDA kernel to achieve efficient processing. All matrix multiplications in gs are imple-mented using APIs provided by nvcuda::wmma. 
+
+B.2 Details of Baseline Methods 
+
+For COIN [12] and GaussianImage [54], We reproduce all the results using the original source code. It should be noted that although our method only used MSE as the distortion metric during the training, we still adhered to the original loss function settings for the baseline methods, even if the original approaches employed loss functions other than simple MSE. Additionally, for all methods, we did not use model versions specifically trained for different test metrics. For instance, in the case of Factorized model [1], all experiments utilized a pre-trained version optimized with MSE as the loss function. 
+
+B.3 Evaluation Protocol 
+
+Due to the fact that speed evaluation is susceptible to interference from various factors, including hardware occupancy and PyTorch’s inherent asynchronous design, we have carefully designed the speed evaluation process and ensured exclusive access to the hardware during assessment. Although there are currently many implementations of JPEG, in order to achieve a fair comparision, it is necessary to use a GPU-optimized version. However, since nvNVJPE is not open-source, we implemented our binding based on previous implemntation 9. We have   
+
+> 9https://github.com/UsingNet/nvjpeg-python 20 X. Liu et al.
+
+Algorithm 1 Expand Symbols                                                                                           
+
+> 1: procedure expand_symbols (symbols, offsets, output) 2: offset_start ←03: if gid ̸=0then ▷gid is CUDA thread id 4: offset_start ←offsets[gid −1]+15: end if
+> 6: offset_end ←offsets[gid] 7: eob_marker ←symbols[offset_end] ▷Get eob_marker from symbol stream 8: output_symbols ←output +gid ×64 9: offset ←010: for i←offset_start to offset_end −1do
+> 11: s←symbols[ i]12: if s≥eob_marker −17 +1then ▷If sis a symbol in the pRLE code table 13: for j←0to s+ 17 −eob_marker −1do
+> 14: output_symbols[ZIGZAG_ORDER[offset]] ←0
+> 15: offset ←offset +116: end for
+> 17: else
+> 18: output_symbols[ZIGZAG_ORDER[offset]] ←symbols[ i]19: offset ←offset +120: end if
+> 21: end for
+> 22: end procedure
+
+also meticulously optimized the input and output components of nvJPEG to minimize any additional overhead as much as possible. Besieds, we run encoding and decoding in same process without saving bitstream to disk for nvJPEG, which is intended to eliminate the I/O time. In experiment, we find running encoding and decoding in same process is sufficient to warmup nvJPEG. For all method, we report the result of serial decoding all images in corresponding dataset, following is part of benchmark code for nvJPEG 
+
+C More Experiment Results 
+
+C.1 Extended Results 
+
+Fig. 8 uses BD-rate as the vertical axis to compare the encoding/decoding speed and decoding complexity of different methods. While our method does not achieve optimal performance across all dimensions, it demonstrates balanced capabilities with no significant weaknesses in the three metrics. In contrast, au-toencoder methods [1, 2] offer fast encoding capabilities but suffer from high complexity, whereas Cool-chic [25, 26] maintains low complexity at the cost of significantly slower encoding and decoding speeds. PIC 21 
+
+Listing 1.1: Snippet used to mesure nvJPEG decoding speed.  
+
+> 1
+
+for idx in range ( len ( bs_pack ) ) :  
+
+> 2
+
+jpeg_bytes , img , f = bs_pack [ idx ] # encoded bitstream  
+
+> 3
+
+torch . cuda . synchronize ()  
+
+> 4
+
+start_time = time . time ()  
+
+> 5
+
+img_decoded = coder . decode ( jpeg_bytes ) # run nvJPEG decoder  
+
+> 6
+
+torch . cuda . synchronize ()  
+
+> 7
+
+end_time = time . time ()  
+
+> 8
+
+total += end_time - start_time  
+
+> 9
+
+print ( ’ decoding time ’ , total / len ( bs_pack ) ) 10 2 10 3 10 4 10 5 10 6      
+
+> Encode [ms]
+> 60
+> 40
+> 20
+> 020 40 BD-Rate relative to nvJPEG [%]
+> PIC GaussianImage COIN Cool-chic v4.2 Factorized Hyperprior Better 10 010 110 2
+> Decode [ms]
+> 60
+> 40
+> 20
+> 020 40 BD-Rate relative to nvJPEG [%]
+> PIC GaussianImage COIN Cool-chic v4.2 Factorized Hyperprior Better 010000 20000 30000 40000 Decode complexity [Flops/pixel]
+> 60
+> 40
+> 20
+> 020 BD-Rate relative to nvJPEG [%]
+> PIC COIN Cool-chic v4.2 Factorized Hyperprior Better
+
+Fig. 8: Results of comprehensive comparesion for both RD performance and practical performance on Kodak dataset. 
+
+C.2 Latents Visualizations 
+
+To better demonstrate the model’s performance under different bitrates, we vi-sualized the latent representations when λ = {0.01 , 0.001 } . Fig. 9 shows the visualizations without normalization. Overall, the latents at different resolutions reflect varying levels of detail from the original image. Fig. 10 presents the results after applying same normalization to all latents. Although these latents do not directly indicate the magnitude of the corresponding symbols, they indirectly reveal that at smaller λ, higher-resolution latents retain more details, while at bigger λ, more details are contained in relatively lower-resolution latents. This also reflects the bits allocation tendencies under different settings. 
+
+C.3 Ablation study of model architecture 
+
+Given implementation complexity considerations, we opted for a simplified RLE. Because our symbol range is determined by training, we cannot fix an RLE encoding table like JPEG, but dynamically determine it through the transformed symbol stream. Tab. 2 presents a performance comparison of performing RLE encoding on more symbols (-1 and 1). From the results in the table, it can be seen 22 X. Liu et al.            
+
+> (a) λ= 0 .001
+> (b) λ= 0 .01
+> Fig. 9: Visualizations of latents. These figures demonstrate unnormalized value for each latent.
+> Table 2: Ablation result of RLE. RLE on 0 achieves the best performance among four settings. BD-Rate is calculated relative to RLE on 0. Setting BD-Rate( ↓)No RLE 150.68% RLE on 0 0%
+> RLE on 0, 1 1.18% RLE on -1, 0, 1 2.70%
+
+that performing RLE only on 0 is not only easier to implement in engineering, but can also achieve better results in certain situations. Another ablation study explored the position of MLP i. We investigated plac-ing the MLP i at the input layer, intermediate layer, and output layer of the syn-thesis network, respectively. Tab. 3 presents the result. We found placing MLP i
+
+at the end of synthesis network will obtain the best performance. Furthermore, the width of the synthesis network is also a parameter that needs to be examined. Tab. 4 displays the performance under different widths. Overall, the configuration with a width of 16 is the optimal choice, taking into account decoding speed, RD performance, and hardware compatibility. 
+
+C.4 Ablation of modulation 
+
+In addition to exploring the effect of the modulation mechanism on the model architecture proposed in this paper, we also validated the effectiveness of this PIC 23                 
+
+> (a) λ= 0 .001
+> (b) λ= 0 .01
+> Fig. 10: Visualizations of latents. These figures demonstrate normalized value for each latent.
+> Table 3: Start means we place MLP iat the beginning of the synthesis network. Middle means we place an MLP ibetween two shared MLPs. BD-Rate is calculated relative to default configuration, in which MLP iare placed at the end of synthesis network. Location BD-Rate ( ↓)Start 21.46% Middle 2.43% End (default for PIC) 0%
+
+mechanism on model architectures similar to N-O Cool-Chic. Fig. 11 illustrates the results of the ablation results. Since the last two layers of the N-O Cool-Chic’s synthesis network are convolutional layers, we applied modulation to the features between the first two linear layers. The results show the effectiveness of the modulation mechanism in this architecture as well. Moreover, N-O Cool-Chic* with modulation has surpassed the method proposed in this paper in terms of RD performance, highlighting the potential of the end-to-end INR paradigm for further advancements in its network architecture and training recipts. 
+
+C.5 Ablation of bitstream 
+
+The Fig. 12 shows the proportion of different components in the encoded bit-stream on the Kodak dataset. The encoded latent variables account for the vast majority of the bitstream, and the codebook size increases with the bitstream but has little impact on the overall encoded size. 24 X. Liu et al. 
+
+Table 4: Ablation result of the synthesis network width. BD-Rate is calculated relative to width 16. Width BD-Rate( ↓)8 3.03% 16 0% 
+
+32 5.84% 0.2 0.4 0.6 0.8 1.0 1.2 BPP 26 28 30 32 34 PSNR [dB] 
+
+> PIC N-O CoolChic* w/ modulation N-O CoolChic* w/o modulation
+
+Fig. 11: Ablation results of modulation mechanism on N-O Cool-Chic-like (mark by *) architecture [5]. It should also be noted that N-O Cool-Chic is not open-source, so the results presented here are only a preliminary reproduction without hyperparameters and training recipts tuning and may differ from those reported in the original paper. 0.001 0.002 0.005 0.01 0.0 0.2 0.4 0.6 0.8 1.0 1.2 Encoded Latent Huffman Table Net Header 0.001 0.002 0.005 0.01 
+
+> 0.00 0.01
+> Compressed Size [BPP]
+
+Fig. 12: Bitstream breakdown.

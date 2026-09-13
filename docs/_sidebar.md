@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-09-13 <!--dpr-date:20260913-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/13/2609.09020v1-pic-revisiting-inr-for-image-coding-with-fast-encoding-and-sub-millisecond-decoding" data-sidebar-item="{&quot;title&quot;: &quot;PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.09020v1-pic-revisiting-inr-for-image-coding-with-fast-encoding-and-sub-millisecond-decoding&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;快速编码与亚毫秒解码的低复杂度图像编解码&quot;}">PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding</a>
   * 2026-09-12 <!--dpr-date:20260912-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/12/2609.05081v1-deep-microcompression-structured-pruning-and-bit-packed-quantization-for-microcontrollers" data-sidebar-item="{&quot;title&quot;: &quot;Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.05081v1-deep-microcompression-structured-pruning-and-bit-packed-quantization-for-microcontrollers&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;结构化剪枝与量化感知训练的轻量化压缩&quot;}">Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers</a>

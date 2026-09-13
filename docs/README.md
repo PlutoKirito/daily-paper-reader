@@ -41,7 +41,7 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-12</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-13</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 1 篇</strong>
@@ -51,7 +51,7 @@
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-12 21:20:08 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-13 22:03:47 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读 1 篇，聚焦微控制器上的结构化剪枝与位打包量化。这篇 6.0 分工作值得关注的是如何把模型压缩到单片机可用，但分数中等，建议先看摘要和实验设置再决定是否深入。</p>
+<p>今日速读1篇图像编码论文：PIC 重新审视 INR 用于图像编码，主打快速编码与亚毫秒级解码（6.0/10）。值得关注的是它试图解决 INR 编码慢的老问题，同时把解码压到亚毫秒级。普通读者若关心图像压缩的实时落地，可重点看它的编解码速度对比与画质权衡。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -87,7 +87,7 @@
     <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers">Deep Microcompression: Structured Pruning and Bit-packed Quantization for Microcontrollers</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding">PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding</span></li></ul>
   </div>
   <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
