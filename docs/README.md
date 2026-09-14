@@ -41,7 +41,7 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-13</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-14</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 1 篇</strong>
@@ -51,7 +51,7 @@
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-13 22:03:47 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-14 22:30:16 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读1篇图像编码论文：PIC 重新审视 INR 用于图像编码，主打快速编码与亚毫秒级解码（6.0/10）。值得关注的是它试图解决 INR 编码慢的老问题，同时把解码压到亚毫秒级。普通读者若关心图像压缩的实时落地，可重点看它的编解码速度对比与画质权衡。</p>
+<p>今日速读 1 篇、精读 0 篇，唯一入选的是《PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding》（6.0/10）。</p>
+<p>若对图像编码感兴趣，这篇值得一看的方向是它同时强调快速编码与亚毫秒级解码，属于把 INR 重新拉回实用场景的尝试。</p>
+<p>普通读者可先把它当作&quot;INR 图像编码能否落地&quot;的入门参考，留意其速度指标再决定是否深入跟进。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
