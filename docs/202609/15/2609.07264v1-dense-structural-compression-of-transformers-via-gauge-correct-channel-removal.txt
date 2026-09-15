@@ -1,0 +1,790 @@
+Title: Dense Structural Compression of Transformers via Gauge-Correct Channel Removal
+
+URL Source: https://arxiv.org/pdf/2609.07264v1
+
+Published Time: Wed, 09 Sep 2026 02:44:57 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Dense Structural Compression of Transformers via Gauge-Correct Channel Removal 
+
+Jed A. Duersch ∗ Naïm Es-Sebbani Nathanaël Haas Zied Bouraoui 
+
+Université d’Artois, CNRS, CRIL UMR 8188, Lens, France 
+
+## Abstract 
+
+Inference energy per token drives the cost and carbon footprint of deployed trans-formers. It is dominated by dense matrix products that incur fused multiply-accumulate (FMA) operations and memory traffic. To reduce these computations while retaining dense tensors for high GPU throughput, we develop a methodol-ogy from first principles to adapt structural complexity during training to max-imize inference utility per unit compute. Channel penalties drive entire tensor slices to zero to enable physical removal while preserving density and the net-work function. The natural approach, penalizing the norm of operator components acting through each channel, is provably destabilized by gauge freedom. We resolve this pathol-ogy with GaugeLasso: additive symmetric group-lasso penalties that recover a monotone function of product-norms when the network converges to gauge bal-ance. Our equilibrium analysis enables per-channel calibration to correctly sup-press slices that under-perform in inference utility per unit compute. Under adaptive pressure, the network reorganizes into depth-dependent structural profiles that can be far smaller than the architecture required to learn the task. On polynomial long division over F31 , compute compresses from 148 to 255 times with perfect accuracy. On character-level language modeling, compressed models outperform the hand-designed baseline at equal FMA. On masked autoencoding, a compression trial exposes which axes were over-provisioned and which saturated, guiding a better second design. Compaction also accelerates training monoton-ically (final steps 1.6 to 5× faster) as the model progresses. Post-hoc pruning with the same utility ranking cannot reach these structures, showing that sustained pressure is central to discovery of efficient models. Retraining a discovered ar-chitecture recovers baseline quality on our statistical tasks, but fails on our exact algorithmic task. 
+
+## 1 Introduction 
+
+The energy required to process a token drives both the environmental footprint and operating costs of a deployed transformer. Nearly all of that energy is spent in dense matrix-matrix products. At-tention and MLP projections use one fused multiply-accumulate (FMA) per parameter per token (two FLOPs by convention), and attention adds a further term that grows with context length. Re-ducing inference energy means reducing this arithmetic, and the memory traffic that feeds it, while preserving the predictable access patterns that make dense GPU kernels efficient. Transformers used in practice simplify design by using structurally uniform layers that contain equivalent processing dimensions. Although a block at depth 1 may serve a fundamentally dif-ferent role than a block at depth 12, both are allocated identical resources because the space of 
+
+> ∗Corresponding author. Preprint. arXiv:2609.07264v1 [cs.LG] 7 Sep 2026
+
+heterogeneous depth-dependent architectures is far too large to search by enumeration. Moreover, the structure needed to discover a solution can be far larger than the structure needed to perform inference, leaving the trained network wasteful. We develop a methodology to dynamically adapt network structure during training, compelling oper-ators to reorganize into smaller dense tensors that retain full GPU throughput. 2 Calibrated channel-level penalties drive entire tensor slices to zero on both sides of every structural axis, enabling phys-ical removal of channels without introducing sparsity. We price each channel in inference utility per FMA, rather than just parameters, to account for the additional compute used by key and value channels. Further, FMA is a kernel- and hardware-independent model property that we can optimize at design time without referencing a deployment target. Prior approaches to efficient architectures, including post-hoc structured pruning, neural architecture search, and during-training methods such as CoFi [Xia et al., 2022], either operate on fixed representations, search discrete candidate sets, or handle multiplicative coupling between connected factors heuristically. The natural approach is to penalize the operator norm acting through each channel, but this is prov-ably pathological. Transformers contain gauge-connected tensors: rescaling one factor and inversely rescaling the other preserves the network function. This freedom destabilizes product-norm penal-ties, driving one factor toward zero while the other compensates until updates become too sen-sitive. GaugeLasso resolves this problem with efficiency-scaled additive symmetric penalties on channel-aligned factors, which drive the network toward a particular gauge balance where the group norms measure inference utility per FMA. This suppresses channels with under-performing utility per cost. Applied to diverse tasks, GaugeLasso discovers architectures far smaller than those needed for learning. Figure 1 traces this process on polynomial long division over F31 , where layers adopt markedly different dimensions during compression. The method achieves up to 255 × compression (median 187 ×) over seeds that maintain perfect accuracy. For character-level language modeling, compressed models outperform the hand-designed baseline at equal FMA, while continuous dense compaction accelerates training by up to 5×.Structural regularization during training allows the network to adopt more efficient representations as it is forced into fewer dimensions, rather than merely removing redundancies. We test this directly by applying the same gauge-calibrated utility metric to trim fully trained models. On F31 , post-hoc pruning cannot compress the model at all; on character-level language modeling, it achieves 22% worse perplexity at equal FMA. A matched comparison against CoFi, the closest during-training method, stalls at 1.97 × compression where 7.09 × was requested, plausibly because its mask space cannot narrow dimensions inside units that remain alive (Section 5.4). Sustained resource pressure is therefore what discovers these architectures. Whether it is additionally required to train them depends on the task: retraining a discovered architecture from fresh initialization recovers baseline quality on our statistical tasks, but not on exact algorithmic execution. Our contributions are the following. 1. Symmetric group-lasso equilibrium and inference utility. At gauge balance, group norms directly measure each channel’s inference utility. Efficiency-scaled calibration normalizes to utility per FMA, enabling gradual suppression of under-performing channels across structural axes (Section 3). 2. Dense adaptive training framework. Our implementation techniques (adaptive penalty strength from a loss target, gauge-Sinkhorn iterations to accelerate balance, and optimizer-preserving ten-sor surgery) yield continuous dense compression without sparsity masks, discrete search, or op-timization restarts. Because compressed dimensions are physically removed, step time decreases as the model compresses (Section 4). 3. Sustained pressure discovers architectures that search does not reach. Transformers reorga-nize into smaller dense architectures that match or exceed baselines, and neither post-hoc prun-ing with the same utility metric nor a matched during-training baseline reaches them. Retraining from fresh initialization recovers baseline quality on our statistical tasks but fails on exact algo-rithmic execution. Structural profiles also reveal when axes saturate their initial budget, directly informing architecture design (Section 5).  
+
+> 2Code: https://gitlab.com/jduersch/gaugelasso
+
+2Polynomial long division over F31 : structural profiles and compression trajectory. 
+
+Figure 1: An 8-layer transformer trained on polynomial long division over F31 discovers specialized depth structure under compute pressure ( L∗=0 .005 , 25 seeds, 18 converged; see Section 5.1). Me-dian trends are shown in 3 of 7 adaptive structural axes. See Section 3.1 for details and full profiles in Appendix D. The hatched band spans the middle 78%. The right panel tracks the embedding dimension D and classifier input dc along with inference compute. 
+
+## 2 Related Work 
+
+Structured pruning. Post-hoc methods follow a train-prune-finetune pipeline: magnitude prun-ing [Han et al., 2015], structured extensions to filters and channels [Li et al., 2017, Molchanov et al., 2019], and the lottery ticket hypothesis [Frankle and Carbin, 2019]. Prior work has pruned transformers at multiple granularities, including entire layers [Fan et al., 2019, Sajjad et al., 2023], attention heads [Michel et al., 2019], and intermediate dimensions [Hou et al., 2020], each requiring a dedicated mechanism. Our framework achieves all of these through a single efficiency-calibrated penalty: when all channels on an axis are dropped, the owning operator or block is removed au-tomatically. For large language models, Sheared LLaMA [Xia et al., 2024] combines structured pruning with continued pre-training but requires the target architecture to be specified in advance; SliceGPT [Ashkboos et al., 2024] uses computational invariances to delete rows and columns post-hoc, producing dense output like GaugeLasso but operating on fixed representations. During-training methods apply sparsity pressure throughout optimization. Movement pruning [Sanh et al., 2020] learns which weights to prune from gradient direction; gradual magnitude pruning [Zhu and Gupta, 2017] follows a sparsity schedule. CoFi [Xia et al., 2022] is the closest prior work: it prunes transformers at multiple granularities using learned masks, managing the resulting mask-weight coupling with straight-through estimation and Lagrangian scheduling. This coupling is the same gauge freedom we analyze in Section 3; CoFi handles it heuristically, while our additive penalty resolves it analytically, yielding calibrated per-channel utility at equilibrium. CoFi main-tains separate mask variables per granularity, whereas our penalties handle all structural axes and produce fully dense tensors rather than sparse masks. Knowledge distillation [Sanh et al., 2019, Jiao et al., 2020] is complementary: it requires a target architecture, which our framework can discover. 
+
+Group lasso and scale invariance. Group lasso [Yuan and Lin, 2006] provides coordinated sup-pression of parameter groups; Wen et al. [2016] applied it to deep networks. The rescaling invariance between multiplicatively-coupled layers is well known: Dinh et al. [2017] showed that sharp minima become flat under rescaling in batch-normalized networks, and path-norm regularization [Neyshabur et al., 2015] attempted to regularize in a scale-invariant manner. Equi-normalization [Stock et al., 2019] is closely related, using Sinkhorn-Knopp iterations to minimize the L2 norm of the weights to improve training. In contrast, our gauge Sinkhorn balances a weighted group norm, so the balance point encodes compute cost rather than weight magnitude. Having proved that gauge invariance destabilizes every monotone penalty on the product norm (Appendix A), we resolve the pathol-ogy constructively: additive group-lasso penalties drive the network to a stable gauge equilibrium, at which the group norms are gauge-invariant and therefore support consistent utility estimates, efficiency-scaled calibration, and a drop criterion that requires no loss extrapolation. 
+
+Architecture search and scaling. NAS [Zoph and Le, 2017] and differentiable variants like DARTS [Liu et al., 2019] search over discrete architectural candidates. DynaBERT [Hou et al., 2020] trains sub-networks of varying width and depth simultaneously but selects from predefined width multipliers rather than discovering continuous structure. Our framework lets continuous opti-mization discover the architecture from the interaction of task gradients and penalty pressure, with-out a predefined search space. Compute-optimal scaling laws [Kaplan et al., 2020, Hoffmann et al., 32022] allocate a fixed budget across model size and training tokens for a given global architecture. Our work addresses a complementary question: given a loss target, what is the minimal-compute 
+
+internal structure that sustains it? 
+
+## 3 Structural Regularization 
+
+We derive the penalty criterion used to suppress channels during training. Section 3.1 defines the compressible axes. Section 3.2 shows how additive group-lasso penalties resolve the gauge free-dom between coupled factors by driving channels toward gauge balance. Section 3.3 calibrates the resulting balance by freed compute to obtain a common utility-per-FMA criterion. 
+
+3.1 Transformer Setting 
+
+We target the transformer family underlying LLaMA and its descendants: SwiGLU MLPs [Shazeer, 2020] with RMS normalization. Because standard RMS normalization includes all channels in its denominator, suppressing a channel discontinuously rescales the rest; we introduce a prescaled 
+
+variant that eliminates this discontinuity (Appendix C.3). Each transformer block contains an attention sub-block and a SwiGLU MLP sub-block. Each sub-block reads from the residual stream of width D through an extractor (selecting dai or dmi channels) and writes back through an injector (routing dao or dmo channels to the residual stream). Attention uses query, key, value, and output projections Wq , W k, W v , W o,3 operating on dk and dv dimensions per head across H heads. The SwiGLU MLP uses up, gate, and down projections Wu, W g , W d,mapping through filter dimension df .The structural axes of interest are the seven per-block dimensions ( dai , dk, dv , dao , dmi , df , dmo ), each independently adjustable per block, and two global axes: the residual stream width D and the classifier input width dc. We introduce a prescaled RMS normalization (see Appendix C.3) with each extractor and learnable post-scaling on each injector to ensure that channels exit smoothly under regularization pressure. Appendix C.1 provides the full axis inventory and penalty assignments. 
+
+3.2 Group Lasso and Gauge Balance 
+
+Consider the value dimension dv within an attention head. The value projection Wv creates a dv -dimensional representation and the output projection Wo maps it back to the residual stream. Rescal-ing the j-th column of Wv by α and the j-th column of Wo by 1/α preserves the product WoWv .Although a penalty on ∥Wv ∥ · ∥ Wo∥ would be gauge invariant, regularization pressure amplifies any norm imbalance making it unstable. Appendix A examines this and related pathologies in de-tail. This problematic gauge freedom appears throughout transformers, wherever multiplicatively coupled factors share a structural channel. Group lasso [Yuan and Lin, 2006] provides the resolution. Rather than penalizing the prod-uct norm, we penalize each factor separately with a Frobenius-norm group-lasso term that drives all parameters in a structural slice toward zero simultaneously. A structural slice Tj collects the parameters removed when dropping channel j within one factor. The regularized loss is 
+
+Lreg = L + P 
+
+> p,j
+
+λp(j) ∥T (p) 
+
+> j
+
+∥F , where λp(j) > 0 is the penalty weight for slice j of factor p.On an axis where multiple tensors share a gauge (e.g., the ensemble {Wq , W k, W v } on dai ), their parameters form a single lasso group penalized through a joint Frobenius norm. The utility ωj of a structural slice is the first-order task-loss increase from removing it. At a critical point, utility equals penalty: 
+
+Proposition 1 (Equilibrium identity) . Suppose the lasso groups form a disjoint partition of the penalized parameters. For any structural slice Tj with ∥Tj ∥F > 0 and penalty Ω = λ∥Tj ∥F , at a critical point the utility of Tj equals its penalty: ωj = λ∥Tj ∥F .Proof. At the critical point, dT + λT   
+
+> ∥T∥F
+
+= 0 , so ω = −tr( T T dT ) = λ  
+
+> ∥T∥F
+
+tr( T TT ) = λ∥T ∥F .         
+
+> 3Operators act from the left on column vectors: q=Wqx, stored as Q=XW ⊤
+> q.
+
+4When lasso groups are not disjoint, which occurs whenever a tensor has more than one structural axis, the identity requires a correction term. See Appendix B.1 for extended analysis. The disjoint case captures the essential structure, but the corrected form is used in practice. The penalty must act on both sides of each structural axis (i.e., gauge-connected tensor slices) to en-sure stable convergence to a gauge-balanced network. The additive penalty λA∥αA j ∥+λB ∥α−1Bj ∥
+
+is stable under rescaling; its minimum over α occurs when both terms equal pλAλB ∥Aj ∥∥ Bj ∥.This gauge-balance is monotone in the product ∥Aj ∥ · ∥ Bj ∥, meaning that additive penalties recover the operator component ranking at equilibrium. 
+
+Proposition 2 (Gauge-balanced utility) . Let two gauge-connected factors have per-index penalty 
+
+λA∥Aj ∥F + λB ∥Bj ∥F and per-index gauge freedom ( Aj → αA j , Bj → Bj /α for α > 0). Define the geometric mean GM j = pλAλB ∥Aj ∥F ∥Bj ∥F .(a) The penalty has a unique minimum over α: λA∥Aj ∥F = λB ∥Bj ∥F = GM j .(b) At a critical point, gauge balance holds for every index j to give the utility ωj = GM j .(c) GM j is gauge-invariant and computable from parameters at any training state. Proof. (a) Taking ∂α [αλ A∥Aj ∥ + λB ∥Bj ∥/α ] = 0 gives α = p(λB ∥Bj ∥)/(λA∥Aj ∥) at the minimum. Substitution recovers the stated result. (b) The gauge direction is loss-invariant, so imbalance contradicts stationarity. At balance, ωj = λA∥Aj ∥ = GM j (Proposition 1). (c) pλAλB ∥αA j ∥ ∥ Bj /α ∥ = pλAλB ∥Aj ∥ ∥ Bj ∥.When lasso groups overlap across axes, a correction is needed (Appendix B.1). Simultaneous bal-ance across all axes is achieved by gauge Sinkhorn iterations (Section 4). 
+
+3.3 Efficiency-Scaled Calibration 
+
+Different structural axes have different element counts and FMA costs per channel. For example, the prescaled RMS weights γ multiply only one scalar per channel on dai , whereas the attention ensemble {Wq , W k, W v } requires H(2 dk + dv ) FMAs per channel. Without calibration, the penalty exerts uncoordinated pressure across axes. The following proposition derives the calibration needed to optimize computational efficiency. 
+
+Proposition 3 (Efficiency-scaled calibration) . Let nA, nB be the element counts of the structural slices comprising gauge-connected factors A and B at position j, and let rj be the total FMAs per token for channel j (including operations such as scaled dot-product attention). Define the per-element RMS εA = ∥Aj ∥F /√nA and εB = ∥Bj ∥F /√nB . Then the unique penalty coefficients under which the efficiency ηj ≡ ωj /r j = ρ ε j is uniform across all axes, with εA = εB ≡ εj at gauge balance, are 
+
+λA = ρ r j /√nA, λB = ρ r j /√nB . (1) 
+
+Proof. From the equilibrium identity, ηj = ωj /r j = λA
+
+√nA εA/r j . Setting ηj = ρ ε A gives 
+
+λA = ρ r j /√nA, and symmetrically for λB . Gauge balance then gives ρ r j εA = ρ r j εB , so 
+
+εA = εB .Since both εA and εB scales are the same at gauge balance, step-normalized optimizers (Muon, Adam) apply comparable perturbations to each lasso group. The global multiplier ρ > 0 controls overall compression strength, which can be fixed or derived adaptively from a loss target. In summary, Propositions 1–3 establish that at gauge balance, the additive penalty provides a cal-ibrated, gauge-invariant measure of each channel’s first-order inference utility per compute. They are first-order statements at a critical point, which training only approaches, so the penalty reports an estimate of utility rather than its exact value. Section 4 develops the machinery to apply this criterion during training, including the coupled updates and gauge Sinkhorn iterations that drive the network toward the regime where these statements bind. 54 Training Procedure 
+
+This section describes how the calibrated penalties from Section 3 are applied during training. Three mechanisms are essential: coupled regularization integrates the penalty into each optimizer step; adaptive ρ anchors the penalty strength to a loss target; and trust-drop physically removes chan-nels whose gauge-invariant utility falls below the learning rate, compacting all affected tensors to retain dense matrix operations. Two mechanisms provide robustness: the conservative ρ solver re-stricts compression to steps where the model has already passed the loss target, and gauge Sinkhorn iterations enforce balance before drop decisions. Channel exchange, an optional capacity adjust-ment mechanism, may improve compression quality (Appendix C). Algorithm 1 shows how these mechanisms are organized in our prototype. 
+
+Coupled regularization. The penalty gradient must compete with the task gradient through the same optimizer scaling; otherwise the equilibrium identity (Proposition 1) does not hold in practice. If g is the task gradient and r = P 
+
+> p
+
+λpT (p) 
+
+> j
+
+/∥T (p) 
+
+> j
+
+∥F is the unscaled regularization gradient, the effective gradient geff = g + ρ r enters the optimizer as a single update. We track momentum on g
+
+alone so that both ρ and r respond immediately to structural changes. 
+
+Adaptive ρ. A fixed ρ can under-compress or inhibit training. Adaptive ρ anchors the penalty strength to a loss target L∗ by solving the ρ needed for the post-step loss to hit the target. The conservative solver sets 
+
+ρ =  L∗ − L/ −lr · ⟨ sign( m), r ⟩, (2) where m is the optimizer momentum. This gives ρ > 0 only when L < L ∗: compression occurs only after the model has reached the target, without assuming the optimizer will improve the loss further. If the model does improve, the margin L∗ − L grows and the penalty strengthens automatically. We set ρ = 0 when the denominator is not sufficiently negative (penalty does not oppose descent). A more aggressive variant includes a descent credit lr · ∥ m∥1 in the numerator, spending predicted optimizer gains on compression: 
+
+ρ =  (L∗ − L) + lr · ∥ m∥1
+
+/ −lr · ⟨ sign( m), r ⟩. (3) This allows the system to orbit the loss target, compressing continuously rather than waiting for realized margin. The complexity attractor emerges as the structural profile at which no channel falls below the trust-drop threshold under the adaptive ρ that holds the loss at L∗.
+
+Trust-drop. Channels driven toward zero by the penalty must be physically removed to realize the compression as smaller dense tensors. The gauge-invariant geometric mean √εA · εB measures a channel’s distance to zero without requiring exact gauge balance. A channel is dropped when 
+
+pεA(j) · εB (j) ≤ τ, τ = k · lr , (4) where k ≥ 1 is a trust multiplier. At k = 1 , only channels within one optimizer step of zero are dropped. When a channel is dropped, corresponding slices are removed from all tensors touching the axis. If all channels on an axis are dropped, the owning operator is removed entirely. 
+
+Gauge Sinkhorn. During training the network is not at a critical point, so gauge balance (Propo-sition 2) does not hold exactly. Gauge Sinkhorn is a periodic reparameterization that enforces balance before drop decisions. For each gauge-connected pair on each axis, the balance ratio 
+
+c = pλB ∥Bj ∥F /(λA∥Aj ∥F ) rescales Aj ← c A j , Bj ← Bj /c , preserving the network func-tion exactly on bilinear couplings and up to a scalar gain where one passes through a prescaled-RMS output (Appendix C.3). Momentum transforms contravariantly: mA ← mA/c , mB ← c m B .Alternating over all axes converges in 2–3 iterations. Training proceeds in three phases: a warmup during which ρ = 0 and no compression occurs, a compression phase under adaptive ρ, and an optional cooldown during which ρ returns to zero and the architecture is frozen. Every structural modification produces a dense tensor; drops shrink the model’s memory footprint and forward-pass cost while momentum tensors undergo compatible surgery so that optimization continues without restarting. 6Algorithm 1 Training with adaptive compression 
+
+Require: Loss target L∗, trust multiplier k, drop interval N , learning rate schedule lr( t) 
+
+> 1:
+
+for each training step t do  
+
+> 2:
+
+Compute task loss L and gradient g 
+
+> 3:
+
+Compute efficiency-scaling (1) from Proposition 3 and prepare penalty gradient r 
+
+> 4:
+
+Solve for ρ via (2) or (3)  
+
+> 5:
+
+Take combined optimizer step on geff = g + ρ r  
+
+> 6:
+
+if t mod N = 0 and ρ > 0 then  
+
+> 7:
+
+Gauge Sinkhorn: rebalance all gauge-connected pairs  
+
+> 8:
+
+Trust-drop: remove all channels that satisfy (4)  
+
+> 9:
+
+Cascade: remove any operators or blocks with no remaining channels  
+
+> 10:
+
+end if  
+
+> 11:
+
+end for  
+
+> 12:
+
+return Converged architecture Table 1: Polynomial division over F31 (5 seeds at L∗=0 .01 ; 25 at L∗=0 .005 ). A run has converged if it compressed below half the initial FMA and reached ≥99% exact match on held-out data; statistics are over converged seeds only, and Appendix E.1 reports every seed.                   
+
+> Condition Converged Exact Match FMA Compression No penalty —1.000 13.2M 1×
+> L∗= 0 .01 , 40k steps 3/5 1.000 63k [63k, 90k] 209 ×
+> L∗= 0 .005 , 70k steps 18/25 1.000 70k [52k, 89k] 187 ×
+
+## 5 Experiments 
+
+The experiments address five questions: (1) Can the method find dramatically smaller architectures while preserving task performance? (Section 5.1) (2) Do compressed models match or exceed hand-designed baselines? (Section 5.2) (3) Which components of the framework are necessary? (Sec-tion 5.3) (4) Can these architectures be reached without sustained pressure? (Section 5.4) (5) Does dense compaction produce real training speedups? We evaluate GaugeLasso on four tasks: polynomial long division over a finite field (deterministic, exact ground truth), character-level language modeling on PG-19, masked autoencoding on CelebA, and a synthetic retrieval task that serves as the ablation testbed. In both cases, a 2×-wider, 2×-deeper architecture is compressed under penalty. On language modeling, the compressed model is evaluated against the baseline at equal FMA. On CelebA, structural profiles from the initial compression guide a second iteration with expanded capacity. All experiments use the Muon optimizer [Jordan et al., 2024, Bernstein, 2024] with coupled regularization and efficiency-scaled calibration. Architecture specifications and full hyperparameters appear in Appendix D, per-seed results in Appendix E.1. 
+
+5.1 Polynomial Long Division over FF31 
+
+This experiment tests complexity suppression on a deterministic mathematical task requiring a non-trivial sequence of steps. A transformer trained on polynomial long division over F31 (8 layers, 13.2M FMA; Appendix D) reaches 100% accuracy by step 4k without penalty. Under loss targets 
+
+L∗=0 .01 and 0.005 , converged seeds discover architectures at ∼70 k FMA ( 187 × compression, up to 255 ×) with perfect exact-match accuracy (Table 1). The tighter target is more reliable (18/25 vs. 3/5 converged) but requires twice the training budget; of the seven that do not converge, two never reach a loss low enough to begin compressing and five compress 146 ×–191 × and then fail to hold the target. Structural profiles (Appendix D.1) show that the task never requires more than three attention blocks, often discarding the first, with a prominent dip at the third MLP block. 
+
+5.2 Language Modeling and Vision 
+
+Character-level language modeling tests compression where structural needs vary continuously across depth. The L∗= ln 3 target achieves perplexity 2.61 versus the baseline’s 2.65 at matched 7Table 2: Compression results on language modeling and vision (mean ± std, 5 seeds unless noted). 
+
+(a) Character-level LM on PG-19. A 7× larger architecture is compressed to the baseline’s FMA budget.                                    
+
+> Condition Architecture Compression Loss Perplexity FMA Baseline 6L/6H, D=288 1×0.975 ±0.009 2.652 ±0.023 7.60M
+> L∗= ln 3 12L/6H, D=576 7.1×0.959 ±0.008 2.610 ±0.021 7.56M
+> L∗= ln 4 12L/6H, D=576 7.5×1.009 ±0.026 2.745 ±0.073 7.17M
+
+(b) Masked autoencoder on CelebA. The last row uses dk =256 (4 seeds).                                   
+
+> Condition Architecture Compression Loss FMA Baseline 6L/8H, D=384 1×0.236 ±0.001 12.1M
+> L∗=0 .32 12L/8H, D=768 8.0×0.237 ±0.001 11.3M
+> L∗=0 .40 12L/8H, D=768 9.4×0.251 ±0.001 9.6M
+> L∗=0 .24 ,dk=256 12L/8H, D=768 2.9×0.213 ±0.000 50.1M
+
+Table 3: Retriever ablation (mean ± std over 5 seeds; sign step over the 4 that completed). Baseline uses conservative solver, gauge Sinkhorn, exchange, and k=1 ; each row deviates in one dimension.                                                                                    
+
+> Config Conserv. Sinkhorn Exch. Trust  k
+> 25k Loss 30k Loss 30k Acc. FMA Baseline ✓✓✓11.657 ±1.981 0.231 ±0.338 0.983 ±0.023 203k No Sinkhorn ✓✓10.266 ±0.491 0.128 ±0.255 0.985 ±0.030 255k No Exchange ✓✓10.036 ±0.001 0.001 ±0.000 1.000 ±0.000 278k Sign Step ✓✓16.939 ±0.249 5.554 ±1.347 0.246 ±0.105 101k Trust k=4 ✓✓✓40.048 ±0.008 0.001 ±0.001 1.000 ±0.000 199k Trust k=16 ✓✓✓16 0.293 ±0.501 0.005 ±0.007 1.000 ±0.001 206k
+
+FMA (Table 2a); a 24-layer model tested at greater depth compresses 2.2× with 2.34 ppl. Early layer dimensions narrow while deeper layers retain capacity (Appendix D.2). CelebA masked autoencoding tests compression on a vision task with qualitatively different struc-tural demands than language (Table 2b). Under a stringent loss target ( L∗=0 .32 ), the compressed model matches the baseline but dk and dv saturate in every layer (Figure 5b), a diagnostic that re-quires pushing the model near its capacity limit. With dk=256 , the network sheds excess capacity in early layers but retains it in later layers, achieving loss 0.213, well below the baseline (Figure 5c). 
+
+D and df remain near their ceilings, identifying the next axes for expansion (Appendix D.3). 
+
+5.3 Retrieval and Ablations 
+
+The retrieval task provides low-cost ablations on a simple model that requires attention and probes the framework’s ability to compress the residual stream dimension D (Appendix D.4). Under the baseline configuration, the framework compresses to one attention block and one MLP with D=26 –
+
+38 (Table 3). The ablations validate our baseline settings: exchange is the most impactful mechanism (37% more FMA without it), gauge Sinkhorn accelerates compression, and the sign-step ρ-solver over-compresses catastrophically, validating the conservative variant. The trust multiplier is robust across k ∈ { 1, 4, 16 }; we use k=1 as the safest default. Per-condition profiles are in Appendix D.4. 
+
+5.4 Reaching the Discovered Architectures 
+
+Three controls ask whether these architectures are reachable without sustained pressure: the same utility metric applied after training, an external during-training method, and direct training of the discovered architecture itself. 
+
+Post-hoc pruning. Applying the same gauge-calibrated utility metric to fully trained models iso-lates when compression occurs as the only variable (Appendix D.5). On FF31, the first channel removed already breaks the loss ceiling. Without penalty pressure, utility distributes so uniformly that every channel is needed, while during-training finds 187 × compression (Table 4). On character-level LM at matched steps and FMA, post-hoc achieves perplexity 3.191 versus 2.610 , 22% worse. 8Wall-clock step time and loss during training across all four tasks. 
+
+Figure 2: Blue (left axis): wall-clock step time. Red (right axis): task loss. Grey dashed lines mark cooldown onset. The text panel uses a 24-layer model (Appendix D.2). Hatched bands show the range across seeds. 
+
+An external during-training method. We reimplemented CoFi [Xia et al., 2022], the closest prior during-training method, inside our framework and targeted the measured cost of our own com-pressed model. Its controller stalls at 1.97 × compression where 7.09 × was requested: the coarse mask families saturate, the multipliers are still rising at the end of the pruning phase, and the dis-cretized network keeps every sublayer at full head width. This may reflect the axes available rather than the method itself, since the architecture we reach narrows key and value dimensions inside 
+
+heads that stay alive, which its published mask space cannot express (Appendix E.3). 
+
+Training the discovered architecture directly. Re-initializing a discovered architecture and train-ing it without penalty asks whether the pressure is needed once the shape is known. On retrieval the control matches the compressed model, reaching accuracy 0.9999 against 0.9829 at lower FMA. On character-level LM the control reaches perplexity 2.640 , against 2.610 compressed and 2.652 for the uniform baseline at matched FMA: comparable quality, and consistent with parity, though this arm alone cannot settle it. On FF31 the control clearly fails: four of five seeds finish below 0.01 
+
+exact match and the fifth reaches 0.805 , against 1.000 for the compressed model. Sustained pressure is therefore what discovers these architectures; whether it is additionally required to train them is task-dependent, and on exact algorithmic execution it is. Table 4: Reaching the discovered architectures. Post-hoc uses the same utility metric, applied after training; from-scratch re-initializes the discovered architecture and trains it without penalty. Seed counts are given because post-hoc FF31 is scored over the 2 of 5 seeds that learned the task in phase A. Step counts are realized, not configured caps, and differ across rows; only the post-hoc chains are budget-matched to their during-training comparator. Details in Appendix D.5.                                                            
+
+> Task Method Seeds Training steps FMA/tok Quality FF31 During-training ( L∗=0 .005 )18/25 70k 70k 1.000 EM FF31 Post-hoc (A+B+C) 2/5 50k 13.2M 1.000 EM FF31 From-scratch 570k 71k 0.161 EM Char LM During-training ( L∗= ln 3 )547k 7.6M 2.610 ppl Char LM Post-hoc (A+B+C) 547k 7.6M 3.191 ppl Char LM From-scratch 532k 7.6M 2.640 ppl Char LM Uniform baseline 532k 7.6M 2.652 ppl Retrieval During-training 530k 203k 0.9829 acc Retrieval From-scratch 530k 185k 0.9999 acc
+
+Training acceleration. Figure 2 summarizes wall-clock step time and loss across all four tasks. Because structural changes retain dense tensors, step time falls monotonically as the model com-presses, yielding 1.6–5× speedups. During compression, adaptive ρ makes the loss orbit the tar-get L∗; with penalties removed during cooldown, loss descends further at the compressed architec-ture. Realized speed depends on both FMA and shape; with the penalty disabled at matched batch and hardware, the full-size 12-layer model takes 28 .3s per 100 steps, the 7.1× FMA-compressed architecture 11 .9s ( 2.4× in time), and an FMA-matched uniform baseline 6.9s, with fewer, larger operators. 96 Discussion 
+
+GaugeLasso compresses dense transformers during training. Additive group-lasso penalties resolve the gauge pathology that renders naive penalties unworkable, recovering the product-norm ranking at equilibrium. Efficiency-scaled calibration puts all channels on a common scale and adaptive penalty strength tracks the loss target, yielding a principled per-channel measure of inference utility. The result is heterogeneous architectures that remain fully dense, allowing optimized GPU kernels. 
+
+The complexity attractor. Under a fixed loss target, the adaptive ρ solver and trust-drop criterion converge to a structural profile of near-minimal compute sustaining that loss. Different targets trace different points on a loss-versus-compute Pareto front, each a distinct architecture discovered by training. Shape converges exactly; widths converge in proportion to what they cost. Across ten runs of one fixed retrieval configuration, every seed keeps exactly one attention block and one MLP block, and the residual stream spans 23 –39 channels, while the far cheaper MLP interior spans 1–20 .Total inference cost is set by the wide, expensive axes, so it varies much less than the dimensions do. On language modeling and vision, seeds likewise agree on aggregate capacity while differing in per-layer allocation. 
+
+Representation reorganization. The post-hoc comparison (Section 5.4) confirms that during-training compression discovers representations that are not subsets of unconstrained training. The same metric applied post-hoc either fails to compress (FF31) or reaches substantially worse quality (character-level LM). These representations emerge from sustained resource pressure that drives the network to reorganize how it processes information, not from removing redundancy from a fixed solution. Discovery and reachability are distinct, however: the architecture cannot be extracted from a converged model, but once discovered it is portable on our statistical tasks, which recover comparable quality from fresh initialization. Retraining failed on exact algorithmic execution. 
+
+Iterative architecture design. A compression trial reports more than a smaller model. The struc-tural profile identifies which axes were over-provisioned and which saturated their budget: axes that compress far were larger than the task requires, while axes that hold at their ceiling were binding. Both readings inform the next trial, so successive rounds start closer to the target and spend less of the run finding it. On CelebA, dk saturation in the first iteration guides a second that allocates capacity where the task needs it, improving loss from 0.237 to 0.213 (Section 5.2). 
+
+Limitations. The number of attention heads is fixed throughout training; extending the penalty to heads is left to future work. Channel regrowth through nonlinearities is not supported, so the con-servative solver and trust-drop criterion are designed to prevent premature removal (Appendix B.2). Discovered architectures narrow more than they shorten, so at these scales launch and memory latency limit realized speed more than arithmetic, and FMA reduction overstates wall-clock gain (Figure 2). This work contributes the mathematics of coherent, FMA-calibrated utility suppression, tested on architectures small enough to study in full: every experiment runs below 150 M FMA and trains from scratch. That scope makes the structural profiles comparable seed by seed and is the basis for extending to larger pretrained models; the theory is architecture-independent, and the 24-layer experiments (Appendix D.2) suggest transferability. 
+
+## 7 Conclusion 
+
+The central finding is that sustained structural pressure during training discovers representations more efficient than post-hoc methods can extract from converged models. GaugeLasso makes this possible. Dynamically calibrated, gauge-invariant channel utilities drive dense compression with-out disrupting optimization. The compressed architectures are not just smaller, they reflect depth-dependent specialization that fixed-capacity training cannot discover, and they are portable, retrain-ing to comparable quality from fresh initialization on our statistical tasks. Dense compaction accel-erates training itself, and each trial returns a structural profile that informs the next architecture. As AI adoption grows, inference energy per token is an economic and environmental priority; this work shows that substantial gains are available not by scaling up, but by enabling networks to reorganize into more efficient internal structure. 10 Acknowledgments and Disclosure of Funding 
+
+This work was supported by ANR-22-CE23-0002 ERIANA, ANR-22-EXES-0009 MAIA and was granted access to the HPC resources of IDRIS under the allocation 2026-AD011013338 made by GENCI. Claude Code (Anthropic) was used as a development tool to assist with code implementation, doc-ument organization, and technical exposition. 
+
+## References 
+
+Saleh Ashkboos, Maximilian L Croci, Marcelo Gennari do Nascimento, Torsten Hoefler, and James Hensman. Slicegpt: Compress large language models by deleting rows and columns. ICLR , 2024. Jeremy Bernstein. Deriving muon. https://jeremybernste.in/writing/deriving-muon ,2024. Laurent Dinh, Razvan Pascanu, Samy Bengio, and Yoshua Bengio. Sharp minima can generalize for deep nets. In International Conference on Machine Learning , pages 1019–1028. PMLR, 2017. Angela Fan, Edouard Grave, and Armand Joulin. Reducing transformer depth on demand with structured dropout. arXiv preprint arXiv:1909.11556 , 2019. Jonathan Frankle and Michael Carbin. The lottery ticket hypothesis: Finding sparse, trainable neural networks. ICLR , 2019. Song Han, Jeff Pool, John Tran, and William Dally. Learning both weights and connections for efficient neural network. Advances in neural information processing systems , 28, 2015. Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza Rutherford, DDL Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, et al. Training compute-optimal large language models. Advances in Neural Information Processing Systems ,35, 2022. Lu Hou, Zhiqi Huang, Lifeng Shang, Xin Jiang, Xiao Chen, and Qun Liu. Dynabert: Dynamic bert with adaptive width and depth. Advances in Neural Information Processing Systems , 33: 9782–9793, 2020. Xiaoqi Jiao, Yichun Yin, Lifeng Shang, Xin Jiang, Xiao Chen, Linlin Li, Fang Wang, and Qun Liu. Tinybert: Distilling bert for natural language understanding. In Findings of the association for computational linguistics: EMNLP 2020 , pages 4163–4174, 2020. Keller Jordan, Yuchen Jin, Vlado Boza, You Jiacheng, Franz Cesista, Laker Newhouse, and Jeremy Bernstein. Muon: An optimizer for hidden layers in neural networks. https://kellerjordan. github.io/posts/muon , 2024. Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. Scaling laws for neural language models. arXiv preprint arXiv:2001.08361 , 2020. Hao Li, Asim Kadav, Igor Durdanovic, Hanan Samet, and Hans Peter Graf. Pruning filters for efficient convnets. ICLR , 2017. Hanxiao Liu, Karen Simonyan, and Yiming Yang. Darts: Differentiable architecture search. ICLR ,2019. Ziwei Liu, Ping Luo, Xiaogang Wang, and Xiaoou Tang. Deep learning face attributes in the wild. In Proceedings of the IEEE international conference on computer vision , pages 3730–3738, 2015. Paul Michel, Omer Levy, and Graham Neubig. Are sixteen heads really better than one? Advances in neural information processing systems , 32, 2019. Pavlo Molchanov, Arun Mallya, Stephen Tyree, Iuri Frosio, and Jan Kautz. Importance estimation for neural network pruning. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 11264–11272, 2019. 11 Behnam Neyshabur, Ryota Tomioka, and Nathan Srebro. Norm-based capacity control in neural networks. In Conference on learning theory , pages 1376–1401. PMLR, 2015. Jack W Rae, Anna Potapenko, Siddhant M Jayakumar, Chloe Hillier, and Timothy P Lillicrap. Compressive transformers for long-range sequence modelling. ICLR , 2020. Hassan Sajjad, Fahim Dalvi, Nadir Durrani, and Preslav Nakov. On the effect of dropping layers of pre-trained transformer models. Computer Speech & Language , 77:101429, 2023. Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. Distilbert, a distilled version of bert: smaller, faster, cheaper and lighter. arXiv preprint arXiv:1910.01108 , 2019. Victor Sanh, Thomas Wolf, and Alexander Rush. Movement pruning: Adaptive sparsity by fine-tuning. Advances in neural information processing systems , 33:20378–20389, 2020. Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 , 2020. Pierre Stock, Benjamin Graham, Rémi Gribonval, and Hervé Jégou. Equi-normalization of neural networks. In International Conference on Learning Representations (ICLR) , 2019. Wei Wen, Chunpeng Wu, Yandan Wang, Yiran Chen, and Hai Li. Learning structured sparsity in deep neural networks. Advances in neural information processing systems , 29, 2016. Mengzhou Xia, Zexuan Zhong, and Danqi Chen. Structured pruning learns compact and accurate models. In Proceedings of the 60th Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 1513–1528, 2022. Mengzhou Xia, Tianyu Gao, Zhiyuan Zeng, and Danqi Chen. Sheared llama: Accelerating language model pre-training via structured pruning. ICLR , 2024. Ming Yuan and Yi Lin. Model selection and estimation in regression with grouped variables. Journal of the Royal Statistical Society Series B: Statistical Methodology , 68(1):49–67, 2006. Michael Zhu and Suyog Gupta. To prune, or not to prune: Exploring the efficacy of pruning for model compression. arXiv preprint arXiv:1710.01878 , 2017. Barret Zoph and Quoc V Le. Neural architecture search with reinforcement learning. ICLR , 2017. 12 A Design Pathologies and Their Resolutions 
+
+Each design decision in the framework resolves a specific failure mode. This appendix catalogs these failure modes, progressing from penalty alternatives through the fundamental instability of product-norm penalties to calibration and implementation. 
+
+L2 and L1 regularization. L2 regularization applies pressure proportional to magnitude, so weights shrink but never reach exactly zero; it cannot drive channels to extinction. L1 regular-ization drives individual weights to zero but operates on elements, not structural slices: a tensor may become highly sparse while remaining at full dimension, preventing compaction into a smaller dense tensor. Group lasso coordinates suppression across all elements of a structural slice simultaneously. 
+
+The product-norm instability. Consider the simplest gauge-connected setting: a rank-1 operator 
+
+P = ba T contributing to y = BAx along one channel, where b ∈ Rm and a ∈ Rn. Every unitarily invariant norm of P reduces to ∥b∥2∥a∥2 (the sole singular value), so penalizing any norm of the product is equivalent to penalizing a function of ∥b∥ · ∥ a∥.Let Ω = f (∥b∥ · ∥ a∥) for any monotonically non-decreasing f . The gradients are 
+
+∇aΩ = f ′(∥b∥∥ a∥) ∥b∥ a
+
+∥a∥ , ∇bΩ = f ′(∥b∥∥ a∥) ∥a∥ b
+
+∥b∥ .
+
+The gradient magnitude on a is f ′(·)∥b∥; on b it is f ′(·)∥a∥. Two pathologies follow, regardless of the choice of f :
+
+Unstable equilibrium. At ∥a∥ = ∥b∥, both sides receive equal pressure. But the equilibrium is unstable: if ∥a∥ > ∥b∥ by any amount, b receives stronger pressure ( f ′(·)∥a∥) and shrinks faster, while a receives weaker pressure ( f ′(·)∥b∥) and shrinks more slowly. The imbalance grows with each step. No choice of f can make the balanced point attracting. 
+
+Vanishing gradients at zero. As the penalty succeeds and ∥b∥∥ a∥ → 0, the instability drives one side to zero while the other retains mass. Say ∥a∥ → 0 with ∥b∥ large. The gradient on b is 
+
+f ′(∥b∥∥ a∥) · ∥ a∥ → 0: the penalty loses its grip on the surviving factor, leaving dangling weights that prevent tensor compaction. In contrast, the additive penalty λA∥a∥+λB ∥b∥ has gradients ∇a = λA a/ ∥a∥ and ∇b = λB b/ ∥b∥:constant magnitude, independent of the partner factor. Both sides receive persistent pressure regard-less of the other’s state, and gauge balance is a stable minimum via AM-GM (Proposition 2). 
+
+The gauge problem. A gauge rescaling α > 0 changes ∥Aj ∥ and ∥Bj ∥ arbitrarily while preserv-ing the function. One-sided penalties (penalizing only A) cannot force coordinated removal: the unpenalized factor B retains arbitrary norm, and gauge balance cannot emerge. The additive sym-metric penalty resolves this by applying persistent pressure on both sides, producing importance estimates that are gauge-invariant (Proposition 2c). 
+
+Calibration. Without calibration, a scalar normalization parameter (one element) and an attention ensemble ( H(2 dk+dv ) elements) receive the same total penalty per channel, creating per-element pressure asymmetry that overwhelms gauge balance. Even with per-element pressure equalized, different structural axes free different amounts of compute per channel: a dk channel eliminates scaled dot-product attention operations with no parameter representation, while a df channel does not. Efficiency-scaled calibration (Proposition 3) resolves both problems by scaling the penalty in proportion to total freed compute, which automatically equalizes per-element RMS at gauge balance. 
+
+The coupling problem. If the penalty enters as a separate gradient step rather than inside the optimizer, the penalty and task gradients operate in different metrics. Under any step-normalized optimizer (e.g., Muon, normalized gradient methods), the task gradient receives a normalization that the decoupled penalty does not. The equilibrium identity (Proposition 1) fails: the penalty cannot overpower the task signal in the optimizer’s normalized metric. Coupled regularization ( geff =
+
+g + ρ r entering the optimizer together) restores the identity. 
+
+Density and timing. Sparse pruning zeroes channels but keeps tensors at full size; dense slice re-moval produces physically smaller tensors at full hardware utilization. Applying compression during 13 training rather than post-hoc allows the network to reorganize representations into fewer dimensions, discovering architectures that do not exist as subsets of unconstrained training (Section 5.4). The penalty is additive ( λA∥A∥ + λB ∥B∥), while the utility estimate at gauge balance is GM j =pλAλB ∥A∥∥ B∥, a monotonic function of the product ∥A∥ · ∥ B∥. The additive penalty there-fore recovers the product-of-norms ranking at equilibrium without the vanishing-gradient pathology (Proposition 2). 
+
+## B Supplementary Theory 
+
+B.1 Corrected Utility for Overlapping Dimensions 
+
+When a weight tensor has multiple structural axes, penalizing each axis independently produces overlapping slices. Consider a weight tensor W with A adaptive dimensions of extents d1, . . . , d A and additional 
+
+contracted dimensions , i.e. dimensions shared among every lasso group. The penalty table 
+
+P ∈ Rd1×···× dA collapses the contracted dimensions via Frobenius norm: 
+
+P [j1, . . . , j A] = W [ : , j 1, . . . , j A] F ,
+
+where the colon spans all contracted dimensions. Each entry of P is the norm of the weight subtensor at a single combination of adaptive indices, summed over all dimensions that do not vary across lasso groups. Write P (p) 
+
+> j
+
+for the (A−1) -way slice of P at index j along dimension p:
+
+∥P (p) 
+
+> j
+
+∥F =
+
+s X 
+
+> j1,...,j A:jp=j
+
+P [j1, . . . , j A]2.
+
+The total penalty is Ω = PAp=1 λp
+
+Pdp 
+
+> j=1
+
+∥P (p) 
+
+> j
+
+∥F .
+
+Multi-dimensional variational condition. The gradient of Ω with respect to a weight element w
+
+at penalty-table index (j1, . . . , j A) collects contributions from all A dimensions: 
+
+∂Ω
+
+∂w = w
+
+> A
+
+X
+
+> p=1
+
+λp
+
+∥P (p) 
+
+> jp
+
+∥F
+
+.
+
+At the critical point, ∂L/∂w = −w P 
+
+> p
+
+λp/∥P (p) 
+
+> jp
+
+∥F .
+
+Corrected utility. The first-order utility of removing index j along dimension p is 
+
+ωp[j] = 
+
+> A
+
+X
+
+> q=1
+
+λq
+
+X 
+
+> j1,...,j A:jp=j
+
+P [j1, . . . , j A]2
+
+∥P (q) 
+
+> jq
+
+∥F
+
+.
+
+Separating the q = p self-term from q̸ = p cross-terms: 
+
+ωp[j] = λp∥P (p) 
+
+> j
+
+∥F + X 
+
+> q̸=p
+
+λq
+
+X 
+
+> j1,...,j A:jp=j
+
+P [j1, . . . , j A]2
+
+∥P (q) 
+
+> jq
+
+∥F
+
+.
+
+The self-term recovers the standard group-lasso utility (Proposition 1). The cross-terms are sums of non-negative quantities, so ωp[j] ≥ λp∥P (p) 
+
+> j
+
+∥F : the single-dimension penalty underestimates true utility when slices overlap. 
+
+B.2 Regrowth Constraints 
+
+Which structural axes admit function-preserving extension? Linear axes ( dv , dk without RoPE) have no intervening nonlinearity, so the full orthogonal group O(n) is available: Procrustes QR can add channels that preserve the existing function exactly. Nonlinear axes (those with intervening elemen-twise activations such as SwiGLU or PrescaleRMS) admit only permutation matrices, restricting function-preserving operations to channel reordering. Table 5 classifies all structural axes. In this paper, the conservative solver and trust-drop criterion prevent premature removal, so regrowth is not needed in practice. 14 Table 5: Axis classification by intervening transformation. Linear axes admit full basis rotation, which allows Procrustes QR growth. Nonlinear axes admit only channel permutation. 
+
+Axis Type Commutant Available operations 
+
+dv Linear O(n) Procrustes QR 
+
+dk (no RoPE) Linear O(n) Procrustes QR 
+
+dk (RoPE) Nonlinear Block SO (2) Pair-wise rotation (deferred) 
+
+df Nonlinear Sn Permutation only 
+
+dai , dmi Nonlinear Sn Permutation only 
+
+dao , dmo Nonlinear Sn Permutation only 
+
+D (residual) Nonlinear Sn Permutation only 
+
+B.3 Cross-Count Calibration 
+
+The efficiency-scaled calibration of Section 3.3 chooses penalty weights ˆλA = rj /√nA, ˆλB =
+
+rj /√nB to normalize utility by FMAs. The RMS equalization εA = εB at gauge balance (Proposi-tion 3) depends only on the ratio of penalty weights, not on their absolute scale: 
+
+Remark 1 (RMS-equalized calibration) . At gauge balance ( λA∥Aj ∥F = λB ∥Bj ∥F ), the per-element RMS values satisfy εA = εB if and only if λA/λ B = pnB /n A.
+
+Any shared rescaling ˆλA = c√nB , ˆλB = c√nA preserves this ratio, and therefore RMS equaliza-tion, while normalizing channel utility against a resource of the practitioner’s choice. Setting c = 1 
+
+gives the simplest geometry-only calibration; setting c = rj /√nAnB recovers the efficiency-scaled weights of Section 3.3, which normalize by FMAs. The same degree of freedom could normalize against memory footprint, latency, or any other per-channel resource cost. 
+
+## C Architecture Details 
+
+C.1 Axis Inventory 
+
+Table 6 provides the complete structural axis inventory. The following paragraphs trace the penalty structure in forward order through the transformer block. Table 6: Structural axes (6 per block, plus global D). All axes use the geometric mean utility estimate (Proposition 2). Each block has four bridge paths (attention/MLP × input/output), each independently calibrated; the paper writes dai /dmi and dao /dmo when the argument is per-path-independent. 
+
+Axis Controls Gauge-connected factors (A; B) GM 
+
+Per-block: attention 
+
+dk Key/query channels Wq [: , :, j ]; Wk [: , :, j ] Yes 
+
+dv Value channels Wv [: , :, j ]; Wo[: , j, :] Yes 
+
+Per-block: MLP 
+
+df Filter width Wu[: , j ]; Wd[j, :] ∗ Yes 
+
+Per-block: residual interface 
+
+dai Attn input γj ; {Wq , W k , W v }† Yes 
+
+dao Attn output Wo[: , :, j ]; δj Yes 
+
+dmi MLP input γj ; {Wu, W g }† Yes 
+
+dmo MLP output Wd[: , j ]; δj Yes 
+
+Global 
+
+D Residual width Injector-side scales ‡; extractor-side scales Yes             
+
+> ∗Wg[: , j ]is gauge-disconnected on df(Section 3.2). †Joint Frobenius within each ensemble. ‡Side A: {δattn , δ mlp }
+> and embedding scale across all blocks. Side B: {γattn , γ mlp }across all blocks.
+
+15 Residual stream ( D, dai , dao , dmi , dmo ). The global axis D controls which residual sites ex-ist. PostScale δ across all blocks forms one ensemble factor; prescaled RMS γ across all blocks forms the other. Input axes dai /dmi pair γj against the sub-block’s consumption operators. Output axes dao /dmo pair the operator weight ( Wo or Wd) against PostScale δj .
+
+Attention ( dk, dv ). Wq and Wk are gauge-connected on dk: rescaling Wq [: , :, j ] → αW q [: , :, j ],
+
+Wk[: , :, j ] → Wk[: , :, j ]/α preserves QTK. Each factor is penalized independently (sum of norms, not joint Frobenius), since either vanishing eliminates the channel. Wv and Wo are gauge-connected on dv . With RoPE, adjacent channel pairs form the structural unit on dk.
+
+SwiGLU MLP ( df ). Wu and Wd are gauge-connected on df . Wg is gauge-disconnected: zeroing 
+
+Wu[: , j ] kills the output regardless of Wg [: , j ]. Wg is not penalized on df but joins the dmi ensemble factor. 
+
+C.2 Freed Resources 
+
+Table 7 lists the per-index freed resources for each structural axis. The penalized column names the gauge-connected factors (side A; side B) whose norms enter the penalty; nA and nB are the element counts of the structural slices; the efficiency-scaled calibration (Section 3.3) sets ˆλA = rj /√nA,
+
+ˆλB = rj /√nB . The coupled column names gauge-disconnected tensors that share the axis and are freed when an index is dropped but do not participate in the penalty. The rcompute column counts per-token multiply-add savings from all eliminated operations. Terms involving S (sequence length) require a target length to evaluate; for long sequences these dominate. Table 7: Freed resources per dropped index (per block, per token). 
+
+Axis Penalized (A; B) nA nB Coupled rcompute 
+
+Attention 
+
+dai γ; {Wq , W k , W v } 1 H(2 dk +dv ) 1 + H(2 dk +dv )
+
+dk Wq ; Wk Hd ai Hd ai H(2 dai +S)
+
+dv Wv ; Wo Hd ai Hd ao H(dai +dao +S)
+
+dao Wo; δ Hd v 1 Hd v + 1 
+
+H† Wv ; Wo dai dv dv dao Wq , W k rH
+
+SwiGLU MLP 
+
+dmi γ; {Wu, W g } 1 2df 1 + 2 df
+
+df Wu; Wd dmi dmo Wg 2dmi +dmo 
+
+dmo Wd; δ df 1 df + 1                
+
+> †Fixed in this work; included for completeness. rH=dai (2 dk+dv) + S(dk+dv) + dvdao . With RoPE, dkchannels come in pairs. The global axis Dis omitted: its freed resources are architecture-dependent sums over blocks.
+
+C.3 Prescaled RMS Normalization 
+
+Prescaled RMS normalization (Section 3.1) serves three roles in the penalty structure: (1) Penalty attachment: γ provides the gauge-connected factor for dai and dmi , and across all blocks forms the extractor-side ensemble for D. (2) Gauge mediation: prescaling by γ before the denominator restores the residual stream gauge that standard RMS normalization breaks. (3) Seamless exit: as 
+
+γj → 0, the ∥γ∥2 denominator ensures surviving channels maintain their normalization. 
+
+Scope of the gauge-Sinkhorn invariance. Role (2) is also where the rescaling of Section 4 stops being exact. On a purely bilinear coupling, Aj ← cA j , Bj ← Bj /c cancels identically. Where the coupling passes through a prescaled-RMS output — the input bridges, the final bridge, and the residual stream D, whose consumers are themselves bridge gammas — the normalizer depends on γ
+
+through both the numerator and the sum of squares. A global rescale therefore cancels and is exactly undone by the consumers, which is why anchoring the residual stream is exact, while a per-channel 
+
+rescale leaves one data-dependent scalar gain on that block’s output. The approximation is not observed to matter in practice, but the invariance should be read as exact on the bilinear couplings and first-order elsewhere. 16 C.4 Procrustes Growth 
+
+For gauge-connected pairs with no intervening nonlinearity ( dv , dk without RoPE), the full gauge freedom includes the orthogonal group O(d), not just scalar rescalings. Procrustes QR growth exploits this freedom to grow an axis from d to d+k dimensions. A random (d+k) × d orthonormal matrix ˆQ is Procrustes-aligned so that existing channels are minimally perturbed (scaled by entries of 
+
+Σ ˆQ ≈ 1−O(k/d )) while new channels have O(1) parameter norms and zero net output contribution. Training immediately differentiates the new channels. Any function-preserving reparameterization 
+
+A′ = M A requires momentum to transform as m′ 
+
+> A
+
+= M −T mA to preserve the optimizer’s gradient basis. Gauge Sinkhorn is the scalar case where M = cI and m′ 
+
+> A
+
+= mA/c ). Procrustes growth is the isometric case, for which weight and momentum transform identically. 
+
+## D Experimental Details 
+
+All experiments were run on NVIDIA H100 GPUs (80 GB). Each run uses a single GPU. The total compute budget across all reported experiments (including ablations, post-hoc comparisons, and the 24-layer extension) is approximately 500 GPU-hours on H100; step times decrease as models compress, so the effective cost is substantially less than the initial per-step rate would suggest. Table 8 summarizes the architecture and training configuration for each task. 
+
+Datasets. PG-19 [Rae et al., 2020] is used under the Apache 2.0 license. CelebA [Liu et al., 2015] is used for non-commercial research under its original license. The FF31 polynomial division and retrieval tasks use synthetic data generated at training time. 
+
+Structural profiles. For each compression profile figure, the first seven panels plot axis extent, the number of active channels, against transformer depth for the seven adaptive axis types ( dai , dk,
+
+dv , dao , dmi , df , dmo ). Line color encodes training step, and the hatched band gives the full range across seeds at convergence unless a caption says otherwise. The eighth panel runs against training step instead, carrying D and the classifier input width dc on the left axis and total FMA on the right. Extents use a log 2 scale to resolve both large initial and small converged values. 
+
+D.1 FF31 Polynomial Division 
+
+The task requires polynomial long division of cubics by linears over Z/31 Z. Each example requires three rounds of divide, multiply, subtract, and accumulate; the model produces all intermediate steps as a fixed-length sequence (283 tokens, vocab 44, 254 supervised positions). Ten percent of training examples are replaced with arithmetic drill sequences to maintain operation accuracy during structural compression. The architecture uses dk=dv =48 and dmlp =2048 . Without penalty, the model reaches 100% token accuracy and exact-match by step 4k. Figure 3 shows the structural profiles under both loss targets. Across seeds, the converged archi-tectures retain at most three attention blocks (often discarding block 0) and show a consistent dip at MLP block 2, suggesting this position contributes less to the polynomial division task. Training details are in Table 8. 
+
+D.2 Character-Level Language Modeling 
+
+Next-character prediction on PG-19 (byte-level, vocab size 256), causal attention with RoPE, se-quence length 512, batch size 32 ×3 (gradient accumulation), Muon optimizer with LR 10 −3
+
+cosine-decayed to 10 −4, 500-step warmup. The baseline (6L/6H, D=288 , dk=dv =48 , dmlp =768 ;7.6M FMA) trains without penalty. The adaptive architecture (12L/6H, D=576 , dk=dv =96 ,
+
+dmlp =1536 ; 53.7M FMA) compresses until total_fma ≤ 7.6M, at which point the architecture freezes and training continues at fixed structure. Every run then trains for a further 30k steps, an-nealing to 10 −4; realized lengths are in Table 8. Matching FMA matches inference cost, not training cost: reaching its architecture costs the L∗= ln 3 condition about 2.5× the baseline’s training com-pute. To test the framework at greater depth, we also train a 24-layer model ( D=480 , 8 heads, dk=dv =90 ,
+
+dmlp =1920 ; 113M FMA) with L∗= ln 2 .5 for 70k compression steps followed by 30k cooldown. 17 Table 8: Experimental configurations. Cells with several entries follow the order of the L∗ row. Two stopping rules are in play. Conditions with an FMA target (Char LM 12L, CelebA dk=96 ) end one 
+
+Saturation phase after first meeting both that target and the loss target, annealing the learning rate over the phase, so their step cap never binds. The rest set no FMA target: they run to the cap and anneal over the Cooldown instead. Realized steps is the median over seeds of what actually ran. 
+
+Train FMA is the per-token inference FMA summed over realized steps, in units of 10 11 : a proxy for training cost that is comparable within a column but not across columns, since tokens per step differ by task. On the same scale the baselines cost 2.4 (Char LM) and 7.4 (CelebA).                                                                                                                                          
+
+> FF31 Char LM 12L Char LM 24L CelebA MAE Retrieval
+> Task Poly. division Next-char Next-char Masked AE Mod-arith. retr. Baseline arch. —6L/6H —6L/8H —Baseline D—288 —384 —Baseline FMA —7.6M —12.1M —Baseline steps —31.8k —61.2k —Adaptive arch. 8L/8H 12L/6H 24L/8H 12L/8H 4L/4H Adaptive D192 576 480 768 128 Adaptive FMA 13.2M 53.7M 113M 90.2M (145.2M †)1.9M
+> dk/dv48 / 48 96 / 96 90 / 90 96 / 96 (256 †)32 / 32
+> L∗0.01, 0.005 ln 3 ,ln 4 ln 2 .50.32, 0.40 (0.24 †)0.05 LR 1e-3 1e-3 5e-4 1e-3 (5e-4 †)1e-3 LR min 1e-4 1e-4 1e-4 1e-4 1e-4 Weight decay 000.01 0 (0.01 †)0
+> βloss 000.9 0 (0.9 †)0Batch size 128 32 ×348 ×232 ×332 Warmup 500 500 500 500 500 Saturation —30k —60k (— †)—Cooldown 10k, 10k 030k 0 (30k †)5k Step cap 40k, 70k 1M 100k 100k (100k †)30k Realized steps 40k, 70k 47.7k, 31.9k 100k 63.4k, 61.7k 30k Train FMA 0.50, 0.52 6.0, 2.9 76 9.0, 7.0 (94 †)0.11
+> ρ-solver Conservative Conservative Conservative Conservative Conservative Sinkhorn Yes Yes Yes Yes Yes Exchange No No No No Yes Seeds 5, 25 555 (4 †)5
+> †CelebA dk=256 condition (Section 5.2).
+
+The framework compresses to mean 51 .9M FMA ( 2.2×) at 2.335 ± 0.025 ppl over five seeds. The compression phase was limited to 70k steps and further compression is expected with a longer budget. Note the more conservative training settings used for the 24L experiments (Table 8). Figure 4 shows the structural profiles for all three conditions. Tighter loss targets produce smoother, more consistent profiles. In the 24L model, whole sublayers are removed, but sparsely: across the five seeds, 0–2 of the 48 attention and MLP sublayers are eliminated outright (two MLP blocks in one seed, one attention and one MLP block in another, none in the remaining three). The FMA that vanishes from the profiles is therefore mostly vestigial width rather than removal. What is consistent across seeds sits at the front of the network: in every converged seed the first attention block is reduced to dk ∈ [6 , 17] of 45 and dv ∈ [1 , 4] of 90, and the first MLP to df ∈ [68 , 191] 
+
+of 1920, while the second layer still carries hundreds of residual-stream channels. In all conditions, the initial attention and MLP blocks are dramatically narrowed (visually understated due to the log scale of the extent axis). Table 9 reports the converged extents of seed 42 directly, on every axis of every layer. 
+
+D.3 CelebA Masked Autoencoder 
+
+Our masked autoencoder for CelebA uses 128 ×128 images with patch size 8 and 75% masking so that 256 of 1024 patches remain visible. The baseline (6L/8H, D=384 , dk=dv =48 , dmlp =1024 ;12.1M FMA) trains without penalty. The adaptive architecture (12L/8H, D=768 , dk=dv =96 ,
+
+dmlp =2048 ; 90.2M FMA) compresses until total_fma ≤ 12 .1M. As on the language task, 18 (a) FF31, L∗=0 .01 (30k compression + 10k cooldown). 
+
+(b) FF31, L∗=0 .005 (60k compression + 10k cooldown). 
+
+Figure 3: FF31 structural profiles. (a) Three of five seeds converge to ∼63 k FMA with perfect accuracy; the wider loss margin permits one seed to over-compress. (b) 18 of 25 seeds converge to ∼70 k FMA; the tighter target produces more stable compression (hatched band: middle 78% of converged seeds). Table 9: Per-layer structure of the discovered architectures, seed 42; seed-to-seed spread is in Fig-ure 4. Each entry is the number of surviving channels on that axis; — marks an operator removed entirely. Ceilings are D=576 , H=6 , dk=48 , dv =96 , df =1536 ; discovered D=571 and D=480 ,
+
+H=8 , dk=45 , dv =90 , df =1920 ; discovered D=480 respectively, with dk halved because RoPE pairs share a frequency (Table 6). 
+
+12L, L∗= ln 3 24L, L∗= ln 2 .5
+
+Attention MLP Attention MLP Layer dai H dk dv dao dmi df dmo dai H dk dv dao dmi df dmo 
+
+0 19 6 10 3 8 82 212 78 30 8 15 4 15 31 120 27 1 68 6 24 24 186 78 250 63 187 8 26 27 276 70 126 61 2 121 6 21 31 211 204 900 187 257 8 23 40 296 217 1201 256 3 111 6 15 28 134 157 384 58 262 8 27 43 211 — — —4 118 6 15 25 148 270 894 105 245 8 28 39 202 270 1672 216 5 79 6 10 15 76 172 364 78 258 8 26 42 161 308 1829 237 6 117 6 15 25 113 134 226 69 164 8 20 30 133 308 1792 215 7 172 6 34 41 222 257 613 89 244 8 36 29 117 348 1818 246 8 147 6 30 26 110 148 129 5 210 8 19 36 144 355 1800 283 9 85 6 10 13 66 404 1141 164 211 8 33 41 152 142 804 104 10 113 6 10 23 102 329 873 101 352 8 44 79 255 218 1193 149 11 55 6 11 4 13 454 1023 59 245 8 38 78 256 — — —12 460 8 45 90 403 254 1264 123 13 165 8 38 39 191 333 1704 201 14 423 8 45 90 437 378 1799 204 15 179 8 31 38 217 404 1862 218 16 246 8 40 52 212 204 843 123 17 403 8 45 90 372 440 1903 323 18 303 8 45 79 333 464 1905 347 19 237 8 39 39 179 450 1885 350 20 33 8 19 4 36 442 1841 292 21 105 8 24 17 100 469 1775 295 22 341 8 38 61 202 398 1589 183 23 230 8 35 31 138 473 1527 379 
+
+19 (a) 12-layer, L∗= ln 4 (7.5× compression, ppl 2.75).        
+
+> (b) 12-layer, L∗= ln 3 (7.1×compression, ppl 2.61).
+> (c) 24-layer, L∗= ln 2 .5(2.2×compression, ppl 2.34). Grey dashed line marks the start of cooldown at step 70k.
+
+Figure 4: Character-level LM structural profiles. (a) The loose target compresses early, at the cost of representational quality. (b) The tighter target beats the baseline, and deeper layers retain more capacity. (c) At 24 layers the model narrows channel dimensions across depth while retaining every layer. 20 each run then trains for a further 60k steps at frozen structure, annealing to 10 −4, so the con-figured 100k cap does not bind (realized lengths in Table 8). A follow-up run uses dk=dv =256 
+
+(145.2M FMA) with L∗=0 .24 , informed by the dk saturation observed in the initial runs. That con-dition disables the terminal phase and instead runs the full 100k steps with a 30k cosine cooldown (4 seeds). Batch size 32 ×3 (gradient accumulation), Muon optimizer with LR 10 −3 cosine-decayed to 10 −4, 500-step warmup, weight decay 10 −2 on Adam-optimized parameters only. The dk=256 
+
+run uses more conservative settings (Table 8). Figure 5 shows the structural profiles for all conditions. The looser target ( L∗=0 .40 ) also shows 
+
+dk/dv saturation but drops structural complexity that the tighter target ( L∗=0 .32 ) retains, illustrat-ing how only a sufficiently stringent target reveals what the network truly needs. Across conditions, early attention blocks are significantly suppressed while MLP complexity stays fairly constant, sug-gesting that larger MLPs or embedding dimension D might be beneficial. In the dk=256 run, dk
+
+and dv show a notable ascending trend with depth. 
+
+D.4 Retrieval Task, Ablations, and Structural Profiles 
+
+The retrieval task uses a vocabulary of 4096 tokens with a modular-arithmetic index (mod 61) and a sentinel class for positions where the target is undefined, giving nclasses = 4097 . The model is a causal transformer with RoPE positional encoding: D=128 , 4 layers, 4 attention heads, dk=dv =32 ,
+
+dmlp =256 , sequence length 192, batch size 32. Training uses the Muon optimizer with coupled reg-ularization and efficiency-scaled calibration (Section 3.3). The loss target is L∗=0 .05 , with 30 000 total steps and a 5 000-step cooldown during which the penalty is disabled and no structural changes occur. Structural events are spaced at intervals of 100 steps (trust-drop) and 500 steps (exchange and gauge Sinkhorn). Each ablation deviates from the baseline in exactly one dimension. Five seeds (42–46) per condition; 35 runs total. Table 10 summarizes the conditions; full training settings appear in Table 8. Table 10: Ablation conditions. The baseline uses the conservative ρ-solver, gauge Sinkhorn (before every drop check), exchange (500-step cadence), and trust multiplier k=1 . Each row shows the single deviation from baseline.               
+
+> Condition Deviation from baseline Baseline —No Sinkhorn Gauge Sinkhorn disabled No Exchange Channel exchange disabled ( exchange_steps = 0 )Sign Step ρ-solver switched to sign-step Trust k=4 Trust multiplier kraised from 1 to 4 Trust k=16 Trust multiplier kraised from 1 to 16
+
+Figures 6–7 show the per-axis structural profiles discovered by each ablation condition. 
+
+D.5 Post-Hoc Pruning Protocol 
+
+The post-hoc experiments in Section 5.4 follow a three-phase pipeline using the same gauge-calibrated utility metric as during-training compression. 
+
+FF31. Phase A: train the full 8L/8H/ D=192 model without penalty for 40k steps (30k training + 10k cosine cooldown), 5 seeds (42–46). Phase B: iteratively apply gauge Sinkhorn ( τ =0 .02 ,3 iterations), remove the lowest-efficiency channel, and train for 10 corrective steps at LR min . Stop when holdout loss exceeds L∗=0 .1. Phase C: finetune for 10k steps with cosine LR decay, no penalty. Of 5 seeds, 2 learned the task in Phase A ( ≥99% exact match); the remaining 3 are excluded. 
+
+Character-level LM. Phase A: train the full 12L/6H/ D=576 model without penalty for 10k steps with cosine LR decay, 5 seeds (42–46). Phase B: prune to the baseline FMA target (7.6M) over 10 rounds of 100 corrective steps each (1k total), dropping to linearly interpolated FMA targets at each round. Phase C: finetune for 36k steps with cosine LR decay, no penalty. Total training budget: 47k steps, matching the during-training runs. 21 (a) CelebA MAE, L∗=0 .40 , dk =96 (9.4× compression, loss 0.251). 
+
+(b) CelebA MAE, L∗=0 .32 , dk =96 (8× compression, loss 0.237). 
+
+(c) CelebA MAE, L∗=0 .24 , dk =256 (2.9× compression, loss 0.213; 4 seeds). 
+
+Figure 5: CelebA MAE structural profiles. (a) The loose target compresses aggressively at the cost of higher loss. (b) The tighter target recovers baseline quality, with all 12 layers surviving. 
+
+(c) dk=dv =256 , informed by the saturation in (a) and (b), lands below the baseline loss of 0.236. 22 (a) Baseline: Sinkhorn + exchange + conservative solver (203k FMA).   
+
+> (b) No gauge Sinkhorn (255k FMA, +26% ).
+> (c) No exchange (278k FMA, +37% ).
+
+Figure 6: Retriever ablation profiles (part 1). (a) The baseline compresses D from 128 to ∼30 .
+
+(b) Without gauge Sinkhorn the optimizer alone cannot expose channel importance quickly enough. 
+
+(c) Exchange is the most impactful mechanism. 23 (a) Sign-step ρ-solver (101k FMA, unstable; band over the 4 completed seeds).     
+
+> (b) Trust multiplier k=4 (199k FMA).
+> (c) Trust multiplier k=16 (206k FMA).
+
+Figure 7: Retriever ablation profiles (part 2). (a) The sign-step solver over-penalizes and destroys the model (loss 5.6, accuracy 25%). (b, c) Raising the trust multiplier has minimal effect, so the attractor is robust to the drop threshold. 24 From-scratch controls. Each from-scratch arm of Table 4 takes the structure one compressed run discovered, re-initializes it, and trains it with the penalty disabled at 5 seeds (42–46): FF31 uses seed 43’s structure at L∗=0 .005 , character-level LM seed 42’s at L∗= ln 3 , and retrieval seed 45’s. The spread across those five seeds is therefore training-seed variance at a fixed architecture, not variance over architectures. Three details qualify the character-level LM arm in particular. It runs weight decay 0.001 where both of its comparators ran 0; decay is applied only on the Adam path, so it reaches the embedding, positional-embedding and RoPE frequency tensors and shrinks them by 
+
+1.8% over the run. Its realized budget is shorter than its configured cap because the saturation trigger fires early: a control that starts already at the target FMA meets both targets almost immediately, at step ∼1.7k against ∼16 .9k for its during-training comparator. Each arm therefore enters an identical 
+
+30 k-step anneal — same peak rate, same warmup, same floor — on first meeting the same FMA and loss targets, rather than on an equal total budget. Equal total steps would in fact favor the control, giving it ∼15 k extra steps at peak rate on an architecture it never has to change. Both mismatches cut the same way, which is why the arm is reported as consistent with parity rather than as parity. On FF31, finally, the one control seed that learns the task is seed 43, the donor of the structure; with a single seed that is an observation and not a finding. 
+
+## E Supplementary Results 
+
+Appendix D is organized by task; this one is organized by question, and reports results that cut across tasks or go beyond what the main body has room for. 
+
+E.1 Full-Population Results 
+
+Table 1’s FF31 statistics are over converged seeds only. Table 11 lists all 5 seeds at L∗=0 .01 and all 25 at L∗=0 .005 , giving final exact match, final FMA, and whether each seed met that convergence criterion (exact match ≥99% and at least 2× compression). The failures are not uniform. Three seeds — 46 at the looser target, 42 and 63 at the tighter one — end at the initial 13.2M FMA, having never compressed at all. The remaining non-converged seeds did compress, into the same 52k–95k band as the converged ones, and finished below the exact-match criterion. A mechanism for that second class, and the corrected-schedule population, are in Appendix E.4. Table 12 gives per-seed values for every other reported condition. Nothing is excluded there: the body tables for these tasks already aggregate over the full population, and the per-seed values are listed so the spread behind each mean is visible. Its final group holds the three from-scratch controls of Table 4, each in its own task’s metric. 
+
+E.2 Gauge-Component Ablation 
+
+This section isolates which results depend on the penalty being gauge-correct rather than merely structured. Three arms replace the symmetric penalty on the retrieval task, holding the calibration, the trust-drop criterion and every schedule fixed: a one-sided penalty, the same with gauge Sinkhorn enabled, and a product-norm penalty. Each is the in-vivo counterpart of a pathology argued in Appendix A, so together they test Propositions 1–2 empirically rather than by construction. Results are in Table 13. 
+
+Read compression, not accuracy. The one-sided arm reaches the highest accuracy in the table, 
+
+0.996 , and that is the failure rather than a success: it gets there by not compressing. At 442 k FMA it sits 1.7× above the matched symmetric control, having converged to an architecture the penalty was supposed to shrink. This is the gauge problem of Appendix A made concrete: the network preserves its function by moving magnitude into the unpenalized factor, so the measured penalty falls without any structure being given up. Charging both factors removes the escape (Proposition 2). 
+
+Gauge Sinkhorn cannot repair a one-sided penalty. The cleanest contrast in the table is between the two one-sided arms, which differ in one flag and share seeds, schedule and every other setting. Enabling gauge Sinkhorn moves compression only from 442 k to 302 k while accuracy collapses from 
+
+0.996 to 0.368 . Rebalancing and one-sided pressure work against each other: Sinkhorn restores the balance that the penalty is simultaneously destroying, and the network is driven through repeated 25 Table 11: FF31 full population. Every seed at both loss targets, with the convergence criterion of Table 1 applied per seed. Seeds ending at 13,180k FMA never compressed; the initial architecture is 13.2M FMA.                                                                                                                                                        
+
+> L∗= 0 .01 , 40k steps L∗= 0 .005 , 70k steps Seed Exact match FMA Conv. Exact match FMA Conv. 42 1.000 63k ✓0.025 13180k 43 1.000 63k ✓1.000 71k ✓
+> 44 1.000 90k ✓1.000 89k ✓
+> 45 0.408 95k 1.000 59k ✓
+> 46 0.031 13180k 1.000 74k ✓
+> 47 ———1.000 72k ✓
+> 48 ———1.000 56k ✓
+> 49 ———0.940 83k 50 ———1.000 70k ✓
+> 51 ———1.000 77k ✓
+> 52 ———0.084 69k 53 ———1.000 70k ✓
+> 54 ———0.994 52k ✓
+> 55 ———1.000 76k ✓
+> 56 ———1.000 67k ✓
+> 57 ———1.000 72k ✓
+> 58 ———0.035 81k 59 ———1.000 85k ✓
+> 60 ———1.000 52k ✓
+> 61 ———1.000 64k ✓
+> 62 ———0.045 90k 63 ———0.002 13180k 64 ———1.000 81k ✓
+> 65 ———0.416 74k 66 ———1.000 66k ✓
+> 3 of 5 converged 18 of 25 converged
+
+Table 12: Full population by seed, for every reported condition outside Table 11. Perplexity and loss are the values the body tables average; retrieval accuracy is read at step 30k, as in Table 3. In the last group all three controls train a single discovered architecture across five seeds, so their spread is training-seed variance at a fixed architecture (Appendix D.5).                                                                     
+
+> Condition 42 43 44 45 46
+> Character-level LM (perplexity)
+> Baseline 2.668 2.614 2.657 2.682 2.639
+> L∗= ln 3 2.634 2.614 2.628 2.574 2.599
+> L∗= ln 4 2.731 2.726 2.728 2.881 2.658
+> 24L, L∗= ln 2 .52.317 2.374 2.353 2.307 2.326
+> CelebA masked autoencoding (loss)
+> Baseline 0.236 0.235 0.238 0.235 0.237
+> L∗=0 .32 0.238 0.236 0.237 0.237 0.238
+> L∗=0 .40 0.251 0.254 0.251 0.249 0.251
+> L∗=0 .24 ,dk=256 —0.213 0.213 0.213 0.213
+> Retrieval (accuracy at step 30k)
+> Baseline 0.9715 0.9998 0.9999 0.9999 0.9435
+> Discovered architectures trained from fresh initialization
+> FF31 (exact match) 0.002 0.805 0.000 0.000 0.000
+> Char LM (perplexity) 2.670 2.621 2.647 2.656 2.603
+> Retrieval (accuracy) 1.0000 1.0000 0.9996 1.0000 1.0000
+
+rescalings rather than toward a structure. Gauge correctness is therefore a property of the penalty, not something a rebalancing step can add afterwards. 
+
+Product-norm over-compresses past the point of quality. The product-norm arm compresses hardest — 150 k FMA, 0.6× the control — and loses the task doing it, at accuracy 0.579 ± 0.308 .Appendix A predicts this: the product-norm gradient on one factor grows without bound as the other factor shrinks, so once a channel starts to go it is driven out faster than the loss can object. The spread is the diagnostic, not the mean — the arm is bimodal across seeds rather than uniformly worse. 26 Taken together, the symmetric penalty is the only one of the three that compresses and keeps the task, and the two failures are opposite: one is evaded, the other unbounded. 
+
+Scope. The variant arms vary the data stream with the seed while the symmetric reference runs vary only initialization. The two generations only share a schedule through step 25,000 (when the penalty freezes), which is why the table reports at step 25k throughout. The one-sided-with-Sinkhorn arm has no exactly matched control, since no symmetric run used a 500 -step Sinkhorn cadence; the one-sided pair it is contrasted against is exact. Table 13: Gauge-component ablation on the retrieval task, at step 25k (mean ± std over 5 seeds). FMA ratios are against the matched symmetric control — symmetric penalty, gauge Sinkhorn off — which is the second row. Accuracy is reported before the cooldown, so it is lower than the converged figures in Table 3; the comparison across arms is the point, not the level.                                             
+
+> Penalty Gauge Sinkhorn Accuracy Loss FMA
+> Symmetric reference runs
+> Symmetric gS every 100 0.765 ±0.292 1.657 ±1.981 203k (0.8 ×)Symmetric no gS 0.980 ±0.040 0.266 ±0.491 255k
+> Gauge-variant arms
+> One-sided no gS 0.996 ±0.007 0.037 ±0.057 442k (1.7 ×)One-sided gS every 500 0.368 ±0.265 5.265 ±1.913 302k (1.2 ×)Product-norm no gS 0.579 ±0.308 2.894 ±2.117 150k (0.6 ×)
+
+E.3 An External During-Training Method 
+
+Section 5.4 reports that our reimplementation of CoFi [Xia et al., 2022] stalls well short of the requested compression. This section details the two runs and the controller state that explain this outcome. Both runs distill from the same teacher, the full 12-layer character LM of Appendix D.2 trained with-out penalty, and both follow the same schedule of 5k warmup, 40 k pruning and 25 k finetuning steps; they differ only in the measured resource objective. One targets the FMA of our own compressed model, the other its parameter count. Table 14 reports each request and what it reached, each in its own objective. The parameter target misses by as much as the FMA target does, at 2.05 × against 
+
+8.38 × requested. Quality is not the binding constraint: both arms finish within 0.1 perplexity of the teacher. Table 15 reads the controller at the last step of the pruning phase. The coarse mask families (whole attention blocks, residual channels, and whole MLP blocks) sit at a mean of 1.000 , meaning nothing at that granularity was ever given up. All of the realized compression came from the two fine families. After the full 40 k pruning steps both Lagrange multipliers are still climbing at roughly ten units per thousand steps. The phase ended with the controller still pushing, not at an equilibrium. The last column of Table 14 records the consequence for shape: head width is untouched in all twelve sublayers. The architectures we reach narrow key and value dimensions inside heads that stay alive (Table 9), which the published mask space cannot express. This comparison therefore bounds what is reachable through those mask families, not what the method could do with others. Table 14: CoFi against the same compression target, one seed per arm. Parameter counts exclude the embedding tables, as the controller’s own accounting does. Perplexity is held out, so it is not comparable with the last-report values used elsewhere. Full width counts sublayers whose dk and 
+
+dv still match the teacher’s.                         
+
+> Model Requested Reached FMA/tok Parameters Perplexity Full width Teacher (no pruning) —1.00 ×53.7M 48.0M 2.527 12 of 12 CoFi, FMA target 7.09 ×1.97 ×27.3M 23.5M 2.622 12 of 12 CoFi, parameter target 8.38 ×2.05 ×27.5M 23.3M 2.625 12 of 12
+
+27 Table 15: CoFi controller state at the last step of the pruning phase. Mask values are means per family: MHA and FFN gate whole sublayers, hidden the residual channels, head the attention heads, intermediate the MLP units. ∆λ1 is the change in the first multiplier over the final 5,000 steps, per thousand steps. 
+
+Mean mask value by family Lagrange multipliers Arm MHA Head Hidden FFN Interm. λ1 λ2 ∆λ1/1k CoFi, FMA target 1.000 0.639 1.000 1.000 0.412 369 389 +9 .9
+
+CoFi, parameter target 1.000 0.694 1.000 1.000 0.380 368 389 +9 .8
+
+E.4 Reliability and Schedule Sensitivity 
+
+Compression pressure is gated on the loss target: until the loss reaches L∗ the penalty never engages and no channel is removed. On FF31 the model passes a plateau before reaching the target, so the time taken to escape it decides whether compression begins at all. This section characterizes that coupling and reports the population at the corrected schedule. To separate the schedule from the method we repeated L∗=0 .005 at half the learning rate over the same 25 seeds. Table 16 gives both populations. These trials reveal two modes of failure, both related to the loss target. A seed that never reaches L∗ cannot compress, thus ending training at its initial FMA. A seed may also begin compressing normally, but then fail to maintain the loss target or pass the exact match condition. At η=10 −3, 2 seeds fail to start and 5 fail to hold; at η=5 ×10 −4
+
+all seeds begin compression and 5 seeds still fail to hold. On this architecture, halving the learning rate results in more efficient early descent and, thus, earlier compression. The median falls from 2400 steps to 1700, and the range from [1700, 17100] with 2 seeds never starting, to [1200, 3300] with no lost starts ( p < 0.001 ). That count does not change (p=1 .00 ). Convergence rises slightly from 18 to 20 of 25, a difference these populations cannot resolve ( p=0 .74 ) and which we do not read as a reliability gain. Further, the converged runs achieve lower compression at the smaller learning rate, 187 × against 176 × (p=0 .059 ). These experiments highlight how compression is a dynamical process whose outcome depends on everything that governs when and the extent to which the loss falls below the target, including initialization, data order, and learning rate. FF31 is sensitive because of the very strict loss target and accuracy criterion. Table 16: FF31 reliability at L∗=0 .005 , the same 25 seeds at two learning rates. Compression is the initial 13,179,850 FMA over each class’s median final FMA, with [min , max] over the class. Convergence is exact match ≥ 0.99 with at least 2× compression, as in Table 1.                                             
+
+> η= 10 −3η= 5 ×10 −4
+> Outcome Runs Compression Final loss Runs Compression Final loss Never compressed 2/25 1×0.0811 –0.0949 0/25 ——Compressed, converged 18/25 187 ×[148, 255] ≤0.0029 20/25 176 ×[129, 208] ≤0.0048
+> Compressed, not converged 5/25 162 ×[146, 191] 0.0004 –0.0132 5/25 193 ×[148, 224] 0.0038 –0.0163
+> Steps to first reach L∗2400 [1700, 17100]; 2 never 1700 [1200, 3300]; 0 never Accepted by final loss ≤L∗19 accepted, 18 converged 21 accepted, 20 converged Non-converged seeds 42, 63 (never); 49, 52, 58, 62, 65 51, 57, 60, 62, 63
+
+28

@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-14</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-15</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 1 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-14 22:30:16 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-15 22:44:46 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读 1 篇、精读 0 篇，唯一入选的是《PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding》（6.0/10）。</p>
-<p>若对图像编码感兴趣，这篇值得一看的方向是它同时强调快速编码与亚毫秒级解码，属于把 INR 重新拉回实用场景的尝试。</p>
-<p>普通读者可先把它当作&quot;INR 图像编码能否落地&quot;的入门参考，留意其速度指标再决定是否深入跟进。</p>
+<p>今天筛完5篇论文：2篇精读聚焦4K视频压缩与率失真感知理论，3篇速读覆盖Transformer压缩、LLM剪枝和光流估计。</p>
+<p>最值得看的是两篇8.0分精读——用可变形2D高斯泼溅做高效4K视频压缩，以及率失真感知理论综述，前者偏方法、后者偏评价框架。</p>
+<p>普通读者可先读率失真感知综述建立判断视角，再挑4K视频压缩那篇看高斯泼溅如何用于视频编解码。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Deformable 2D Gaussian Splatting for Efficient 4K Video Compression">Deformable 2D Gaussian Splatting for Efficient 4K Video Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="An Overview of Rate-Distortion-Perception Theory">An Overview of Rate-Distortion-Perception Theory</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding">PIC: Revisiting INR for Image Coding with Fast Encoding and Sub-Millisecond Decoding</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Dense Structural Compression of Transformers via Gauge-Correct Channel Removal">Dense Structural Compression of Transformers via Gauge-Correct Channel Removal</span></li><li><span class="dpr-home-dashboard-paper-title" title="LILA: Calibration-Free Structured Pruning of Large Language Models via Latent Spectral Geometry">LILA: Calibration-Free Structured Pruning of Large Language Models via Latent Spectral Geometry</span></li><li><span class="dpr-home-dashboard-paper-title" title="FreeFlow: A Bias-free Hierarchical Transformer for Optical Flow Estimation">FreeFlow: A Bias-free Hierarchical Transformer for Optical Flow Estimation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
