@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-09-16 <!--dpr-date:20260916-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/16/2609.15749v1-oasis-online-adaptive-video-compression-via-closed-loop-feedback-control" data-sidebar-item="{&quot;title&quot;: &quot;OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.15749v1-oasis-online-adaptive-video-compression-via-closed-loop-feedback-control&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;结合轻量传感器内压缩与码率控制的自适应视频压缩框架&quot;}">OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control</a>
   * 2026-09-15 <!--dpr-date:20260915-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/15/2609.14129v1-deformable-2d-gaussian-splatting-for-efficient-4k-video-compression" data-sidebar-item="{&quot;title&quot;: &quot;Deformable 2D Gaussian Splatting for Efficient 4K Video Compression&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.14129v1-deformable-2d-gaussian-splatting-for-efficient-4k-video-compression&quot;, &quot;score&quot;: &quot;8.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;基于高斯泼溅的实时神经视频压缩&quot;}">Deformable 2D Gaussian Splatting for Efficient 4K Video Compression</a>
