@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-16</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-17</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 1 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-16 22:17:35 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-17 22:10:04 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读 1 篇，聚焦在线自适应视频压缩，无精读内容。</p>
-<p>最值得关注的是《OASIS》用闭环反馈控制做在线自适应视频压缩这一思路，即让编码策略随实时反馈动态调整。</p>
-<p>普通读者可先看它的摘要与实验部分，确认闭环反馈带来的码率与画质收益是否真实可观，再决定是否深读。</p>
+<p>今天从6篇推荐中筛出2篇精读、4篇速读，视频压缩与神经编解码成为</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="tcnerv:dual-domain temporal context modeling for implicit neural video compression">tcnerv:dual-domain temporal context modeling for implicit neural video compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission">Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control">OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PULSE: Unlocking Practical Image Compression on Single-Thread CPU">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</span></li><li><span class="dpr-home-dashboard-paper-title" title="GenStream: Semantic Streaming Framework for Generative Reconstruction of Human-centric Media">GenStream: Semantic Streaming Framework for Generative Reconstruction of Human-centric Media</span></li><li><span class="dpr-home-dashboard-paper-title" title="Hardware-Aware Learned Representation Compression for Distributed In-Sensor Vision">Hardware-Aware Learned Representation Compression for Distributed In-Sensor Vision</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
