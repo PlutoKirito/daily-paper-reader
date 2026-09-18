@@ -1,0 +1,659 @@
+Title: Perceptual Refinement of an End-to-End Video Streaming Pipeline via Generative AI Layers
+
+URL Source: https://arxiv.org/pdf/2609.19215v1
+
+Published Time: Fri, 18 Sep 2026 00:07:05 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Perceptual Refinement of an End-to-End Video Streaming Pipeline via Generative AI Layers 
+
+## EMANUELE ARTIOLI, FARZAD TASHTARIAN, and CHRISTIAN TIMMERER, Christian Doppler Laboratory ATHENA, Institute of Information Technology (ITEC), Alpen-Adria-Universität Klagenfurt, Austria 
+
+Traditional codecs treat every region of a frame alike; a generative layer can instead degrade the regions a viewer attends to least and reconstruct them at the client. We present PRESLEY , which extends the prior conference work ELVIS [1] by replacing destructive block removal with adaptive in-place degradation under a removability mask, signaling per-block strength in a bit-packed side channel, and restoring via generative backbones conditioned on transmitted visual priors rather than unconditioned in-painting. We separate the problem into three goals: choosing which blocks to degrade, degrading them so the encoder spends fewer bits, and restoring them. Against its predecessor at matched rate, PRESLEY achieves a decisive mean −56 .4 % BD-rate reduction on delivered background quality across 13 rate ladders spanning multiple codecs and dataset families. Against pristine baselines, PRESLEY defines the operating regime of generative transport: delivering substantial bitrate savings (up to −29 .4 % BD-rate) and superior background quality (17/23 sequences) in the target bit-starved regime, while maintaining foreground fidelity bit-exact. We further map where the theoretical headroom in this class of architecture lies. Using an exact leave-one-superblock-out combinatorial oracle as an additive empirical bound, we show that existing complexity heuristics already capture 83 .3 % of bit-cost savings, bounding remaining cost-axis headroom at ≈5 % of total bitrate. We then identify and model the primary unaddressed axis—post-restoration damage—which disperses widely (4 .9–8 .4 dB). We prove that this damage is predictable before transmission (held-out 𝜌 = +0.400), establishing the feasibility of transmit-time restorability modeling and defining the roadmap for joint rate-distortion-restoration selection rules. CCS Concepts: • Computing methodologies → Object identification ; Artificial intelligence ; Concurrent algorithms ; Image compression ; • Information systems → Online analytical processing ; Multimedia streaming .Additional Key Words and Phrases: HTTP adaptive streaming, Generative AI, End-to-end architecture, Quality of Experience 
+
+1 Introduction 
+
+Video streaming dominates internet traffic, and demand keeps growing with screen resolutions, immersive formats and the number of connected devices. Traditional video compression methods have achieved remarkable efficiency gains through decades of refinement, with each codec generation from AVC [2] to HEVC [3] and VP9 [4], to the most recent iterations, VVC [5] and AV1 [6] reducing bitrate requirements by approximately 50% compared to their predecessors [7]. Those gains are increasingly hard-won, and they are spent uniformly: a codec works on blocks of pixels, a level of abstraction at which nothing distinguishes the region a viewer is watching from the region behind it. Furthermore, treating video frames as collections of pixel blocks gives up the semantic understanding of scene content. This uniform treatment leads to suboptimal bit allocation: background details consume bits that could be better spent on perceptually important foreground objects, and high-frequency textures are encoded exhaustively even when they could be plausibly reconstructed from context. Content-aware encoding was proposed for exactly this as early as the 2000s [8, 9] and has not gained mainstream adoption. The obstacles are partly practical (tooling, and semantic 
+
+> Code available at https://github.com/emanuele-artioli/presley. Extended version of the NOSSDAV ’25 paper ELVIS [1]. Submitted to the ACM TOMM special issue on MMSys and co-located workshops. Authors’ Contact Information: Emanuele Artioli, emanuele.artioli@aau.at; Farzad Tashtarian, farzad.tashtarian@aau.at; Christian Timmerer, christian.timmerer@aau.at, Christian Doppler Laboratory ATHENA, Institute of Information Technology (ITEC), Alpen-Adria-Universität Klagenfurt, Klagenfurt, Austria.
+
+1arXiv:2609.19215v1 [eess.IV] 16 Sep 2026 2 Artioli et al. analysis inside a real-time encoder), but the binding one is perceptual. Coding neighbouring regions at visibly different quality puts a boundary between them, and a quality discontinuity is more objectionable than a uniformly lower quality at the same rate, so the steps must stay small enough to remain invisible and the achievable saving is capped with them. A generative layer changes that constraint rather than working within it: if the client reconstructs the degraded regions instead of displaying them, the delivered frame need not carry the discontinuity that the transmitted one did. We find that it does not. Measured on our own output, degraded blocks lying against undegraded ones are damaged 
+
+less than degraded blocks in the interior of a degraded region, by about half a decibel of PSNR, because a block with intact neighbours gives the restorer real detail to work from. Generative models trained on massive datasets have learned implicit representations of how objects appear and move in video, letting them plausibly reconstruct missing or degraded regions [10, 11, 12, 13]. This opens a paradigm for compression: rather than encoding all visual information, selectively degrade the less critical regions and leverage client-side models to restore them. 
+
+PRESLEY (Perceptual Refinement of an End-to-End Video Streaming Pipeline via Generative AI Layers) realizes it. As an extended version of the NOSSDAV ’25 conference paper ELVIS [1], it advances beyond block removal by degrading adaptively in place, preserving frame structure while reducing quality where it is least perceptible, i.e. , a generative-AI form of Region-of-Interest encoding, which simplifies codec integration and maintains spatial coherence. Posed this way, the problem separates into three goals: (1) Selection — decide which blocks of which frames to degrade. 
+
+(2) Reduction — degrade them so that the encoder actually spends fewer bits on them, and relocates those bits to the regions the viewer attends to. (3) Restoration — recover the degraded regions on the client, as close to the original as a generative prior can bring them. The key contributions of this work are fourfold:  
+
+> ■
+
+An architecture. PRESLEY advances the generative streaming paradigm of ELVIS [1] by degrading per block in place under a removability mask, at a strength signalled to the client in a bit-packed side channel, preserving frame geometry while remaining fully compatible with unmodified standard codecs. We evaluate four degradation modalities and price them alongside foreground protection: on content where foreground competes for removability, protecting it preserves perceptual fidelity at a modest 6 % rate cost.  
+
+> ■
+
+A conditioned restoration path. We introduce client-side strategies in which a generative model refines each block according to its transmitted strength, and define the pyramid by the model’s interface, so the backbone is an interchangeable component. We catalogue ten of them across the transports they are dispatched on.  
+
+> ■
+
+An evaluation protocol. Fixed-QP rate control, region-restricted perceptual metrics, and paired significance testing with correction over every candidate tried.  
+
+> ■
+
+A theoretical headroom bound and restorability model. Moving beyond empirical heuristics, we formulate an exact combinatorial bit oracle that shows existing complexity scores capture 83 .3 % of theoretical bit-cost savings, bounding remaining cost-axis headroom at ≈5 % of total bitrate under an additive empirical assumption. We then identify and model the second axis—post-restoration damage—proving it is predictable before transmission (held-out 
+
+𝜌 = +0.400) from transmit-time spatial features alone, providing the first principled roadmap for rate-distortion-restoration selection. 
+
+2 Background and Related Work 
+
+Video streaming relies on maximizing encoding efficiency on the server and adapting to network conditions on the client. With the advent of powerful AI models and capable end devices, it is now possible to share the computational burden, leveraging client-side generative AI to boost delivered video quality. PRESLEY 3
+
+2.1 Redundancy Removal 
+
+Traditional codecs — AVC/H.264 [2], HEVC/H.265 [3], and the more recent VVC/H.266 [5] and AV1 [6] — reduce file size by searching exhaustively for inter-frame motion matches and intra-frame patterns. The approach is highly successful and now facing diminishing returns, further bitrate reduction costing extreme encoding complexity [14]. More fundamentally, these codecs operate on blocks of pixels, a level of abstraction at which nothing distinguishes one region of a scene from another: every region is treated alike apart from generic heuristics for smooth against detailed areas, which allocates bits without regard to what a viewer is looking at [15]. 
+
+Region-of-Interest coding . The idea that not all pixels deserve equal bits is not new, and the standards provide hooks: AVC and HEVC accept per-region QP offsets [16], and a body of work builds rate control on them, detecting important regions with object detectors or saliency models and showing perceptual gains at small bitrate overhead [17, 18, 19]. It has nevertheless seen little adoption in general streaming, for four reasons. (1) Tooling: FFmpeg’s addroi filter supports only static regions that cannot change per frame [20], and the encoder-level interfaces that would allow more are sparsely documented and rarely used [21, 22]. (2) Cost: identifying important regions demands semantic analysis inside a codec that must also run in real time. (3) Personalization: what counts as important varies with content and with the viewer, so the driving heuristics are difficult to automate across diverse material [23]. The final reason is more subtle, and shapes the design space more than the others. Coding neighbouring regions at visibly different quality places a boundary between them, and a quality discontinuity is more objectionable than a uniformly lower quality at the same bitrate. ROI coding must therefore keep its quality steps small enough to stay invisible, which complicates its logic and caps what it can save. A system that reconstructs the degraded regions at the client is not bound by that cap, because the delivered frame need not carry the discontinuity the transmitted one did. 
+
+Semantic Streaming . A more radical class of approach transmits high-level descriptors instead of pixels and recon-structs at the client. In video conferencing, SemConf [24] and NVIDIA Maxine [25] send sparse facial keypoints and synthesize the talking head at the receiver, achieving very large reductions by transmitting who is moving and how rather than the pixels that show it. The idea is being extended toward general streaming [26]: GenStream [27] transmits skeletal keypoints, camera parameters and a static background model, and reports over 99 % bandwidth reduction against HEVC on a sports sequence. These systems show how much redundancy remains once semantics are available, but they are confined to prototypes and favourable scenarios: talking heads are constrained in a way arbitrary content is not, and without standardization the reconstruction method and the bitstream must be designed together, so nothing interoperates with a deployed decoder. Reducing resolution before transmission and reconstructing it at the client sits between these extremes and is established practice: large services deliver downscaled renditions, and receiver-side super-resolution is studied and deployed to recover them. Two properties bound it. The reduction is uniform over the frame, so no region can be protected; and the client is told only which rendition it received, so its restoration is unconditioned on what was degraded or where. 
+
+2.2 Video Restoration 
+
+The client’s task is to reconstruct the decoded video at the highest quality it can, and three families of technique address different parts of it. 
+
+Frame interpolation . raises frame rate by synthesizing intermediate frames, improving fluidity without raising the transmitted rate [28]. Modern methods estimate optical flow to do it, adding depth so that closer objects are sampled 4 Artioli et al. Controller Client side  
+
+> Network Performance monitoring
+> Server side Encode Video Extract Frames Degrade Frames Calculate Importance Restore Frames Render Video Decode Video
+> Fig. 1. PRESLEY System Architecture Overview.
+
+preferentially through occlusions [29] or self-attention for long-range motion [30], but unpredictable motion still produces ghosting where the motion estimate is wrong. 
+
+Super-resolution . reconstructs high-resolution frames from low-resolution input, from upscaling filters such as bicubic and Lanczos [31] to adversarially trained networks like ESRGAN [32], which optimize for perceptual detail rather than pixel error. Video-specific models add temporal reasoning [33], and interpolation and super-resolution can be combined in one framework [34]. Cost remains the barrier to live deployment, and because these models operate on low-level features they cannot reason about what an occluded region contains. 
+
+Video in-painting . reconstructs content that is missing rather than merely degraded. Early methods propagated patches from neighbouring frames [35] and flickered across them; global optimization improved consistency at considerable cost [36]. Generative models changed what is achievable, filling all frames jointly with spatial attention for texture and temporal attention for correspondence [37], or propagating content along estimated motion [38]. What none can do is recover the specific content that was removed, they only synthesize something plausible. 
+
+2.3 Quality Assessment for Generative Video 
+
+Traditional full-reference metrics like PSNR, SSIM, and VMAF [39] are standard for evaluating codec fidelity. However, they heavily penalize generative reconstructions that are structurally misaligned but perceptually realistic [40]. To accurately assess AI-enhanced video, learned perceptual metrics are required. LPIPS [41] computes similarity in deep feature space, correlating much closer with human judgment for GAN-generated content, as does DISTS [42], which additionally separates structure from texture similarity so that plausible re-textured detail is not penalized as heavily as it would be by pixel-aligned metrics. Because generative pipelines can also introduce localized hallucinations or temporal jitter, distributional metrics against the reference are often used: the Fréchet Inception Distance (FID) [43] for spatial realism, and the Fréchet Video Motion Distance (FVMD) [44] for temporal consistency. The foreground claims in this article rest on LPIPS and DISTS restricted to a mask, because the foreground variants the others expose are bounding-box crops and a box drawn around these sequences contains much of the background the method degrades on purpose. All seven measures are reported at whole-frame scope, where that objection does not apply, in Appendix F. 
+
+3 PRESLEY 
+
+PRESLEY builds on ELVIS [1], which integrates a generative layer into a streaming pipeline by frame shrinking : the server scores blocks, removes the most removable, and the client stretches frames back to size and in-paints the gaps. PRESLEY reworks that into a codec-friendly, non-shrinking transport, and supports two degradation families on it. The first keeps every block in place and replaces the content of the most removable ones with a flat fill or with the PRESLEY 5co-located block from the previous frame: ELVIS’s idea of giving a block up entirely, but given up in place , so frame geometry never changes and no stretching is needed before restoration. The second punches no holes at all: it degrades 
+
+the most removable blocks in place by lowering their spatial resolution, so every pixel stays partially present in the transmitted stream. Because nothing is discarded, the client can pair it with a conditioned restoration model that consumes the degraded pixels directly rather than an in-painter that must hallucinate the region from neighbouring frames. Both families share the modular framework of Figure 1: server-side preprocessing and removability scoring, selective degradation, standard network transmission, and client-side restoration. 
+
+3.1 Server side Degradation Pipeline 
+
+The server preprocesses frames — extraction, rescaling, and lossless encoding into a reference video against which subsequent distortion is assessed — and then begins the degradation process of Figure 2. The first step decides which blocks are the best candidates, weighing the trade-off that decision carries: degrading complex blocks lowers the bitrate more than degrading simple ones, but also makes them harder to recreate. (2) removability scores are based on complexity & foreground masks (1) combine spatial and temporal complexity of blocks based on α (3) smooth removability scores based on β (4) degrade frames, encode video & generate metadata 
+
+> C0,0
+> Ci,j
+> S0,0
+> Si,j
+> T0,0
+> Ti,j
+> Fig. 2. Server side pipeline: removability calculation and adaptive degradation.
+
+Removability Calculation. ELVIS and PRESLEY resolve it by degrading complex blocks and letting the restoration model reconstruct them from spatial and temporal neighbours, prioritizing the background and limiting degradation of the main object, where the viewer’s eyes focus. Equations 1–4 below compute a removability score for every block: high where a block is a good candidate for degradation, low where it is not. It requires (1) block-wise spatial ( 𝑆 ) and temporal ( 𝑇 ) complexity tensors — detail within a block, and motion between corresponding blocks in successive frames — computed at the configured block size with the Enhanced Video Complexity Analyzer (EVCA) [45], and (2) a segmentation tool separating foreground from background. The complexity of block 𝑏 𝑖,𝑗,𝑛 is a weighted aggregation of the two: 
+
+𝐶 𝑖,𝑗,𝑛 = 𝛼 · 𝑆 𝑖,𝑗,𝑛 + ( 1 − 𝛼 ) · 𝑇 𝑖,𝑗,𝑛 +1, 𝐶 𝑖,𝑗,𝑁 −1 = 𝑆 𝑖,𝑗,𝑁 −1 (1) where 𝛼 controls the relative influence of spatial and temporal factors (Figure 2, step (1)). The temporal term is read from frame 𝑛 + 1 rather than 𝑛 : EVCA reports the complexity of the transition into a frame, so 𝑇 𝑖,𝑗,𝑛 +1 is the motion a decision taken at frame 𝑛 must survive. The final frame has no successor and falls back to spatial complexity alone. Foreground-background segmentation uses object detection models ( e.g. , UFO [46]), returning a mask 𝑀 𝑖,𝑗,𝑛 marking blocks where the object is present (1) or absent (0); background blocks are given priority by scaling their complexity by 6 Artioli et al. a constant 𝛾 (Figure 2, step (2)): ˆ𝐶 𝑖,𝑗,𝑛 = Γ𝑖,𝑗,𝑛 · 𝐶 𝑖,𝑗,𝑛 , Γ𝑖,𝑗,𝑛 = 𝛾 − ( 𝛾 − 1) 𝑀 𝑖,𝑗,𝑛 (2) The mask 𝑀 is 1 on the foreground and 0 on the background, so Γ is 1 on the foreground and 𝛾 on the background: a foreground block keeps its complexity unchanged, and a background block has its removability raised by 𝛾 , with 𝛾 = 10 throughout. This is a soft priority, shown as step (2) of Figure 2: it scales the two populations apart without separating them, so a sufficiently complex foreground block can still outrank a simple background one. Whether that residual overlap matters is a question about content rather than about the score, and we return to it once the selection rule is defined. To further refine block degradation decisions, the smoothed score 𝐶 ′ 
+
+> 𝑖,𝑗,𝑛
+
+is defined as follows: 
+
+𝐶 ′ 
+
+> 𝑖,𝑗,𝑛
+
+= 𝛽 · ˆ𝐶 𝑖,𝑗,𝑛 + ( 1 − 𝛽 ) · ˆ𝐶 𝑖,𝑗,𝑛 −1, 𝐶 ′ 
+
+> 𝑖,𝑗, 0
+
+= ˆ𝐶 𝑖,𝑗, 0 (3) where 𝛽 is a tunable parameter controlling the degree of temporal smoothing, as shown in Figure 2, step (3). Values below 1 average a block’s score with its own value in the previous frame, so a block whose complexity fluctuates frame to frame does not flicker in and out of the selection. Two properties of the form bound what it can express, and both bear on the ablation of Section 4.5: smoothing is applied after the region priority of Equation 2, against the previous frame’s unsmoothed score, so a frame’s influence decays after exactly one step. Finally, the smoothed scores are min-max normalized over the whole tensor to give the removability score used by every downstream step: 
+
+𝑅 𝑖,𝑗,𝑛 = 𝐶 ′ 
+
+> 𝑖,𝑗,𝑛
+
+− min 𝐶 ′
+
+max 𝐶 ′ − min 𝐶 ′ ∈ [ 0, 1] (4) Higher 𝑅 means more removable. The normalization is what lets a single scalar budget and threshold carry the same meaning across sequences whose EVCA scores differ by orders of magnitude. This is PRESLEY’s answer to the selection goal. Every term entering Equation 1 is a complexity measure, and complexity is a proxy for the number of bits a block costs the encoder ; the equations that follow reorder that estimate by region, smooth it over time and rescale it. An ideal score would weigh those bits against the other quantity a selection decision depends on — how faithfully a block can be reconstructed once degraded — and maximize bits freed per unit of damage surviving restoration. We do not model that second quantity here, for a reason of measurability rather than of principle: it is a property of the restored output, which the server does not have at the moment it must choose, and no transmit-time proxy for it was available when the score was specified. The formulation inherited from ELVIS therefore expresses the numerator alone, and Section 4.5 takes up what that omission costs. 
+
+Degradation Strategy. Both systems act on the same score. In ELVIS, the blocks with the highest removability are dropped and the frame is shrunk one block-row at a time until the configured shrink amount is reached, so that surviving blocks still repack into a rectangle a codec will accept. PRESLEY removes nothing. It degrades the most removable regions in place, so frame geometry never changes and the per-row constraint disappears with it. Block selection is shared across every degradation described below, and turns the score 𝑅 of Equation 4 into a binary map 𝜎 of degradable blocks in three steps. A global budget, not a per-row count: ELVIS removes a fixed number of blocks from every row because its survivors must repack into a rectangle, but PRESLEY keeps frame geometry, so that constraint can be relaxed. PRESLEY takes the globally most-removable 𝑘 blocks, with 𝑘 = ⌊𝑎 · 𝐽 ⌋ · 𝐼 for a configurable budget 𝑎 — the same total the per-row rule would have spent, capped at the number of eligible blocks. Spatial clustering before ranking: 
+
+the score map is smoothed with a small Gaussian kernel before the top-𝑘 is taken, so selected blocks form contiguous patches rather than isolated singletons, because a codec’s block-level prediction reproduces one large uniform region PRESLEY 7far more cheaply than the same area of confetti. Hard foreground exclusion, applied after the blur: foreground blocks are removed from candidacy outright, so foreground content is never degraded whatever its score. The exclusion is a design response to what we saw in early runs: on content whose foreground is complex enough to compete, the soft priority of Equation 2 left a fraction of foreground blocks inside the selection, and raising 𝛾 did not clear them, because a factor applied to every background score alike cannot express a constraint that the ranking must never cross a region boundary. What the exclusion buys is a clean attribution rather than a better average. With it on, foreground blocks are carried through from the transmitted frame untouched by the generative layer — not bit-exact against the source, since they are still lossily coded at the same QP as everything else, but identical across restorers. Any foreground difference between two configurations is therefore the codec’s doing and not the restorer’s, which is what makes the backbone catalogue of Section 4.3 a comparison of backgrounds. The exclusion is applied after the clustering blur rather than before, since a blur applied first smears foreground scores across the boundary and lets excluded content back into the ranking through its neighbours. It is a configuration flag rather than a property of the transport, and turning it off is a coherent operating point: the soft priority of Equation 2 still applies, so the foreground is degraded last rather than never, and the mask-restricted metrics measure whatever ends up in the region either way. We enable it throughout this article so that the configuration comparisons isolate one variable at a time, and Section 4.5 measures what it costs in bitrate to keep it. PRESLEY supports two families of degradation modality, differing in how much of ELVIS they carry: hole-filling 
+
+degradations, which take ELVIS’s block-removal insight onto the new transport, and downsampling , which departs from it entirely. 
+
+Hole-filling degradations. Selected blocks are replaced in place, either with the flat mean color of the block ( mean_fill ,referred to as blackout ) or with the corresponding block copied from the previous degraded frame ( freeze ). Both leave a low-information prior in place of the original content: a flat block costs a codec almost nothing (a single DC coefficient plus strong prediction), and a copied block is typically coded as a near-zero-cost inter-skip. What ELVIS supplies is the idea that the most removable blocks can be given up entirely and synthesized at the client; what is new here is that they are given up in place . Keeping frame geometry is what removes the per-row budget, the block shifting and the frame stretching, and it is what makes the global selection described above available to this family at all — none of which ELVIS’s shrink transport can express. These degradations are the transport paired with the video in-painters of Section 3.2. 
+
+Downsampling. Rather than discarding a block’s content, downsampling reduces its information density. Each selected block is assigned a strength level 𝐿 , and the transmitted frame is produced by downsampling that block by 2 𝐿 using pixel area relation [47] and immediately resampling it back to 𝑏 × 𝑏 by bilinear interpolation, so the transmitted frame keeps its original resolution while carrying less high-frequency detail where it was degraded. The level map is 
+
+𝐿 𝑖,𝑗,𝑛 = 𝜎 𝑖,𝑗,𝑛 · max  1, ⌊𝜆 · 𝑅 𝑖,𝑗,𝑛 ⌉ (5) where 𝜎 is the block selection just described, 𝜆 the number of available levels, and ⌊·⌉ rounds to nearest. Selection and strength are two decisions read off one score, and the equation keeps them consistent: 𝜎 decides whether a block is degraded, 𝜆𝑅 decides how far , and the level is defined on the selected set with a minimum of one, since a selected block at level 0 would be a contradiction and would put the realized removal rate below the budget. The range of 𝜆 
+
+is set by the block size rather than chosen freely. A block of side 𝑏 at level 𝐿 is carried at 𝑏 /2𝐿 samples per side, so 
+
+𝜆 ≤ log 2 (𝑏 /𝑏 min ). We take 𝑏 min = 8: below that a block holds fewer samples than the smallest transform a codec applies, and a conditioned restorer has nothing left to condition on — the degradation has become a hole fill. Graded strength is 8 Artioli et al. therefore a large-block instrument: at 𝑏 = 16 the bound admits a single level and Equation 5 collapses to a fixed 2 ×
+
+reduction on every selected block, while at 𝑏 = 64 it admits three and the deepest QP still arrives as 8 × 8. Four more operators act on the same selection and reduce a block’s information without emptying it. 
+
+Blur. Each selected block is convolved with a Gaussian kernel, one pass per strength level, removing high-frequency detail while leaving low-frequency structure and the block mean in place. It differs from downsampling in what it does to the sampling grid — downsampling discards samples and reconstructs them by interpolation, blurring keeps every sample and attenuates the detail it carries — but both leave a prior a conditioned restorer can consume. 
+
+Transform-domain truncation. Rather than filtering on the pixel plane, this operator writes exact zeros in the codec’s own basis. Each selected block is converted to YCrCb and partitioned into 8 × 8 sub-blocks — the smallest transform AV1 applies — a 2-D DCT is taken per channel, every coefficient outside the top-left 𝜅 × 𝜅 corner is zeroed, and the sub-block is reconstructed by an inverse DCT. The motivation is alignment rather than severity: a pixel-plane low-pass straddles transform boundaries and leaves residual energy the encoder must still code, while zeroing coefficients on the codec’s own grid removes exactly the terms it would otherwise spend bits on. 
+
+QP Mapping. Where codecs support QP maps, per-block offsets can be set proportionally to removability: 
+
+𝑄𝑃 𝑖,𝑗,𝑛 = 𝑄𝑃 𝑏𝑎𝑠𝑒 + ( 𝑄𝑃 𝑚𝑎𝑥 − 𝑄𝑃 𝑏𝑎𝑠𝑒 ) · 𝑅 𝑖,𝑗,𝑛 (6) Here 𝑄𝑃 𝑏𝑎𝑠𝑒 is the codec’s baseline QP, 𝑄𝑃 𝑚𝑎𝑥 the maximum allowable, and 𝑅 the removability score normalized to 
+
+[0, 1]. Two properties distinguish this route. It re-quantizes DCT coefficients on the pixel plane before encoding rather than driving the codec’s own per-block control, so the encoder receives an already-quantized frame and quantizes it again; and because available codecs accept only per-GoP QP maps, frame-level maps must be averaged across each GoP, so a block receives the strength its neighbourhood in time received. This route is also where the soft priority of Equation 2 does its remaining work: it consumes 𝑅 directly, with no selection step and so no hard exclusion, which makes 𝛾 the only foreground protection it has. The same is true of ELVIS’s shrink transport. And because Γ is applied 
+
+before the temporal smoothing of Equation 3, a block whose region membership changes between consecutive frames carries a 𝛾 -scaled value into the smoothed score, so the priority still moves the ranking at foreground boundaries under motion, where membership is least stable. 
+
+Noise Injection. An alternative degradation reuses the level map of Equation 5 as rounds of additive Gaussian noise, one per level. It is the one modality that does not reduce a block’s information content — it adds high-frequency detail — so it separates the two things a degradation is asked to do at once: look acceptable to a viewer, and look cheap to a codec. 
+
+Encoding and Metadata. Step (4) of Figure 2 applies the chosen degradation to the selected blocks, encodes the result with an unmodified codec, and emits the side channel the client needs to undo it. ELVIS shrinks frames during encoding, so its client must know which blocks were removed to restore the original geometry. PRESLEY preserves every block, so each keeps its position while its quality varies, and the client instead requires metadata identifying which blocks were degraded and by how much: the level map 𝐿 of Equation 5, which reduces to a binary mask for the hole-filling degradations and for 𝜆 = 1. The map is bit-plane packed into ⌈log 2 (𝐿 max + 1)⌉ binary planes, eight blocks to the byte, and DEFLATE-compressed, giving an uncompressed cost of 
+
+𝐵 side =
+
+l 18 𝐼 · 𝐽 · 𝑁 
+
+m
+
+·  log 2 (𝐿 max + 1) bytes (7) PRESLEY 9against the 32 𝐼 𝐽 𝑁 bits an uncompressed integer map would need. This tells the client how many rounds of degra-dation each block went through, and therefore how many rounds of restoration it needs. The cost is counted inside 
+
+transmitted_size_bytes and therefore inside every rate comparison in this article, and Section 4 quantifies it as a low single-digit percentage of the transmitted budget. 
+
+3.2 Client side Restoration Pipeline 
+
+Restoration is driven by the degradation applied before encoding. In ELVIS, where frames are shrunk, it requires decoding the shrunk file, stretching the frames back to full resolution from the metadata, and passing the video to an in-painting model to generate the missing content. (1) decode degraded frames and metadata           
+
+> (2) define restoration strategy from metadata (3) run restoration model adaptively
+> (4) buffer and render restored frames
+> 1112202210202112
+> Fig. 3. Client side pipeline: metadata parsing, restoration and downstream tasks.
+
+Unlike ELVIS, PRESLEY preserves all blocks but adaptively degrades them. Consequently, restoration for the downsampling family is performed via generative enhancement, tailored to the specific degradation introduced, while restoration for the hole-filling family continues to be performed via video in-painting, exactly as in ELVIS – the difference being that PRESLEY’s transport never altered frame geometry, so no stretching step is needed before in-painting. 
+
+Decoding and metadata parsing. The first step on the client side, as shown in Figure 3, step (1) is receiving and decoding the degraded video and the metadata. 
+
+Adaptive Restoration. Based on the degradation strategy used at the server, and detailed in the metadata, as per Figure 3, step (2), PRESLEY applies the corresponding restoration method, orchestrated by Algorithm 1. If blocks were downsampled, PRESLEY restores them through progressive super-resolution rounds. The client first downsamples the entire frame to the maximum downsampling factor used. That preliminary reduction is what makes the subsequent upscaling well posed: the received video already matches the reference resolution, so a low-resolution input has to be constructed for the model, and doing it globally and once confines any downsampling artefact to this stage rather than to the high-priority blocks re-injected later. It then iteratively applies a super-resolution model to upsample the frame by 2 × per round. The round is defined by the model’s interface, not by a particular model: any restorer taking a frame and returning it at twice the resolution can occupy the slot, which makes the backbone interchangeable. In each round, as detailed in Algorithm 2 (Appendix C), blocks that have reached their target resolution are replaced with content from the decoded degraded frame resized to the current pyramid level, so only blocks still short of their transmitted detail keep the model’s output. That re-injection is the super-resolution family’s equivalent of the passthrough compositing described below, with the same consequence: non-degraded blocks are carried through as decoded, so foreground quality does not depend on which backbone is used. The depth of the pyramid follows 𝜆 :a block leaves the loop at the QP matching its own level, so a block degraded once is re-injected earlier, and passes through fewer model applications, than one degraded three times. If blocks were degraded by a hole fill (blackout/mean_fill or freeze), the inpainting model receives the decoded frames with the hole mask and synthesizes content for the masked region from neighbouring frames, discarding whatever was 10 Artioli et al. 
+
+Algorithm 1 Adaptive Restoration 
+
+Require: F𝑖𝑛 : sequence of decoded degraded frames 
+
+Require: L: metadata map – per-block strength levels (Eq. 5), or per-block hole flags 
+
+Require: 𝑚𝑜𝑑𝑒 ∈ { 𝑆𝑅, 𝐼𝑛𝑝𝑎𝑖𝑛𝑡 }: restoration mode, set by the degradation family used at the server 
+
+Ensure: F𝑜𝑢𝑡 : restored frame sequence  
+
+> 1:
+
+if 𝑚𝑜𝑑𝑒 = 𝑆𝑅 then  
+
+> 2:
+
+for each frame 𝐹 𝑖𝑛 ∈ F𝑖𝑛 with level map 𝐿 do  
+
+> 3:
+
+𝐷 𝑖,𝑗 ← 2𝐿 𝑖,𝑗 ⊲ levels are exponents; 𝐷 = 1 means untouched  
+
+> 4:
+
+𝑚 ← max (𝐷 ) 
+
+> 5:
+
+𝐹 ← Resize (𝐹 𝑖𝑛 , 1/𝑚 ) ⊲ down to the coarsest block’s true resolution  
+
+> 6:
+
+𝑠 ← 𝑚 /2 
+
+> 7:
+
+while 𝑠 ≥ 1 do  
+
+> 8:
+
+𝐹, 𝐷 ← Alg. 2 (𝐹, 𝐹 𝑖𝑛 , 𝐷, 𝑠 ) ⊲ Appendix C  
+
+> 9:
+
+𝑠 ← 𝑠 /2 
+
+> 10:
+
+end while  
+
+> 11:
+
+Append 𝐹 to F𝑜𝑢𝑡  
+
+> 12:
+
+end for  
+
+> 13:
+
+else if 𝑚𝑜𝑑𝑒 = 𝐼𝑛𝑝𝑎𝑖𝑛𝑡 then  
+
+> 14:
+
+F𝑜𝑢𝑡 ← VideoInpaint (F𝑖𝑛 , UpsampleToPixels (L)) , composited inside the mask only  
+
+> 15:
+
+end if  
+
+> 16:
+
+return F𝑜𝑢𝑡 
+
+transmitted inside the mask. The result is passthrough-composited with the decoded frame — pixels outside the hole kept exactly as decoded, only those inside taken from the in-painter — so foreground quality, never degraded by the hard exclusion of Section 3.1, is reproduced bit-exact whichever in-painter is used. Because the in-painter discards the transmitted prior rather than consuming it, this path is restricted to the hole-filling degradations; it is the mechanism ELVIS uses, carried over except that no stretching step is required first. Finally, the restored frames are grouped into segments, buffered and rendered by any traditional video player, or passed to evaluation. 
+
+4 Performance Evaluation 
+
+We evaluate PRESLEY’s performance by implementing its pipeline onto a Ubuntu machine, running experiments that link configuration parameter values to variations in output quality, and evaluate results both in terms of quality across several State-of-the-Art (SOTA) image and video metrics, and in terms of throughput added by the degradation/restoration layer. 
+
+4.1 Evaluation Setup 
+
+Every comparison is against one of three targets: a pristine baseline at the same encoder configuration, ELVIS’s block-removal transport at matched rate, or a matched none control running the identical transport with no restorer. Rate is computed as the full transmitted payload, i.e. , video plus side channel. 
+
+Metrics, and how a difference becomes a claim. Foreground and background are scored separately throughout, because the design degrades one and protects the other. For LPIPS and DISTS the region restriction is a mask weighting of the spatial feature maps rather than a crop, and background PSNR is never a verdict: the flat mean fill scores the best background PSNR of any fill we tested while being the worst-looking. No subjective study was conducted, and claims PRESLEY 11                                                         
+
+> Video FG BD-PSNR (dB) FG BD-rate (%) Overlap bear +1.02 −29 .40.59 camel +0.62 −20 .60.70 tennis +0.16 −3.80.74 dog −0.34 +13 .80.70 pigs −0.50 +21 .20.69 india −0.40 +10 .60.78
+> Table 1. Hole-filling (blackout fill, block size 8, ProPainter, passthrough compositing, fg_protect ) vs. the plain x265 baseline: foreground BD-PSNR and BD-rate over four matched fixed-QP points (30/32/34/37) per video at 640 ×360 .Negative BD-rate indicates fewer bits for equal quality. “Over-lap” is the shared log-bitrate fraction.
+> best worst
+> QP 32 QP 37 QP 42 QP 47 Clips saving bits 19/23 16/23 5/23 1/23 Median rate change −6.6% −2.5% +10 .4% +31 .4% Median BG gap +0.0409 +0.0286 +0.0131 −0.0153 Clips with better BG 0/23 2/23 3/23 17/23 Median FG gap +0.0047 +0.0028 +0.0044 +0.0007
+> Table 2. The rate–quality trade across the QP sweep, PRESLEY against the pristine baseline at matched QP on 23 clips. Gaps are LPIPS differences (PRESLEY minus baseline, negative favors PRESLEY). Foreground (FG) differences remain well within the 0.05
+> perceptual margin at all QPs; the background (BG) reflects the trade-off.
+
+rest on an exact two-tailed sign test over videos, Holm-corrected across every candidate tried including the losers. Appendix B gives both procedures in full. 
+
+Restoration backbones. Which restorer a run dispatches is fixed by its transport. Every model named here was run and is reported. On the conditioned path we run Real-ESRGAN [12], BSRGAN [48], Real-HAT-GAN [49] and Stream-DiffVSR [50] on the identical pyramid, with Real-ESRGAN carrying the corpus and the others measured against it at a shared operating point; on the blur transport, InstantIR [13], NAFNet [51] and an unsharp trivial control; on the hole-filling path, ProPainter [10] and E2FGVI [11] with Telea’s classical in-painting [52]. Every configuration is additionally run with the restorer disabled, giving each its own matched unrestored control, which separates the cost of the transport from the recovery the restoration achieves. 
+
+Corpus and hardware. Experiments ran on an Ubuntu 22.04 server with an AMD EPYC 7713 (64 cores, 256 threads), 1 TB of RAM and two NVIDIA RTX A6000 GPUs (48 GB each). Sequences come from DAVIS [53], chosen for variety of composition and camera motion. DAVIS is small and widely used, so a result measured only on it cannot be separated from the corpus it was tuned against; we therefore add held-out clips from MOSE [54, 55] and YouTube-VOS [56], two segmentation benchmarks that supply the per-frame object masks this pipeline needs and that neither this work nor ELVIS has ever tuned on. An initial randomized sweep over block size, removal budget, 𝛼 , 𝛽 and three renditions is complemented by the deterministic one-parameter-at-a-time ablation of Section 4.5. 
+
+4.2 Hole-filling Evaluation 
+
+Table 1 evaluates bitrate reduction under x265 across four fixed QPs (30/32/34/37) at 640 ×360. On sequences such as 
+
+bear and camel , the hole-filling transport achieves substantial bitrate savings of −29 .4% and −20 .6% BD-rate alongside foreground gains of +1.02 dB and +0.62 dB BD-PSNR, demonstrating effective bit relocation from background to foreground. On other sequences such as dog , pigs , and india , the codec requires more bits at these settings. Across the wider evaluation that follows, we analyze how this trade-off behaves across codecs, dataset families, and operating regimes. Figure 4 broadens this evaluation across 23 clips from DAVIS, MOSEv2, and YouTube-VOS where the pristine baseline, ELVIS and PRESLEY all exist at both QPs. ELVIS saves bits on 17 of 23 clips (median −10 .9 %) and PRESLEY on 15 of 23 (median −5.0 %), and on both the sign splits within dataset families rather than between them . Foreground protection survives outside DAVIS on both, but on different metrics: PRESLEY’s foreground LPIPS delta clears the 12 Artioli et al. −60 −40 −20 0 20 40 60 80  
+
+> bitrate vs pristine baseline (%)
+> dogs-jump elephant breakdance motorbike dancing mallard-fly bike-packing libby scooter-black drift-turn color-run train lindy-hop bmx-bumps dogs-scale planes-water 8i1uo3x9 fii86rku zofozj6l jxmcdk8k 30fe0ed0ce 282651c6f7 b1a8a404ad
+> ELVIS PRESLEY
+
+Fig. 4. Bitrate delta against the pristine baseline on 23 clips where baseline, ELVIS, and PRESLEY all exist at both QPs, grouped by dataset family. Left of zero indicates bitrate savings. −50 0  
+
+> background
+> camel b1a8a404ad bear 282651c6f7 pigs 0e4068b53f dog jxmcdk8k ptq7rtia fii86rku 30fe0ed0ce zofozj6l 8i1uo3x9
+> 13/13 negative
+> −20 020
+> foreground
+> both directions
+> BD-rate vs ELVIS (%), negative = PRESLEY cheaper
+
+Fig. 5. PRESLEY against ELVIS at matched rate on 13 rate ladders across two codecs and three dataset families. Left: 
+
+delivered background LPIPS after restoration, consistently favoring PRESLEY on all 13 ladders. Right: foreground LPIPS. 
+
+margin at none of 47 operating points, while ELVIS’s exceeds it at 44 of 50 even though its foreground PSNR moves 
+
+−0.17 dB against PRESLEY’s −0.16. A learned metric compares deep features whose receptive fields reach beyond the block, so an emptied neighbour changes a protected block’s features without changing its pixels. We therefore report foreground protection on PSNR wherever the transport leaves holes, and on LPIPS where it does not. The two QPs of Figure 4 sit at the comfortable end of the range. Table 2 takes the same configuration across a four-QP sweep on 23 clips, illustrating how generative streaming maps onto the operating range. At comfortable bitrates (QP 32), the transport frees bits on 19 of 23 sequences at a median −6.6 %, while the baseline retains near-transparent background fidelity. In the target bit-starved regime (QP 47), where standard codecs are severely quality-limited, PRESLEY’s generative restoration delivers a superior background on 17 of 23 sequences (median LPIPS gap −0.0153), while holding foreground fidelity strictly within the perceptual margin. This confirms that generative layers provide their greatest perceptual payoff precisely where conventional codecs starve. QP-matching therefore cannot tell the whole story. At matched QP , PRESLEY spends 23 .1 % and 14 .9 % more bits than ELVIS at QP 32 and 37, because it transmits every block where ELVIS blanks a quarter of them; hence, the fundamental comparison between the two generative paradigms is evaluated at matched rate on delivered quality. There, Figure 5 demonstrates that PRESLEY comprehensively outperforms ELVIS on delivered background quality across all 13 rate ladders, achieving a decisive mean BD-rate reduction of −56 .4 % ( 𝑝 = 0.000 244, strictly clearing family-wise Holm correction across all 204 project configurations). By preserving a degraded visual prior and restoring it with conditioned super-resolution rather than discarding content and relying on unconditioned in-painting, PRESLEY recovers high visual fidelity at a fraction of the rate required by prior generative transports. Furthermore, foreground quality shifts in both directions across ladders without systematic penalty, confirming that background gains carry no hidden foreground cost. PRESLEY 13 
+
+Operating point stability. A generative transport might only pay off in a favourable corner of the rate range. With the ladder as the unit and the median over the two lowest-quality QPs minus the median over the two highest as the statistic, the contrast is negative on 5 of 13 at an exact two-tailed 𝑝 = 0.58 — which alone establishes nothing, since a difference test that fails to reject supports no conclusion about the size of the effect. We therefore tested the proposition directly, as an equivalence: the mean contrast is demonstrably smaller than the reporting margin , with a 90 % bootstrap interval of [− 0.017 , 0.013 ] background LPIPS, four times tighter than the 0 .05 we report against. Equivalence of the mean is not equivalence of every ladder: two of thirteen shift by more ( camel at −0.0585, a held-out YouTube-VOS clip at −0.0535), both with PRESLEY gaining as the QP starves. Restoration holds across the operating range; reduction 
+
+is regime- and content-dependent. Appendix E bounds this further with a detector-derived mask, and with 1280 ×720 and 1920 ×1080 ladders. 
+
+Comparison with standard codec ROI and neural codecs. Standard codec tools offer partial solutions. As detailed in Appendix G, Kvazaar’s native ROI encoding relocates bits to improve foreground quality by a median +0.51 dB PSNR across 16 of 17 points at unchanged bitrate, but cannot restore the sacrificed background ( −0.54 dB PSNR loss on 8 of 8 points). SVT-AV1’s ROI shows no measurable effect. That relocation is not free: the encoder buys foreground fidelity by spending less elsewhere, and an x265 adaptive-quantization control is indistinguishable from its baseline. PRESLEY instead pairs targeted degradation with generative client-side reconstruction. The stages cannot be stacked, for a structural reason rather than a sampling gap — the only encoder exposing a usable ROI facility is not the one the hole-filling results run through — and compared separately they do different things rather than more of one thing: codec ROI is the only stage that improves the foreground, while the degrade-and-restore stages trade background quality for bits. Appendix D sets the four stages side by side. Finally, evaluating the neural codec baseline HNeRV (Appendix D) shows that once serialized model weights are accounted for in the transmitted payload, it requires 22 .7 to 178 .1× more bitrate than x265 at matched foreground quality, confirming that standard hybrid codecs combined with lightweight generative layers remain far more practical. 
+
+4.3 Restoration and Regime Results 
+
+Table 1 measured reduction under x265. We repeated it under SVT-AV1 across the operating range, holding the transport fixed (block size 16, ProPainter, fg_protect ) and moving only the QP, on four videos spanning the corpus’s range of foreground area and camera motion. Figure 6 gives the four rate–distortion curves. Reduction pays where the encoder is starved. On bear and camel the transport frees 25 .6 % to 28 .9 % of bits at equal foreground PSNR, every point-wise delta under 0 .5 dB; at comfortable bitrates the same configuration costs 16 .7 % and 40 .8 % more, so the saving belongs to the starved end of the range rather than to the method in general. On dog and pigs it costs bits instead, and the choice of fill does not rescue them. That two-two split is not the corpus rate: across the 23 clips of Figure 4 the hole-filling transport saves bits on 17 and the conditioned one on 15. These four are the clips we can show as full curves, chosen to include both outcomes. Two independent mechanisms agree, which makes it a content result rather than a component bug: the same reversal appears in the conditioned configuration of Figure 4, on the same two videos, through a different degradation and a different restorer. We looked for a content attribute that predicts the flip and did not find one — foreground area is the obvious candidate and is refuted, dog sitting at 0 .114 against bear ’s 0 .111 and reversing hardest. We report the non-replication rather than the average over it, and regard identifying that attribute as the most useful open problem this article leaves. 14 Artioli et al. 200 400 600          
+
+> bitrate (kbit/s)
+> 25 26 27 28
+> foreground PSNR (dB)
+> 28% fewer bits at equal FG quality
+> bear -28.9% — frees bits
+> 200 400 600
+> bitrate (kbit/s)
+> 26 28 30
+> camel -25.6% — frees bits
+> 100 200 300
+> bitrate (kbit/s)
+> 26 28 30
+> 27% more bits at equal FG quality
+> dog +27.3% — costs bits
+> 50 100 150 200 250
+> bitrate (kbit/s)
+> 28 30 32
+> pigs +18.3% — costs bits
+> pristine SVT-AV1 bridge (blackout)
+
+Fig. 6. The starved-regime result as rate–distortion ladders rather than Bjøntegaard scalars. Each panel is one video over four recalibrated fixed QPs on SVT-AV1, the hole-filling configuration being blackout at block size 16. The claim is horizontal: a curve left 
+
+of the baseline delivers the same foreground quality for fewer bits, and on dog and pigs (bold) it lies right instead. −0.16 −0.08 0.00 0.08 0.16 
+
+gain over own control (BG-LPIPS)    
+
+> downsample+realesrgan downsample+unsharp ac_truncate+nafnet blur+nafnet freeze+propainter freeze+e2fgvi blackout+e2fgvi blur+instantir blackout+propainter blackout+telea freeze+telea blur+unsharp
+> recovers more 0.1 0.2 0.3 0.4
+
+absolute BG-LPIPS delivered  
+
+> delivers better (lower is better)
+> conditioned (keeps the prior) in-painting (discards it)
+
+Fig. 7. Every restorer we ran, on the transport it is dispatched on, each against its own exactly matched unrestored control. Left: gain over that control. Right: the absolute background LPIPS the viewer receives. The panels disagree, because gain is bounded by how much each transport destroyed. 
+
+The curves show what a Bjøntegaard scalar cannot: on dog and pigs they converge as the QP gets harsher, so the advantage reverses within the sweep rather than merely being absent. Table 2 identifies the mechanism — the transport exchanges rate for background quality at a rate that itself changes with the QP, so a scalar integrated across that crossover sums a cheaper-and-poorer region with a dearer-and-better one and reports them as one effect. Two studies of the same configuration can therefore disagree purely on the range they integrate over. 
+
+Does client-side restoration bring the degraded background back toward the original? Figure 7 answers it for every backbone we ran, each against its own exactly matched unrestored control, differing only in whether a restorer ran. The two panels disagree. Ranked by gain over its control, hole-filling wins; on the absolute quality a viewer receives the ordering inverts. Each configuration’s gain is bounded by how much its own transport destroyed, so a large gain only reports an ambitious transport, and the choice between families is settled on the absolute panel: the transport that keeps a prior wins on delivered quality even though it leaves its restorer less to do. 
+
+Figure 8 illustrates the full pipeline on a representative frame: the selector places degradation exclusively on the background while preserving foreground integrity, and the comparative crops show what each configuration puts on the wire (top) versus what its restorer recovers (bottom). While ELVIS transmits empty blocks and in-paints them from neighbouring frames, PRESLEY transmits a low-resolution prior that its restorer sharpens. The restored crop is sharp again, though fine high-frequency texture is plausibly synthesized rather than recovered bit-exact. The mechanism is architectural: models dispatched on hole transports are in-painters (e.g., ProPainter’s inference masks out the transmitted PRESLEY 15 Degradation & Protection Map            
+
+> Degraded blocks Protected foreground
+> Yellow box indicates evaluated crop region
+> Pristine Baseline ELVIS PRESLEY
+> (Standard (Blackout + (Downsample + Codec) ProPainter) Real-ESRGAN)
+> Transmitted Restored
+> Fig. 8. Spatial selection, transport, and restoration visual comparison. Left: Selected degradable blocks shaded in red, protected foreground outlined in blue, with the yellow bounding box indicating the evaluated crop. Right: Visual patch comparison across pipeline configurations (Pristine baseline under standard lossy codec, ELVIS blackout with ProPainter inpainting, and PRESLEY adaptive downsampling with Real-ESRGAN super-resolution), showing the transmitted representation on the wire (top row) and the restored output delivered to the client (bottom row).
+
+prior by construction), whereas conditioned restorers consume those transmitted pixels directly, separating the two families. Freeze proves it from the other side: an in-painter handed a frozen block discards a prior already close to correct, and every freeze pairing sits at or below zero gain. To check the ordering is not an artifact of the mask, we repeated the comparison on whole-frame metrics, which carry no region restriction. Paired within an operating point, the conditioned configuration beats ELVIS on 121 of 121 ladder points on whole-frame LPIPS and 36 of 36 on VMAF, by 11 .4 dB of PSNR and 25 .5 VMAF points at the median. On PSNR and LPIPS it beats blackout in-painting on 12 of 12 shared operating points ( 𝑝 = 0.0005) and freeze in-painting on 13 of 14, so it leads every hole-filling configuration. Every measure Section 2 surveys ranks the configurations as the masked metrics do; Appendix F gives all seven. 
+
+No backbone separates from Real-ESRGAN. The right-hand panel of Figure 7 places every conditioned alternative — BSRGAN, Real-HAT-GAN [49] and Stream-DiffVSR [50] — within a band narrower than the incumbent’s perceptual margin, on the same transport and operating point, with Stream-DiffVSR costing roughly twice as much to run. At two paired videos none can reach significance under our own rule, so we report them as a catalogue that failed to separate rather than as demonstrated ties: the evidence supports keeping Real-ESRGAN on throughput, not a claim that it is best. On the blur transport InstantIR does not beat a trivial unsharp control costing ≈12 s against ≈774–837 s, and neither it nor NAFNet delivers meaningful gain against the transmitted video, so that transport’s restorer question is open. Both need float32 — NAFNet overflows LayerNorm and SCA in fp16, Real-HAT-GAN’s Softmax overflows to NaN — so half precision is not safe to assume. Finally, the part that separates the two goals: dog and pigs produce the largest restoration gains anywhere in this article while being exactly the videos on which reduction fails outright. Restoration quality and reduction are not one axis. Two further properties are worth recording. For the winning conditioned pipeline over four starved fixed-QP points per video, reduction is a curve-level win at 13 .8 % to 16 .1 % fewer bits for equal foreground PSNR. And the removal 16 Artioli et al. 
+
+Table 3. The removal budget below and above its threshold, on the two videos where it was swept: SVT-AV1 at fixed QP, 640 ×360 ,block size 8, downsampling with Real-ESRGAN. Below a quarter of the blocks the budget buys almost no rate while background quality falls steadily, so 0.25 is the smallest budget that pays for the damage it does. 
+
+Removal budget 0.10 0.25 0.50 0.75 
+
+bear bitrate (kbit/s) 607 .0 614 .2 451 .4 415 .4
+
+bear background LPIPS 0.141 0.193 0.246 0.291 
+
+camel bitrate (kbit/s) 694 .9 693 .3 570 .5 531 .9
+
+camel background LPIPS 0.110 0.123 0.168 0.195 Candidate Objective 𝑛 Base wins 𝑝 Holm Sig.? 
+
+blur+nafnet quality 11 11/11 0.014 yes 
+
+blackout+propainter quality 10 10/10 0.025 yes 
+
+freeze+propainter quality 10 10/10 0.025 yes 
+
+ac_truncate+nafnet bitrate 10 10/10 0.027 yes 
+
+ac_truncate+nafnet quality 10 9/10 0.236 no 
+
+blackout+propainter bitrate 10 1/10 0.279 no 
+
+freeze+propainter bitrate 10 9/10 0.279 no 
+
+blur+nafnet bitrate 11 5/11 1.000 no 
+
+Table 4. Every configuration comparable to downsample+realesrgan 
+
+at our significance floor, paired within a fixed QP. “Base wins” counts videos on which downsample+realesrgan is ahead; 𝑝 Holm is corrected within a family of 14 candidates per objective. Quality is background LPIPS, bitrate the actual transmitted rate against the matched pristine baseline. Rows marked no are comparisons that were run and did not separate at this sample size, reported so the comparison is not selected on its outcome; they are not claims of equality. The two objectives disagree. 0 20 40 60 
+
+> seconds per 3.2 s clip (mean of 3 trials)
+> baseline ELVIS blackout + ProPainter PRESLEY downsample + Real-ESRGAN PRESLEY freeze + ProPainter
+> 2.8× real time 12.3× slower 5.4× slower 12.0× slower preprocess score select degrade encode sidechannel decode restore composite
+
+Fig. 9. Cost per pipeline stage, three trials per cell on a pinned GPU, cells mixing device populations refused rather than averaged. Restoration dominates every configuration that has one; block selection costs about a thousandth of the pipeline. 
+
+budget has a threshold below which it does nothing: swept at the lowest-quality QP it moves bitrate by under 1 .2 % between 0 .10 and 0 .25, then by −22 .1 % between 0 .25 and 0 .50, while background damage rises steadily throughout (Table 3). Degrading fewer than a quarter of the blocks therefore costs quality without buying rate, which is why 0 .25 is the budget used throughout. 
+
+4.4 Conditioned Restoration Wins on Quality; Bitrate and Cost Order the Arms Differently 
+
+The comparisons so far run within a family. Ranked that way Real-ESRGAN carries the conditioned path, ProPainter the hole-filling path and NAFNet the blur path, none separating from its nearest rival by more than the perceptual margin. Table 4 sets those family winners against each other, which is the comparison a deployer faces — and it faces three axes at once, delivered background quality, transmitted bits, and the cost of restoring, which order the configurations differently, so none is simultaneously best. The first is this article’s clearest configuration-level result: degrading by downsampling and restoring with a super-resolver conditioned on what was actually transmitted delivers the best background quality of any configuration we tested . Table 4 reports every configuration comparable to it at our significance floor. On background quality the ordering is settled: the conditioned configuration beats all three in-painting and deblurring configurations on every video tested. On bitrate it inverts — ac_truncate+nafnet loses the rate axis on all ten videos (𝑝 = 0.0020 uncorrected), our one significant bitrate comparison, and it is the configuration the baseline beats on quality. 
+
+Winning quality and winning rate are not the same configuration. PRESLEY 17 
+
+Video Score ranking Random map 
+
+bear +80 .9% +154 .4% 
+
+camel +27 .5% +121 .6% 
+
+dogs-jump −1.6% +79 .1% 
+
+pigs +23 .6% +75 .7% 
+
+dog +13 .2% +27 .2% 
+
+bike-packing +219 .6% +194 .9% 
+
+Table 5. Removability score ranking vs. seeded random block se-lection at matched budget, strength, clustering, and foreground exclusion. Values are BD-rates on background LPIPS against each video’s pristine baseline (lower is better). The score wins on 5 of 6 sequences by a median of 52 .1 percentage points. −10 0 10 20 30 40 50 60 70 
+
+> BD-rate, graded vs binary (%)
+> tennis motorbike color-run drift-turn india bmx-bumps lindy-hop breakdance dog bike-packing dancing dogs-jump scooter-black bear pigs train
+> median +5.1%
+
+Fig. 10. Graded multi-level degradation vs. uniform binary degra-dation per sequence at 𝑏 = 64 and 1920 ×1080 . Positive BD-rate indicates graded requires more bits for equal background quality (losing on 14 of 16 sequences, 𝑝 = 0.0042 ). 
+
+Figure 9 measures execution time per stage on three 640 ×360 clips (60 to 90 frames), three trials per cell on a pinned GPU. Restoration dominates by enough to locate the engineering problem precisely: the conditioned configuration runs 5.4× slower than real time against 12 .0× for the in-painting ones, so the configuration that wins on quality is also the closest to real time, and closing that gap is a restorer-side problem. Everything the server does is comfortably real time — degradation costs more than encoding, so the bottleneck there is our own per-block loop rather than the codec, and block selection is under 0 .1 % of the pipeline. These are 360 p figures and the factor scales with pixel count, so we scope the system to offline transcoding and edge-cache pre-population until a restorer closes the remaining 
+
+5.4×.
+
+4.5 Block Selection and Headroom Analysis 
+
+We analyze the block selection mechanism along three dimensions: the efficiency of the cost model, parameter sensitivity, and predictive modeling of post-restoration damage. 
+
+Placement and foreground exclusion. Block selection evaluates two distinct mechanisms: ranking blocks by removability score versus random placement, and hard foreground exclusion versus soft priority weighting. As shown in Table 5, ranking blocks by the removability score outperforms a smoothed random selection baseline on 5 of 6 sequences, providing a median BD-rate improvement of 52 .1 percentage points on background LPIPS. 
+
+The exclusion is worth about half a decibel. On six sequences chosen because a purely score-based selection reaches their foreground at all, dropping it costs foreground PSNR on 6 of 6, a median 0 .56 dB at 𝑝 = 0.031, while saving 6 .0 % of bitrate; on foreground LPIPS it moves 0 .0013 and clears no margin anywhere. That is a saving this article declines to take, and the exclusion is a default rather than a property of the transport — the soft priority alone already confines damage to the least important foreground blocks. Two bounds: the six sequences were chosen because selection reaches their foreground, so 6 % is what the exclusion costs where it binds, not across the corpus; and at six sequences the exact test floors at 0 .031, the smallest suite that can be significant at all. What it buys instead is attribution — with the foreground untouched by the generative layer, any foreground difference between configurations is the codec’s doing, which is what lets the backbone catalogue above be read as a comparison of backgrounds. 
+
+Cost axis headroom bound. The removability score estimates the bitrate contribution of individual blocks. To quantify how closely this heuristic approximates optimal bit allocation, the left panel of Figure 11 evaluates the score against an exact leave-one-superblock-out combinatorial oracle across eight probe sequences. Selecting the top quarter of 18 Artioli et al. 0.0 0.2 0.4 0.6 0.8 1.0        
+
+> fraction of the oracle's freed bits
+> drift-straight bear motorbike bike-packing drift-turn dogs-jump dancing color-run
+> mean 0.833 random (null) score gain headroom −2 02
+> spatial complexity ( z)
+> −2 02
+> damage after restoration ( z)
+> more complex → more damage
+> 0.25 0.50 0.75
+> within-run Spearman ρ
+> 04812 16
+> runs
+> median +0.506
+> 120/120 runs positive
+
+Fig. 11. The two axes of the selection objective. Left: removability score vs. an exact leave-one-superblock-out bit oracle (hatched area indicates remaining headroom). Right: post-restoration damage vs. spatial complexity, standardized per run. Table 6. Parameter sensitivity: median within-group spread, a group fixing every other setting and varying only the named parameter. The removal budget is the only lever on either axis. Descriptive only — the number of videos is below the threshold this article requires for a significance claim. 𝛼 and 𝛽 are absent because they were measured on foreground PSNR, and putting the two quantities on one scale would compare unlike things. 
+
+Parameter Δbitrate (pp) ΔBG-LPIPS Videos Removal budget 26 .38 0.1508 2Block size 9.08 0.0151 4Foreground protection 5.47 0.0024 2Mask noise (dilate/erode) 4.91 0.0083 2Mask source (GT/YOLO) 4.20 0.0038 7Selection rule 1.20 0.0031 6Graded levels 1.07 0.0149 8Graded levels, oracle-assigned 0.56 0.0050 8
+
+blocks by removability score captures a mean of 83 .3% of the bits identified by the exact oracle. Because the oracle’s top quarter accounts for 30 .1 % of total frame bits, the remaining headroom on the bit-cost axis is at most ≈5 % 
+
+of total bitrate , measured against the random-selection null the figure draws as the base of every bar. This bound evaluates superblocks independently under the leave-one-out probe, serving as an additive empirical upper bound on cost-model efficiency given inter-block prediction dependencies in hybrid video codecs. A better cost model is therefore not where major gains lie. One exception: on drift-straight the score barely clears that clip’s own null, with a rank correlation whose bootstrap interval contains zero. 
+
+Parameter sensitivity and degradation levels. Table 6 summarizes sensitivity to individual knobs. The removal budget is the primary lever at 26 .38 percentage points of bitrate, and everything else moves it by under a third as much; swept over {0, 0.25 , 0.5, 0.75 , 1.0}, 𝛼 and 𝛽 move foreground PSNR by 0 .03 dB to 0 .05 dB across their entire range. Both comparisons are descriptive — the number of videos is below what this article requires for a significance claim — but the magnitudes are not close. That inertness is a deployment property before it is a diagnosis: these are the parameters an operator would otherwise sweep per title, codec and operating point, and a system stable across their whole range ships with defaults instead ( 𝛼 = 𝛽 = 0.5 throughout). The cause is structural — Equations 1–4 blend terms that all estimate how many bits a block costs, so they trade proxies for the same quantity. Grading the degradation strength per block does not help either. Letting the score set strength as well as footprint costs bits on 7 of 8 videos at 𝑏 = 16, where Equation 5 admits only a single level, so we re-ran it where the bound permits three: 𝑏 = 64 at 1920 ×1080, sixteen sequences at four fixed QPs, differing in nothing but downsample_levels .PRESLEY 19 
+
+A single strength is the better default: graded costs a median 5.1 % of BD-rate on background LPIPS, losing on 14 of 16 at an exact two-tailed 𝑝 = 0.0042, with foreground LPIPS differing by at most 0 .0026. The encoder pays for transitions between adjacent blocks held at different levels — discontinuities the content never had. The design was sequential and is disclosed as such: pre-registered at 𝑛 = 10, returning 8 of 10 at 𝑝 = 0.109, then extended to a target of 𝑛 = 16 fixed before the extension ran, the six added sequences going 6 of 6 the same way. What we retire is the graded default , not the mechanism : tennis (−11 .1%) and motorbike (−4.2%) go the other way, and which content that is is the same unidentified property that decides the sign of reduction in Section 4.3. camel is excluded on a stability criterion rather than an outcome — its graded arm drives more than a percent of output pixels to the clipping rails at every QP — and that exclusion is itself a property of the graded transport (Appendix D). 
+
+Predicting post-restoration restorability. An ideal rate-distortion-restoration rule would balance bits saved against post-restoration distortion, and the binding constraint is whether that second quantity is estimable before transmission. The right panel of Figure 11 answers it: across 120 restored runs on 13 sequences, ranking superblocks by spatial complexity ranks their eventual damage at a median Spearman 𝜌 = +0.506, in the same direction on 120 of 120. The score already selects on spatial complexity because complex blocks cost the most bits, so degrading them is the design working as intended. What the correlation adds is narrower: within a fixed budget the ranking always spends it on the blocks that restore worst . Over all superblocks the correlation is 0 .684, because complexity predicts whether a block was touched (0 .786) before anything else; restricting to degraded blocks returns 0 .506, and that restriction was declared after the fact (Appendix H). We fit a damage predictor on five pre-registered transmit-time features, held out by video — never by run, since runs of one clip share content and would leak — reaching a held-out 𝜌 = +0.400 on all 13 folds. Restorability is therefore predictable at transmit time, with no client-side feedback. To evaluate whether this feasibility translates directly into selection gains, we tested a first-order rate-distortion-restoration rule replacing the ranking with the ratio the diagnosis implies: bits freed over predicted damage. This changes about 9 % of selected blocks and starts 3 .6 % down on rate; across six videos over four QPs, it performs level with the heuristic incumbent (median +5.1% BD-rate, better on 2 of 6, 𝑝 = 0.69). This confirms the feasibility of transmit-time restorability modeling, establishes a baseline pricing for linear scoring, and indicates that realizing the remaining headroom requires joint non-linear optimization between rate cost and restorer distortion. 
+
+4.6 Spatial Selectivity vs. Uniform Downscaling 
+
+Selective quality reduction with client-side reconstruction is not new: whole-frame downscaling with super-resolution at the client is deployed at scale. The architectural difference is that degradation here is per block under a mask excluding the foreground, giving the transport something uniform downscaling cannot express — a region it will not touch. The uniform configuration is the identical code path with the budget opened to every block and protection off, so the per-block operator is pixel-identical; what differs is where degradation is placed and how much of the frame it covers, the uniform arm degrading roughly four times the area at a budget of 0 .25. 
+
+Selectivity is ahead on two sequences and behind on four , at 𝑝 = 0.69 on the foreground and 𝑝 = 0.22 on the background, so we claim neither direction ; Appendix D gives the per-sequence figures. On the four it loses it costs 60 % to 90 % more bits for equal perceptual quality, magnitudes the coverage difference predicts. The comparison therefore establishes a lower bound on selectivity’s standing: it wins twice while giving away four times the degraded area. Two limits bound it in opposite directions. The uniform arm sends full-resolution but low-pass-filtered 20 Artioli et al. frames rather than a genuine lower-resolution rendition with fewer coded pixels; a deployed ladder would likely do 
+
+better , so this is a conservative proxy for industry practice rather than a defeat of it. And the two sequences selectivity wins ( bear and india ) are exactly the two where uniform downscaling damages the foreground perceptibly ( +0.087 and +0.101 foreground LPIPS) — offered as a conjecture , concordant on 6 of 6 but generated by these data and never pre-registered. Selectivity therefore behaves like insurance, costing rate where the foreground was never at risk and preventing a visible failure where it was. What the split does settle is negative: foreground area does not predict which side a sequence falls on — india (0 .325) wins and pigs (0 .327) loses, bear (0 .114) wins and dog (0 .090) loses — so the deciding quantity is how much perceptible damage a region takes and keeps. 
+
+5 Conclusions 
+
+Building on ELVIS, PRESLEY applies adaptive in-place degradation per block under a removability mask, signals per-block strength in a bit-packed side channel, and restores with a generative model conditioned on transmitted visual priors rather than unconditioned in-painting. Of the degradation modalities we priced, progressive downsampling survives; QP mapping and noise injection are retired with the empirical measurements that rule them out. Read against the three goals, the evaluation demonstrates clear, definitive advancements alongside precise domain boundaries. On restoration , conditioned super-resolution delivers the best background quality of any configuration we tested, beating hole-filling in-painting on every video, with foreground fidelity held bit-exact by passthrough compositing. On reduction , PRESLEY surpasses its predecessor at matched rate on 13 of 13 ladders, achieving a mean 
+
+−56 .4 % BD-rate and demonstrating substantial coding gains against standard codecs in the target bit-starved regime (17 of 23 clips). On selection , our oracle analysis bounds the cost axis at ≈5 % remaining headroom and establishes transmit-time damage predictability as the definitive frontier for future generative streaming architectures. While a first-order linear ratio performs level with the incumbent, it proves the feasibility of the concept and defines joint non-linear optimization as the next step. Two limitations bound all of this. Restoration is far from real time (6 .3 to 61 .5× slower than the source) and the cheapest optimisation is already taken, the restorer running in half precision by default, so we scope the system to offline transcoding and edge-cache pre-population. And every perceptual claim rests on learned metrics rather than human raters: no subjective study was conducted. Three directions follow from that map. The first is a restorer built for this transport rather than adapted to it: every backbone we ran was trained for whole-frame super-resolution or in-painting, then handed a frame degraded per block, at a strength the side channel already carries, in rounds. A model consuming that strength map natively — restoring block by block, once per level, conditioned on how far each block was taken and on its undegraded neighbours — would use information the pipeline already transmits and no current backbone reads. The second is the content property deciding whether reduction pays, since foreground area is refuted and identifying it would do more here than another codec or backbone. The third is a selection rule spending its budget on the restorability term we measure, which is predictable at transmit time and sits at the cheapest point in the pipeline to change. Two smaller openings: the protection mask is a segmenter’s notion of what matters, where a viewer-specific one would fit the same interface and address the personalization barrier that has held back region-of-interest coding; and a subjective study is the natural way to confirm that what our metrics reward is what a viewer sees. PRESLEY 21 
+
+Acknowledgments 
+
+The financial support of the Austrian Federal Ministry for Digital and Economic Affairs, the National Foundation for Research, Technology and Development, and the Christian Doppler Research Association, is gratefully acknowledged. Christian Doppler Laboratory ATHENA: https://athena.itec.aau.at/ 
+
+References 
+
+[1] Emanuele Artioli, Farzad Tashtarian, and Christian Timmerer. 2025. End-to-end learning-based video streaming enhancement pipeline: a generative ai approach. In Proceedings of the 35th Workshop on Network and Operating System Support for Digital Audio and Video (NOSSDAV ’25). Association for Computing Machinery, Stellenbosch, South Africa, 50–56. isbn: 9798400714696. doi:10.1145/3712678.3721881. [2] T. Wiegand, G.J. Sullivan, G. Bjontegaard, and A. Luthra. 2003. Overview of the h.264/avc video coding standard. IEEE Transactions on Circuits and Systems for Video Technology , 13, 7, 560–576. doi:10.1109/TCSVT.2003.815165. [3] Gary J. Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand. 2012. Overview of the high efficiency video coding (hevc) standard. IEEE Transactions on Circuits and Systems for Video Technology , 22, 12, 1649–1668. doi:10.1109/TCSVT.2012.2221191. [4] Zhuoran Li, Zhengfang Duanmu, Wentao Liu, and Zhou Wang. 2019. Avc, hevc, vp9, avs2 or av1? — a comparative study of state-of-the-art video encoders on 4k videos, (Aug. 2019), 162–173. isbn: 978-3-030-27201-2. doi:10.1007/978-3-030-27202-9_14. [5] Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J. Sullivan, and Jens-Rainer Ohm. 2021. Overview of the versatile video coding (vvc) standard and its applications. IEEE Transactions on Circuits and Systems for Video Technology , 31, 10, 3736–3764. doi:10.1109/TCSVT.2021.310 1953. [6] Jingning Han et al. 2021. A technical overview of av1. Proceedings of the IEEE , 109, 9, 1435–1462. doi:10.1109/JPROC.2021.3058584. [7] Georgios Minopoulos, Vasileios A Memos, Konstantinos E Psannis, and Yutaka Ishibashi. 2020. Comparison of video codecs performance for real-time transmission. In 2020 2nd International Conference on Computer Communication and the Internet (ICCCI) . IEEE, 110–114. [8] A. Vetro, T. Haga, K. Sumi, and H. Sun. 2003. Object-based coding for long-term archive of surveillance video. In 2003 International Conference on Multimedia and Expo. ICME ’03. Proceedings (Cat. No.03TH8698) . Vol. 2, II–417. doi:10.1109/ICME.2003.1221642. [9] Anastasios Kounoudes, Anthony Constantinides, Christos P Loizou, and Nicolas Tsapatsoulis. 2006. Visual attention based region of interest coding for video-telephony applications. In 5th International Symposium on Communication Systems, Networks and Digital Signal Processing .[10] Shangchen Zhou, Chongyi Li, Kelvin C.K. Chan, and Chen Change. 2023. Propainter: improving propagation and transformer for video inpainting. In 2023 IEEE/CVF International Conference on Computer Vision (ICCV) , 10443–10452. doi:10.1109/ICCV51070.2023.00961. [11] Zhen Li, Cheng-Ze Lu, Jianhua Qin, Chun-Le Guo, and Ming-Ming Cheng. 2022. Towards an end-to-end framework for flow-guided video inpainting. In 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 17541–17550. doi:10.1109/CVPR52688.2022.01704. [12] Xintao Wang, Liangbin Xie, Chao Dong, and Ying Shan. 2021. Real-esrgan: training real-world blind super-resolution with pure synthetic data. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) Workshops . (Oct. 2021), 1905–1914. [13] Jen-Yuan Huang, Haofan Wang, wangqixun, Baixu, Hao Ai, Peng Xing, and Tong Lin. 2025. Instantir: blind image restoration with instant generative reference. (2025). https://openreview.net/forum?id=ONWLxkNkGN. [14] David García-Lucas, Gabriel Cebrián-Márquez, and Pedro Cuenca. 2020. Rate-distortion/complexity analysis of hevc, vvc and av1 video codecs. 
+
+Multimedia Tools and Applications , 79, 39, 29621–29638. [15] ChungWen Ku, Guoqing Xiang, Feng Qi, Wei Yan, Yuan Li, and Xiaodong Xie. 2019. Bit allocation based on visual saliency in hevc. In 2019 IEEE Visual Communications and Image Processing (VCIP) , 1–4. doi:10.1109/VCIP47243.2019.8965753. [16] T. Wedi and S. Wittmann. 2005. Quantization offsets for video coding. In 2005 IEEE International Symposium on Circuits and Systems , 324–327 Vol. 1. doi:10.1109/ISCAS.2005.1464590. [17] Peter Lambert, Davy De Schrijver, Davy Van Deursen, Wesley De Neve, Yves Dhondt, and Rik Van de Walle. 2006. A real-time content adaptation framework for exploiting roi scalability in h. 264/avc. In International Conference on Advanced Concepts for Intelligent Vision Systems . Springer, 442–453. [18] Huaying Xue, Yuan Zhang, and Yunong Wei. 2016. Fast roi-based hevc coding for surveillance videos. In 2016 19th International Symposium on Wireless Personal Multimedia Communications (WPMC) , 299–304. [19] Marwa Meddeb, Marco Cagnazzo, and Béatrice Pesquet-Popescu. 2014. Region-of-interest-based rate control scheme for high-efficiency video coding. APSIPA Transactions on Signal and Information Processing , 3, e16. doi:10.1017/ATSIP.2014.15. [20] FFmpeg Developers. 2025. addroi filter — FFmpeg Filters Documentation . Accessed: 2025-11-13. FFmpeg Project. https://ffmpeg.org/ffmpeg-filters .html#addroi. [21] Eynnzerr. 2022. X264: how to correctly use quant_offsets ? Accessed: 2025-11-13. (Aug. 2022). https://stackoverflow.com/questions/73414745/x2 64-how-to-correctly-use-quant-offsets. [22] x265 Developers. 2025. x265 – Command Line Options: –qpfile . Accessed: 2025-11-13. Multicoreware / x265 Project. https://x265.readthedocs.io/e n/master/cli.html#cmdoption-qpfile. 22 Artioli et al. 
+
+[23] Emanuele Artioli, Farzad Tashtarian, and Christian Timmerer. 2024. Digitwise: digital twin-based modeling of adaptive video streaming engagement. In Proceedings of the 15th ACM Multimedia Systems Conference , 78–88. [24] Xize Duan, Yili Jin, Lei Zhang, and Fangxin Wang. 2025. Semconf: a system for multiparty semantic video conferencing. In Proceedings of the 35th Workshop on Network and Operating System Support for Digital Audio and Video (NOSSDAV ’25). Association for Computing Machinery, Stellenbosch, South Africa, 71–77. isbn: 9798400714696. doi:10.1145/3712678.3721884. [25] NVIDIA Developer. 2025. NVIDIA Maxine Developer Platform . Accessed: 2025-11-13. NVIDIA Corporation. https://developer.nvidia.com/maxine. [26] Yili Jin, Xue Liu, and Jiangchuan Liu. 2025. Generative ai for multimedia communication: recent advances, an information-theoretic framework, and future opportunities. In Proceedings of the 33rd ACM International Conference on Multimedia (MM ’25). Association for Computing Machinery, Dublin, Ireland, 12237–12246. isbn: 9798400720352. doi:10.1145/3746027.3758149. [27] Emanuele Artioli, Daniele Lorenzi, Shivi Vats, Farzad Tashtarian, and Christian Timmerer. 2025. Genstream: semantic streaming framework for generative reconstruction of human-centric media. In Proceedings of the 33rd ACM International Conference on Multimedia (MM ’25). Association for Computing Machinery, Dublin, Ireland, 12276–12284. isbn: 9798400720352. doi:10.1145/3746027.3758153. [28] Simon Niklaus, Long Mai, and Feng Liu. 2017. Video frame interpolation via adaptive separable convolution. In Proceedings of the IEEE international conference on computer vision , 261–270. [29] Wenbo Bao, Wei-Sheng Lai, Chao Ma, Xiaoyun Zhang, Zhiyong Gao, and Ming-Hsuan Yang. 2019. Depth-aware video frame interpolation. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 3703–3712. [30] Zhenxing Shi, Xiangyu Xu, Xiaoming Liu, and Jianjun Chen. 2022. Video frame interpolation transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE, 10474–10483. https://openaccess.thecvf.com/content/CVPR2022/papers/Shi_Video_Fra me_Interpolation_Transformer_CVPR_2022_paper.pdf. [31] Moukthika. 2025. Resizing and rescaling images with opencv. Accessed: 2025-11-14. (Mar. 2025). https://opencv.org/blog/resizing-and-rescaling-i mages-with-opencv/. [32] Xintao Wang, Ke Yu, Shixiang Wu, Jinjin Gu, Yihao Liu, Chao Dong, Yu Qiao, and Chen Change Loy. 2018. Esrgan: enhanced super-resolution generative adversarial networks. In Proceedings of the European conference on computer vision (ECCV) workshops , 63–79. [33] Jiezhang Cao, Yawei Li, Kai Zhang, and Luc Van Gool. 2021. Video super-resolution transformer. arXiv preprint arXiv:2106.06847 .[34] Soo Ye Kim, Jihyong Oh, and Munchurl Kim. 2020. Fisr: deep joint frame interpolation and super-resolution with a multi-scale temporal loss. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence number 07. Vol. 34, 11278–11286. [35] K.A. Patwardhan, G. Sapiro, and M. Bertalmio. 2005. Video inpainting of occluding and occluded objects. In IEEE International Conference on Image Processing 2005 . Vol. 2, II–69. doi:10.1109/ICIP.2005.1529993. [36] Alasdair Newson, Andrés Almansa, Matthieu Fradet, Yann Gousseau, and Patrick Pérez. 2014. Video inpainting of complex scenes. SIAM Journal on Imaging Sciences , 7, 4, 1993–2019. eprint: https://doi.org/10.1137/140954933. doi:10.1137/140954933. [37] Yanhong Zeng, Jianlong Fu, and Hongyang Chao. 2020. Learning joint spatial-temporal transformations for video inpainting. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part XVI 16 . Springer, 528–543. [38] Bohai Gu, Yongsheng Yu, Heng Fan, and Libo Zhang. 2023. Flow-guided diffusion for video inpainting. arXiv preprint arXiv:2311.15368 .[39] Netflix. 2016–present. Vmaf development kit. Accessed: 2024-11-18. (2016–present). https://github.com/Netflix/vmaf. [40] Chibuike Onuoha, Jean Atsumi Flaherty, Shihao Luo, Truong Thu Huong, and Truong Cong Thang. 2023. An evaluation of quality metrics for neural radiance field. In 2023 IEEE 15th International Conference on Computational Intelligence and Communication Networks (CICN) , 619–623. doi:10.1109/CICN59264.2023.10402249. [41] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. 2018. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recognition .[42] Keyan Ding, Kede Ma, Shiqi Wang, and Eero P. Simoncelli. 2022. Image quality assessment: unifying structure and texture similarity. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44, 5, 2567–2581. doi:10.1109/TPAMI.2020.3045810. [43] Yu Yu, Weibin Zhang, and Yun Deng. 2021. Frechet inception distance (fid) for evaluating gans. China University of Mining Technology Beijing Graduate School , 3, 11. [44] Jiahe Liu, Youran Qu, Qi Yan, Xiaohui Zeng, Lele Wang, and Renjie Liao. 2024. Fréchet video motion distance: a metric for evaluating motion consistency in videos. In First Workshop on Controllable Video Generation @ICML24 . https://openreview.net/forum?id=tTZ2eAhK9D. [45] Hadi Amirpour, Mohammad Ghasempour, Lingfeng Qu, Wassim Hamidouche, and Christian Timmerer. 2024. EVCA: Enhanced Video Complexity Analyzer. In Proceedings of the 15th ACM Multimedia Systems Conference (MMSys ’24). Association for Computing Machinery, New York, NY, USA. [46] Yukun Su, Jingliang Deng, Ruizhou Sun, Guosheng Lin, and Qingyao Wu. 2023. A unified transformer framework for group-based segmentation: co-segmentation, co-saliency detection and video salient object detection. IEEE Transactions on Multimedia .[47] Wenru Dong. 2018. What is opencv’s inter_area actually doing? Accessed: 2025-11-14. (June 2018). https://medium.com/@wenrudong/what-is-opencvs-inter-area-actually-doing-282a626a09b3. [48] Kai Zhang, Jingyun Liang, Luc Van Gool, and Radu Timofte. 2021. Designing a practical degradation model for deep blind image super-resolution. In IEEE/CVF International Conference on Computer Vision (ICCV) , 4791–4800. [49] Xiangyu Chen, Xintao Wang, Jiantao Zhang, Ying Shan, Haohua Chen, Shangchen Zhou, Shuming Liu, and Chao Dong. 2023. Activating more pixels in image super-resolution transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . (June 2023), 22367–22377. PRESLEY 23 
+
+[50] Hau-Shiang Shiu, Chin-Yang Lin, Zhixiang Wang, Chi-Wei Hsiao, Po-Fan Yu, Yu-Chih Chen, and Yu-Lun Liu. 2025. Stream-DiffVSR: low-latency streamable video super-resolution via auto-regressive diffusion. arXiv preprint arXiv:2512.23709 . https://arxiv.org/abs/2512.23709. [51] Liangyu Chen, Xiaojie Chu, Xiangyu Zhang, and Jian Sun. 2022. Simple baselines for image restoration. In European Conference on Computer Vision (ECCV) , 17–33. [52] Alexandru Telea. 2004. An image inpainting technique based on the fast marching method. Journal of graphics tools , 9, 1, 23–34. [53] Jordi Pont-Tuset, Federico Perazzi, Sergi Caelles, Pablo Arbeláez, Alexander Sorkine-Hornung, and Luc Van Gool. 2017. The 2017 davis challenge on video object segmentation. arXiv:1704.00675 .[54] Henghui Ding, Chang Liu, Shuting He, Xudong Jiang, Philip H. S. Torr, and Song Bai. 2023. MOSE: a new dataset for video object segmentation in complex scenes. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , 20224–20234. [55] Fudan CVL. 2025. MOSEv2: complex video object segmentation, version 2. Hugging Face dataset. https://huggingface.co/datasets/Fudan CVL/MOSEv2, validation split, accessed 2026-07-23. (2025). [56] Ning Xu, Linjie Yang, Yuchen Fan, Dingcheng Yue, Yuchen Liang, Jianchao Yang, and Thomas Huang. 2018. YouTube-VOS: a large-scale video object segmentation benchmark. arXiv preprint arXiv:1809.03327 . https://arxiv.org/abs/1809.03327. 24 Artioli et al. 
+
+6 Appendix A Evaluation Principles and Methodological Pitfalls 
+
+We document five key methodological principles and pitfalls established during system evaluation to assist researchers developing and validating generative video streaming pipelines: 
+
+1. Region metrics inadvertently evaluating background 
+
+Evaluating foreground DISTS on a union bounding box (averaging 76 % of frame area vs. 15 % true foreground) scored the background that the transport intentionally degraded. Correcting to mask-weighted spatial feature pooling makes our own foreground scores worse on 30 of 35 sequences, and changes the winner in 34 matched-rate groups — 16 toward the degrade-and-restore configurations and 12 toward the baseline. Principle: Always verify the true spatial coverage of region metrics; bounding boxes do not constitute isolated regions. 
+
+2. Variable bitrate obscuring bitrate reductions 
+
+Under VBR rate control, the encoder expends its target bitrate regardless of source complexity, preventing block degradation from freeing bandwidth and instead causing degradation artifacts to steal bits from the foreground. Across every matched pair in our corpus, VBR degradation costs 16 .4 % more bits than the pristine baseline, saving on 0 of 18, where fixed QP frees 9 .2 %. Principle: Fixed-QP rate control is mandatory for evaluating degradation transports. A degradation curve measured under a bitrate target measures the rate controller, not the method. We enforce this in code — any VBR degradation run is flagged as uncitable automatically. 
+
+3. One-tailed significance testing bias 
+
+Early analyses quoted one-tailed 𝑝 -values based on post-hoc observations of empirical directionality. Principle: Two-tailed always, and know the floor — at 𝑛 = 5 no split can reach 0 .05, so a consistent small suite is underpowered rather than negative. 
+
+4. Device population mixing in latency benchmarks 
+
+A silent CPU fallback produced artificial 10 to 40 × latency spreads by mixing CPU and GPU executions. Principle: 
+
+Explicitly log hardware device backends per trial and disallow heterogeneous averaging. 
+
+5. Inconsistent rate control comparisons 
+
+Comparing fixed-QP ROI configurations against VBR baselines misattributed baseline overshooting as ROI savings. 
+
+Principle: Compare configurations only against like-for-like rate control baselines. 
+
+B Metrics and Statistical Protocol Spatial mask restriction for deep perceptual metrics 
+
+For LPIPS and DISTS, per-frame foreground masks are resampled onto the network’s spatial feature maps and utilized as location-wise weights in internal pooling, assigning zero weight to background coordinates. Setting all weights to one identically reproduces standard whole-frame metrics. Because deep convolutional receptive fields span tens of pixels, mask-weighted pooling evaluates foreground objects within their local scene context without introducing boundary cropping artifacts. For the same reason no foreground claim rests on VMAF or FVMD, whose available foreground PRESLEY 25 variants are bounding-box crops. Background PSNR is reported but is never a verdict: the flat mean fill scores the best background PSNR of any fill we tested while being the worst-looking, because a smooth patch is arithmetically closer to the original than invented texture is. 
+
+Statistical significance protocol 
+
+No subjective study was conducted: every perceptual claim in this article rests on mask-restricted learned metrics, and none of them substitutes for human raters. We also do not gate claims on a perceptual threshold. We are aware of no source establishing 0 .05 as a calibrated just-noticeable difference for LPIPS or DISTS, which are in any case on different scales, so wherever a 0 .05 margin appears in this article it is a declared reporting margin — applied identically to our configurations and to every baseline — and never a perceptual constant. Effect sizes are therefore reported directly, and claims are gated on paired significance instead: an exact two-tailed sign test over videos, Holm-corrected across every candidate this project tried, losers included, with the number of pairs stated. Where a comparison cannot reach significance — at six paired videos the smallest attainable two-tailed 𝑝 is 0.031, and below six no split reaches 0 .05 — we report it as underpowered rather than as a null. 
+
+C Super-Resolution Restoration Algorithm 
+
+Algorithm 2 details the progressive super-resolution restoration procedure on the client. Transmitted pixels are re-injected for blocks that have reached their target resolution, preserving un-degraded content and ensuring foreground quality remains independent of the restorer backbone. 
+
+Algorithm 2 Progressive Super-Resolution Restoration                                                                       
+
+> Require: 𝐹 : current frame at 1 /2𝑠 resolution; 𝐹 𝑖𝑛 : decoded frame; 𝐷 ∈Z𝐼 ×𝐽 : downsample factors; 𝑠 : current scale
+> Ensure: 𝐹 𝑢𝑝 ,𝐷 : upscaled frame and updated factors
+> 1: 𝐹 𝑢𝑝 ←Model (𝐹 )⊲Conditioned 2 ×SR pass
+> 2: 𝐹 𝑟𝑒 𝑓 ←Resize (𝐹 𝑖𝑛 ,size (𝐹 𝑢𝑝 ) )
+> 3: for 𝑖 =0to 𝐼 −1do
+> 4: for 𝑗 =0to 𝐽 −1do
+> 5: if 𝐷 𝑖,𝑗 ≤𝑠 then
+> 6: 𝐹 𝑢𝑝 [𝑖, 𝑗 ] ← 𝐹 𝑟𝑒 𝑓 [𝑖, 𝑗 ]⊲Preserve transmitted pixels
+> 7: else
+> 8: 𝐷 𝑖,𝑗 ←𝑠 ⊲Update scale factor
+> 9: end if
+> 10: end for
+> 11: end for
+> 12: return 𝐹 𝑢𝑝 ,𝐷
+
+D Architectural Design Principles and Retired Candidates Architectural principles for neural video streaming transports 
+
+Each of the following candidate modalities was evaluated and retired based on rigorous empirical measurements. Together, they establish foundational architectural design principles for neural video streaming transports, preventing future wasted research effort: (1) Avoid frame shrinking (preserve spatial geometry): Repacking the most removable blocks out of the frame appears to offer a bitrate win by transmitting roughly 25 % fewer pixels, but instead costs 42 .8 % to 47 .7 % more 26 Artioli et al.                                                    
+
+> Table 7. Stage-by-stage progression vs. pristine fixed-QP base-lines at 640 ×360 (median over 6 sequences).
+> Stage Encoder Δbits ΔFG ΔBG Codec ROI kvazaar −1.0% +0.42 dB −0.74 dB ELVIS SVT-AV1 +22 .8% −0.15 dB −5.47 dB PRESLEY SVT-AV1 +1.2% −0.13 dB −1.85 dB ELVIS x265 −1.7% −0.16 dB −9.43 dB
+> Table 8. Selective vs. uniform downsampling (SVT-AV1, 640 ×360 ,bs8, Real-ESRGAN). Negative BD-rate favors selective.
+> Video BD-rate FG BD-rate BG ΔFG-LPIPS Overlap
+> bear −18 .3% −10 .4% +0.087 0.83
+> india −30 .8% +40 .5% +0.101 0.67
+> camel +60 .2% +21 .7% −0.001 0.67
+> tennis +60 .6% +65 .6% −0.027 0.65
+> pigs +86 .4% +51 .8% −0.022 0.60
+> dog +89 .8% +55 .5% −0.032 0.62
+
+bits than in-place blackout at the same budget. Repacking destroys intra- and inter-frame spatial prediction. In-place degradation is essential. (2) Degradations must align with transform coding (avoid noise injection): Adding high-frequency Gaussian noise costs 76 .5 % to 83 .0 % more bits than the pristine baseline at indistinguishable foreground quality, whereas same-budget downsampling and blur free 10 % to 27 %. Degradation must reduce entropy for the codec, not merely appear smooth to human vision; noise severely disrupts motion compensation. (3) ROI control belongs in the encoder core (avoid pixel-plane QP mapping): Setting per-block QP offsets from removability re-quantizes coefficients on the pixel plane before encoding rather than driving the encoder’s native quantization engine. Combined with GoP averaging, it yields inferior rate-distortion trade-offs compared to native codec ROI (Kvazaar gains +0.42 dB FG at neutral rate; Appendix G). In-place pixel downsampling is the superior pre-encode transport. (4) Prioritize low-entropy fills for in-painting transports: Foreground PSNR is flat across blackout, freeze, and mean-fill on 6/6 videos due to passthrough compositing, and background LPIPS does not separate them. The choice is settled on rate: flat blackout is cheapest at 566 .9 kbps against 589 .3 and 616 .1. (5) Hybrid codecs remain essential (neural video representations like HNeRV are non-viable for stream-ing): Accounting for transmitted serialized model weights reveals that HNeRV requires 22 .7 to 178 .1× higher bitrate than standard x265 at matched foreground quality, confirming that hybrid traditional codecs coupled with lightweight client-side generative layers are the practical path forward. (6) Enforce fixed-QP rate control: Fixed-QP is the prerequisite for bit relocation; under VBR, the rate controller launders bits regardless of degradation. One sequence is excluded from the graded-strength comparison of Section 4.5 on a stability criterion rather than an outcome, and the exclusion is itself evidence about the graded transport. camel ’s graded configuration drives more than a percent of its output pixels to the clipping rails at every QP, because a multi-level pyramid applies the restorer once per level and each round re-amplifies what the last pushed toward the rails. It breaches the clipping invariant on all four rungs, against zero breaches across the 40 binary runs. 
+
+Progression across pipeline stages 
+
+Table 7 reports the stage-by-stage progression from native codec ROI to ELVIS block removal and PRESLEY degrade-and-restore. Table 8 presents the per-sequence performance comparison between spatially selective and whole-frame uniform downsampling. PRESLEY 27 
+
+Table 9. Detector-derived mask (YOLOE-11l-seg) vs. ground truth on 7 sequences. 
+
+Sequence Area ratio Δbitrate ΔFG-PSNR 
+
+india 2.65 +16 .4% +2.82 dB 
+
+camel 1.09 −2.3% +0.47 dB 
+
+bear 0.91 −2.2% −0.12 dB 
+
+pigs 0.88 −3.8% −0.36 dB 
+
+bmx-trees 0.86 −10 .1% −2.90 dB 
+
+tennis 0.86 −8.0% −4.37 dB 
+
+dog 0.54 −0.4% −0.66 dB −10 0 10     
+
+> bear camel tennis train breakdance bmx-bumps pigs dog
+> 640x360 3/8 save, median +2.8%
+> −10 010
+> BD-rate on foreground LPIPS (%), negative = fewer bits
+> bear pigs tennis bmx-bumps train dog breakdance
+> 1280x720 7/7 save, median -5.3%*
+> −10 010
+> bear dog train pigs tennis bmx-bumps breakdance
+> 1920x1080 6/7 save, median -4.3%
+
+Fig. 12. BD-rate on foreground LPIPS per clip across resolutions ( 80 ×45 grid). 
+
+E Robustness Checks: Segmentation and Resolution Detector-derived foreground masks 
+
+Replacing DAVIS ground-truth masks with detector masks (YOLOE-11l-seg, Table 9) indicates that foreground quality follows the area a mask protects, not the accuracy with which it segments: the rank correlation is 𝜌 = +0.893, and 
+
+india — the one sequence whose detector mask is larger than the annotation — is also the one whose bitrate rises. Morphological perturbations (dilation/erosion radius 4) alter foreground PSNR by ≤ 0.12 dB, demonstrating robustness to boundary noise. 
+
+Resolution scaling 
+
+At 1280 ×720 the saving is a result rather than a trend : all 7 citable clips need fewer bits for equal foreground quality, a median of −5.3 %, exact two-tailed 𝑝 = 0.0156, or 0 .047 after Holm correction across the three resolutions. 
+
+At 1920 ×1080 it does not follow (6 of 7, median −4.3 %, 𝑝 = 0.125), and at 640 ×360 the split persists at 3 of 8. Two things bound this. At fixed QP the higher resolutions run at roughly half the bits per pixel and so sit in the more starved regime that favours the method; and breakdance spends 0 .214 bits per pixel at 640 ×360 against the 0 .078 to 0 .136 of the other seven, outside the range registered in advance as one operating regime, so its lowest-quality QP is reported but not pooled. 
+
+F Whole-Frame Quality Metrics 
+
+Table 10 reports full-frame metric changes against pristine baselines across seven standards. Learned metrics (LPIPS, DISTS) and structural metrics confirm the ranking established by region-restricted evaluations. 
+
+G Per-Point Codec ROI Performance 
+
+Table 11 details every evaluated operating point for Kvazaar native ROI encoding. 28 Artioli et al. 
+
+Table 10. Whole-frame metrics: median change against pristine baselines paired within (video, codec, QP, resolution). 
+
+Configuration 𝑛 ΔPSNR ↑ ΔSSIM ↑ ΔVMAF ↑ ΔLPIPS ↓ ΔDISTS ↓ ΔFID ↓ ΔFVMD ↓
+
+PRESLEY downsample + Real-ESRGAN 295 −2.21 −0.053 −7.8 +0.026 +0.003 — —PRESLEY blackout + ProPainter 18 −7.18 −0.117 −36 .3 +0.129 +0.047 +12 .2 +1368 PRESLEY freeze + ProPainter 28 −9.50 −0.200 −51 .4 +0.156 +0.052 +12 .8 +2772 ELVIS (block removal) 149 −11 .67 −0.195 −45 .2 +0.177 +0.070 +16 .2 +2284 
+
+Table 11. Kvazaar native ROI encoding per operating point under fixed QP.                                                                                                                                               
+
+> Video Setting Rate ROI Rate base ΔRate ΔFG-PSNR ΔBG-PSNR bear kv-150 155.8 146.5 +6.3% +0.53 dB −0.40 dB bear kv-250 233.7 224.5 +4.1% +0.57 dB −0.53 dB bear kv-460.8 460.5 492.4 −6.5% +0.71 dB −0.73 dB bear kv-555 577.5 492.4 +17 .3% +1.34 dB −0.22 dB bear kv-800 727.1 823.9 −11 .7% +0.73 dB −0.89 dB bmx-trees kv-460.8 501.1 467.0 +7.3% +0.24 dB −0.04 dB camel kv-300 304.0 279.8 +8.7% +0.51 dB −1.12 dB camel kv-600 572.4 588.1 −2.7% +0.58 dB −1.28 dB dog kv-300 282.4 328.9 −14 .1% +0.57 dB −0.88 dB dog kv-600 593.0 616.5 −3.8% +1.00 dB −0.62 dB drift-chicane kv-460.8 447.1 447.4 −0.1% +0.21 dB −0.13 dB india kv-300 299.3 290.8 +2.9% +0.23 dB −0.20 dB india kv-600 577.1 565.6 +2.0% +0.20 dB −0.25 dB pigs kv-300 311.2 322.6 −3.5% +0.13 dB −0.95 dB pigs kv-600 553.3 654.4 −15 .4% +0.09 dB −1.33 dB tennis kv-300 300.1 315.5 −4.9% −0.45 dB −0.25 dB tennis kv-600 622.1 581.7 +6.9% +0.14 dB +0.13 dB
+
+H Data Provenance and Pre-registration Commitments 
+
+Every experiment record in this article is tracked by an immutable configuration hash and validated against five automated invariants: existence of valid region metrics, bitrate accounting within 1 %, fixed-QP rate control, non-degraded background restoration, and absence of numerical saturation. Runs failing any invariant are excluded. Three analyses were additionally bounded before the runs they depend on existed, with the design documents committed ahead of the data, and we record what fired rather than revising the bounds . The regime-stability contrast did not fire ( 𝑝 = 0.58), which is the reported result. For restorability, the correlation over all superblocks exceeded its band, and the control that resolved it — restricting to actually-degraded blocks, which is where the reported 
+
+𝜌 = +0.506 comes from — was declared after the fact, so both figures are reported. For the resolution ladder, two sequences fell outside the band on foreground BD-rate and one further bound fired, on breakdance ’s bits per pixel. Two further bounds fired elsewhere in the article and are disclosed where their results appear: the placement contrast of Section 4.5 landed far outside a band that was itself mis-derived, and that section’s exclusion test was pre-registered on foreground LPIPS while its stated basis was a foreground PSNR figure. Both mis-specifications are ours.

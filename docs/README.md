@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-17</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-18</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-17 22:10:04 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-18 21:48:57 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天从6篇推荐中筛出2篇精读、4篇速读，视频压缩与神经编解码成为</p>
+<p>今天筛选了6篇论文，精读4篇，聚焦神经视频编码与压缩优化。最值得看的是8分的语义感知神经视频编解码与tcnerv隐式神经视频压缩，都主攻低延迟、抗错与双域时序建模。普通读者可优先从这两篇入手，再顺带了解OASIS的闭环反馈思路。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="tcnerv:dual-domain temporal context modeling for implicit neural video compression">tcnerv:dual-domain temporal context modeling for implicit neural video compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission">Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission">Semantic-Aware Neural Video Codec for Error-Resilient Low-Latency Transmission</span></li><li><span class="dpr-home-dashboard-paper-title" title="tcnerv:dual-domain temporal context modeling for implicit neural video compression">tcnerv:dual-domain temporal context modeling for implicit neural video compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="PULSE: Unlocking Practical Image Compression on Single-Thread CPU">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>3</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PULSE: Unlocking Practical Image Compression on Single-Thread CPU">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</span></li><li><span class="dpr-home-dashboard-paper-title" title="GenStream: Semantic Streaming Framework for Generative Reconstruction of Human-centric Media">GenStream: Semantic Streaming Framework for Generative Reconstruction of Human-centric Media</span></li><li><span class="dpr-home-dashboard-paper-title" title="Hardware-Aware Learned Representation Compression for Distributed In-Sensor Vision">Hardware-Aware Learned Representation Compression for Distributed In-Sensor Vision</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control">OASIS: Online Adaptive Video Compression via Closed-loop Feedback Control</span></li><li><span class="dpr-home-dashboard-paper-title" title="Optimal Pruning for Neural Architectures using Fisher Information Distances">Optimal Pruning for Neural Architectures using Fisher Information Distances</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
