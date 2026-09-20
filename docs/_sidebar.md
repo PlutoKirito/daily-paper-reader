@@ -1,6 +1,11 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-09-20 <!--dpr-date:20260920-->
+    * 精读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/20/2609.18602v1-pulse-unlocking-practical-image-compression-on-single-thread-cpu" data-sidebar-item="{&quot;title&quot;: &quot;PULSE: Unlocking Practical Image Compression on Single-Thread CPU&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.18602v1-pulse-unlocking-practical-image-compression-on-single-thread-cpu&quot;, &quot;score&quot;: &quot;8.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;超低复杂度编解码器，整数线性CDF熵编码与元先验&quot;}">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</a>
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/20/2609.14404v1-successive-refinement-under-strong-sense-perfect-perception" data-sidebar-item="{&quot;title&quot;: &quot;Successive Refinement Under Strong-Sense Perfect Perception&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.14404v1-successive-refinement-under-strong-sense-perfect-perception&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;强意义完美感知约束下的率失真感知区域&quot;}">Successive Refinement Under Strong-Sense Perfect Perception</a>
   * 2026-09-19 <!--dpr-date:20260919-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/19/2609.18602v1-pulse-unlocking-practical-image-compression-on-single-thread-cpu" data-sidebar-item="{&quot;title&quot;: &quot;PULSE: Unlocking Practical Image Compression on Single-Thread CPU&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.18602v1-pulse-unlocking-practical-image-compression-on-single-thread-cpu&quot;, &quot;score&quot;: &quot;8.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;低复杂度学习式编解码，含整数线性CDF熵编码与元先验&quot;}">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</a>

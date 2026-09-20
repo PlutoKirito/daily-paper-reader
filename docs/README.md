@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-19</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-20</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 2 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-19 21:40:08 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-20 21:26:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天精读1篇、速读2篇：单线程CPU上的实用图像压缩PULSE拿下8.0分，另两篇6.0分论文分别探索DeepSC高效通信与Kronecker分解Hessian量化。最值得关注PULSE如何在单线程CPU上实现可用图像压缩，以及Krum式中心教师选择对DeepSC效率的改进。普通读者可优先读PULSE，若关注模型压缩再看量化那篇。</p>
+<p>今日精读1篇、速读1篇，聚焦图像压缩与感知极限两个方向。最值得看的是《PULSE》提出的单线程CPU实用图像压缩方案（8.0分），另一篇《Successive Refinement Under Strong-Sense Perfect Perception》探讨强感知意义下的渐进细化（6.0分）。普通读者可优先了解PULSE如何在低算力设备上落地图像压缩，再按兴趣跟进感知理论方向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Krum-Inspired Central Teacher Selection and Residual Channel Bottlenecks for Efficient DeepSC">Krum-Inspired Central Teacher Selection and Residual Channel Bottlenecks for Efficient DeepSC</span></li><li><span class="dpr-home-dashboard-paper-title" title="WaterKron and FlipFlop Hessian: Information-Theoretically Grounded Quantization with Kronecker-factored Hessians">WaterKron and FlipFlop Hessian: Information-Theoretically Grounded Quantization with Kronecker-factored Hessians</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Successive Refinement Under Strong-Sense Perfect Perception">Successive Refinement Under Strong-Sense Perfect Perception</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
