@@ -1,0 +1,1269 @@
+Title: PULSE: Unlocking Practical Image Compression on Single-Thread CPU
+
+URL Source: https://arxiv.org/pdf/2609.18602v1
+
+Published Time: Thu, 17 Sep 2026 01:09:36 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+Preprint 
+
+# PULSE : UNLOCKING PRACTICAL IMAGE COMPRES -
+
+## SION ON SINGLE -T HREAD CPU 
+
+Zhaoyang Jia 1∗ Tianyu Zhang ‡ Zihan Zheng 1∗ Wenxuan Xie 2 Jiahao Li 2 Bin Li 2
+
+Houqiang Li 1 Yan Lu 21University of Science and Technology of China 
+
+> 2
+
+Microsoft Research Asia ‡Independent Researcher 
+
+ABSTRACT 
+
+Despite recent progress in learned image compression, existing methods remain computationally expensive on resource-constrained hardware, particularly CPUs. We introduce P ULSE , a practical codec that enables (1) low-latency decoding on diverse hardware platforms with an ultra-low-complexity 5.2 kMAC/pixel neural receiver, and (2) efficient bit-exact entropy coding with an integer lin-ear CDF predictor and a meta prior. To recover compression performance under this tight budget, we introduce an agentic evolution process guided by heuristic probes that iteratively improves the architecture through human–LLM collabora-tion. P ULSE decodes a 1080p image in 126 ms on a single CPU thread while achieving compression performance comparable to HM. After perceptual optimiza-tion, P ULSE competes with larger perceptual codecs like MS-ILLM. Codes are at 
+
+https://github.com/microsoft/GenCodec/tree/main/PULSE .Shallow NTC 
+
+> EVC-S
+> ELIC
+> DCVC-RT-Intra
+
+MSE-optimized 
+
+> MS-Hyperprior
+> HM
+> JPEG-AI
+> PULSE-S
+> PULSE
+> HEIC
+> PULSE
+> (Perceptual)
+> MS-ILLM
+> CoD-Lite
+
+Perceptual-optimized          
+
+> MRIC
+> Bit-exact entropy coding
+> across platforms
+> Phone Laptop Server
+> REDMI
+> K80 Pro
+> HP OmniBook
+> Ultra Flip 14
+> NPU CPU
+> GPU
+> Snapdragon
+> 8 Elite
+> Intel Core
+> Ultra 9 288V
+> A100
+> Neural Network
+> 34 / 15 ms
+> Full Pipeline
+> 42 / 20 ms
+> Neural Network
+> 300 / 42 ms
+> Full Pipeline
+> 302 / 43 ms
+> Neural Network
+> 2.2 / 1.1 ms
+> Full Pipeline
+> 3.6 / 2.8 ms
+> 1080p Enc. / Dec. Time
+> PULSE-L
+> (Perceptual)
+
+Figure 1: PULSE targets practical image compression on resource-constrained hardware. Its 5.2 kMAC/pixel receiver decodes a 1080p image in 126 ms on a single thread of an AMD EPYC 9V84, while enabling bit-exact entropy coding across devices like REDMI K80 Pro. On the CLIC Professional validation set, P ULSE matches HM and its perceptual variant competes with larger codecs such as MS-ILLM (Muckley et al., 2023). Latency is measured for the full decoding pipeline, including network inference and entropy decoding. Circle radius denotes the decoding complexity. 
+
+1 INTRODUCTION 
+
+Pioneering learned image compression systems (Ball´ e et al., 2017; 2018; Minnen et al., 2018) used neural receivers requiring roughly 80 kMAC/pixel. Subsequent work improved rate–distortion performance by scaling receiver complexity to several hundred kMAC/pixel (Cheng et al., 2020; He et al., 2022b; Jiang et al., 2025; Liu et al., 2023), making real-time decoding challenging even on 
+
+> ∗
+
+This work was done when Zhaoyang Jia and Zihan Zheng were full-time interns at Microsoft Research Asia. Corresponding to: jzy ustc@mail.ustc.edu.cn (Zhaoyang Jia). 
+
+1arXiv:2609.18602v1 [cs.CV] 16 Sep 2026 Preprint GPUs. To bridge this deployment gap, instance-adaptive codecs reduce receiver complexity to below 5 kMAC/pixel, but shift substantial computation to per-image optimization during encoding (Ladune et al., 2023; Kim et al., 2024). Another line of work pursues efficient end-to-end codecs: EVC reduces receiver complexity to about 110 kMAC/pixel, Shallow NTC to approximately 20 kMAC/pixel, while DCVC-RT reorganizes computation to achieve real-time GPU throughput (Wang et al., 2023; Yang & Mandt, 2023; Jia et al., 2025). Despite these advances, such systems remain challenging to deploy at scale on resource-constrained edge devices, particularly CPUs. We propose P ULSE to target the missing operating point: an ultra-low-complexity, highly parallel and end-to-end codec, with a sender and a receiver around 45 and 5.2 kMAC/pixel, respectively. We use a single CPU thread as a stringent deployment stress test, while retaining bounded-pass entropy dependencies and accelerator-friendly operators so that the same model can benefit from NPUs and GPUs for practical implementation. We make P ULSE practical by solving three core questions. 
+
+How to design a codec under an ultra-low-complexity budget? Under such a stringent constraint, every channel and operator must be placed where it brings the greatest compression benefit. PICO searches over millions of architectures, incurring substantial candidate-training costs and relying on statically predefined networks (Tatwawadi et al., 2026). We instead introduce an agentic evolution 
+
+process that uses heuristic probes to inform architecture design through human–LLM collaboration. With only seven evolution rounds and 22 training runs, P ULSE achieves compression performance comparable to HM on the CLIC Professional validation set. It decodes a 1080p image in 126 ms on a single thread of an AMD EPYC 9V84 CPU. 
+
+How to maintain bit-exact entropy coding across devices with minimal loss? Platform-dependent floating-point round-off can change the selected CDF and desynchronize the remaining bitstream. PULSE addresses this with one integer linear projection from the hyperlatent to the main-latent CDF bucket, which requires only 1.6 ms for a 1080p image on a single CPU thread. In practice, this compact entropy-control path can execute on CPU for bit-exact entropy coding, while the remaining parts run efficiently on accelerators. With a meta prior to improve hyperlatent coding, this scheme outperforms existing integerization-based methods in rate-distortion loss. 
+
+How to effectively improve perceptual quality? We separate perceptual training into two stages: an LPIPS-augmented pre-training stage to establish detail synthesis capability, and a preference-optimization stage that jointly improves pixel fidelity, distribution alignment, and text and facial quality. The optimized model competes with larger perceptual codecs. Together, these components address key bottlenecks in practical image compression on resource-constrained hardware. As illustrated in Figure 1, P ULSE enables practical compression across phones, laptops, and servers with low computational cost. On edge devices like REDMI K80 Pro, it takes 42 ms for encoding and 20 ms for decoding at 1080p. We expect further system-level optimization to improve its efficiency for real-world applications. 
+
+2 PULSE A RCHITECTURE 
+
+PULSE is an asymmetrical, variable-rate, cross-platform codec designed for ultra-low-complexity decoding. As illustrated in Figure 2, it consists of an analysis transform, a two-step entropy model, and a synthesis transform. All modules are designed with highly parallel computation to enable efficient implementation across different hardware platforms. We build it with depthwise convolution blocks (DCB) with a channel attention layer (Hu et al., 2018), which is used throughout modules. 
+
+Analysis transform. Given an image x ∈ [0 , 1] 3×H×W , a stride-16 patch embedding produces a feature at 1/16 spatial resolution. Four DCBs are then applied, followed by a 1 × 1 projection: 
+
+y = Encoder( x) ∈ RCy ×H/ 16 ×W/ 16 . (1) 
+
+Entropy model and coding. Unlike the raster-ordered entropy model of Cool-Chic (Ladune et al., 2023), P ULSE uses two bounded passes. A hyper encoder (Ball´ e et al., 2018) maps y to a hyperlatent 
+
+z at 1/64 input resolution. The rounded ˆz is coded by a QP-conditioned Meta Prior, which selects among a compact bank of factorized priors (Ball´ e et al., 2017; Jia et al., 2025), and a hyper decoder restores a Cy -channel feature at the resolution of y:
+
+z = HyperEncoder( y) ∈ RCz ×H/ 64 ×W/ 64 , h = HyperDecoder(ˆ z). (2) 2Preprint CDF Table Index                
+
+> ො𝑥
+> Hyper Dec.
+> Hyper Enc.
+> 𝑧
+> Linear-CDF Dec.
+> Two-Step
+> Entropy
+> Model
+> QQ−1
+> AE AD
+> 𝑥
+> 𝑦 𝑞 1
+> 𝑦 𝑞
+> 3x3 Depth-Conv
+> Block
+> Channel Attn.
+> FFN
+> +
+> +
+> DCB
+> Renderer
+> ↑16
+> AdaLN
+> Decoder
+> 2×DCB
+> Analysis Transform Entropy Coding Synthesis Transform
+> Renderer
+> +
+> 𝛼, 𝛽, 𝛾 ො𝑦
+> ො𝑦 ො𝑦
+> Upsample ↑4
+> MLP
+> 𝛼
+> Scale & shift
+> Scale
+> Upsample
+> ↑4
+> Repeat
+> ×4
+> 𝛽, 𝛾
+> Encoder
+> 4×DCB
+> Down ↓16
+> Projection
+> Ƹ𝑧
+> Meta Prior መ𝜁
+> AE AD
+> 𝑦
+
+Figure 2: PULSE architecture. It consists of an encoder at 1/16 resolution, a decoupled linear CDF index decoder with a meta prior, a two-step entropy model, and a decoder with an AdaLN-modulated pixel renderer. AE and AD denote arithmetic encoding and decoding, respectively. Following the dual spatial prior of DCVC-HEM (Li et al., 2022), a spatial–channel checkerboard partitions y into complementary masks m0 and m1. The first entropy step predicts a quantization step 
+
+q and a mean μ0 from h. After decoding the first part, the second step refines μ1 from (h, ˆy0), then 
+
+yqi = round( y/q − μi) ⊙ mi, ˆyi = q (yqi + μi) ⊙ mi, ˆy = ˆ y0 + ˆ y1. (3) The centered symbols are modeled by a discretized zero-mean Gaussian. Scale prediction is inde-pendent of the nonlinear mean path: one projection maps ˆz directly to a continuous coordinate in a shared Gaussian CDF table. Both passes reuse these scale coordinates, while only their μi differ. Section 3 specifies the Meta Prior and deterministic integer implementation. 
+
+Synthesis transform. The synthesis transform separates spatial feature processing from patch-wise pixel rendering. The decoder consisting of two DCBs first processes ˆy for spatial correlation modeling. In parallel, a content branch upsamples ˆy by four to a 1/4-resolution rendering grid. The low-resolution body generates AdaLN modulation parameters (α, β, γ ) (Peebles & Xie, 2023) for a residual pointwise MLP on this grid. Finally, every grid vector is projected to a 4 × 4 RGB patch and rearranged by PixelShuffle (Shi et al., 2016): 
+
+ˆx = Renderer(ˆ y, Decoder(ˆ y)) . (4) 
+
+3 BIT -E XACT LINEAR CDF D ECODING WITH A META PRIOR 
+
+Platform-dependent floating-point round-off is particularly dangerous inside an entropy decoder: a single change in a CDF-table index can desynchronize every subsequent rANS symbol (Duda, 2013). The conventional solution is to integerize the entire entropy model (He et al., 2022a), ensuring deterministic execution of the CPU subgraph from ˆz to CDF. However, as shown in Table 1, this introduces substantial CPU overhead and quantization loss under an ultra-low complexity budget. In P ULSE , we instead simplify the entropy-control path to the minimum computation required for bit-exact CDF selection while preserving coding efficiency. 
+
+Linear scale decoder. We first follow P¨ arnamaa et al. (2026) to derive the scale directly from ˆz using a learned LUT, which is extremely fast but incurs a substantial rate-distortion loss. We then integerize only the independent hyper scale decoder (Ascenso et al., 2023), rather than the entire entropy model, which effectively alleviates both issues. This inspires us to take a step further: can we significantly simplify the hyper scale decoder while retaining its compression ratio? Surprisingly, we find that a simple linear projection from ˆz to the scale provides an effective middle ground. The linear decoder is more robust to quantization, incurring only about 1.5% BD-rate loss at INT8 precision compared to the full hyper scale decoder, while reducing CPU time from 28.1 ms to 1.2 ms. As shown in Figure 3, CDF selection based on log σ reveals two limitations. Firstly, the σ → log σ
+
+path must also execute in INT8, adding 2.9 ms of latency. Secondly, uniform quantization makes ˆz afixed-step additive representation, whereas Gaussian CDF indices are uniformly spaced in log-scale. Consequently, affine scale decoding induces a scale-dependent CDF-index sensitivity, with the same latent step causing larger index changes at small scales and smaller changes at large scales. 3Preprint Quantization 
+
+> Linear Projection
+
+(INT8)  𝑊  Ƹ 𝑧  + 𝑏 QP 
+
+Ƹ𝑧 
+
+𝑦 𝑞  𝑦 -CDF     
+
+> Bit-exact
+> 𝐼 CDF ∈ {0, ⋯ , 𝑀 − 1}
+> M-row log-uniform scales
+> 𝐼 CDF CDF log 𝜎 min 𝜎 min
+> 0
+> 2
+> 1
+> …
+> M-1
+> 𝜎 m𝑎𝑥 log 𝜎 max
+> Linear Projection
+
+(FP32)  𝑊  Ƹ 𝑧  + 𝑏 QP 
+
+Ƹ𝑧  ሚ𝐼 CDF              
+
+> Equation (6) : ሚ𝐼 CDF → 𝜎 ሚ𝐼 CDF →𝑅 𝑦
+> Rate Loss 𝑅 𝑦
+> Select prior
+> 𝑧 -CDF Index
+> log 2𝑁 -bit per vector
+> Meta Prior
+> 111
+> 1N
+> 233
+> 1
+> ⋯
+> 𝑁 priors for different
+> content complexity
+> High
+
+𝑧 -CDF     
+
+> መ𝜁
+> N
+> Low 1
+> N
+> Factorized Priors
+> Ƹ𝑧
+> 3
+> Equation (7)
+> Select optimal prior
+> for each vector
+> 2
+> Linear CDF Decoding
+> Training
+> 𝜎 = exp log 𝜎 min + ሚ 𝐼 CDF /𝑀 ⋅ log 𝜎 max − log 𝜎 min
+
+Figure 3: Bit-exact entropy coding path. Meta Prior transmits ˆζ to select CDFs for ˆz with different content complexities. An integer linear projection maps ˆz to CDF indices for entropy coding of yq .
+
+Linear CDF decoder. To address this, we propose a simple but effective solution: directly predict the CDF index instead of scale. Specifically, a linear projection predicts a continuous coordinate 
+
+˜ICDF in a shared M-row log-spaced Gaussian CDF table: 
+
+˜ICDF = W ˆz + bQP , ICDF =
+
+j
+
+clip( ˜ICDF , 0, M − 1) 
+
+k
+
+. (5) Here bQP is a learned per-QP bias. During training, the bounded coordinate is mapped to 
+
+σ( ˜ICDF ) = exp 
+
+
+
+log σmin + ˜ICDF /M · (log σmax − log σmin )
+
+
+
+(6) for differentiable Gaussian likelihood evaluation. We empirically set σmin = 0 .11 , σmax = 256 and 
+
+M = 64 . At inference, entropy coding consumes ICDF directly, eliminating the runtime exponential and logarithm. Linear CDF decoding eliminates the log σ computation to reduce CPU time to 1.6 ms, while achieving a lower BD-rate than the INT8 hyper scale decoder on the CLIC test set. 
+
+Meta Prior. The extreme simplification of the linear CDF decoder shifts more rate-modeling responsibility onto ˆz. However, the inflexible factorized prior uses the same prior distribution for 
+
+ˆz across all images and cannot adapt to different image contents. Empirically, we observe that ˆz
+
+accounts for about half of the bitstream for images with low content complexity. As shown in Table 1, it leads to a substantial degradation on the low-content-complexity (LC) subset. To address this issue, we introduce a meta prior that enables content-adaptive entropy modeling with minimal additional decoding complexity. Specifically, after training the entire model, we post-train only the factorized prior into a bank of N prior models. Each prior model is fitted to hyperlatent vectors from regions of different content complexity, with other modules fixed. We then allow each ˆz
+
+vector at a different spatial position to select its own prior model, using an expectation-maximization (EM) procedure to jointly optimize the prior models and their assignments. More details are provided in Appendix B. At inference, for each spatial position r in ˆz, the encoder evaluates the quantized-CDF coding cost ℓq,k (ˆ zr ) under every prior bank and transmits the best bank index: 
+
+k⋆r = arg min   
+
+> k∈{ 0,...,N −1}
+
+ℓq,k (ˆ zr ), Rz = X
+
+> r
+
+log 2 N + ℓq,k ⋆r (ˆ zr ) . (7) A single log 2 N -bit index is shared by all channels at each spatial position, serving as meta-prior information. The decoder reads this metadata and selects the corresponding fixed CDF bank to decode 
+
+ˆzr without additional neural-network inference. Unlike some prior works that select competing priors for main latents (Brummer & De Vleeschouwer, 2021), meta prior adapts ˆz coding to compensate for the reduced capacity of the linear CDF decoder, particularly in low-content-complexity regions. This brings a 9.8% bitrate saving on low-complexity images and a 2.4% saving on the overall set. In deployment, the linear CDF activation and weights are INT8, accumulation is INT32, and the output is a UINT8 CDF index. Meta Prior bank indices are coded with fixed-length coding, and can be further improved with merge coding. 4Preprint Table 1: Ablation of bit-exact entropy-coding designs. BD-rate is measured on the CLIC test set and a subset of images with low content complexity (LC subset). Latency is measured for a 1080p image on one AMD EPYC 9V84 CPU thread.                                                   
+
+> Method CLIC test set LC subset Single-thread CPU Time Float INT8 Float INT8 ˆz→σˆz→CDF Integerize full entropy model 1.5% 5.7% 3.1% 7.8% 85.9 ms 86.0 ms + LUT scale decoder (P¨ arnamaa et al., 2026) 29.7% 29.7% 59.6% 59.6% 0.5 ms 0.5 ms + Hyper scale decoder (Ascenso et al., 2023) –0.1% 3.2% 2.1% 6.4% 28.1 ms 29.2 ms + Linear scale decoder 4.5% 4.5% 11.8% 12.0% 1.2 ms 4.1 ms + Linear CDF decoder 2.4% 2.4% 9.8% 9.9% N/A 1.6 ms + Meta Prior →Proposal 0.0% 0.04% 0.0% 0.04% N/A 1.6 ms
+
+4 AGENTIC EVOLUTION WITH HEURISTIC PROBES 
+
+Under an ultra-low complexity budget, every channel and operator matters, making architecture-parameter allocation critical to compression performance. We evolve the neural receiver through four stages: probe , analyze , reallocate , and train , as illustrated in Figure 4. The analysis transform is fixed throughout the process to isolate receiver design. 4.1 HEURISTIC REPRESENTATION PROBES 
+
+Given a trained network, we probe representations at selected interfaces. For layer l ∈ { 1, · · · , L },we examine the input latent al with Cl channels. We measure two complementary properties. 
+
+Redundancy probe with PCA dimension. The latent al may contain redundant channels if its allocated dimension exceeds what is required to preserve end-task performance. We fit a dataset-shared PCA basis and reconstruct it from its first c principal components, denoted by Πc(al). We then find the smallest dimension whose relative rate–distortion loss increase is at most ϵ = 1% :
+
+Cl 
+
+> PCA
+
+= min 
+
+> c
+
+c : LRD (Π c(al)) − L RD (al) ≤ ϵ · L RD (al) . (8) The ratio Cl
+
+> PCA
+
+/C l suggests utilization of the allocated channel subspace. A small ratio indicates potentially reclaimable channel redundancy. 
+
+Headroom probe with latent optimization. The PCA probe suggests redundancy but does not assess whether upstream computation produces the best representation the downstream network can exploit. We therefore optimize al independently for each image while freezing all downstream parameters. For decoder-side interfaces, the coded symbols are already fixed, so this intervention keeps the rate unchanged and directly measures an oracle PSNR gain: 
+
+al∗ = arg min 
+
+> al
+
+D F>l (al), x  , Gl 
+
+> OPT
+
+= PSNR  F>l (al∗), x  − PSNR  F>l (al), x  . (9) Entropy-side interfaces use the rate–distortion objective, as detailed in Appendix D. A large Gl
+
+> OPT
+
+indicates that the downstream network can benefit from a more informative value at this interface. 4.2 HUMAN –LLM C OLLABORATIVE ANALYSIS 
+
+The LLM agent receives {CPCA l, G l
+
+> OPT
+
+}Ll=1 together with the network graph, parameter sharing, exact component costs, and the history of previous rounds. With this comprehensive context, the LLM interprets the probe results in the architectural context and proposes fixed-budget changes for empirical validation. The human researcher then reviews the hypotheses, implementation feasibility and budget accounting, and selects candidates for training. In practice, some bottlenecks cannot be addressed by changing parameters in the predefined search space. Both the LLM agent and the human researcher may therefore introduce a spark: a new architectural mechanism or adjustable factor motivated by the probe evidence. This allows the optimization space itself to evolve as new bottlenecks are discovered. 5Preprint EM 
+
+> 𝑍
+> 𝑌
+> Dec .
+> Redundancy  ↑
+> Headroom ↑
+
+1. Heuristic Probes            
+
+> Layers
+> PCA
+> Minimal PCA dim 𝑪 𝑷𝑪𝑨
+> 𝒍 s.t. R-D loss < 1% Optimize per image, average R-D gain 𝑮 𝑶𝑷𝑻
+> 1. Redundancy: low 𝐶 𝑃𝐶𝐴 →this layer is potentially less efficient in capacity
+> ෝ𝒙
+> ො𝒛
+> 𝒚 𝒒
+> ෝ𝒙
+> Channel 𝑪 𝒍
+> Layers
+> 𝑙 +1~𝐿
+> Layers
+> 1~𝑙 Executed for every decoding layer
+> 𝑙 ∈ {1, … 𝐿}
+
+2. Human-LLM Analysis  
+
+> 𝑪 𝑷𝑪𝑨
+> 𝒍 , 𝑮 𝑶𝑷𝑻
+> 𝒍
+> 𝒍
+> A. Enlarge decoder
+> C. Group=2 + Enlarge all model channels
+> B. Enlarge renderer
+> Discover
+> new params.
+> D. Group=4 + Enlarge all model channels
+> B
+
+3. Reallocate 
+
+> Design new parameters for A, C, D at a fixed
+> budget 2.5 kMACs/pixel
+
+4. Training       
+
+> C. Group=2 + Enlarge
+> A. Enlarge decoder
+> D. Group=4 + Enlarge
+> BD-Rate=+0.2%
+> BD-Rate=-1.5%
+> BD-Rate=-1.9%
+> Accept D in next round
+> D
+> C
+> A
+> 1. We enlarge renderer
+> last evolve, ignore B.
+> 2. Group-conv is good, also try group=4
+> Group conv. reduces kMACs w/o reduce capacity
+> 𝒙
+> ෝ𝒙
+> BP
+> Layers
+> 2. Headroom: high 𝐺 𝑂𝑃𝑇 →this layer potentially needs higher capacity
+> Opt. Probe
+> Loss
+> Reduce redundant EM, enlarge decoder / renderer
+> Network Info.
+> Renderer
+
+Figure 4: Agentic evolution , illustrated for round E4 →E5 in the complete trajectory in Figure 10. Layer-wise probes measure redundancy and headroom. A human researcher and an LLM agent interpret the evidence to propose fixed-budget reallocations, and validate them by training. 
+
+Discussion: comparison with NAS. Agentic evolution differs from conventional NAS in two respects. First, heuristic probes help prioritize candidate directions before from-scratch training instead of enumerating a large static search space. Second, the human–LLM process is open-ended: probe evidence can motivate new parameters or mechanisms through sparks rather than restricting all candidates to search axes fixed in advance. 4.3 FIXED -BUDGET REALLOCATION AND FROM -S CRATCH TRAINING 
+
+Each selected proposal is profiled before training to ensure that parameter reallocation remains within a fixed complexity budget. The remaining candidates are trained from scratch with the same data, rate range, optimizer, and schedule. Finally, the candidate with the best compression performance is selected as the promotion for the next round. 4.4 EVOLUTION AT 2.5 KMAC/ PIXEL AND SCALING TO DIFFERENT SIZES 
+
+The complete trajectory of seven generations is reported in Appendix D (Figure 10). Across the full trajectory, human–LLM collaboration alternates between reallocating known parameters and introducing new search axes. In detail, the depth and width of different modules are jointly adjusted step by step, and three rounds discover new parameters including the renderer resolution, group convolution and FFN width. The final E7 achieves a 10.2% BD-rate reduction relative to E1. Finally, we adjust the channel dimensions to multiples of 16 for efficient inference of P ULSE -S, and then enlarge channels to scale the decoding complexity to 5.2 and 20 kMAC/pixel, resulting in the P ULSE 
+
+and P ULSE -L models, respectively. 
+
+Discussion: scope and generalization. We study human–LLM co-design for ultra-low-complexity image codecs, rather than task-agnostic architecture search. The workflow is history-dependent, with insights from earlier rounds guiding subsequent decisions. Thus, the contributions of human and LLM agents cannot be cleanly separated post hoc. Within this setting, the workflow enables effective architecture evolution with few training runs. Generalization to other tasks may require task-specific search spaces and objectives, which we leave for future work. 
+
+5 PERCEPTUAL AND REGION -OF -I NTEREST OPTIMIZATION 
+
+This section introduces the techniques used to improve the subjective reconstruction quality of P ULSE .When optimized with MSE alone, the decoder tends to over-smooth uncertain details, resulting in 6Preprint Original  HM  
+
+> 0.165 bpp (+3%)
+> VTM
+> 0.173 bpp (+8%)
+> JPEG-AI
+> 0.160 bpp (+0%)
+> PICO
+> 0.165 bpp (+3%)
+> PULSE (Perceptual)
+> 0.160 bpp (100%)
+> MS-ILLM
+> 0.170 bpp (+6%)
+> Original HM
+> 0.340 bpp (+0.3%)
+> VTM
+> 0.339 bpp (+0%)
+> JPEG-AI
+> 0.448 bpp (+32%)
+> MRIC
+> 0.358 bpp (+6%)
+> PULSE-L (Perceptual)
+> 0.339 bpp (100%)
+> MS-ILLM
+> 0.336 bpp (-0.9%)
+
+Figure 5: Visual comparison. PULSE achieves comparable or better visual quality after perceptual and ROI optimization. More results are in Appendix C.4. blurry textures and local structures. Inspired by perceptual codecs (Mentzer et al., 2020; Muckley et al., 2023), we adopt a two-stage perceptual optimization process. 
+
+Stage I: LPIPS-First Perceptual Pre-Training. The first stage establishes the model’s detail synthesis capability by emphasizing the LPIPS loss (Zhang et al., 2018): 
+
+LStage I = Ry + Rz + λ ϕMSE DMSE + ϕILPIPS DLPIPS 
+
+ . (10) where ϕILPIPS is set substantially higher than in prior work (Muckley et al., 2023) to encourage stronger perceptual detail synthesis. 
+
+Stage II: Preference Optimization. The second stage aligns reconstruction quality with perceptual preference criteria. We make three modifications: (1) reduce the LPIPS weight back to mitigate its artifacts and imperfect perceptual alignment; (2) introduce adversarial training with a DINOv2-based discriminator (Oquab et al., 2024) for distribution-level alignment; and (3) introduce region-of-interest (ROI) optimization for semantically important regions, e.g., small text and face regions. We pre-detect text- and face-rich images and store their corresponding ROI boxes. Within these regions, we increase the MSE and LPIPS weights and introduce semantic feature alignment: 
+
+LStage II = Ry + Rz + λϕMSE DMSE + ϕII LPIPS DLPIPS + ϕGAN DGAN + ϕROI DROI 
+
+. (11) 
+
+DROI = ϕFaceNet DFaceNet + ϕCRNN DCRNN , (12) where ϕILPIPS = 4 × ϕII LPIPS . FaceNet (Schroff et al., 2015) uses square face crops with contextual regions, while the CRNN-CNN teacher (Shi et al., 2017) uses aspect-preserving text crops. This stage jointly improves pixel fidelity, perceptual quality, and ROI quality, which is verified in Table 8. 
+
+6 EXPERIMENTS 
+
+6.1 EXPERIMENTAL SETUP 
+
+Training. PULSE is optimized using SOAP (Vyas et al., 2025), requiring 15 hours for the MSE version and 36 hours for the perceptual version on a single NVIDIA H100 GPU. More details of training schedules and datasets are in Appendix B. P ULSE supports eight quantization parameters in a single model through the module-bank formulation (Jia et al., 2025), and each quantization parameter is trained with its corresponding λ.
+
+Benchmarks and metrics. We use the CLIC Professional validation set (CLIC Organizers, 2020) for comparison. For MSE-optimized compression, we compare with Mean-Scale Hyperprior (Minnen et al., 2018), ELIC (He et al., 2022b), EVC (Wang et al., 2023), DCVC-RT-Intra (Jia et al., 2025), Shallow NTC (Yang & Mandt, 2023), HM-16.25 (Sullivan et al., 2012), and VTM-17.0 (Bross et al., 2021). For perceptual compression, we compare with MRIC (Agustsson et al., 2023), MS-ILLM (Muckley et al., 2023), and CoD-Lite (Jia et al., 2026). HiFiC and PICO comparisons on matched datasets are in the appendix. We report PSNR and patch-based FID (Heusel et al., 2017) 7Preprint MSE-optimized codecs  Perceptual-optimized codecs 
+
+Figure 6: Rate–distortion curves. CLIC Professional validation results for MSE-optimized codecs (left) and perceptually optimized codecs (right). More results are in Appendix C.3. Table 2: Ablation studies. BD-Rate ( ↓) is measured in terms of PSNR and FID for the MSE- and perceptual-optimized versions, respectively. Decoder speed is measured on 1080p images on an NPU.                      
+
+> Decoder structure PSNR FID Speed Progressive Upsampling 1.1% 5.8% 0.9 ×
+> Single Low-Res. Decoder 12.0% 18.4% 1.6 ×
+> Low-Res. Decoder + Renderer 0.0% 0.0% 1.0 ×
+> Architecture search #Trains ↓PSNR No Search 10.0% Hardware-aware NAS 1280 -7.5%
+> Agentic Evolution 22 -10.2%
+
+(256 × 256 , overlapping) (Mentzer et al., 2020). BD-rate follows Bjøntegaard (2001). We evaluate 
+
+bpp ≥ 0.05 , so ultra-low-bitrate results may differ from prior reports. 
+
+Complexity. We report the parameters and multiply–accumulate operations exercised by each sender and receiver. Latency is measured at 1088 × 1920 on a single AMD EPYC 9V84 CPU thread. 6.2 EXPERIMENTAL RESULTS 
+
+Comparison results. Figure 6 and Table 3 report comparisons with MSE- and perceptual-optimized codecs. P ULSE -S encodes a 1080p image in 920 ms and decodes it in 77 ms, faster than all compared codecs, including software-implemented HEIC. It also achieves a lower PSNR-based BD-rate of 
+
++5 .9% , compared to +25 .2% for HEIC. P ULSE achieves a −2.9% BD-rate relative to HM-16.25 with 
+
+9× faster encoding, while competing with the much larger MS-ILLM after perceptual optimization. PULSE -L achieves a −22 .5% FID-based BD-rate relative to MS-ILLM with substantially fewer computations. Figure 5 shows text and natural-texture examples for visual comparison, and more examples are in the appendix. 
+
+Ablation study. As shown in Table 2, under the same decoding complexity, our rendering-based decoder outperforms the progressive upsampling decoder (Ball´ e et al., 2017) in both compression efficiency and NPU inference speed. The single low-resolution decoder (Jia et al., 2025) is faster but incurs a relatively large performance loss. Our scheme achieves the best overall trade-off. Compared to hardware-aware NAS (Tatwawadi et al., 2026), the proposed agentic evolution uses fewer training runs to achieve better performance. 6.3 PRACTICAL IMPLEMENTATION 
+
+In prior sections, we focus on single-thread CPU execution as a pressure test. To assess practical deployment, we evaluate P ULSE across diverse platforms, including an Intel Core Ultra 9 288V CPU, NVIDIA A100 and H100 GPUs, and a Qualcomm Snapdragon 8 Elite NPU. Executing the linear CDF decoding on the CPU verifies bit-exact entropy decoding across all devices. Figure 1 shows that the low complexity translates to high throughput on capable hardware. On a REDMI K80 Pro with a Snapdragon NPU, the complete encoding and decoding pipelines take 42 ms and 20 ms, respectively, for 1080p images. Overall, these results provide an indication that P ULSE ’s ultra-low-complexity design can translate into practical deployment. 8Preprint Table 3: Complexity and rate–distortion performance. Time measurements use 1088 × 1920 
+
+inputs on a single-thread CPU. BD-rate is evaluated on the CLIC Professional validation set. VBR denotes variable bitrates within one model, and BE denotes bit-exact entropy coding across platforms.                                                                                                                                                                                                  
+
+> Method VBR BE Target Encoding Decoding BD-rate ↓
+> Params kMAC/px Time Params kMAC/px Time on PSNR on FID HEIC ✓✓MSE libheif + x265 1.4 s libheif + libde265 80 ms +25.2% +2680% HM-16.25 ✓✓MSE HM Encoder 8.8 s HM Decoder 98 ms 0.0% +2450% VTM-17.0 ✓✓MSE VTM Encoder 249 s VTM Decoder 189 ms -23.4% +2660% JPEG-AI ×✓MSE 7.1 M 56 2.6 s 4.4 M 8.1 643 ms +37.4% +1720% MS-Hyperprior ××MSE 14 M 112 2.1 s 12 M 109 2.4 s -1.7% +3830% ELIC ××MSE 26 M 335 6.5 s 24 M 332 8.8 s -26.2% +3430% EVC-S ✓×MSE 12 M 71 1.4 s 11 M 79 1.4 s -14.3% +3040% DCVC-RT-Intra ✓×MSE 31 M 258 5.4 s 36 M 362 7.6 s -33.2% +3200% Shallow NTC ××MSE 23 M 277 5.6 s 10 M 21 476 ms +13.0% +5590% MRIC ××Perc. 74 M 823 16 s 71 M 829 20 s +46.1% +101.0% MS-ILLM ××Perc. 25 M 98 2.2 s 170 M 675 13 s +38.0% 0.0% CoD-Lite ×✓Perc. 28 M 344 7.0 s 52 M 219 5.9 s +218.8% +12.9% PICO ✓✓Perc. 5.6 M 75 2.0 s 4.3 M 46 1.2 s N/A N/A ‡
+> PULSE -S ✓✓MSE 13 M 45 920 ms 1.0 M 2.7 77 ms +5.9% +2530% PULSE ✓✓MSE 13 M 45 920 ms 1.7 M 5.2 126 ms -2.9% +2420% Perc. 13 M 45 920 ms 1.7 M 5.2 126 ms +45.5% -4.1% PULSE -L ✓✓Perc. 15 M 48 972 ms 5.7 M 20 420 ms +30.8% -22.5%
+> ‡PICO complexity and timing use our local reproduction. We compare with its released 300-image reconstructions in Appendix C.2.
+
+7 RELATED WORK 
+
+Efficient neural codecs. Recent work reduces neural decoding complexity through lightweight contexts, networks, and architectures. ELIC reduces serial context (He et al., 2022b), EVC uses mask decay (Wang et al., 2023), FastNIC targets low-complexity compression (Zhang et al., 2025), and DCVC-RT and Shallow NTC reduce operation complexity or depth (Jia et al., 2025; Yang & Mandt, 2023). We instead explicitly target ultra-low-complexity, end-to-end decoding on a single CPU thread. Cool-Chic and C3 use tiny image-specific decoders, which require substantial per-image optimization for encoding (Ladune et al., 2023; Kim et al., 2024). In addition, their highly sequential entropy model limits implementation efficiency. 
+
+Perceptual neural codecs. Another line targets perceptual quality by modeling richer image details. HiFiC and MS-ILLM enlarge synthesis networks to model realistic texture (Mentzer et al., 2020; Muckley et al., 2023). CoD-Lite enables real-time diffusion-based decoding, while PICO uses hardware-aware NAS to balance perceptual quality and efficiency (Jia et al., 2026; Tatwawadi et al., 2026). However, perceptual compression on resource-constrained hardware remains underexplored. 
+
+Cross-platform Compression. Post-training quantization can make probability prediction determin-istic across platforms (He et al., 2022a). JPEG AI standardizes integer hyper scale decoder (Ascenso et al., 2023; Tatwawadi et al., 2026). However, their scale decoding still relies on a large network. On devices with only an NPU as an accelerator, this bit-exact computation may fall back to the host CPU, where running such a large network is less efficient. MLVC encodes scales into the hyperlatent using a lookup table, but incurs a considerable coding cost (P¨ arnamaa et al., 2026). Thus, a simple-to-deploy scheme with low coding loss is still needed. 
+
+8 CONCLUSION 
+
+PULSE demonstrates that practical learned image compression is possible under an extreme com-putational budget. With a receiver complexity of 5.2 kMAC/pixel, it decodes a 1080p image in 126 ms on a single CPU thread while achieving HM-comparable compression performance. Agentic evolution recovers performance under this tight budget, while a meta prior and integer linear CDF 9Preprint predictor enable bit-exact entropy coding across platforms. Perceptual optimization further enables it to compete with larger perceptual codecs such as MS-ILLM. 
+
+Limitation. Although we deploy P ULSE across heterogeneous devices to demonstrate its practical applicability, further optimization is needed for real-world deployment. While ROI processing improves visual quality for practical applications, P ULSE is not specifically optimized for screen content, games, or artistic images, and its performance may degrade on these contents. Thus, P ULSE 
+
+should be viewed as an academic prototype rather than a ready-to-use software system. 
+
+REFERENCES 
+
+Eirikur Agustsson and Radu Timofte. NTIRE 2017 challenge on single image super-resolution: Dataset and study. In IEEE Conference on Computer Vision and Pattern Recognition Workshops ,pp. 1122–1131, 2017. doi: 10.1109/CVPRW.2017.150. Eirikur Agustsson, David Minnen, George Toderici, and Fabian Mentzer. Multi-realism image compression with a conditional generator. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023. Jo˜ ao Ascenso, Elena Alshina, and Touradj Ebrahimi. The JPEG AI standard: Providing efficient human and machine visual data consumption. IEEE MultiMedia , 30(1):100–111, 2023. doi: 10.1109/MMUL.2023.3245919. Johannes Ball´ e, Valero Laparra, and Eero P. Simoncelli. End-to-end optimized image compression. In International Conference on Learning Representations , 2017. Johannes Ball´ e, David Minnen, Saurabh Singh, Sung Jin Hwang, and Nick Johnston. Variational im-age compression with a scale hyperprior. In International Conference on Learning Representations ,2018. Gisle Bjøntegaard. Calculation of average PSNR differences between RD-curves. Technical Report VCEG-M33, ITU-T Video Coding Experts Group, April 2001. Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J. Sullivan, and Jens-Rainer Ohm. Overview of the versatile video coding (VVC) standard and its applications. IEEE Transactions on Circuits and Systems for Video Technology , 31(10):3736–3764, 2021. doi: 10.1109/TCSVT.2021. 3101953. Benoit Brummer and Christophe De Vleeschouwer. End-to-end optimized image compression with competition of prior distributions. In 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) , pp. 1890–1894. IEEE, 2021. Zhengxue Cheng, Heming Sun, Masaru Takeuchi, and Jiro Katto. Learned image compression with discretized gaussian mixture likelihoods and attention modules. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 7939–7948, 2020. doi: 10.1109/CVPR42600.2020. 00796. CLIC Organizers. CLIC 2020: Challenge on learned image compression. Dataset documentation: 
+
+https://www.tensorflow.org/datasets/catalog/clic , 2020. Keyan Ding, Kede Ma, Shiqi Wang, and Eero P. Simoncelli. Image quality assessment: Unifying structure and texture similarity. IEEE Transactions on Pattern Analysis and Machine Intelligence ,44(5):2567–2581, 2022. doi: 10.1109/TPAMI.2020.3045810. Jarek Duda. Asymmetric numeral systems: Entropy coding combining speed of huffman coding with compression rate of arithmetic coding. arXiv preprint arXiv:1311.2540 , 2013. Dailan He, Ziming Yang, Yuan Chen, Qi Zhang, Hongwei Qin, and Yan Wang. Post-training quantization for cross-platform learned image compression. arXiv preprint arXiv:2202.07513 ,2022a. 10 Preprint Dailan He, Ziming Yang, Weikun Peng, Rui Ma, Hongwei Qin, and Yan Wang. ELIC: Efficient learned image compression with unevenly grouped space-channel contextual adaptive coding. In 
+
+IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 5718–5727, 2022b. doi: 10.1109/CVPR52688.2022.00563. Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. GANs trained by a two time-scale update rule converge to a local nash equilibrium. In Advances in Neural Information Processing Systems , volume 30, pp. 6626–6637, 2017. Jie Hu, Li Shen, and Gang Sun. Squeeze-and-excitation networks. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 7132–7141, 2018. doi: 10.1109/CVPR.2018.00745. Zhaoyang Jia, Bin Li, Jiahao Li, Wenxuan Xie, Linfeng Qi, Houqiang Li, and Yan Lu. Towards practical real-time neural video compression. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 12543–12552, 2025. doi: 10.1109/CVPR52734.2025.01170. Zhaoyang Jia, Naifu Xue, Zihan Zheng, Jiahao Li, Bin Li, Xiaoyi Zhang, Zongyu Guo, Yuan Zhang, Houqiang Li, and Yan Lu. CoD-Lite: Real-time diffusion-based generative image compression. 
+
+arXiv preprint arXiv:2604.12525 , 2026. Wei Jiang, Jiayu Yang, Yongqi Zhai, Feng Gao, and Ronggang Wang. MLIC++: Linear complexity multi-reference entropy modeling for learned image compression. ACM Transactions on Multime-dia Computing, Communications, and Applications , 21(5):1–25, 2025. doi: 10.1145/3719011. Hyunjik Kim, Matthias Bauer, Lucas Theis, Jonathan Richard Schwarz, and Emilien Dupont. C3: High-performance and low-complexity neural compression from a single image or video. In 
+
+IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 9347–9358, 2024. doi: 10.1109/CVPR52733.2024.00893. Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao, Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer Whitehead, Alexander C. Berg, Wan-Yen Lo, Piotr Doll´ ar, and Ross Girshick. Segment anything. In IEEE/CVF International Conference on Computer Vision , pp. 4015–4026, 2023. doi: 10.1109/ICCV51070.2023.00371. Alina Kuznetsova, Hassan Rom, Neil Alldrin, Jasper Uijlings, Ivan Krasin, Jordi Pont-Tuset, Shahab Kamali, Stefan Popov, Matteo Malloci, Alexander Kolesnikov, Tom Duerig, and Vittorio Ferrari. The open images dataset v4: Unified image classification, object detection, and visual relationship detection at scale. International Journal of Computer Vision , 128(7):1956–1981, 2020. doi: 10.1007/s11263-020-01316-z. Th´ eo Ladune, Pierrick Philippe, F´ elix Henry, Gordon Clare, and Thomas Leguay. COOL-CHIC: Coordinate-based low complexity hierarchical image codec. In IEEE/CVF International Confer-ence on Computer Vision , pp. 13515–13522, 2023. doi: 10.1109/ICCV51070.2023.01243. Jiahao Li, Bin Li, and Yan Lu. Hybrid spatial-temporal entropy modelling for neural video compres-sion. In Proceedings of the 30th ACM International Conference on Multimedia , pp. 1503–1511, 2022. doi: 10.1145/3503161.3547845. Bee Lim, Sanghyun Son, Heewon Kim, Seungjun Nah, and Kyoung Mu Lee. Enhanced deep residual networks for single image super-resolution. In IEEE Conference on Computer Vision and Pattern Recognition Workshops , pp. 1132–1140, 2017. doi: 10.1109/CVPRW.2017.151. Jinming Liu, Heming Sun, and Jiro Katto. Learned image compression with mixed transformer-cnn architectures. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 14388–14397, 2023. doi: 10.1109/CVPR52729.2023.01383. Fabian Mentzer, George D. Toderici, Michael Tschannen, and Eirikur Agustsson. High-fidelity generative image compression. In Advances in Neural Information Processing Systems , volume 33, 2020. David Minnen, Johannes Ball´ e, and George D. Toderici. Joint autoregressive and hierarchical priors for learned image compression. In Advances in Neural Information Processing Systems , volume 31, 2018. 11 Preprint Matthew J. Muckley, Alaaeldin El-Nouby, Karen Ullrich, Herv´ e J´ egou, and Jakob Verbeek. Improving statistical fidelity for neural image compression with implicit local likelihood models. In Proceed-ings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research , pp. 25426–25443, 2023. Maxime Oquab, Timoth´ ee Darcet, Th´ eo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. DINOv2: Learning robust visual features without supervision. Transactions on Machine Learning Research , 2024. Tanel P¨ arnamaa, Martin Lumiste, Ardi Loot, Evgenii Indenbom, Andrei Znobishchev, and Ando Saabas. MLVC: Multi-platform learned video codec for real-world deployment. arXiv preprint arXiv:2606.28027 , 2026. William Peebles and Saining Xie. Scalable diffusion models with transformers. In IEEE/CVF International Conference on Computer Vision , pp. 4195–4205, 2023. doi: 10.1109/ICCV51070. 2023.00387. Florian Schroff, Dmitry Kalenichenko, and James Philbin. FaceNet: A unified embedding for face recognition and clustering. In IEEE Conference on Computer Vision and Pattern Recognition , pp. 815–823, 2015. doi: 10.1109/CVPR.2015.7298682. Baoguang Shi, Xiang Bai, and Cong Yao. An end-to-end trainable neural network for image-based sequence recognition and its application to scene text recognition. IEEE Transactions on Pattern Analysis and Machine Intelligence , 39(11):2298–2304, 2017. doi: 10.1109/TPAMI.2016.2646371. Wenzhe Shi, Jose Caballero, Ferenc Husz´ ar, Johannes Totz, Andrew P. Aitken, Rob Bishop, Daniel Rueckert, and Zehan Wang. Real-time single image and video super-resolution using an efficient sub-pixel convolutional neural network. In IEEE Conference on Computer Vision and Pattern Recognition , pp. 1874–1883, 2016. doi: 10.1109/CVPR.2016.207. Gary J. Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand. Overview of the high efficiency video coding (HEVC) standard. IEEE Transactions on Circuits and Systems for Video Technology , 22(12):1649–1668, 2012. doi: 10.1109/TCSVT.2012.2221191. Kedar Tatwawadi, Parisa Rahimzadeh, Zhanghao Sun, Zhiqi Chen, Ziyun Yang, Sanjay Nair, Divija Hasteer, and Oren Rippel. What matters in practical learned image compression. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 12095–12105, 2026. Nikhil Vyas, Depen Morwani, Rosie Zhao, Itai Shapira, David Brandfonbrener, Lucas Janson, and Sham M. Kakade. SOAP: Improving and stabilizing shampoo using adam for language modeling. In International Conference on Learning Representations , 2025. Guo-Hua Wang, Jiahao Li, Bin Li, and Yan Lu. EVC: Towards real-time neural image compression with mask decay. In International Conference on Learning Representations , 2023. Yibo Yang and Stephan Mandt. Computationally-efficient neural image compression with shallow decoders. In IEEE/CVF International Conference on Computer Vision , pp. 530–540, 2023. doi: 10.1109/ICCV51070.2023.00055. Haotian Zhang, Yuqi Li, Li Li, and Dong Liu. Learning switchable priors for neural image com-pression. IEEE Transactions on Circuits and Systems for Video Technology , 35(11):11567–11582, 2025. doi: 10.1109/TCSVT.2025.3577134. Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 586–595, 2018. doi: 10.1109/CVPR.2018.00068. 12 Preprint 
+
+A MODEL DETAILS 
+
+This section introduces more detail of implementation of P ULSE .A.1 COMPONENT COMPLEXITY ANALYSIS 
+
+Table 4 reports the component accounting of P ULSE . The MSE and perceptual models use the same deployed topology and therefore have the same parameter and MAC counts. Table 4: Component accounting for P ULSE .                                                                                  
+
+> Component Sender Receiver PULSE PULSE-S PULSE-L kMAC/px Param. kMAC/px Param. kMAC/px Param. Analysis transform ✓×43.22 12.1M 43.08 11.1M 43.21 12.1M Hyper encoder ✓×0.45 0.30M 0.31 0.19M 0.93 0.66M Hyper decoder ✓✓0.24 0.15M 0.16 0.09M 0.44 0.32M Entropy model step-1 ✓✓0.58 0.17M 0.48 0.13M 1.35 0.41M Entropy model step-2 ✓✓0.74 0.21M 0.61 0.16M 1.67 0.50M Linear-CDF predictor ✓✓0.12 0.50M 0.08 0.33M 0.18 0.74M Synthesis transform ×✓3.53 0.71M 1.43 0.26M 16.34 3.70M Neural sender ✓×45.35 13.5M 44.73 12.0M 47.78 14.8M Neural receiver ×✓5.21 1.74M 2.77 0.98M 19.98 5.69M
+
+A.2 LATENCY ANALYSIS 
+
+Table 5 breaks down the end-to-end CPU latency of PULSE. Neural inference dominates the runtime, while non-neural processing takes only 7 ms for either encoding or decoding. PULSE-S retains the same encoding latency but lowers end-to-end decoding latency from 126 ms to 77 ms, a 38.9% reduction. PULSE-L is slower due to increased complexity. Table 5: Single-thread CPU end-to-end latency of PULSE. Others includes non-neural processing, such as entropy coding and CDF indexing. 
+
+Model Pipeline Neural inference Others Total PULSE -s Encoding 913 ms 7 ms 920 ms Decoding 70 ms 7 ms 77 ms PULSE Encoding 913 ms 7 ms 920 ms Decoding 119 ms 7 ms 126 ms PULSE -L Encoding 963 ms 9 ms 972 ms Decoding 411 ms 9 ms 420 ms 
+
+A.3 CROSS -DEVICE ENTROPY CODING VALIDATION 
+
+As shown in Figure 1, we validate the linear CDF decoded index and latent-symbol decoding paths on three platforms: (1) a REDMI K80 Pro phone using the Snapdragon 8 Elite NPU, (2) an HP OmniBook Ultra Flip 14 laptop using only its Intel Core Ultra 9 288V CPU, and (3) a server using an NVIDIA A100 GPU. Although the laptop also includes an NPU, we disable NPU acceleration to characterize CPU-only performance. For all devices, we deploy entropy coding and linear CDF decoding on there CPUs. Table 6 reports zero CDF-index and decoded-symbol mismatches. 
+
+B TRAINING DETAILS 
+
+This section details the training process of P ULSE .13 Preprint Table 6: Cross-device entropy coding bit-exact validation. Mismatch counts both CDF-index and decoded-symbol mismatches.                 
+
+> Environment Platform Neural backend CPU backend Mismatch Phone REDMI K80 Pro NPU: Snapdragon 8 Elite Snapdragon 8 Elite 0
+> Laptop HP OmniBook Ultra Flip 14 CPU: Intel Core Ultra 9 288V Intel Core Ultra 9 288V 0
+> Server GPU server GPU: NVIDIA A100 AMD EPYC 9V84 0
+
+B.1 MAIN TRAINING PROCESS 
+
+Table 7 summarizes the complete schedules. During training, we normalize the input images to 
+
+[−1, 1] . When training on 512 low-resolution crops, we use the a subset of 4.8 M randomly sampled images from SAM-1B (Kirillov et al., 2023) and Open Images (Kuznetsova et al., 2020). When training on 1024 high-resolution crops, we use 4,035 images: 800 DIV2K images (Agustsson & Timofte, 2017), 2,650 Flickr2K images (Lim et al., 2017), and 585 CLIC training images (CLIC Organizers, 2020). The ROI stages use the same data as 1024 high-resolution crops, augmented with offline extracted face and text boxes. Table 7: Training schedules. 
+
+Model Stage Crop Steps Batch λ range Learning-rate schedule MSE LR training 512 500 k 8 24 –672 10 −3 (200k) → 10 −4 (200k) → 10 −5 (100k) HR training 1024 50 k 8 24 –672 10 −4 (40k) → 10 −5 (10k) Perceptual Stage I LR 512 300 k 16 0.5–12 .5 10 −3 (200k) → 10 −4 (100k) Stage I HR 1024 50 k 16 0.5–12 .5 10 −4 (40k) → 10 −5 (10k) Stage II 1024 20 k 32 3–25 10 −4 (10k) → 10 −5 (10k) 
+
+B.2 MORE DETAILS OF PERCEPTUAL AND ROI O PTIMIZATION 
+
+Hyperparameters. For perceptual optimization, we set ϕMSE = 5 and define DLPIPS =
+
+DLPIPS -VGG + 0 .5DLPIPS -Alex . We use ϕILPIPS = 1 and ϕII LPIPS = 0 .25 . In Stage II, we set 
+
+ϕGAN = 0 .005 , ϕROI = 0 .0125 , ϕFaceNet = 1 , and ϕCRNN = 2 . We additionally apply ROI-restricted MSE and LPIPS supervision, each with an additional weight of 0.125 .
+
+GAN Training. For latent-conditioned adversarial training, we extract features from blocks 3, 6, 9, and 12 of a frozen DINOv2 ViT-B/14 backbone. At each block, the detached latent ˆy is resized and projected, then concatenated with the image features for discrimination. We use a hinge discriminator loss and the negative mean fake-image logit as DGAN .
+
+Effectiveness of Perceptual Training Designs. As shown in Table 8, we examine the effectiveness of each design. LPIPS-first perceptual pre-training assigns a larger weight to the LPIPS loss, encouraging stronger perceptual detail synthesis, with consistent improvements in LPIPS-VGG, FID, and regional reconstruction quality. Adversarial training with a DINO-based projected GAN loss plays a key role in improving perceptual realism: removing the GAN loss substantially degrades FID by 49.8%. ROI training primarily benefits perceptually important regions, with its removal causing large degradations of 37.7% and 20.8% in face and text PSNR, respectively, while having a relatively limited effect on the overall metrics. These designs provide complementary benefits, and their combination achieves the best overall perceptual quality. Table 8: Ablation study on perceptual training designs. BD-Rate is measured. 
+
+Training variant PSNR LPIPS-VGG FID Face PSNR Text PSNR Stage I w/o high LPIPS weight -0.4% +6.0% +5.7% +6.1% +1.6% Stage II w/o GAN Loss –3.6% –6.4% +49.8% –4.1% –4.5% Stage II w/o ROI +0.2% –2.4% –3.7% +37.7% +20.8% Proposed perceptual optimization 0.0% 0.0% 0.0% 0.0% 0.0% 
+
+14 Preprint B.3 META PRIOR POST -T RAINING 
+
+After main training, we expand the factorized prior into N = 64 banks for each QP and fit them in two stages. All other codec parameters remain fixed during this procedure. 
+
+Complexity-stratified initialization. For each hyperlatent location, we compute three luminance statistics from the corresponding input region: mean absolute gradient, local standard deviation, and coarse-scale standard deviation interpolated to the hyperlatent grid. Each statistic is normalized by its 75th percentile over the fitting set and clipped to [0 , 4] . Their weighted sum, with weights 
+
+(0 .5, 0.3, 0.2) , defines the complexity score. We partition these locations into N quantile bins, copy the pretrained QP-specific factorized prior into every bank, and fit each bank to the hyperlatent vectors in its bin. This initializes banks specialized to different local content complexities, rather than assigning one bank to an entire image. 
+
+Spatially adaptive hard-EM refinement. We replace the complexity-based assignments with position-wise minimum-cost assignments. In detail, we adopt an expectation-maximization (EM) procedure to jointly optimize the prior models and their assignment. The hard E-step selects 
+
+k⋆q,r = arg min  
+
+> k∈{ 1,...,N }
+
+"
+
+−
+
+> Z
+
+X
+
+> c=1
+
+log 2 pq,k,c (ˆ zq,r,c )
+
+#
+
+, (13) where pq,k,c is the discrete probability mass of channel c in bank k at QP q. The M-step refits each bank by minimizing its normalized cross-entropy on the channel-wise symbol histograms of its currently assigned vectors. Thus, different positions in the same image can use different banks, regardless of their initial complexity bins. We fit Meta Prior on hyperlatents extracted from 512 × 512 crops of 4,035 high-resolution images. Fitting starts with a 500-step initialization, followed by six 300-step refinements, totaling 2,300 optimizer steps per QP. Each fitting stage uses a learning rate of 10 −2 with cosine decay to 2 × 10 −4.Optimization is full-batch over the aggregated hyperlatent histograms for each QP. 
+
+C EVALUATION DETAILS 
+
+This section details the training process of P ULSE .C.1 TIME MEASUREMENT 
+
+Latency is measured on a single CPU thread at 1088 × 1920 , without hardware codec acceleration. Neural inference uses batch size one and one inference stream. 
+
+HEIC. We use libheif 1.17.6 with x265 3.5 for encoding and libde265 1.0.15 for decoding. Encoding uses 8-bit YCbCr 4:2:0, preset=slow , and tune=psnr , with additional codec worker threads disabled. We also evaluated YCbCr 4:4:4, but observed worse rate–distortion performance and lower coding speed, possibly reflecting less effective optimization for 4:4:4 in this implementation. The benchmark operates on in-memory RGB inputs and bitstreams. Disk I/O is excluded. 
+
+HM & VTM. We use HM-16.25 and VTM-17.0 reference implementations with 8-bit YUV 4:4:4 and intra-only coding. Their timings use the native YUV interface and do not include RGB conversion. To reduce the effect of fixed command-line initialization overhead, we measure identical 5-frame and 15-frame runs and estimating the per-picture latency as (T15 − T5)/10 .
+
+Neural codecs. For compared neural codec, we evaluate the supported combinations of BF16, FP16, and FP32 precision with OpenVINO and PyTorch, and report the fastest measured configuration under the same single-thread constraint. Model loading, graph conversion and compilation, and warm-up are excluded from steady-state inference timing. Entropy coding is included in the reported codec latency, using the same rANS implementation as in P ULSE for consistent timing. C.2 BASELINE IMPLEMENTATIONS 
+
+For all methods, we use their officially released implementations, with the following exceptions. 15 Preprint For HiFiC (Mentzer et al., 2020), we were unable to obtain usable official pretrained models during our experiments in September 2026. We therefore use the officially published rate–distortion measurements released with TensorFlow Compression. 1.For MS-Hyperprior (Minnen et al., 2018), ELIC (He et al., 2022b), and MRIC (Agustsson et al., 2023), our measurements use third-party implementations and their pretrained models. Specifically, we use CompressAI’s mbt2018-mean model for MS-Hyperprior, VincentChandelier’s reimple-mentation for ELIC, 2 and Nikolai10’s TensorFlow reimplementation for MRIC. 3
+
+For PICO (Tatwawadi et al., 2026), we reproduce their architecture based on the published specifi-cations for complexity and latency measurements. PICO does not release an implementation, but provides reconstructions for a 300-image subset of the CLIC 2020 test set (CLIC Organizers, 2020). We therefore use the same subset for comparison in Figure 7 and Table 9. P ULSE -L is 2.1× and 2.9×
+
+faster for encoding and decoding, respectively, while achieving better BD-Rate on PSNR and FID. 0.2 0.4 0.6 32 34 36              
+
+> PSNR (dB) ↑
+> 0.2 0.4 0.6 0.02 0.04 0.06
+> LPIPS-Alex ↓
+> 0.2 0.4 0.6 0.1 0.15 0.2
+> LPIPS-VGG ↓
+> 0.2 0.4 0.6 0.01 0.02 0.03 0.04
+> DISTS ↓
+> 0.2 0.4 0.6 0.7 11.5 34
+> FID/256 ↓
+> PICO-matched 300
+> Bits per pixel
+> MRIC MS-ILLM CoD-Lite PICO PULSE (Perceptual) PULSE-L (Perceptual)
+
+Figure 7: Rate–distortion curves on the 300-image CLIC test subset released by PICO. Table 9: BD-rate comparison on PICO-matched 300-image CLIC test subset. Anchor: MS-ILLM. 
+
+Method PSNR LPIPS-Alex LPIPS-VGG DISTS FID MRIC -1.2% +9.7% +58.5% +51.1% +98.4% MS-ILLM 0% 0% 0% 0% 0% CoD-Lite +160% +109.4% -39.7% -1.3% +9.4% PICO +18.2% +50.7% -30.6% -52.3% -6% 
+
+PULSE (Perceptual) +2.2% +31.1% -38.2% -29.3% +12.7% PULSE-L (Perceptual) -7.1% +8.9% -48.9% -45.2% -18.2% 
+
+C.3 COMPARISON ON MORE BENCHMARKS 
+
+In Figures 8, 9 and Tables 11–15, we present rate-distortion curves and BD-Rates across more metrics and benchmarks. We evaluate PSNR, LPIPS with VGG and AlexNet, DISTS (Ding et al., 2022), and FID on Kodak, Tecnick, DIV2K, CLIC Professional validation, and CLIC test sets. We compute FID using overlapping 64 × 64 patches for Kodak and overlapping 256 × 256 patches for all other benchmarks. Across all benchmarks and metrics, P ULSE achieves competitive performance with substantially lower complexity. C.4 ADDITIONAL VISUAL EXAMPLES 
+
+Figure 11 and Figure 12 provide additional visual comparison examples on text and natural content. We do not include facial comparison to avoid personally identifiable information. 
+
+> 1
+
+https://github.com/tensorflow/compression/blob/master/models/hific/ data.csv 
+
+> 2
+
+https://github.com/VincentChandelier/ELiC-ReImplemetation 
+
+> 3
+
+https://github.com/Nikolai10/MRIC 
+
+16 Preprint 0.25 0.5 0.75 128 30 32 34 36 38 
+
+PSNR (dB) ↑    
+
+> 0.25 0.5 0.75 10.1 0.2 0.3
+
+LPIPS-Alex ↓    
+
+> 0.25 0.5 0.75 10.2 0.3 0.4
+
+LPIPS-VGG ↓    
+
+> 0.25 0.5 0.75 10.05 0.1 0.15 0.2
+
+DISTS ↓    
+
+> 0.25 0.5 0.75 130 40 50 100 150
+
+FID/256 ↓                                                        
+
+> 0.2 0.4 0.6 30 32 34 36 38
+> 0.2 0.4 0.6 0.05 0.1 0.15 0.2
+> 0.2 0.4 0.6 0.15 0.2 0.25 0.3 0.35
+> 0.2 0.4 0.6 0.05 0.1 0.15
+> 0.2 0.4 0.6 20 30 40 50 70
+> 0.25 0.5 0.75 30 32 34 36
+> 0.25 0.5 0.75 0.05 0.1 0.15 0.2 0.25
+> 0.25 0.5 0.75 0.15 0.2 0.25 0.3 0.35
+> 0.25 0.5 0.75 0.05 0.1 0.15
+> 0.25 0.5 0.75 15 20 30 40 50
+> 0.2 0.4 0.6 0.8 30 32 34 36 38
+> 0.2 0.4 0.6 0.8 0.1 0.2 0.3
+> 0.2 0.4 0.6 0.8 0.2 0.3 0.4
+> 0.2 0.4 0.6 0.8 0.1 0.15 0.2
+> 0.2 0.4 0.6 0.8 30 40 50 70
+> 0.2 0.4 0.6 32 34 36 38
+> 0.2 0.4 0.6 0.1 0.2 0.3
+> 0.2 0.4 0.6 0.2 0.3 0.4
+> 0.2 0.4 0.6 0.075 0.1 0.125 0.15 0.175
+> 0.2 0.4 0.6 15 20 30 40 50
+> Kodak Tecnick DIV2K CLIC Pro val CLIC test
+> Bits per pixel
+> HEIC HM VTM JPEG-AI MS-Hyperprior Shallow NTC ELIC EVC-S DCVC-RT-Intra PULSE-S PULSE
+
+Figure 8: Rate-distortion curves on more benchmarks for MSE-optimized codecs. 
+
+D AGENTIC EVOLUTION PROTOCOL 
+
+All E1–E7 generations follow the same human–LLM agentic research loop described in the paper. Table 10: Illustrations on each evolution. 
+
+Transition Main change Motivation E1 →E2 Move rendering to a 1/4-resolution grid relieve the narrow full-resolution renderer E2 →E3 Replace four narrow blocks with one wider block concentrate low-resolution capacity E3 →E4 Increase main and hyper latent capacity address pressure in shared representations E4 →E5 Introduce grouped pointwise convolution reclaim entropy-model computation E5 →E6 Reallocate internal width to the main latent strengthen shared latent capacity E6 →E7 Reduce FFN channels and increase decoder depth improve nonlinear decoder processing E7 →stop Train three further candidates none improves E7 
+
+D.1 IMPLEMENTATION DETAILS 
+
+For LLM agent, we use gpt-5.6-sol with high reasoning effort. The model receives the probe summaries, network graph, parameter-sharing constraints, component-level MAC accounting, and the complete history of earlier rounds. Each interaction produces two to four candidate suggestions. 17 Preprint 0.25 0.5 0.75 28 30 32 34 
+
+PSNR (dB) ↑ 
+
+0.25 0.5 0.75 0.02 0.04 0.06 0.08 
+
+LPIPS-Alex ↓ 
+
+0.25 0.5 0.75 0.1 0.15 0.2 
+
+LPIPS-VGG ↓ 
+
+0.25 0.5 0.75 0.02 0.04 0.06 
+
+DISTS ↓ 
+
+0.25 0.5 0.75 10 15 20 40 50 
+
+FID/256 ↓ 
+
+0.2 0.4 0.6 30 32 34 36 
+
+0.2 0.4 0.6 0.02 0.04 0.06 
+
+0.2 0.4 0.6 0.1 0.15 0.2 
+
+0.2 0.4 0.6 0.02 0.03 0.04 0.05 
+
+0.2 0.4 0.6 345710 
+
+0.25 0.5 0.75 30 32 34 
+
+0.25 0.5 0.75 0.02 0.04 0.06 
+
+0.25 0.5 0.75 0.1 0.15 0.2 
+
+0.25 0.5 0.75 0.01 0.02 0.03 0.04 0.05 
+
+0.25 0.5 0.75 234710 
+
+0.2 0.4 0.6 30 32 34 36 
+
+0.2 0.4 0.6 0.02 0.04 0.06 
+
+0.2 0.4 0.6 0.1 0.15 0.2 
+
+0.2 0.4 0.6 0.02 0.03 0.04 0.05 
+
+0.2 0.4 0.6 5710 15 
+
+0.2 0.4 0.6 32 34 36 
+
+0.2 0.4 0.6 0.02 0.04 0.06 
+
+0.2 0.4 0.6 0.1 0.15 0.2 
+
+0.2 0.4 0.6 0.01 0.02 0.03 0.04 
+
+0.2 0.4 0.6 0.7 11.5 34
+
+> Kodak Tecnick DIV2K CLIC Pro val CLIC test
+
+Bits per pixel 
+
+HiFiC MRIC MS-ILLM CoD-Lite PULSE (Perceptual) PULSE-L (Perceptual) 
+
+Figure 9: Rate-distortion curves on more benchmarks for perceptual-optimized codecs. 𝑦  / 𝑧 
+
+Channel:  𝑌  / 𝑍 
+
+Entropy Model (EM) 
+
+DCB( 𝐶 𝐸𝑀 , 𝐹 𝐸𝑀  = 2𝐶 𝐸𝑀 , 𝐺 𝐸𝑀  )
+
+Decoder 
+
+𝑁  × DCB( 𝐶 𝐷 , 𝐹 𝐷 , 𝐺 𝐷  = 1)
+
+Renderer 
+
+Upsample  ො𝑦  ratio:  ↑ 𝑆 
+
+Upsample Channel:  𝐶 𝑈 
+
+MLP Channel:  𝐶 𝑅 
+
+DCB ( 𝐶, 𝐹, 𝐺 )
+
+Channel, FFN channel, Group 
+
+𝑌 
+
+𝑍 
+
+𝐶 𝐸𝑀 
+
+𝑮 𝑬𝑴 
+
+𝑁 
+
+𝐶 𝐷 
+
+𝑭 𝑫 
+
+𝑺 
+
+𝐶 𝑅 
+
+𝐶 𝑅 
+
+BD-Rate 
+
+120 
+
+60 
+
+120 
+
+4
+
+54 
+
+16 
+
+4
+
+4
+
+120 
+
+60 
+
+120 
+
+4
+
+54 
+
+4
+
+35 
+
+30 
+
+120 
+
+60 
+
+120 
+
+1
+
+118 
+
+4
+
+16 
+
+30 
+
+224 
+
+96 
+
+96 
+
+1
+
+1
+
+80 
+
+4
+
+24 
+
+224 
+
+96 
+
+112 
+
+4
+
+1
+
+96 
+
+4
+
+20 
+
+32 
+
+256 
+
+96 
+
+100 
+
+4
+
+1
+
+96 
+
+4
+
+4
+
+16 
+
+32 
+
+256 
+
+100 
+
+4
+
+2
+
+96 
+
+192 
+
+4
+
+16 
+
+32 
+
+80 
+
+E1  E2  E3  E4  E5  E6  E7 
+
+0.0%  -1.7%  -5.5%  -7.5%  -8.4%  -8.9%  -10.2% 
+
+Baseline of 
+
+PULSE-S 
+
+Renderer resolution 
+
+→ width 
+
+Decoder 
+
+Depth  →
+
+width 
+
+16 
+
+Reallocate to wider 
+
+𝒚/𝒛 
+
+Reallocate EM w/ group-conv 
+
+Reallocate 
+
+𝒚 , EM and renderer 
+
+Decoder 
+
+MLP width 
+
+→ depth 
+
+Reduce 
+
+Enlarge 
+
+Predefined or 
+
+Discovered 
+
+Params 
+
+256 
+
+96 
+
+100 
+
+4
+
+1
+
+96 
+
+384 
+
+4
+
+16 
+
+32 
+
+256 
+
+128 
+
+4
+
+2
+
+96 
+
+192 
+
+4
+
+16 
+
+32 
+
+80 
+
+320 
+
+128 
+
+4
+
+2
+
+144 
+
+272 
+
+4
+
+48 
+
+48 
+
+96 
+
+320 
+
+256 
+
+4
+
+4
+
+288 
+
+800 
+
+4
+
+48 
+
+96 
+
+144 
+
+PULSE 
+
+-S  PULSE  PULSE 
+
+-L 
+
+1.  Set channels to multiples of 16 
+
+2.  Scaling to PULSE and PULSE-L 
+
+2.7 
+
+kMAC/px 
+
+5.2 
+
+kMAC/px 
+
+20 
+
+kMAC/px 
+
+Encoder 
+
+4 ×DCB( 512 , 2048 , 1)
+
+Figure 10: Full agentic evolution process and final parameters at different scales. A human researcher checks their interpretation, implementation feasibility, and budget accounting, then fixes three architectures for full training in every round. 18 Preprint Table 11: BD-Rate comparison on PSNR. Anchor: HM-16.25. 
+
+Method Kodak Tecnick DIV2K CLIC pro val CLIC test HEIC +14.3% +28.4% +21.1% +25.2% +16.9% HM-16.25 0% 0% 0% 0% 0% VTM-17.0 -21.3% -23.8% -22.8% -23.4% -23% JPEG-AI +54.3% +41.2% +33% +37.4% +33.2% MS-Hyperprior -2.2% -4.6% -3.3% -1.7% -2% Shallow NTC +6.3% +9.9% +9.3% +13% +11.9% ELIC -25.1% -32% -27.6% -26.2% -26.2% EVC-S -12.6% -14.3% -13.5% -14.3% -13.2% DCVC-RT-Intra -31.1% -36.4% -33.3% -33.2% -33.7% 
+
+PULSE-S +9.9% +7.7% +6.5% +5.9% +9.4% PULSE +1.2% -2.1% -2.4% -2.9% +0.3% 
+
+HiFiC +61.9% — +37.3% — +45.1% MRIC +22.2% +18.3% +22.3% +46.1% +29.1% MS-ILLM +39.6% +23% +23.3% +38% +38.7% CoD-Lite +167.9% +162.2% +145.8% +218.8% +232.8% 
+
+PULSE (Perceptual) +38.8% +42.4% +33.7% +45.5% +49.6% 
+
+PULSE-L (Perceptual) +24.4% +26% +19.4% +30.8% +34.5% Table 12: BD-Rate comparison on LPIPS-Alex. Anchor: MS-ILLM. 
+
+Method Kodak Tecnick DIV2K CLIC pro val CLIC test HEIC +890% +820% +900% +1420% +1330% HM-16.25 +840% +800% +880% +1340% +1450% VTM-17.0 +740% +690% +790% +1140% +1250% JPEG-AI +830% +700% +760% +1130% +1120% MS-Hyperprior +1010% +920% +1000% +1630% +1640% Shallow NTC +1530% +1300% +1540% +2410% +2360% ELIC +770% +600% +760% +1100% +1110% EVC-S +530% +710% +700% +1320% +1460% DCVC-RT-Intra +710% +550% +680% +970% +980% 
+
+PULSE-S +850% +770% +880% +1410% +1500% 
+
+PULSE +860% +770% +890% +1410% +1520% HiFiC +12% — +9.4% — +7.8% MRIC -8.7% +7.7% +6.6% +23.1% +10.8% MS-ILLM 0% 0% 0% 0% 0% CoD-Lite +61.2% +98.7% +70.3% +96.8% +111.5% 
+
+PULSE (Perceptual) +25.2% +31.7% +25.6% +32.2% +31.9% PULSE-L (Perceptual) +4.9% +10.4% +5.8% +9.9% +9.4% 
+
+All three candidates are trained from scratch with the same data, QP range, optimizer, and schedule. The human researcher reviews the measured rate–distortion curves and promotes the best improving candidate. If no candidate improves the current parent, the search terminates. D.2 FULL EVOLUTION TRAJECTORY 
+
+As shown in Figure 10, the reported search contains one initial model training, seven rounds with three trained candidates per round, and several finalized model trainig at different scale. Six rounds promote E2 through E7. In the final round after E7, all three candidates underperform E7, so the search stops. Table 10 records the changes and motivations at high level. 19 Preprint Table 13: BD-Rate comparison on LPIPS-VGG. Anchor: MS-ILLM. 
+
+Method Kodak Tecnick DIV2K CLIC pro val CLIC test HEIC +330% +340% +290% +520% +530% HM-16.25 +300% +330% +270% +490% +560% VTM-17.0 +260% +270% +230% +480% +540% JPEG-AI +270% +240% +200% +360% +370% MS-Hyperprior +300% +350% +290% +570% +580% Shallow NTC +460% +540% +450% +950% +1000% ELIC +310% +280% +270% +590% +600% EVC-S +180% +260% +190% +470% +530% DCVC-RT-Intra +270% +250% +230% +500% +510% 
+
+PULSE-S +310% +300% +270% +500% +570% 
+
+PULSE +300% +280% +250% +510% +580% HiFiC — — — — —MRIC +8.9% +37.8% +39.3% +61.1% +60.1% MS-ILLM 0% 0% 0% 0% 0% CoD-Lite -39.3% -26.6% -34.8% -36.9% -38.3% 
+
+PULSE (Perceptual) -24.7% -25.3% -28.6% -35.8% -38.1% PULSE-L (Perceptual) -38.8% -37% -41% -47.5% -48.9% 
+
+Table 14: BD-Rate comparison on DISTS. Anchor: MS-ILLM. 
+
+Method Kodak Tecnick DIV2K CLIC pro val CLIC test HEIC +550% +590% +570% +1070% +920% HM-16.25 +480% +560% +500% +960% +960% VTM-17.0 +570% +630% +610% +1160% +1130% JPEG-AI +560% +550% +540% +910% +860% MS-Hyperprior +680% +890% +790% +1500% +1410% Shallow NTC +980% +1090% +1070% +2090% +1920% ELIC +670% +680% +710% +1290% +1190% EVC-S +420% +650% +560% +1270% +1330% DCVC-RT-Intra +630% +620% +660% +1200% +1090% 
+
+PULSE-S +640% +680% +660% +1130% +1160% 
+
+PULSE +630% +670% +630% +1160% +1210% HiFiC — — — — —MRIC +11.4% +47.5% +33.3% +40.3% +51.2% MS-ILLM 0% 0% 0% 0% 0% CoD-Lite -35.3% +2.6% -26.4% -7% +1.2% 
+
+PULSE (Perceptual) -22.6% -12.5% -22.4% -28.8% -29.6% PULSE-L (Perceptual) -43% -32.4% -42.8% -47.1% -45.6% 
+
+20 Preprint Table 15: BD-Rate comparison on FID. Anchor: MS-ILLM. 
+
+Method Kodak Tecnick DIV2K CLIC pro val CLIC test HEIC +770% +1770% +1940% +2680% +4820% HM-16.25 +630% +1630% +1700% +2450% +4890% VTM-17.0 +730% +1480% +1700% +2660% +3820% JPEG-AI +530% +1140% +1130% +1720% +2540% MS-Hyperprior +800% +2060% +2120% +3830% +4980% Shallow NTC +1010% +2800% +2990% +5590% +8750% ELIC +970% +1360% +1750% +3430% +3820% EVC-S +480% +1820% +1620% +3040% +4890% DCVC-RT-Intra +840% +1330% +1700% +3200% +3510% 
+
+PULSE-S +630% +1650% +1600% +2530% +4010% 
+
+PULSE +640% +1520% +1480% +2420% +3700% HiFiC — — +42.8% — +85.1% MRIC +8.1% +63.8% +55.6% +101% +107.1% MS-ILLM 0% 0% 0% 0% 0% CoD-Lite -26.4% +17.2% -6.4% +12.9% +14.2% 
+
+PULSE (Perceptual) -16.7% +12% -1.7% -4.1% +17.8% PULSE-L (Perceptual) -33.3% -17.9% -27.3% -22.5% -17.2% PULSE (P)  
+
+> 0.098 bpp
+
+Original  
+
+> Original
+> MS-ILLM
+> 0.100 bpp*
+> PICO
+> 0.101 bpp†
+> PULSE-L (P)
+> 0.098 bpp
+> HM
+> 0.098 bpp‡
+> VTM
+> 0.086 bpp‡
+> JPEG-AI
+> 0.093 bpp
+> PULSE (P)
+> 0.098 bpp PULSE (P)
+> 0.306 bpp Original
+> Original
+> MS-ILLM
+> 0.300 bpp
+> MRIC
+> 0.292 bpp
+> PULSE-L (P)
+> 0.305 bpp
+> HM
+> 0.276 bpp
+> VTM
+> 0.424 bpp
+> JPEG-AI
+> 0.447 bpp
+> PULSE (P)
+> 0.306 bpp
+
+Figure 11: More visual examples on text contents. 21 Preprint PULSE (P) 
+
+0.252 bpp  Original 
+
+Original 
+
+MS-ILLM 
+
+0.267 bpp 
+
+MRIC 
+
+0.229 bpp 
+
+PULSE-L (P) 
+
+0.232 bpp 
+
+HM 
+
+0.248 bpp 
+
+VTM 
+
+0.257 bpp 
+
+JPEG-AI 
+
+0.360 bpp 
+
+PULSE (P) 
+
+0.252 bpp 
+
+PULSE (P) 
+
+0.096 bpp 
+
+Original 
+
+MS-ILLM 
+
+0.114 bpp* 
+
+PICO 
+
+0.097 bpp 
+
+PULSE-L (P) 
+
+0.089 bpp PULSE (P) 
+
+0.096 bpp  Original 
+
+Original 
+
+MS-ILLM 
+
+0.114 bpp* 
+
+PICO 
+
+0.097 bpp 
+
+PULSE-L (P) 
+
+0.089 bpp 
+
+HM 
+
+0.104 bpp 
+
+VTM 
+
+0.118 bpp‡ 
+
+JPEG-AI 
+
+0.089 bpp 
+
+PULSE (P) 
+
+0.096 bpp 
+
+Figure 12: More visual examples on natural contents. 22
