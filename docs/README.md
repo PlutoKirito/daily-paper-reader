@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-24</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-25</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-24 22:07:58 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-25 22:29:06 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读1篇、速读2篇，聚焦视频与图像压缩前沿。最值得看的是9.0分的生成式视频压缩研究，量化了同质量下码率与算力的权衡关系。普通读者可优先了解生成式压缩的“算力换算力”思路，再顺带关注单线程CPU图像压缩的落地进展。</p>
+<p>今日精读 1 篇、速读 5 篇，聚焦图像压缩与生成加速。最值得看的是 8.0 分的《Opportunistic Conditional Entropy Coding with Frozen Analysis and Synthesis Transforms》，以及两篇 7.0 分工作：LC3EM 的长程上下文外推熵模型、基于随机 Hessian 估计的率失真优化。普通读者可先读精读那篇，再按兴趣挑速读，留意熵编码与生成加速两条线。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -74,9 +74,9 @@
     <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Information Capacity of Generative Video Compression: Quantifying the Rate-Compute Exchange at Identical Quality">Information Capacity of Generative Video Compression: Quantifying the Rate-Compute Exchange at Identical Quality</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Opportunistic Conditional Entropy Coding with Frozen Analysis and Synthesis Transforms">Opportunistic Conditional Entropy Coding with Frozen Analysis and Synthesis Transforms</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PULSE: Unlocking Practical Image Compression on Single-Thread CPU">PULSE: Unlocking Practical Image Compression on Single-Thread CPU</span></li><li><span class="dpr-home-dashboard-paper-title" title="Opportunistic Conditional Entropy Coding with Frozen Analysis and Synthesis Transforms">Opportunistic Conditional Entropy Coding with Frozen Analysis and Synthesis Transforms</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs">LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Rate-distortion optimization for full-reference image quality metrics via stochastic Hessian estimates">Rate-distortion optimization for full-reference image quality metrics via stochastic Hessian estimates</span></li><li><span class="dpr-home-dashboard-paper-title" title="SparkDiffusion: Mitigating the High-Sparsity Trap --- A Unified Framework for up to $265\times$ Single-GPU Acceleration of Visual Generation">SparkDiffusion: Mitigating the High-Sparsity Trap --- A Unified Framework for up to $265\times$ Single-GPU Acceleration of Visual Generation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
 </div>
 
