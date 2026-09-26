@@ -1,0 +1,187 @@
+Title: Resolution-Flexible Decoding for Hybrid Neural Video Representations
+
+URL Source: https://arxiv.org/pdf/2609.23555v1
+
+Published Time: Tue, 22 Sep 2026 01:29:32 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Resolution-Flexible Decoding for Hybrid Neural Video Representations 
+
+Taiga Hayami 
+
+Graduate School of FSE, Waseda University 
+
+Tokyo, Japan hayatai17@fuji.waseda.jp 
+
+Masaya Takabe 
+
+Graduate School of FSE, Waseda University 
+
+Tokyo, Japan masaya.ta@asagi.waseda.jp 
+
+Hiroshi Watanabe 
+
+Graduate School of FSE, Waseda University 
+
+Tokyo, Japan hiroshi.watanabe@waseda.jp 
+
+Abstract —Neural video representations (NVRs) represent videos using neural network parameters and, in hybrid formu-lations, frame-wise latent embeddings. Although hybrid NVRs can improve reconstruction quality by using content-adaptive latent embeddings, their latent spatial sizes and decoder up-sampling schedules are tied to the target frame resolution. For high-resolution videos, this dependency may require large and non-uniform upsampling factors and can affect the parameter allocation between the latent embeddings and the decoder. In this paper, we propose a resolution-flexible decoder framework for hybrid NVRs. The decoder is constructed from uniform 2×
+
+upsampling stages, whose target feature sizes are obtained by tracing the spatial resolution backward from the final output resolution. After each upsampling stage, the feature map is aligned with the target size by minimal padding or cropping when necessary. To support this progressive decoding process, we further use intermediate reconstruction supervision and a reconstruction-difficulty-aware frame sampling strategy based on recent frame-wise losses. The framework preserves the basic representation format of hybrid NVRs and can therefore be applied to different backbones. Experiments on the UVG dataset show that the proposed approach improves reconstruction quality over the corresponding NVR baselines. 
+
+Index Terms —Implicit neural representation, neural video representation, video compression. 
+
+I. I NTRODUCTION 
+
+Neural video representations (NVRs), which build on im-plicit neural representations (INRs) [1], have recently attracted attention as a video-specific representation and compression paradigm. These methods [2]–[11] model a video with a neural network that takes either a frame index or a frame-wise latent embedding as input and reconstructs the corresponding RGB frame. Under this formulation, video coding can be viewed as the optimization of a video-specific neural network. Compression is then achieved by quantizing and entropy coding the trained network weights and, when applicable, the latent embeddings, while decoding requires only a forward pass through the trained model. Index-based NVRs [2], [3] generate each frame directly from its frame index. Hybrid NVRs [4], [5], in contrast, im-prove representation capacity by introducing content-adaptive latent embeddings as decoder inputs. In this setting, the latent embeddings serve as explicit frame-wise representations, while the decoder acts as an implicit representation shared across all frames. However, hybrid NVRs still require the spatial (a) conventional methods    
+
+> × 5
+> × 3
+> × 2
+> × 2
+> × 2
+> 𝐶 × 9 × 16
+> 3 × 1080 × 1920
+> × 2
+> × 2
+> × 2
+> × 2
+> 3 × 1080 × 1920
+> align align align align
+> (b) proposed method
+> 𝐶 × 𝐻 × 𝑊
+
+Fig. 1. Comparison of conventional and proposed decoder designs. Con-ventional hybrid NVRs use resolution-dependent, non-uniform upsampling schedules, whereas the proposed method reconstructs the target frame using uniform 2× upsampling stages followed by spatial alignment. 
+
+size of the latent embeddings and the decoder upsampling schedule to be compatible with the output-frame resolution. These quantities are commonly chosen so that the product of the intermediate feature size and the stage-wise upsampling factors exactly matches the target resolution. Prior studies [4], [6] also report that adjusting video resolutions to sizes such as 
+
+960 × 1920 and 480 × 960 , while maintaining an aspect ratio of 1 : 2 , contributes to improved model performance. For example, when reconstructing FHD video at a resolution of 1080 ×1920 (height × width), conventional designs require large and non-uniform upsampling factors, such as 5× and 3×,as shown in Fig. 1. Consequently, spatial resolution conversion is concentrated in specific decoder stages. Moreover, because the embedding grid is constrained by the factorization of the final resolution, this setting requires at least a 9 × 16 
+
+spatial grid for the latent embeddings. In a typical hybrid NVR configuration with 16 embedding channels, a 600-frame UVG sequence [12] therefore requires approximately 1.38M embedding parameters. Under a fixed total parameter budget, this embedding allocation reduces the number of parameters available for the decoder, which may limit representation capacity, particularly in low-bitrate or compact-model settings. In this paper, we propose a hybrid NVR framework in which all decoder stages are constructed using uniform 2×
+
+upsampling. In the proposed method, the sequence of target arXiv:2609.23555v1 [eess.IV] 20 Sep 2026 (b) Decoder Block                     
+
+> P.S.
+> Conv.
+> (𝐶, 𝐻, 𝑊)
+> (𝑂𝑆 2, 𝐻, 𝑊)
+> (𝑂, 𝑆𝐻, 𝑆𝑊)
+> (𝑂, 𝑆𝐻′, 𝑆𝑊′)
+> Pad./Crop
+> Act.
+> (c) Resolution schedule (for 1080 x 1920)
+> (3, 1080, 1920) (64, 540, 960) (64, 270, 480) (64, 135, 240) (64, 68, 120) (64, 34, 60) (64, 17, 30) (16, 4, 8)
+> (𝑐 6, 540, 960) (𝑐 5, 270, 480) (𝑐 4, 135, 240) (𝑐 3, 68, 120) (𝑐 2, 34, 60) (𝑐 1, 17, 30)
+> (64, 8, 15)
+> (𝑐 0, 8, 15)
+> : down/upsampling + pad./crop : down/upsampling
+> video
+> Enc. Dec.
+> Loss
+> selected frame
+> reconstructed frame
+> Difficulty-aware frame sampler
+> High
+> Low 1𝑇
+> (a) architecture
+> Auxiliary Loss Fig. 2. Overview of the proposed framework. (a) Overall architecture consisting of a difficulty-aware frame sampler, an encoder, and a decoder. (b) Proposed decoder block, which performs convolution, pixel shuffle, and activation, followed by spatial alignment through padding or cropping when necessary. (c) Example resolution schedule for reconstructing a 1080 ×1920 frame.
+
+resolutions is determined by tracing the spatial resolution backward from the final frame resolution. At each decoder stage, 2× upsampling is first applied, and the resulting feature map is then aligned with the target resolution using minimal padding or cropping. This design avoids relying on large up-sampling factors determined by the final resolution and allows the decoder to follow a uniform and progressive reconstruction path. We further introduce a reconstruction-difficulty-aware frame sampling strategy. Instead of sampling frames uniformly throughout training, the proposed sampler estimates frame-wise difficulty scores from recent reconstruction losses and samples frames from a mixture of difficulty-based and uniform distributions. This strategy allocates more training opportuni-ties to difficult frames while maintaining coverage of the entire video. II. R ELATED WORK 
+
+A. Neural Video Representation 
+
+Neural video representations encode a video in neural network parameters and reconstruct each frame through a forward pass. NeRV [2] first introduced a frame-wise neural representation that maps a frame index to the corresponding RGB frame, enabling video compression through quantization, pruning, and entropy coding of the learned network weights. HNeRV [4] further improved reconstruction quality by in-troducing content-adaptive frame-wise embeddings extracted by a learnable encoder. Subsequent methods have enhanced NVRs through improved temporal modeling or multi-scale feature design. FFNeRV [7] exploits temporal redundancy using flow-guided frame-wise representations and temporal grids, HiNeRV [8] improves compression through hierarchical positional encoding, and PNeRV [9] introduces a pyramidal representation to improve spatial consistency. HNeRV-Boost [10] further improves multiple NVR backbones by using a conditional decoder to align intermediate features with target frames. In contrast to these methods, our work focuses on the resolution dependency of hybrid NVR decoders. In conven-tional hybrid-NVR designs, both the latent embedding size and the decoder upsampling schedule are constrained by the factorization of the target resolution, often resulting in large and non-uniform upsampling factors. We address this issue by constructing the decoder with uniform 2× upsampling stages and lightweight spatial alignment, thereby providing a more flexible and progressively structured reconstruction path. 
+
+B. Sampling Strategies 
+
+Most NVR methods train video representations by sampling frames uniformly from the target video. Although uniform sampling is simple and widely adopted, it treats all frames equally even though reconstruction difficulty can vary over time because of motion, texture complexity, occlusion, and scene changes. This property can make optimization less efficient, especially under limited model capacity or short training schedules. Adaptive sampling has been studied as a way to allocate training effort to informative or difficult samples. In the context of neural fields, Kheradmand et al. [13] proposed Soft Mining, which accelerates training by selecting samples according to an importance distribution derived from train-ing errors. Their method samples high-error regions more frequently while formulating the process as soft importance sampling rather than hard sample selection. In neural video representation, Tree-NeRV [11] introduces a tree-structured feature grid with non-uniform temporal sampling, assigning denser feature nodes to temporal regions with high reconstruc-tion errors. III. P ROPOSED METHOD 
+
+A. Overall Framework 
+
+Let It ∈ R3×H×W denote the t-th frame of a target video. In hybrid NVRs, each frame is represented by a content-adaptive latent embedding zt, and a shared decoder Dθ reconstructs the corresponding RGB frame as ˆIt = Dθ (zt). During training, an encoder [15] extracts a latent embedding from each input frame. After training, the video is represented by the trained decoder parameters and the frame-wise latent embeddings. The proposed method aims to reduce the dependence of decoder design on the factorization of the target resolu-tion. Instead of using resolution-dependent and non-uniform upsampling factors, the decoder is built from repeated 2×
+
+upsampling stages. Given the output resolution (H, W ) and the number of decoder stages L, we determine the target spatial size of each decoder stage by tracing backward from the final resolution: 
+
+(Hl, W l) = round even 
+
+ (H, W )2L−l
+
+
+
+, l = 0 , . . . , L, (1) where round even (·) denotes round-to-even rounding. Here, 
+
+(HL, W L) = ( H, W ), and (H0, W 0) denotes the initial spatial size of the decoder feature map. This schedule allows the decoder to use a uniform 2× structure while supporting output resolutions that are not exactly divisible by powers of two. The proposed framework consists of three components: a uniform 2× decoder with spatial alignment, intermediate reconstruction supervision, and reconstruction-difficulty-aware frame sampling. The decoder design and intermediate super-vision facilitate optimization of the progressive reconstruction process, while the sampling strategy allocates more training opportunities to frames that are difficult to reconstruct. Be-cause the framework does not alter the basic representation format, it can be applied to different hybrid NVR backbones, such as HNeRV and HNeRV-Boost. 
+
+B. Decoder Block 
+
+Let Fl ∈ RCl×Hl×Wl denote the input feature map of the 
+
+l-th decoder stage. As shown in Fig. 2, each decoder block first performs 2× upsampling using convolution and pixel shuffle [16]. The upsampled feature map is then aligned to the predefined target size when necessary: 
+
+Fl+1 = AHl+1 ,W l+1 (ϕl(Fl)) , (2) where ϕl(·) denotes the 2× upsampling operation composed of convolution, pixel shuffle, and activation. The function 
+
+AHl+1 ,W l+1 (·) aligns the feature map with the target resolution 
+
+(Hl+1 , W l+1 ). Specifically, it applies center cropping when the feature map is larger than the target size and padding when it is smaller. If the feature size already matches the target resolution, the alignment operation reduces to the identity mapping. By repeating this block, the decoder forms a uniform progressive reconstruction path from the latent feature map to the output frame. Unlike conventional HNeRV-style designs                                                 
+
+> TABLE I COMPARISON OF RECONSTRUCTION QUALITY ON THE UVG DATASET IN PSNR ( 3.0M, 1080 ×1920 )
+> Method Beauty Bosph. Honey. Jockey Ready. Shake. Yacht. NeRV 33.06 33.43 37.13 31.55 24.97 32.96 28.01 HNeRV 33.34 31.55 39.15 32.26 25.52 33.95 28.32 Ours w/ HNeRV 33.70 35.82 39.24 33.05 27.46 34.98 29.47
+> HNeRV-Boost 33.79 36.13 39.64 34.21 28.09 35.87 29.27 Ours w/ Boost 33.83 36.38 39.61 34.76 28.76 35.65 29.45
+
+that rely on large factors such as 5× or 3×, the proposed de-coder distributes spatial resolution conversion across multiple 
+
+2× stages. 
+
+C. Loss Function 
+
+The final frame is reconstructed from the last decoder feature map, while auxiliary reconstruction heads are attached to selected intermediate stages to stabilize progressive 2×
+
+decoding. For each supervised stage l ∈ S , the auxiliary head predicts a low-resolution RGB image, which is supervised by the target frame resized to the same spatial resolution. The training loss for frame t is defined as 
+
+L(t) = ℓ(ˆIt, It) + X
+
+> l∈S
+
+λlℓ (hl(Fl), R l(It)) , (3) where ℓ(·) denotes the reconstruction loss, hl(·) is the auxiliary head, Rl(·) resizes the target frame to the resolution of stage 
+
+l, and λl is the auxiliary-loss weight. The auxiliary heads are used only during training and are removed during inference; therefore, they do not increase the encoded representation size or the decoding cost. 
+
+D. Reconstruction-Difficulty-Aware Sampling 
+
+In standard NVR training, frames are typically sampled uniformly from the target video. However, reconstruction difficulty varies across frames because of motion, texture com-plexity, occlusion, and scene changes. Uniform sampling may therefore allocate insufficient training iterations to difficult frames, especially in compact-model settings. Unlike pixel-level or ray-level neural field sampling [13], [14], our sampling domain is the finite set of video frames. Accordingly, rather than constructing dense spatial error maps, we maintain a scalar difficulty score for each frame and update it using recent reconstruction losses. Specifically, the frame-wise difficulty score qt is updated through an exponential moving average: 
+
+qt ← βq t + (1 − β)dt, (4) where dt is the current difficulty estimate and β is the momentum coefficient. In our implementation, dt is computed from the recent frame-wise reconstruction loss. Frames are then sampled according to a mixture of difficulty-based and uniform probabilities: 
+
+pt = (1 − ρ) qt
+
+PNj=1 qj
+
++ ρ 1
+
+N , (5) Fig. 3. Rate–distortion curves on the “ReadySetGo” sequence. The latent feature size is varied for HNeRV, HNeRV-Boost and the proposed method. 
+
+where N is the number of training frames and ρ controls the proportion of uniform sampling. The uniform term prevents the sampler from ignoring easier frames and preserves cover-age of the entire video. When non-uniform sampling is used, the sampled loss is reweighted as 
+
+Lsampled (t) = ( N p t)−αL(t), (6) where α ∈ [0 , 1] controls the strength of the correction. This strategy modifies only the training procedure and does not change the encoded representation or the inference process. IV. E XPERIMENT 
+
+A. Experimental Setup 
+
+We evaluate the proposed method on the UVG dataset [12]. The dataset contains seven video sequences, all provided at FHD resolution (1080 × 1920) . We use all available frames in each sequence; six sequences contain 600 frames, and one sequence contains 300 frames. Following the standard NVR setting, each method is optimized independently for each target video, and reconstruction quality is evaluated using PSNR and MS-SSIM. We use HNeRV [4] and HNeRV-Boost [10] as hybrid NVR baselines, and denote the proposed framework applied to each baseline as “Ours w/ HNeRV” and “Ours w/ HNeRV-Boost”, respectively. The latent embeddings of the proposed models are configured as either 16 ×4×8 or 16 ×8×15 , where the three dimensions denote channel, height, and width. Intermediate reconstruction supervision is applied to the decoder stages immediately preceding the output, with s = 4 stages for Ours w/ HNeRV and s = 2 stages for Ours w/ HNeRV-Boost.  
+
+> Fig. 4. Frame-wise sampling behavior on the “ReadySetGo” sequence. The left axis shows the number of samples assigned to each frame, and the right axis shows the frame-wise PSNR. “Ours w/o sampling” denotes the proposed decoder trained with uniform frame sampling. The values in parentheses in the legend indicate the average PSNR over all frames.
+
+The auxiliary-loss weights λl are set to (0 .01 , 0.025 , 0.05 , 0.1) 
+
+and (0 .025 , 0.05) , respectively, and the low-resolution tar-get image Rl(It) is generated by region-based resizing. For reconstruction-difficulty-aware sampling, the current difficulty estimate dt is computed from the recent reconstruction loss of each frame. We update the frame-wise difficulty score qt with 
+
+β = 0 .9, compute the sampling probability pt with the uniform mixing ratio ρ = 0 .1, and reweight the sampled loss using 
+
+α = 0 .6. Uniform sampling is used during the first and last 30 epochs as warm-up and cool-down periods, respectively. 
+
+B. Results 
+
+The reconstruction quality on the UVG dataset is shown in Table I. The latent embedding size is set to 16 ×4×8 for Ours w/ HNeRV and to 16 ×8×15 for Ours w/ HNeRV-Boost. Ours w/ HNeRV improves PSNR on all seven sequences compared with HNeRV, with relatively large gains on some sequences. Ours w/ HNeRV-Boost improves PSNR over HNeRV-Boost on five of the seven sequences, while slightly decreasing PSNR on “HoneyBee” and “ShakeNDry”, which exhibit relatively limited motion. This suggests that the proposed framework can provide additional gains even on the stronger HNeRV-Boost backbone, but its effect is limited when HNeRV-Boost already achieves high reconstruction quality. We show the rate–distortion (RD) curves obtained by vary-ing the size of the latent features in Fig. 3. Across PSNR and MS-SSIM, the proposed framework outperforms HNeRV and achieves performance comparable to or better than HNeRV-Boost on the evaluated RD points. Fig. 4 shows that reconstruction-difficulty-aware sampling assigns more samples to frames with lower PSNR than uniform sampling. Here, “Ours w/o sampling” denotes the proposed decoder trained with uniform frame sampling. This behavior is consistent with the objective of allocating more training opportunities to difficult frames while maintaining uniform coverage through the mixture distribution. V. C ONCLUSION 
+
+In this paper, we proposed a resolution-flexible decoder framework for hybrid neural video representations. The pro-posed method constructs the decoder using uniform 2× up-sampling stages and aligns intermediate feature maps with their target spatial dimensions through padding or crop-ping when necessary. We also introduced intermediate re-construction supervision and reconstruction-difficulty-aware frame sampling to stabilize optimization and allocate more training opportunities to difficult frames. Experiments on the UVG dataset show that the proposed framework improves reconstruction quality over the corresponding NVR baselines while preserving the basic representation format of hybrid NVRs. REFERENCES [1] S. Vincent, M. Julien, B. Alexander, L. David, and W. Gordon, “Implicit Neural Representations with Periodic Activation Functions,” Advances in Neural Information Processing Systems (NeurIPS), 2020, pp. 7462-7473. [2] H. Chen, B. He, H. Wang, Y. Ren, S. Lim, and A. Shrivastava, “NeRV: Neural Representations for Videos,” Advances in Neural Information Processing Systems (NeurIPS), 2021, pp. 21557-21568. [3] L. Zizhang, W. Mengmeng, P. Huaijin, X. Kechun, M. Jianbiao, and L. Yong, “E-NeRV: Expedite Neural Video Representation with Disen-tangled Spatial-Temporal Context,” European Conference on Computer Vision (ECCV), 2022, pp. 267-284. [4] H. Chen, M. Gwilliam, S. Lim, and A. Shrivastava, “HNeRV: A Hybrid Neural Representation for Videos,” IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2023, pp. 10270-10279. [5] Q. Zhao, M. S. Asif, and Z. Ma, “DNeRV: Modeling Inherent Dynamics via Difference Neural Representation for Videos,” IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR), 2023, pp. 2031-2040. [6] H. Yan, Z. Ke, X. Zhou, T. Qiu, X. Shi, and D. Jiang, “DS-NeRV: Implicit Neural Video Representation with Decomposed Static and Dy-namic Codes,” IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2024, pp. 23019-23029. [7] J. Lee, D. Rho, J. Ko, and E. Park, “FFNeRV: Flow-Guided Frame-Wise Neural Representations for Videos,” ACM International Conference on Multimedia, 2023, pp. 7859-7870. [8] H. Kwan, G. Gao, F. Zhang, A. Gower, and D. Bull, “HiNeRV: Video Compression with Hierarchical Encoding-based Neural Representation,” Advances in Neural Information Processing Systems (NeurIPS), 2023, pp. 72692-72704. [9] Q. Zhao, M. Asif, and Z. Ma, “PNeRV: Enhancing Spatial Consistency via Pyramidal Neural Representation for Videos,” IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR), 2024, pp. 19103-19112. [10] X. Zhang, R. Yang, D. He, X. Ge, T. Xu, Y. Wang, H. Qin, and J. Zhang, “Boosting Neural Representations for Videos with a Conditional Decoder,” IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2024, pp. 2556-2566. [11] J. Zhao, Y. Zhan, Q. Zhu, M. Ma, M. Niu, Z. Wan, X. Ji, and Y. Zheng, “Tree-NeRV: Efficient Non-Uniform Sampling for Neural Video Representation via Tree-Structured Feature Grids,” IEEE/CVF International Conference on Computer Vision (ICCV), 2025, pp. 15076-15085. [12] A. Mercat, M. Viitanen, and J. Vanne, “UVG dataset: 50/120fps 4K sequences for video codec analysis and development,” ACM Multimedia Systems Conference, 2020, pp. 297-302. [13] S. Kheradmand, D. Rebain, G. Sharma, H. Isack, A. Kar, A. Tagliasac-chi, and K. Yi, “Accelerating Neural Field Training via Soft Mining,” IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2024, pp. 20071-20080. [14] W. Zhang, R. Xing, Y. Zeng, Y. Liu, K. Shi, and Z. Han, “Fast Learning Radiance Fields by Shooting Much Fewer Rays,” IEEE Transactions on Image Processing, vol. 32, pp. 2703-2718, 2023. [15] Z. Liu, H. Mao, C. Wu, C. Feichtenhofer, T. Darrell, and S. Xie, “A ConvNet for the 2020s,” IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2022, pp. 11976-11986. [16] W. Shi, J. Caballero, F. Husz´ ar, J. Totz, A. Aitken, R. Bishop, D. Rueckert, and Z. Wang, “Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network,” IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016, pp. 1874-1883.
