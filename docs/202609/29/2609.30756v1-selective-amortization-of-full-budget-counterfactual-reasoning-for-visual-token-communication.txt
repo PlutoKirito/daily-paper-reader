@@ -1,0 +1,596 @@
+Title: Selective Amortization of Full-Budget Counterfactual Reasoning for Visual Token Communication
+
+URL Source: https://arxiv.org/pdf/2609.30756v1
+
+Published Time: Mon, 28 Sep 2026 00:30:18 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+> 1
+
+# Selective Amortization of Full-Budget Counterfactual Reasoning for Visual Token Communication 
+
+Qinglei Qi, Zhihe Liang, Fengzhan Jing, Shenao Zhu, Lei Zhang, Chenyang Zhang, Shuqing He, Jia Guo*, Member, IEEE 
+
+Abstract —Generative image communication transmits com-pact semantic tokens under a limited packet budget, where token selection directly affects the final reconstruction quality after the complete packet is decoded. However, accurately es-timating the terminal value of every candidate token requires repeated receiver-side reconstruction, resulting in substantial encoder-side computation. To address this problem, we propose ACV-Gate, an adaptive candidate evaluation framework that learns to approximate full-budget counterfactual evaluation and selectively assigns exact evaluations to the most informative candidates. Specifically, a set-aware student is trained using terminal advantages and regrets to predict candidate rankings directly, while a selective refinement mechanism evaluates only a bounded candidate set containing both Local-MDL and direct actions; cost-based thresholds further enable explicit control of the average evaluation workload. Experiments on CIFAR-10 show that ACV-Gate consistently improves reconstruction quality while substantially reducing candidate evaluations; at 0.20 bpp, the primary adaptive configuration improves PSNR over Local-MDL by 0.636 ± 0.119 dB with only 2.13 ± 0.53 candidate evalu-ations per image, corresponding to 27.60% of the calls required by the Exact-Full expert. Matched-candidate comparisons, syn-chronized GPU measurements, and evaluations on STL-10 and 
+
+384 × 384 scale transfer further demonstrate consistent quality– computation trade-offs, with particularly pronounced gains at low bit rates. These results show that combining terminal-value learning with selective candidate evaluation provides an effective and controllable mechanism for allocating encoder computation in packet-constrained generative image communication. 
+
+Index Terms —Visual token communication, counterfactual evaluation, selective computation, knowledge distillation, resource allocation. 
+
+I. I NTRODUCTION 
+
+Bandwidth-constrained visual communication is important for applications in which images must be delivered under 
+
+This work was supported by the National Natural Science Foundation of China under Grant No. 62002263, the Tianjin Science and Technology Pro-gram Projects under Grant No. 24YDTPJC00630, and the Tianjin Research In-novation Project for Postgraduate Students under Grant No. 2026KYCX001F. Q.Qi, Z.Liang are with the School of Artificial Intelligence, Nanyang Normal University, Nanyang, China. ( e-mail: qiqinglei@nynu.edu.cn, liangzhihe329@gmail.com) F.Jing, S.Zhu, L.Zhang Y.Zhang and J. Guo are with the School of Computer and Information Engineering, Tianjin Normal University, Tianjin, China (e-mail: 2611090041@stu.tjnu.edu.cn ,zhushenao34@gmail.com,2611090026@stu.tjnu.edu.cn, 2411090038@stu.tjnu.edu.cn, c04s316@bupt.cn S. He is with the School of Information Science and Engineering, Linyi University, Linyi 276000, China (email:heshuqing@lyu.edu.cn) *Corresponding Author: Jia Guo The source code for this work is publicly available at: https://github.com/c04s316/-ACV-Gate-
+
+limited or time-varying transmission resources, such as wire-less links, edge visual systems, and progressive image deliv-ery. Generative receivers provide a promising mechanism for such settings by reconstructing missing visual content from transmitted information together with learned image priors. Instead of describing every image component explicitly, the transmitter can allocate its packet budget to a subset of informative visual tokens and allow the receiver to complete the remaining content. This communication paradigm makes the selection of transmitted tokens a central design problem: under a fixed packet budget, the transmitted subset should provide the greatest improvement in the final reconstructed image. The value of an individual token, however, is determined by more than its local image content. It depends on the tokens that have already been transmitted, the tokens that will be selected subsequently, and the way in which the generative receiver completes the untransmitted content. Consequently, effective token selection requires an estimate of the reconstruc-tion quality obtained after the available transmission budget has been fully used. This terminal perspective is particularly important at low bit rates, where each transmitted token occupies a substantial fraction of the packet budget and its interaction with the receiver prior can strongly influence the final reconstruction. Learned image compression has established a direct connec-tion between rate allocation and reconstruction quality [1]–[3], while discrete representations and masked generation provide a natural token-based interface for image representation and completion [4]–[6]. Deep joint source–channel coding and se-mantic transmission further exploit learned representations and receiver-side priors to improve visual communication under constrained channels [7]–[9]. Progressive, content-adaptive, masked, and sparse transmission methods extend these ideas to variable communication conditions by allocating transmission resources according to image content and communication requirements [10]–[13]. Together, these developments provide increasingly flexible mechanisms for representing and trans-mitting visual information. For a fixed tokenizer and generative receiver, an important remaining question is how to identify the token positions whose transmission contributes most to the final reconstruction under the available packet budget. Existing token-pruning and selection methods commonly estimate token importance from attention, saliency, diversity, or coverage [14]–[18], [24]–[26]. Learned selectors and adap-arXiv:2609.30756v1 [cs.AI] 25 Sep 2026 2
+
+tive compression methods further reduce visual computation by predicting which tokens or features deserve additional pro-cessing [27]–[31]. These approaches provide effective mecha-nisms for identifying informative visual elements, but commu-nication introduces a different evaluation target: the usefulness of a transmitted token is ultimately determined by the quality of the image reconstructed after the complete packet has been received. A locally important token may contribute differently when combined with other transmitted tokens or when the re-ceiver can infer its content from contextual information. Token selection for generative communication therefore benefits from a terminal-value criterion that captures both sequential token interactions and receiver-side completion. Full-budget counterfactual evaluation provides such a cri-terion by evaluating each candidate action through the recon-struction obtained after completing the remaining transmission budget. GCR-C [33] implements this principle by comparing candidate tokens under the same Local-MDL continuation, packet budget, and receiver. Each resulting value measures the contribution of a candidate within a complete transmission sequence and therefore directly reflects terminal reconstruction quality. This evaluation also introduces a substantial encoder-side computational workload: every candidate query requires repeated prior inference, continuation of the remaining trans-mission decisions, and final image reconstruction. As a re-sult, the transmitter must allocate two coupled resources— the communication bits used to represent the image and the computation used to determine how those bits should be spent. This computation-allocation problem is related to selective prediction and learning-to-defer, where an expensive expert is invoked only for inputs that benefit most from additional evaluation [19], [20], [22], [23]. In generative image com-munication, however, selective evaluation operates at both the state and candidate levels. The transmitter must determine which communication states merit additional refinement and, within each selected state, which candidate tokens should receive exact terminal evaluation. The resulting controller must therefore combine an estimate of terminal reconstruction value with the computational cost associated with candidate queries. To address this problem, we propose ACV-Gate, a selec-tive amortization framework that learns terminal candidate rankings from full-budget counterfactual evaluations and al-locates exact evaluations to the candidates and communi-cation states where they are most informative. A set-aware student learns candidate rankings from terminal advantages and regrets produced by the full-budget evaluator, allowing it to select a direct action without exact candidate evaluation and to rank alternative actions for subsequent refinement. A bounded candidate screen then retains the Local-MDL action, the direct student action, and highly ranked alternatives for exact evaluation. Cost-based state allocation further controls when this refinement is applied, enabling the encoder to trade candidate-query workload for reconstruction quality under explicit computational budgets. 
+
+Relation to the terminal evaluator: GCR-C [33] serves as the fixed full-budget evaluator from which ACV-Gate learns termi-nal candidate preferences. ACV-Gate preserves this terminal-quality objective while amortizing its repeated use during token selection. The learned student provides an immediate candidate ranking, and selective refinement concentrates exact GCR-C evaluations on a bounded set of promising alternatives. This formulation turns terminal evaluation from a computation applied uniformly across candidates into a controllable en-coder resource that can be allocated according to its expected reconstruction benefit. The main contributions are as follows: 1) We formulate token selection in generative image com-munication under three coupled resources: serialized packet bits, a per-image cap on exact candidate eval-uations, and an average candidate-query budget. This formulation makes encoder computation an explicit re-source alongside communication rate. 2) We develop a set-aware student that learns terminal can-didate rankings from full-budget advantages and regrets. The learned ranking supports direct token selection with-out exact candidate evaluation and provides an ordered candidate set for bounded refinement. 3) We develop a reference-preserving selective controller that combines bounded candidate screening with cost-based state allocation. Matched-budget comparisons separate the effects of terminal-value ranking, candi-date screening, and state allocation, while synchronized runtime measurements and evaluations across image systems characterize the resulting computation–quality trade-off. II. R ELATED WORK 
+
+A. Semantic communication and learned image transmission 
+
+Learned image compression optimizes analysis and synthe-sis transforms together with entropy models [1]–[3]. Vector quantization and masked generation represent images as dis-crete tokens whose missing entries can be predicted from con-text [4]–[6]. Deep joint source–channel coding learns image transmission over a noisy link, while semantic and generative communication exploit task structure and receiver priors [7]– [9]. Recent communication methods address progressive trans-mission, content adaptation, semantic masking and sparse visual representations [10]–[13]. Their design choices concern the representation, channel mapping and rate allocation. For a fixed representation and receiver, token selection still requires the encoder to estimate the effect of each transmitted posi-tion. ACV-Gate allocates the computation used to make that decision. 
+
+B. Visual token selection and adaptive computation 
+
+DynamicViT, EViT, TokenLearner, A-ViT and Token Merg-ing reduce visual computation through learned importance, token reorganization, adaptive selection or merging [14]–[18]. More recent methods use diversity, visual cues, saliency– coverage, graph structure and attention centrality [24]–[26], [30], [31]. SparseVLM, LLaVA-PruMerge and FitPrune extend efficient token reduction to multimodal inference [27]–[29]. Analysis of encoder-layer information further shows why a 3
+
+pruning rule’s effectiveness depends on where and how token information is represented [32]. Attention, diversity and coverage provide inexpensive es-timates of token importance. For packetized reconstruction, these estimates must reflect how a selected token affects subsequent transmission and receiver completion. We eval-uate adapted DivPrune, VisPruner and SCOPE rules with a common proposal and receiver. ACV-Gate learns its ranking from completed-image quality under that same communication process. 
+
+C. Selective prediction and decision distillation 
+
+Selective prediction equips a predictor with a reject option, and learning-to-defer extends this idea to costly expert access [19]–[23]. In visual-token communication, the expert is itself a computation: GCR-C completes the packet under a fixed continuation and reconstructs the image to obtain terminal candidate value [33]. These strands motivate selective computation based on terminal reconstruction value. ACV-Gate adds an amortization and budgeting layer to the GCR-C evaluator. The student learns terminal candidate rankings, and the controller allocates exact evaluations to bounded candidate sets. This links token selection and encoder computation under a common packet budget and receiver. III. S YSTEM MODEL AND PROBLEM FORMULATION 
+
+Let x be an image and z = ( z1, . . . , z N ) its discrete visual-token sequence. A transmitted set S is represented by a packet containing a mode field, a position description, token payload, a cyclic redundancy check (CRC) and optional forward error correction (FEC). Let B(x) denote the bit budget assigned to 
+
+x at a given operating rate. With packet function bits (S), the feasible candidate set is 
+
+F(S, B ) = {a / ∈ S : bits (S ∪ { a}) ≤ B}. (1) The receiver uses a masked prior Dθ to complete unknown positions and produces ˆx(S). A communication state is st =(St, B rem ,t , ft, c t), where ft contains recoverability and local-score features and ct encodes the operating rate, unselected-token fraction and stage. The experiments use a fixed channel configuration. The Local-MDL action is 
+
+aL(st) = arg max  
+
+> a∈F (St,B )
+
+− log pθ (za | zSt ). (2) To evaluate candidate a, the transmitter appends it to St
+
+and completes the packet using Local-MDL. The resulting receiver PSNR defines QB (a | st). This exact teacher uses the same continuation, packet syntax and reconstruction as the communication system. Relative to Local, the teacher advantage and within-state regret are 
+
+AB (a | st) = QB (a | st) − QB (aL | st),R(a | st) = max  
+
+> b∈P (st)
+
+AB (b | st) − AB (a | st). (3) Thus R(a | st) ≥ 0 within the compact proposal, and a∗
+
+denotes its minimum-regret candidate. Advantage and regret supervise the student during training. The compact proposal is the deduplicated union of Top-3 Local, Top-3 selected-set importance and Top-2 coverage candidates. We denote it by P(st) and write Ks = |P (st)| ≤ 
+
+8. The four-candidate screen introduced below is a subset of this proposal. We refer to the full-proposal expert as Exact-Full throughout the paper. For a policy π, let Cmax be the per-image hard cap on exact candidate evaluations and let q be the average candidate-query budget. The constrained objective is 
+
+max 
+
+> π
+
+1
+
+|X | 
+
+X
+
+> x∈X
+
+Q(π; x)
+
+subject to bits (Sπ (x)) ≤ B(x), ∀x ∈ X ,Ncf (x) ≤ Cmax , ∀x ∈ X ,
+
+1
+
+|X | 
+
+X
+
+> x∈X
+
+Ncf (x) ≤ q. 
+
+(4) where Q(π; x) is terminal receiver quality for image x, Ncf (x)
+
+counts candidate-level exact QB (a | s) evaluations, Sπ (x)
+
+is the terminal transmitted set, and Cmax is the hard per-image cap. Here B(x) counts serialized communication bits, 
+
+Cmax bounds exact candidate workload for one image, and q
+
+controls average workload across an image set. The controller maintains Crem ,0 = Cmax and decrements it by the number of candidates evaluated after each expert call. Threshold cali-bration sets the average operating point, and each experiment reports its realized mean Ncf /image together with encoder runtime. Online evaluation uses one eligible refinement decision per image, at the initial state, where the available candidate budget equals Cmax . After this decision, both the direct and refined branches complete the packet with Local-MDL. For a fixed patch size p and image dimensions (H, W ),we define the token grid and the three scale-aware accounting quantities 
+
+Ntok (H, W ) = 
+
+ Hp
+
+  Wp
+
+
+
+,cMP = Ncf 
+
+HW/ 10 6 , ctok = Ncf 
+
+Ntok (H, W ) .
+
+(5) The absolute Ncf /image measures candidate workload; cMP 
+
+and ctok normalize this workload by image area and token count. Measured runtime captures the cost of each evaluation on a given token grid. IV. ACV-G ATE 
+
+A. Fixed full-budget evaluator and compact proposal 
+
+At training time, the full-budget evaluator labels the com-pact proposal formed by the union of Top-3 Local, Top-3 selected-set importance and Top-2 coverage candidates. Dupli-cates are removed and Local is retained. Each label is obtained by appending a candidate, completing the packet with Local-MDL, and measuring the reconstructed image’s PSNR. The Exact-Full QB reference evaluates the entire proposal with this same procedure [33]. It provides the candidate optimum for the fixed proposal and continuation. 4Transmitter Channel Receiver           
+
+> Source image x
+> Visual tokenizer
+> Discrete encoding
+> Tokens z1, …, zN
+> State & compact proposal
+> Current-state features
+> Local score Entropy Set context
+> Compact proposal (st)
+> Top-3 Local Top-3 set gain Top-2 coverage Deduplicate; retain aL
+> Ks= | (st)| ≤ 8
+> Set-aware student fϕ
+> Candidate features + rate / stage FiLM
+> Transformer × 2
+> Direct action
+
+̂
+
+at = arg max  
+
+> a
+
+la   
+
+> Allocation score
+> ut=̂ rt+ 0.5̂ gt
+> Candidate ranking + predicted decision cost Direct branch: zero exact evaluations
+
+Budgeted selective refinement 
+
+> Refine?
+
+ut ≥ τu
+
+kt ≥ 2                      
+
+> Yes
+> Candidate screen
+> aL̂at⋯
+> kt= min( Crem ,Ks)
+> Full-budget evaluator
+> Candidate + Local-MDL completion + receiver ̃
+> at= arg max
+> a∈kt
+> QB(a∣st)
+> Local-MDL continuation
+> (S) ≤ B
+> No: direct action  ̂ at
+> Token packet
+> Header Positions Token values CRC
+> FEC coding Wireless link
+> Bit-budgeted transmission
+> Received token grid
+> Received Unknown
+> Token completion
+> Masked prior pθ
+> Completed token sequence
+> Decoder Dθ
+> Reconstruction  ̂ x(S)
+> Offline learning & calibration
+> Training states Full-budget QB
+> Advantage + regret Student + allocation score learning Cost-based calibration
+> Initial-state selection; then Local-MDL completion Online data flow Offline learning: fϕ, calibrated τu
+> Packet bits: B|Exact candidate calls: Cmax
+
+Fig. 1. ACV-Gate architecture. (a) Offline full-budget rollouts provide candidate advantages and regrets for student and allocation-score learning. (b) At the initial communication state, the student ranks the compact proposal. The allocation score and remaining candidate budget select either the direct action or a screened exact evaluation. (c) The selected action is followed by Local-MDL continuation, packet transmission and receiver reconstruction. Dashed arrows indicate transfer of learned parameters and the calibrated threshold. 
+
+B. State and candidate representation 
+
+Each candidate representation combines the masked-prior hidden state, codebook vector, position, normalized remaining budget, Local score, entropy, packet feasibility and proposal source. Relative features describe its relationship to the pro-posal and selected tokens. These include standardized scores, rank offsets, codebook and hidden-state distances, coverage and redundancy. Source–rate interactions and normalized po-sition distances complete the set context. All input statistics are computed from the current communication state; terminal advantage and regret provide the training targets. 
+
+C. Set-aware student and learning objective 
+
+The candidate embeddings are processed jointly by a two-layer Transformer without positional embeddings. Hence per-muting the proposal rows permutes the output scores while preserving the set-level context. For a padded candidate group, the student produces logits la and two auxiliary cost estimates 
+
+(ˆ rt, ˆgt):
+
+({la}a∈P (st), ˆrt, ˆgt) = fϕ({ϕ(st, a )}a∈P (st), c t). (6) The direct action is ˆa = arg max a la. The auxiliary outputs estimate its regret and lost positive gain, giving the allocation score uACV 
+
+t = ˆ rt + 0 .5ˆ gt. We denote the controller’s state score by ut = u(st) and compare this learned score with student margin, Local uncertainty and random allocation under a common candidate budget. The condition ct contains a seven-way rate ID, normalized rate r/ max r, unselected-token fraction 1 − | St|/N , and initial/early/mid stage ID. A small feature-wise linear modulation (FiLM) network conditions each candidate embedding on these variables. 
+
+a) Regret and gain supervision.: Let qta ∝ exp[ −R(a |
+
+st)/T t] be the regret-soft teacher target with Tt = 0 .10 , and let pta = softmax( lta /T s) with Ts = 0 .35 . The hard-target weight is αt = σ[( gt − 0.20) /0.06] , where gt is the gap between the teacher’s two highest candidate values in dB. The complete training objective is 
+
+Lcls = αt CE( a∗, p ) + (1 − αt)Lsoft ,
+
+LH2 = Lcls + 0 .33 Lreg + 0 .40 Lpair ,
+
+LACV = LH2 + 0 .10 Lgain + 0 .05 Lsafe .
+
+(7) Expected regret penalizes the terminal quality lost by the student, while pairwise ranking gives larger penalties to costly action errors. With rta = [max b AB (b | st) − AB (a |
+
+st)] +, qta = exp( −rta /0.10) / P
+
+b exp( −rtb /0.10) , and pta =softmax( lta /0.35) ,
+
+Lsoft = − X
+
+a
+
+qta log pta ,
+
+Lreg = X
+
+a
+
+pta rta ,
+
+Lpair = mean t, a ∈P t\{ a∗ 
+
+> t
+
+} wta softplus( mta − (lta ∗ − lta )) ,wta = 0 .25 + 0 .75 min( rta /0.50 , 1) ,mta = 0 .05 + 0 .45 min( rta /0.50 , 1) .
+
+(8) 5
+
+Let ht = [max a AB (a | st)] +, uta = [ AB (a | st)] +/(ht +10 −6), and let Q+50 be the training median of positive head-rooms. The gain and safety terms are 
+
+Lgain = mean ht>0.05 [clip( ht/Q +50 , 0.5, 2.0) 
+
+× (1 − X
+
+> a
+
+pta uta )] ,
+
+Lsafe = mean t
+
+X
+
+> a
+
+pta 
+
+[−AB (a | st)] +
+
+0.50 .
+
+(9) The gain term rewards recovery of available positive head-room, and the safety term penalizes actions whose terminal quality falls below Local. Anchored adaptation combines these terms with H2 and a 0.35 KL penalty relative to the frozen H2 action distribution. All padded rows are masked before the softmax and loss reduction. The pair term is zero for a group with fewer than two active candidates, and the gain term is zero when no active state has ht > 0.05 . The training stages, optimizers, masking and parameter-freezing rules appear in Supplementary Table S13. Training uses a 10-epoch hard-CE/pair warm-up, 30 regret-decision epochs and a 10-epoch anchored adaptation phase that updates the conditional student blocks and score head. After the direct checkpoint is selected, the selector is frozen, and a 15-epoch allocation-score phase fits the nonnegative regret and lost-gain outputs. We denote this complete configuration by Full. 
+
+D. Budgeted selective expert allocation 
+
+The direct branch selects the highest-scoring candidate and completes the packet with Local-MDL. For selective refine-ment, ut ranks communication states and a screen bounds the candidates evaluated at each selected state. Rate-specific thresholds set the frequency of refinement. The learned ACV configuration uses uACV  
+
+> t
+
+; equal-budget experiments compare it with student margin, Local uncertainty and random allocation. Let Crem ,t denote the remaining candidate-level budget for the current image and let ˆat = arg max a la be the direct action. At a selected state, the remaining budget de-termines the screen size. We first form the priority list 
+
+Lt = [ aL(st), ˆat, Rank l(P(st) \ { aL(st), ˆat})] . The screened proposal contains the first kt unique entries of this list: 
+
+kt = min {Crem ,t , |P (st)|} ,
+
+Pkt (st) = FirstUnique kt (Lt). (10) Here FirstUnique k removes repeated positions in priority order and stops after k unique entries. The screen is filled even when Local and the direct action coincide. Refinement requires at least two available candidate slots. Define ˜a(k) 
+
+> t
+
+=arg max a∈P kt AB (a | st). After an expert evaluation, the budget state is updated by Crem ,t +1 = Crem ,t − |P kt (st)|.The online policy is therefore 
+
+πadapt (st) = 
+
+
+
+ˆat, ut < τ u,
+
+˜a(k) 
+
+> t
+
+, ut ≥ τu ∧ kt ≥ 2,
+
+ˆat, otherwise. (11) To relate these decisions to reconstruction quality, define the terminal values of the Local action, direct action, full proposal and screened proposal: 
+
+QL(st) = QB (aL(st) | st),QD(st) = QB (ˆ at | st),QE(st) = max  
+
+> a∈P (st)
+
+QB (a | st),Qk(st) = max   
+
+> a∈P kt(st)
+
+QB (a | st),H(st) = QE(st) − QL(st),RD(st) = QE(st) − QD(st),Vk(st) = Qk(st) − QD(st).
+
+(12) Here H is the expert’s headroom over Local, RD is the direct action’s regret, and Vk is the gain recoverable by the screen. For kt < 2, the direct branch gives Qk = QD and Vk = 0 . If 
+
+δt indicates that the expert branch is evaluated, the adaptive value decomposes as 
+
+QAdaptive (st) = QD(st) + δtVk(st),QAdaptive (st) − QL(st) = H(st) − RD(st) + δtVk(st).
+
+(13) Each called screen retains Local and the direct action under the evaluator’s deterministic continuation. It therefore satisfies 
+
+Qk(st) ≥ max {QD(st), Q L(st)} and Vk(st) ≥ 0. Equa-tion (13) separates the student’s recovered gain, H(st) −
+
+RD(st), from the additional recoverable value δtVk(st) sup-plied by exact screening. Each screened evaluation adds |P kt | to Ncf , so the invariant 
+
+Ncf (x) ≤ Cmax holds by construction. When the cap is large enough, the endpoint evaluates the full compact proposal. The fixed-screen experiments use kt = 4 for every eligible call. 
+
+E. Training and threshold calibration 
+
+Training uses image-grouped fitting and monitor splits. The monitor selects the direct checkpoint, which is then fixed during allocation-head fitting. For the common-screen comparison, all four student families use student margin for state allocation. Cost-based calibration chooses a threshold using realized candidate expenditure on M monitor images. Let T =
+
+{+∞} ∪ { ui : i ∈ D cal }, where Dcal is the monitor image set. Then 
+
+bcal (τ ) = 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+ki1{ui ≥ τ, k i ≥ 2},τ ∗(b0) ∈ arg max     
+
+> τ∈T :bcal (τ)≤b0
+
+bcal (τ ),
+
+(14) where ki is the realized screen size. Ties are resolved by choosing the largest threshold. The +∞ threshold provides a zero-call option, and the selected point maximizes realized expenditure within b0. Applying the fixed threshold to valida-tion yields the transferred average workload qtest , while the per-image cap remains enforced during execution. 6
+
+V. E XPERIMENTAL PROTOCOL 
+
+A. Datasets and comparison protocol 
+
+The main CIFAR-10 study uses the frozen discrete tok-enizer, masked-prior receiver, codebook, compact proposal, packet syntax and reconstruction code from GCR-C. It con-tains 200 development and 200 image-disjoint validation im-ages, seven rates {0.16 , 0.20 , 0.28 , 0.32 , 0.40 , 0.44 , 0.52 } and 
+
+2 × 200 × 7 × 2 = 5 , 600 state groups across data roles, images, rates and initial/early states. Development groups are used for parameter fitting, checkpoint selection, allocation-head fitting and threshold calibration. Validation groups pro-vide the reported performance evaluation. The primary end-to-end policies use three independently initialized selector seeds ( 20260817 , 20260818 , and 20260819 ) on the same 200 validation images. The independent threshold-selection evaluation uses 100 Calibration and 400 disjoint Test images; measured-cost transfer uses a 40-image development monitor and the 200-image validation split. The STL-10 and high-resolution evaluations are described below. The supplement specifies image assignments, training settings and the matched component comparisons. Within each image system, all methods share the tokenizer, packet syntax, CRC/FEC accounting, receiver and Local-MDL continuation. The primary end-to-end comparison eval-uates the full proposal when the adaptive branch is selected (kt = Ks, Cmax = 8 ). The common-screen and allocation comparisons use Cmax = 4 , retaining Local and the direct action before adding student-ranked alternatives. A common screening rule therefore gives each student its own four-candidate set. In the quota comparisons, the top ⌊M q/ 4⌋ states receive a call; measured-cost transfer instead applies a fixed calibration threshold. Larger student margins receive higher priority in the margin control. The unified timing experiment measures Local, Exact-Full, Local-ranked-4 and Full/A1 direct and adaptive paths in one warmed CUDA process. A second experiment repeats the Local and expert branches five times. Supplementary Ta-ble S14 defines their measurement boundaries and aggregation; Table S15 summarizes the data roles. Image identity is the splitting and bootstrap unit. The scale-transfer study uses a frozen LlamaGen VQ-16 tokenizer and decoder at 384 ×384, a 24 ×24 token grid and a locally trained masked prior. For the expert comparison, deterministic DIV2K crops train the prior, and eight DIV2K validation crops calibrate the packet budgets. All 24 Kodak center crops are evaluated at two operating points. Local-MDL and Exact-Full share an initial-state proposal of Top-3 Local and Top-5 coverage candidates. Each token uses 14 code bits; the packet has a 32-bit header, one adaptive-min position description, a 16-bit CRC and a 1.25 × FEC factor. The calibrated budgets are 2,101 and 3,804 bits for target fractions 0.15 and 0.30, respectively. The receiver completes the token sequence using the frozen masked prior and Llama-Gen decoder under error-free packet delivery. Supplementary Table S12 reports a separately trained 256-source student on Internal32 and Tecnick40, with training and allocation settings in the accompanying text. 
+
+B. Metrics 
+
+We report peak signal-to-noise ratio (PSNR), structural similarity (SSIM), actual bits per pixel (bpp), mean teacher regret, retained positive gain, catastrophic regret (regret >
+
+0.5 dB), candidate-level exact evaluations Ncf /image, Ncf /MP, 
+
+Ncf /token, expert invocations/image, internal Nprior and Nroll 
+
+counters, and synchronized CUDA runtime. Gain recovery and candidate-level query fraction are defined relative to the fixed Exact-Full QB reference as 
+
+GR( m) = Qm − QLocal 
+
+QExact − QLocal 
+
+, QF( m) = Ncf (m)
+
+Ncf (Exact) .
+
+(15) An expert invocation sends one communication state to the exact branch and can incur several candidate evaluations. En-coder runtime is measured with synchronized CUDA bound-aries and complements the candidate count Ncf . Across-seed results are reported as means ±standard deviations. Paired image-bootstrap intervals resample image IDs while retaining all associated states and rates. The primary quality results use three selector seeds; the unified runtime comparison uses a fixed seed and paired image-bootstrap intervals. VI. R ESULTS 
+
+We first examine how the terminal objective changes can-didate ranking and end-to-end reconstruction quality. We then evaluate candidate screening, budget allocation, measured run-time and transfer across image systems. 
+
+A. Terminal horizon changes candidate ranking 
+
+We use the same compact proposal, state and receiver to compare an immediate one-step target Qimm with the full-budget terminal target QB . The immediate branch stops after adding the candidate, whereas the terminal branch completes the remaining packet with Local-MDL. We report the terminal quality of the immediate choice, terminal regret and action agreement. At 0.20 bpp, immediate-value selection achieves a terminal gain of +0 .198 dB over Local, compared with +1 .353 dB for terminal-value selection. The immediate choice incurs 1.155 dB terminal regret and agrees with the terminal choice on 23.0% of images. Accounting for the remaining trans-mission therefore changes both the preferred action and its reconstruction benefit. 
+
+B. End-to-end reconstruction quality 
+
+Table I evaluates Local, Direct, Adaptive and Exact-Full QB
+
+under the same packet and receiver settings. Three indepen-dently selected Full checkpoints are evaluated on the same 200 validation images; Local and Exact-Full are fixed references. At 0.20 bpp, Direct gains 0.313 ± 0.088 dB with zero exact candidate evaluations. In the primary full-proposal adaptive configuration, the gain reaches 0.636 ± 0.119 dB with 2.13 ±
+
+0.53 candidate evaluations per image, recovering 46.99% of the Exact-Full expert gain with 27.60% of its candidate calls. The synchronized runtime comparison in Fig. 7 evaluates 70.20 0.32 0.44 Rate (bpp) 0.0 0.5 1.0 1.5 Gain vs. Local (dB)     
+
+> Immediate versus terminal target
+> Immediate Q1Terminal QB
+> Fig. 2. Effect of evaluation horizon on candidate selection. Immediate and full-budget selection use the same proposal, state and receiver. Both selected actions are evaluated using the full-budget terminal objective.
+
+Direct and the four-candidate Adaptive-4 configuration with fixed Full and A1 checkpoints. Reconstruction gains decrease as the packet budget in-creases. At 0.32 and 0.44 bpp, Adaptive recovers 18.22% and 12.18% of the expert gain using 16.05% and 8.14% of its calls. The expert’s available gain itself falls from 1.353 dB at 0.20 bpp to 0.060 dB at 0.44 bpp. The paired image intervals for the adaptive gain are positive at 0.20 bpp and cross zero at 0.32 and 0.44 bpp. Low-rate communication therefore offers the clearest benefit from allocating terminal reasoning, while higher rates provide less reconstruction headroom. Selective refinement also reduces the frequency of recon-struction losses relative to Local. The fraction of validation images with ∆PSNR below −0.1 dB is 31.5% for Direct and 23.0% for Adaptive at 0.20 bpp; the corresponding fractions are 19.0%/18.0% at 0.32 bpp and 4.0%/3.5% at 0.44 bpp. The largest reduction occurs at 0.20 bpp, consistent with the larger mean benefit of refinement at low rate. 
+
+C. Common-screen terminal-value comparison 
+
+Four student families use the same four-candidate screening rule and student-margin allocation. Their candidate rankings determine the direct action and the alternatives in the screen. We evaluate these choices with cached terminal QB values. Each point averages 200 validation images and three selector seeds. At 0.20 bpp, Full, A1 Set-context, Row-valueMSE and DeepSets-regret-soft achieve direct gains of 0.313, 0.430, 0.402 and 0.414 dB, respectively. These direct decisions require zero exact candidate evaluations. At a target of one candidate evaluation per image, the gains rise to 0.545, 0.595, 0.593 and 0.603 dB. At the four-call endpoint, they reach 1.119, 1.142, 1.077 and 1.166 dB. At 0.32 bpp, the one-call gains are 0.093, 0.128, 0.124 and 0.032 dB; at 0.44 bpp, all methods remain within 0.006 dB of Local at this budget. The four-call endpoint isolates candidate screening be-cause every image receives the same evaluation budget. At 0.20 bpp, learned screens achieve 1.077–1.166 dB across the four students, compared with 0.271 dB for Local-ranked-4. Ranking candidates by learned terminal value thus retains substantially more reconstruction gain within the same four exact evaluations. Figure 4 compares Full and DeepSets-regret-soft on paired images. DeepSets-regret-soft reaches 0.874 dB at two calls per image and 0.20 bpp, with the relative ranking changing across rates. The subsequent allocation experiments use Full, which combines the set-aware student and learned allocation head. 
+
+D. Measured candidate expenditure and threshold transfer 
+
+We calibrate a threshold for a target of one candidate evaluation per image using 40 development images per rate, reserving every fifth development image. Each selected state contributes its realized screen size to the calibration cost. We then apply the fixed threshold to the 200 validation images. For Full, the realized workloads are 0.71, 0.60 and 0.99 evaluations per image at 0.20, 0.32 and 0.44 bpp, respectively. The corresponding paired gains are 0.482, 0.072 and 0.014 dB. The low-rate interval excludes zero, and every validation image satisfies the four-call cap. 
+
+E. Fixed-screen allocation-score controls 
+
+To isolate state allocation, we fix the Full direct student and its four-candidate screen, then vary the score used before exact evaluation. We compare random, student-margin, Local-uncertainty and ACV-risk allocation with an oracle that ranks states by the realized screen value V4. The oracle uses the same four candidates and measures the available state-ranking headroom. At 0.20 bpp and one candidate call per image, Random, Student margin, Local uncertainty, and ACV risk achieve 0.526, 0.544, 0.491, and 0.528 dB, respectively, while the same-screen V4 oracle reaches 1.048 dB. These matched-budget results place the practical allocation scores in a sim-ilar operating range and identify state ranking as the main remaining source of allocation headroom. At 0.32 bpp the corresponding practical scores give 0.111, 0.093, 0.074 and 0.118 dB, while the oracle gives 0.437 dB. At 0.44 bpp all practical scores remain at or below 0.015 dB at this budget, reflecting the small terminal headroom. At the low-rate one-call budget, random allocation adds 0.213 dB to the 0.313 dB direct gain, and learned-risk allocation adds a further 0.002 dB. Thus, screened refinement accounts for most of the observed gain at this operating point, while the oracle gap quantifies the potential of improved state ranking. The complete allocation curves are shown in Fig. 6; the reported one-call values use the same validation images and seed aggregation as the common-screen replay. 
+
+F. Measured runtime–quality trade-off 
+
+We measure Local-MDL, Exact-Full QB , student-free Local-ranked-4, Full Direct, Full Adaptive-4, A1 Direct and A1 Adaptive-4 in one warmed CUDA process. The same 200 validation images and three operating rates are used through-out; the frozen Full and A1 checkpoints are the development-selected seed-20260817 instances. The student paths use one timed execution per image/rate. A separate branch-timing experiment uses five repeated measurements and the per-image median. All paths use batch size one and synchronized boundaries. CPU tokenization is measured once per image and 8
+
+TABLE I END -TO -END QUALITY AND CANDIDATE WORKLOAD UNDER IDENTICAL PACKET AND RECEIVER SETTINGS . D IRECT AND ADAPTIVE ACV-G ATE ENTRIES ARE MEANS ± STANDARD DEVIATIONS OVER THREE SELECTOR SEEDS ON THE SAME 200 IMAGE -DISJOINT VALIDATION IMAGES ; L OCAL AND 
+
+EXACT -F ULL QB ARE FIXED 200-IMAGE PROTOCOL REFERENCES . A DAPTIVE USES THE FULL PROPOSAL ON CALLED IMAGES (Cmax = 8 ). Ncf 
+
+> COUNTS CANDIDATE
+
+-LEVEL EXACT CALLS . G AIN RECOVERY (GR) AND EXACT -QUERY FRACTION (QF) USE THE CORRESPONDING FIXED EXACT -F ULL 
+
+QB ROW AS DENOMINATOR . A CTUAL BPP IS 0.1986, 0.3156 AND 0.4375 AT THE THREE RATES .
+
+Rate Method ∆Local (dB) Ncf /img. GR (%) QF (%) 0.20 Local 0.000 0.00 0.00 0.00 Direct ACV-Gate +0.313 ±0.088 0.00 23.15 0.00 Adaptive ACV-Gate +0.636 ±0.119 2.13 ±0.53 46.99 27.60 Exact-Full QB expert +1.353 7.71 100.00 100.00 0.32 Local 0.000 0.00 0.00 0.00 Direct ACV-Gate +0.020 ±0.061 0.00 3.75 0.00 Adaptive ACV-Gate +0.095 ±0.071 1.24 ±0.25 18.22 16.05 Exact-Full QB expert +0.521 7.71 100.00 100.00 0.44 Local 0.000 0.00 0.00 0.00 Direct ACV-Gate −0.000 ±0.010 0.00 −0.13 0.00 Adaptive ACV-Gate +0.007 ±0.012 0.63 ±0.16 12.18 8.14 Exact-Full QB expert +0.060 7.71 100.00 100.00 0 1 2 3 4Target candidate calls / image 0.0 0.5 1.0 ΔPSNR vs. Local (dB)  0.20 bpp 
+
+0 1 2 3 4Target candidate calls / image 
+
+0.32 bpp 
+
+0 1 2 3 4Target candidate calls / image 
+
+0.44 bpp 
+
+A1 Set-context DeepSets-regret-soft Full ACV Row-valueMSE 
+
+Fig. 3. Common-screen reconstruction gain versus candidate workload. The four student families share a four-candidate screening rule and student-margin allocation. Values are mean ∆PSNR relative to Local over three seeds; bars show seed standard deviations. Terminal outcomes are evaluated from cached 
+
+QB values. 
+
+added to each path; the student paths share one measured Local/proposal prefix, whose duration is included in every student row. Supplementary Table S14 specifies the timing protocols. Figure 7 reports the resulting matched measurements. The upper panels plot paired PSNR gain against synchronized total runtime; the lower panels plot the same gain against realized 
+
+Ncf /image. The dashed curves mix Local with Exact-Full (B1) or Local-ranked-4 (B2) using measured branch times and five fixed routing seeds. Each operating point therefore specifies both the reconstruction gain and its measured computational cost. The timing outputs also record the 95th-percentile per-image runtime. In the unified run at 0.20 bpp, Full Direct achieves 
+
++0 .386 dB at 337.0 ms with zero exact candidate evalu-ations. Full Adaptive-4 achieves +0 .459 dB at 365.1 ms with 0.66 evaluations per image. The corresponding A1 gains are +0 .433 dB at 322.0 ms and +0 .638 dB at 406.4 ms; A1 Adaptive-4 uses 1.32 evaluations per image. At 0.32 bpp, Full Direct/Adaptive-4 gains are +0 .080 /+0 .130 dB at 464.9/577.5 ms with 0/0.82 calls. A1 Direct/Adaptive-4 gains are +0 .087 /+0 .180 dB at 452.5/585.9 ms with 0/0.94 calls. At 0.44 bpp, all student gains are below +0 .013 dB while the Exact-Full reference remains +0 .060 dB. The repeated branch-timing experiment gives Local run-9−2 0 2Full direct gain (dB) −2 02DeepSets direct gain (dB) 
+
+> mean 0.414 vs 0.313
+
+0.20 bpp 
+
+−2 0 2Full direct gain (dB) 
+
+> mean -0.043 vs 0.020
+
+0.32 bpp 
+
+−2 0 2Full direct gain (dB) 
+
+> mean -0.010 vs -0.000
+
+0.44 bpp       
+
+> Fig. 4. Paired direct gains for Full and DeepSets-regret-soft on the same validation images. The diagonal denotes equal gain, and the zero axes mark the Local baseline. Annotations report the mean gains. 0.20 0.32 0.44 0.0 0.2 0.4 0.6 0.8 1.0 Candidate calls / image
+> Measured-cost transfer
+> Target Calibration Validation
+> 0.20 0.32 0.44 0.0 0.2 0.4 0.6 0.8 ΔPSNR on validation (dB)  Frozen threshold outcome
+> Fig. 5. Actual-cost threshold transfer for Full ACV-Gate. Thresholds are calibrated on a reserved development monitor at a one-call target and frozen before validation. Error bars are paired image-bootstrap intervals.
+
+times of 123.5, 264.0 and 387.2 ms at 0.20, 0.32 and 0.44 bpp, respectively. Exact-Full gives +1 .353 / + 0 .521 / +0.060 dB and 830.3/1587.2/2194.3 ms, while Local-ranked-4 gives +0 .271 /+0 .061 /+0 .006 dB and 416.1/900.8/1319.2 ms with four calls per image. At a routing probability of p = 0 .5
+
+and 0.20 bpp, B1 obtains +0 .680 dB at 482.8 ms with 3.94 calls per image, and B2 obtains +0 .138 dB at 273.8 ms with 2.05 calls. These operating points quantify the extra computation required to improve on Local reconstruction. 
+
+G. Comparison with adapted token-selection methods 
+
+We adapt the diversity, visual-cue and saliency–coverage rules of DivPrune, VisPruner and SCOPE from large vision– language models to packetized reconstruction. Each adapter selects from the ACV proposal using current-state features, then completes the packet with Local-MDL. All methods use the same 200 validation images, tokenizer, receiver and packet accounting. Random-proposal provides a proposal-level control, and the Exact-Full QB expert provides the terminal-value reference. Figure 8 compares the reconstruction gains at each candi-date workload. At 0.20 bpp, VisPruner-adapted improves over Local by 0.128 dB, while DivPrune-adapted, SCOPE-adapted and Random-proposal change PSNR by +0.015, −0.062 and +0.061 dB, respectively. At 0.32 bpp, all three structured adapters are at or below Local and DivPrune-adapted is 
+
+−0.148 dB. At 0.44 bpp, all adapters using zero exact can-didate evaluations are within 0.006 dB of Local, consistent with the small terminal headroom. The Exact-Full QB expert gains 1.353, 0.521 and 0.060 dB at the three rates with 7.705 candidate evaluations per image on average. At 0.20 bpp, ACV-Gate Direct achieves +0.313 ±0.088 dB with zero exact candidate evaluations, exceeding the gains of the three adapted rules. Adaptive reaches +0.636 ±0.119 dB with 2.13 ± 0.53 
+
+calls. Terminal supervision thus improves the low-rate direct decision, while selective evaluation recovers additional quality at an intermediate candidate cost. 
+
+H. Evaluation on STL-10 
+
+We train the selector and allocation mechanism for aseparate 96 ×96 STL-10 tokenizer/receiver and evaluate them on 200 official test images. Another 200 images form the development set, which is divided into fitting and monitoring subsets. All three selector seeds are included in the end-to-end evaluation. The budget is B = round( r × 1024) , where r is the normalized budget parameter shown on the horizontal axis. Actual bpp equals the serialized packet length divided by 96 2.Figure 9 reports paired gains relative to the STL-10 Local baseline. Full Adaptive gains +0 .442 ± 0.041 , +0 .140 ± 0.046 
+
+and +0 .110 ± 0.020 dB at r = 0.20 , 0.32 and 0.44 , re-spectively. The paired image intervals exclude zero at all three operating points. Exact-Full achieves larger gains with 7.78 candidate evaluations per image. This separately trained system reproduces the gain from selective computation and its dependence on the transmission budget. 
+
+I. High-resolution terminal-value learning and selective com-putation 
+
+The Kodak-24 evaluation measures the reconstruction ben-efit and cost of terminal evaluation on a 24 ×24 token grid at 384 ×384. The initial-state Exact-Full expert improves PSNR over Local by 1.033 dB at 0.0142 bpp and 0.847 dB at approximately 0.0257 bpp, using eight candidate calls per image. Its measured selection runtime is 8.9 and 8.4 times that of Local, respectively (Supplementary Fig. S3). At this resolution, a separately trained 256-source student achieves low-rate adaptive gains of 0.553 dB on Internal32 and 0.520 dB on Tecnick40. The corresponding workloads are 10 0 1 2 3 4Target calls / image 0.0 0.5 1.0 ΔPSNR vs. Local (dB)  0.20 bpp 
+
+0 1 2 3 4Target calls / image 
+
+0.32 bpp 
+
+0 1 2 3 4Target calls / image 
+
+0.44 bpp      
+
+> ACV risk Local uncertainty Oracle V4Random Student margin
+
+Fig. 6. Fixed-screen allocation-score controls. The four practical scores share the same Full direct student, four-candidate screen and target budgets; the post-hoc oracle ranks by the realized V4 screen value and gives the allocation upper bound. Error bars denote seed standard deviations. 
+
+0.90 and 0.98 candidate evaluations per image (Supplementary Table S12). Both low-rate adaptive image-bootstrap intervals exclude zero; higher-rate gains decrease and vary by dataset. Internal32 tests generalization to sources held out from student training, and Tecnick40 provides an external source distribu-tion. The supplement reports the five-seed results, allocation settings and source assignments for prior and student training. VII. D ISCUSSION 
+
+Terminal reconstruction value links token selection to en-coder computation. The student ranks candidates with zero exact evaluations, and selective refinement evaluates a com-pact set of alternatives. Equation (13) separates the student’s recovered gain from the additional value obtained through screening. The return on computation depends on the transmission budget. At low rates, the receiver generates more content, so a selected token can substantially affect completion. Larger budgets leave less Exact-Full headroom over Local, reducing the benefit of additional evaluation. The separately trained STL-10 and 384 ×384 systems likewise concentrate their gains at low rates. Compact students retain useful terminal rankings: A1 Set-context and DeepSets-regret-soft match or exceed Full at sev-eral common-screen operating points. State allocation provides further headroom. At 0.20 bpp and one candidate evaluation per image, practical scores achieve 0.491–0.544 dB, compared with 1.048 dB for the same-screen oracle. This gap identifies the potential of learning when exact refinement is most valu-able. Deployment requires both workload and runtime mea-surements. The cap bounds exact evaluations; runtime also includes feature extraction, student inference, continuation and reconstruction. Their joint frontiers guide the choice of computational budget. Extensions include budget reservation across transmission states, perceptual terminal objectives and channel-conditioned value estimates. VIII. C ONCLUSION 
+
+ACV-Gate combines terminal-value learning, bounded screening and budgeted state allocation for visual token communication. On CIFAR-10 at 0.20 bpp, Direct improves PSNR over Local-MDL by 0.313 ± 0.088 dB with zero exact candidate evaluations. The primary full-proposal Adaptive configuration achieves 0.636 ± 0.119 dB using 2.13 ± 0.53 
+
+evaluations per image, or 27.60% of the Exact-Full workload. Matched four-candidate experiments identify terminal ranking and screening as the main sources of gain; allocation controls quantify further headroom in state ranking. Separately trained STL-10 and 384 × 384 systems also achieve their largest gains at low rates. Measured runtime and candidate workload provide explicit operating points for allocating encoder com-putation under a fixed packet budget. DATA AND CODE AVAILABILITY 
+
+The experiments use CIFAR-10, STL-10, DIV2K, Kodak and Tecnick images. The accompanying source repository con-tains the selector, packet accounting, training and evaluation scripts, with instructions for supplying datasets and model artifacts. REFERENCES                  
+
+> [1] J. Ballé, V. Laparra, and E. P. Simoncelli, “End-to-end optimized image compres-sion,” in Proc. ICLR , 2017. [2] J. Ballé, D. Minnen, S. Singh, S. J. Hwang, and N. Johnston, “Variational image compression with a scale hyperprior,” in Proc. ICLR , 2018. [3] D. Minnen, J. Ballé, and G. D. Toderici, “Joint autoregressive and hierarchical priors for learned image compression,” in Proc. NeurIPS , vol. 31, 2018. [4] A. van den Oord, O. Vinyals, and A. Kavukcuoglu, “Neural discrete representation learning,” in Proc. NeurIPS , vol. 30, 2017. [5] P. Esser, R. Rombach, and O. Ommer, “Taming transformers for high-resolution image synthesis,” in Proc. CVPR , 2021, pp. 12873–12883. [6] H. Chang, H. Zhang, L. Jiang, C. Liu, and W. T. Freeman, “MaskGIT: Masked generative image transformer,” in Proc. CVPR , 2022, pp. 11315–11325. [7] E. Bourtsoulatze, D. B. Kurka, and D. Gunduz, “Deep joint source-channel coding for wireless image transmission,” IEEE Trans. Cogn. Commun. Netw. , vol. 5, no. 3, pp. 567–579, 2019. [8] H. Xie, Z. Qin, G. Y. Li, and B.-H. Juang, “Deep learning enabled semantic communication systems,” IEEE Trans. Signal Process. , vol. 69, pp. 2663–2675, 2021. [9] T. Han, J. Tang, Q. Yang, Y. Duan, Z. Zhang, and Z. Shi, “Generative model based highly efficient semantic communication approach for image transmission,” arXiv:2211.10287, 2022.
+
+11 200 400 600 800 Synchronized total time (ms) 0.0 0.5 1.0 1.5 ΔPSNR vs. Local (dB) 
+
+> 0.0 7.7 0.7 1.3
+
+0.20 bpp 
+
+500 1000 1500 Synchronized total time (ms) 
+
+> 0.0 7.7 0.8 0.9
+
+0.32 bpp 
+
+500 1000 1500 2000 Synchronized total time (ms)  
+
+> 0.0 7.7 0.6 1.1
+
+0.44 bpp 
+
+0 2 4 6 8Actual Ncf /image 0.0 0.5 1.0 1.5 ΔPSNR vs. Local (dB) 
+
+> 116 ms 761 ms 365 ms 406 ms
+
+0.20 bpp 
+
+0 2 4 6 8Actual Ncf /image 
+
+> 237 ms 1479 ms 577 ms 586 ms
+
+0.32 bpp 
+
+0 2 4 6 8Actual Ncf /image  
+
+> 361 ms 2013 ms 701 ms 808 ms
+
+0.44 bpp 
+
+> Numbers beside branch points: calls/image in the time panels and time/image in the workload panels; dashed curves are measured route mixtures.
+
+Local Exact-Full Local-ranked-4 Full Direct Full Adaptive-4 A1 Direct A1 Adaptive-4 B1 Local/Exact-Full B2 Local/ranked-4 
+
+Fig. 7. Measured runtime–quality and workload–quality frontiers. Upper panels use synchronized total time; lower panels use realized candidate calls per image. Error bars are paired image-bootstrap intervals. Solid markers are measured branches; dashed curves are B1 Local/Exact-Full and B2 Local/Local-ranked-4 route mixtures over the fixed route seeds. Full and A1 student paths use their frozen seed-20260817 instances; the repeated five-pass branch measurements are given in Supplementary Table S4. 
+
+[10] G. Zhang, H. Li, Y. Cai, Q. Hu, G. Yu, and Z. Qin, “Progressive learned image transmission for semantic communication using hierarchical VAE,” IEEE Trans. Cogn. Commun. Netw. , vol. 11, no. 6, pp. 3640–3654, 2025, doi: 10.1109/TCCN.2025.3546935. [11] Y. Li, X. Chen, X. Deng, and J. Gui, “Content adaptive distributed joint source-channel coding for image transmission with hyperprior,” IEEE Trans. Cogn. Com-mun. Netw. , vol. 11, no. 1, pp. 105–117, 2025, doi: 10.1109/TCCN.2024.3438371. [12] F. Pezone, S. Barbarossa, and G. Caire, “SQ-GAN: Semantic image communica-tions using masked vector quantization,” IEEE Trans. Cogn. Commun. Netw. , early access, 2025, doi: 10.1109/TCCN.2025.3620819. [13] S. Tong, X. Yu, R. Li, K. Lu, Z. Zhao, and H. Zhang, “Alternate learning-based SNR-adaptive sparse semantic visual transmission,” IEEE Trans. Wireless Com-mun. , vol. 24, no. 2, pp. 1737–1752, Feb. 2025, doi: 10.1109/TWC.2024.3512652. [14] Y. Rao, W. Zhao, B. Liu, J. Lu, J. Zhou, and C.-J. Hsieh, “DynamicViT: Efficient vision transformers with dynamic token sparsification,” in Proc. NeurIPS , vol. 34, 2021. [15] Y. Liang, C. Ge, Z. Tong, Z. Song, J. Wang, and P. Xie, “Not all patches are what you need: Expediting vision transformers via token reorganizations,” in Proc. ICLR , 2022. [16] M. S. Ryoo, A. Piergiovanni, A. Arnab, M. Dehghani, and A. Angelova, “Token-Learner: What can 8 learned tokens do for images and videos?” in Proc. NeurIPS ,vol. 34, 2021. [17] H. Yin, A. Vahdat, J. M. Alvarez, A. Mallya, A. Kautz, and P. Molchanov, “A-ViT: Adaptive tokens for efficient vision transformer,” in Proc. CVPR , 2022, pp. 10809– 10818. [18] D. Bolya, C.-Y. Fu, X. Dai, P. Zhang, C. Feichtenhofer, and J. Hoffman, “Token merging: Your ViT but faster,” in Proc. ICLR , 2023. [19] Y. Geifman and R. El-Yaniv, “Selective classification for deep neural networks,” in Proc. NeurIPS , vol. 30, 2017. [20] B. Lakshminarayanan, A. Pritzel, and C. Blundell, “Simple and scalable predictive uncertainty estimation using deep ensembles,” in Proc. NeurIPS , vol. 30, 2017. [21] A. N. Angelopoulos, S. Bates, A. Fisch, L. Lei, and T. Schuster, “Conformal risk control,” arXiv:2208.02814, 2022. [22] H. Mozannar and H. Sontag, “Consistent estimators for learning to defer to an expert,” in Proc. ICML , 2020, pp. 7076–7087. [23] P. Hemmer, L. Thede, M. Vössing, J. Jakubik, and N. Kühl, “Learning to defer with limited expert predictions,” arXiv:2304.07306, 2023. [24] S. R. Alvar, G. Singh, M. Akbari, and Y. Zhang, “DivPrune: Diversity-based visual token pruning for large multimodal models,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR) , 2025, pp. 9392–9401. [25] Q. Zhang, A. Cheng, M. Lu, R. Zhang, Z. Zhuo, J. Cao, S. Guo, Q. She, and S. Zhang, “Beyond text-visual attention: Exploiting visual cues for effective token pruning in VLMs,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. (ICCV) , 2025, pp. 20857–20867. [26] J. Deng, W. Li, J. T. Zhou, and Y. He, “SCOPE: Saliency-coverage oriented token pruning for efficient multimodel LLMs,” in Advances in Neural Information Processing Systems , vol. 38, 2025. [27] Y. Zhang, C.-K. Fan, J. Ma, W. Zheng, T. Huang, K. Cheng, D. A. Gudovskiy, T. Okuno, Y. Nakata, K. Keutzer, and S. Zhang, “SparseVLM: Visual token sparsification for efficient vision-language model inference,” in Proc. Int. Conf. Mach. Learn. (ICML) , vol. 267, 2025, pp. 74840–74857. [28] Y. Shang, M. Cai, B. Xu, Y. J. Lee, and Y. Yan, “LLaVA-PruMerge: Adaptive token reduction for efficient large multimodal models,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. (ICCV) , 2025, pp. 22857–22867. [29] W. Ye, Q. Wu, W. Lin, and Y. Zhou, “Fit and Prune: Fast and training-free visual token pruning for multi-modal large language models,” in Proc. AAAI Conf. Artif. Intell. , vol. 39, no. 21, 2025, pp. 22128–22136. [30] Y. Jiang, Q. Wu, W. Lin, W. Yu, and Y. Zhou, “What kind of visual tokens do we need? Training-free visual token pruning for multi-modal large language models from the perspective of graph,” in Proc. AAAI Conf. Artif. Intell. , vol. 39, no. 4, 2025, pp. 4075–4083. [31] M. Marchetti, D. Traini, D. Ursino, and L. Virgili, “Efficient token pruning in 12 0.0 0.5 1.0 1.5 
+
+ΔPSNR vs. Local (dB) 
+
+Local-MDL Random-proposal DivPrune-adapted VisPruner-adapted SCOPE-adapted Direct ACV-Gate Adaptive ACV-Gate Exact-Full QB
+
+> 0.00 0.00 0.00 0.00 0.00 0.00 2.13 7.71
+
+Ncf 
+
+0.20 bpp 
+
+0.0 0.5 1.0 1.5 
+
+ΔPSNR vs. Local (dB) 
+
+> 0.00 0.00 0.00 0.00 0.00 0.00 1.24 7.71
+
+Ncf 
+
+0.32 bpp 
+
+0.0 0.5 1.0 1.5 
+
+ΔPSNR vs. Local (dB) 
+
+> 0.00 0.00 0.00 0.00 0.00 0.00 0.63 7.71
+
+Ncf 
+
+0.44 bpp 
+
+Fig. 8. Reconstruction gain of adapted token-selection methods and ACV-Gate under the same packet and receiver. Direct and Adaptive are three-seed Full means, with error bars denoting seed standard deviations. The Ncf column in each panel reports mean candidate calls per image. 0.20 0.32 0.44 Normalized budget rate 0.0 0.2 0.4 0.6 0.8 1.0 STL-10  PSNR vs. Local (dB)  7.78 calls 7.78 calls 7.78 calls   
+
+> Adaptive 2.04 calls Adaptive 1.13 calls Adaptive 0.69 calls
+> Exact-Full QB
+> Adaptive
+
+Fig. 9. Full adaptive ACV-Gate and the fixed Exact-Full QB reference on the independent STL-10 evaluation. Adaptive points are three-seed means with seed standard deviations; the dashed Exact-Full curve is annotated with its 7.78 candidate-level calls per image. The reported paired image intervals for the adaptive branch are positive at all three rates. 
+
+vision transformers using an attention-based multilayer network,” Expert Syst. Appl. , vol. 279, Art. no. 127449, 2025, doi: 10.1016/j.eswa.2025.127449. [32] Y. Wang, J. Wu, Z. Ni, L. Yang, Y. Liu, C. Yang, Y. Wen, L. He, X. Tang, H. Liu, and Y. Zhou, “When token pruning is worse than random: Understanding visual token information in VLLMs,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR) , 2026, pp. 31910–31919. [33] J. Guo et al. , “Baseline-relative counterfactual refinement for bit-aware visual token communication,” arXiv:2608.16192, 2026, doi: 10.48550/arXiv.2608.16192.
