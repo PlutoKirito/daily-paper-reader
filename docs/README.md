@@ -41,7 +41,7 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-01</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 3 篇</strong>
@@ -51,7 +51,7 @@
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-30 22:49:53 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-01 23:53:43 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共生成 3 篇推荐（精读 0 篇，速读 3 篇）</p>
-<p>速读：《LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs》（6.0/10）, 《VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA》（6.0/10）, 《Perturb-and-Solve: Efficient Learned-Operator Conditioning for Latent Diffusion Inverse Problems》（6.0/10）</p>
-<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
+<p>2026-10-01 日报速览 3 篇，精读为 0，全部为速读推荐。</p>
+<p>三篇均获 6.0 分，其中 LC3EM 面向坐标式过拟合图像编解码的长程上下文外推、PulseQuant 面向 4-bit 视频扩散 Transformer 的传播引导子空间校正，更值得优先了解。</p>
+<p>普通读者可先从图像压缩与视频扩散量化这两条线切入，再决定是否深入原文。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -89,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs">LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs</span></li><li><span class="dpr-home-dashboard-paper-title" title="VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA">VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA</span></li><li><span class="dpr-home-dashboard-paper-title" title="Perturb-and-Solve: Efficient Learned-Operator Conditioning for Latent Diffusion Inverse Problems">Perturb-and-Solve: Efficient Learned-Operator Conditioning for Latent Diffusion Inverse Problems</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs">LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs</span></li><li><span class="dpr-home-dashboard-paper-title" title="VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA">VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA</span></li><li><span class="dpr-home-dashboard-paper-title" title="PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 </div>
 
