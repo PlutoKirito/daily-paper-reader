@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-02</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-03</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 7 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-02 22:56:11 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-03 22:00:36 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天筛完7篇论文，精读1篇、速读6篇，最高分落在图像编解码方向。</p>
-<p>最值得看的是8.0分的LC3EM——用长程上下文外推增强熵模型，直指坐标式过拟合图像编解码器；速读里VQ-LIC的FPGA共享矢量量化压缩和PulseQuant的4比特视频扩散Transformer子空间校正也值得扫一眼。</p>
-<p>普通读者可先读LC3EM摘要与实验，再按“压缩效率/低比特推理”两条线追速读论文。</p>
+<p>今日速读3篇均为6.0分，聚焦模型压缩与量化：卷积自编码器的免训练瓶颈宽度规划、4-bit视频扩散Transformer的传播引导子空间校正，以及量化感知训练的最小范数方法。最值得关注视频扩散模型的4-bit量化和量化感知训练的高效化，两者都直击大模型部署成本。普通读者可优先了解量化如何在不重训的前提下压缩模型，并留意这些方法在真实推理速度上的实测表现。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs">LC3EM: Long-Range Context Extrapolation Enhanced Entropy Model for Coordinate-based Overfitting Image Codecs</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA">VQ-LIC: Shared Vector-Quantized Learned Image Compression on a Resource-Constrained FPGA</span></li><li><span class="dpr-home-dashboard-paper-title" title="PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Training-Free Bottleneck Width Planning for Convolutional Autoencoders">Training-Free Bottleneck Width Planning for Convolutional Autoencoders</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Training-Free Bottleneck Width Planning for Convolutional Autoencoders">Training-Free Bottleneck Width Planning for Convolutional Autoencoders</span></li><li><span class="dpr-home-dashboard-paper-title" title="PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Q-MINO: A Minimal-Norm Method for Quantization-Aware Training">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
 </section>
 </div>
 

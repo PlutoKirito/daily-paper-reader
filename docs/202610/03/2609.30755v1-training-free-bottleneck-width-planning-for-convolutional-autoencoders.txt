@@ -1,0 +1,747 @@
+Title: Training-Free Bottleneck Width Planning for Convolutional Autoencoders
+
+URL Source: https://arxiv.org/pdf/2609.30755v1
+
+Published Time: Mon, 28 Sep 2026 00:30:02 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Training-Free Bottleneck Width Planning for Convolutional Autoencoders 
+
+Guannan Guo Beihang University 
+
+Abstract 
+
+Multiscale Spectral Rate–Distortion (MS-SRD) estimates the bottleneck channels required at user-supplied spatial cuts from training images and a normalized mean-squared error (NMSE) bound, without fitting a neural network. Its covariance-tail rule is exact for shared linear block-convolutional autoencoders under squared error. A nested-scale dominance result motivates reporting the activation– parameter Pareto frontier alongside the minimum-latent candidate. At NMSE ≤ 0.01 on thirteen grayscale datasets, its latent-size prediction has 0.84% mean absolute percentage error against nonlinear patch-autoencoder boundaries; ten predictions are exact and the remaining three differ by one channel. In a four-dataset deployable comparison, MS-SRD matches all retrospective external widths and all four selected models pass, without training a selector; a 46-fit validation grid and four Least-Volume fits each pass on two datasets. In a skip-closed U-shaped autoencoder at the same bound, five predictions are exact, nine are within one channel, and every failing prediction is one channel short. Experiments at looser bounds show progressively larger nonlinear savings. 
+
+# 1 Introduction 
+
+Let X ∈ RH×W ×C denote an input image of height H, width W , and C channels. An encoder–decoder maps X to a latent tensor Z ∈ RHz ×Wz ×Cz , whose spatial height, spatial width, and channel count are 
+
+Hz , Wz , and Cz , respectively, and reconstructs X from Z. Choosing these three latent dimensions is consequential: an undersized bottleneck loses reconstructive fidelity, while an oversized bottleneck wastes computation and weakens the intended compression. Current practice broadly follows three patterns. First, an architecture template may supply an empirical width schedule; the original U-Net, for example, doubles the number of feature channels at each downsampling step [34]. Second, when bottleneck width is treated as a hyperparameter, repeated training, grid search, or an ablation over candidate widths is used to locate an acceptable reconstruction boundary [5, 4]. Third, adaptive approaches can learn an ordering or variable effective width during neural optimization [33, 20, 19]. Each strategy can be appropriate, but all three either inherit a width convention or require trained networks before the dataset-specific bottleneck is known. The training data already contain strong evidence about the required capacity. Pixel correlations, local smoothness, edges, and multiscale structure determine how quickly the covariance spectrum decays. Principal component analysis (PCA) turns that spectrum into an exact squared-error dimension for an unrestricted linear map. A convolutional bottleneck, however, is not an unrestricted vector code: its spatial grid repeats a local representation at many positions. Global PCA therefore answers a different question and can severely undercount the scalar width of a spatial bottleneck. This paper asks a complementary question: whether the images themselves and an NMSE bound suffice to predict a convolutional bottleneck tensor before any network is trained. We answer it with a data-dependent geometry that turns a broad width search into an explicit spectral calculation. MS-SRD, summarized in Fig. 1, pools non-overlapping image patches at candidate scales and estimates the smallest channel count satisfying the prescribed NMSE bound at each scale. We write Q for the 1arXiv:2609.30755v1 [cs.CV] 25 Sep 2026 Training images Subtract the training-set pixel mean 
+
+> For each candidate block size: zero-pad bottom/right and split into square blocks Pool block vectors from all images and positions; estimate covariance Choose the smallest channel count meeting the spectral-tail NMSE target
+> Report per-cut channel counts and the Pareto frontier
+
+MS-SRD: training-free bottleneck width planning 
+
+> No labels or network gradients are used in width estimation.
+
+Figure 1: The MS-SRD pipeline. The mean image is estimated from the training split. “Pooling patches” means collecting patch vectors from every training image and spatial block into one covariance sample; it is not a neural pooling layer. Network training is used only for subsequent evaluation. finite set of candidate square block side lengths in pixels, q ∈ Q for one candidate length, δ for the specified NMSE upper bound, and cq for the channel count selected at scale q. The method reports both the minimum-latent candidate and the non-dominated trade-off between latent activations and shared linear-operator parameters. The spatial scales are admissible architectural cuts supplied by the user; estimation uses neither labels nor network gradients. Our contributions are: 1. A training-free rule that predicts the required channel count at each admissible spatial cut and exposes the activation–parameter Pareto frontier rather than returning only a flat intrinsic dimension. 2. An exact population result for shared linear block-convolutional autoencoders under MSE, a conserva-tive extension to non-divisor block sizes, and a dominance result explaining why latent count alone favors nested coarse cuts. 3. A validation against nonlinear convolution-equivalent autoencoders on handwritten, clothing, natural, remote-sensing, and medical images, together with deployable grid-search and Least-Volume baselines. 4. A true-bottleneck U-shaped autoencoder study across four NMSE budgets, with a full-skip U-Net as an architectural control. 
+
+# 2 Related Work 
+
+The starting point for reconstruction under squared error is the classical equivalence between linear autoencoders and principal component analysis (PCA) [3]. The Eckart–Young theorem identifies the best rank-constrained linear approximation [10], while Gaussian rate–distortion theory gives a reverse-waterfilling allocation when the representation is quantized and rate is measured in bits [9]. These results determine a number of global coordinates, but a convolutional bottleneck has two distinct design variables: how many spatial sites remain and how many channels are stored at each site. A vectorized PCA code does not determine that allocation. Intrinsic-dimension estimators address a related but different need. Maximum-likelihood nearest-neighbor estimators [25] and the TwoNN estimator [12] infer a scalar manifold dimension from sample distances. Spectral summaries instead soften matrix rank: entropy effective rank exponentiates the 2entropy of normalized singular values [35], whereas the participation ratio uses the first two moments of the covariance eigenvalues [13]. Large-scale studies have applied intrinsic-dimension estimators to image data [31], and data-dependent capacity analyses connect geometry with learnability [40]. None of these scalar summaries specifies a latent height, width, and channel count under a shared local encoder. Several autoencoder studies address dimension selection more directly. Tang, Lim, and Siebert train convolutional autoencoders on MNIST and SVHN and compare bottleneck-neuron counts and feature-map counts through reconstruction error, hidden activation statistics, and visualization [37]. Their recommended parameterization is tied to the evaluated small-image architectures and is obtained only after training the alternatives; it is not conditioned on a prespecified reconstruction bound. Bahadur and Paffenroth add an L2,1 penalty to a trained autoencoder and aggregate normalized latent activations into singular-value proxies for intrinsic-dimension estimation [2]. This produces a scalar dimension estimate whose value depends on the trained representation and regularization, without allocating that dimension across a convolutional tensor. Least Volume instead penalizes the geometric mean of latent-coordinate standard deviations while constraining the decoder’s Lipschitz constant; nearly constant coordinates are pruned after training an initially overcomplete autoencoder [8]. It therefore still requires an initial architecture, neural optimization, a regularization strength, and a numerical pruning rule, and it does not select a spatial bottleneck grid before training. Zero-cost proxies were developed to reduce the expense of neural architecture search by scoring an initialized candidate from one minibatch or from activation, gradient, or Jacobian statistics, without training the candidate to convergence [1, 27]. They primarily provide a relative ranking within a predefined architecture search space rather than an absolute reconstruction-feasible bottleneck width. A candidate network, its parameterization, and usually a sampled minibatch must still be instantiated before a score can be computed. A broad evaluation of 13 proxies on 28 tasks found proxy-specific biases, including sensitivity to cell size, cases in which parameter count or FLOPs were competitive baselines, and limited generalization across benchmarks [21]. These properties make a ranking dependent on the chosen search space and scoring protocol, and the score alone does not specify a latent tensor under an NMSE constraint. Image models supply a reason to preserve that spatial structure. Classical texture and scattering models exploit local correlations across scale [32, 6]; convolutional encoders likewise reuse local operators over image positions. This suggests estimating local second-order structure at several block sizes rather than treating each image as an unstructured vector. Other approaches adapt the bottleneck during or after network training. Nested dropout learns ordered coordinates [33]; rateless and information-ordered autoencoders learn representations usable at multiple widths [20, 19]; and rate–distortion or mutual-information criteria can tune a trained autoencoder [36, 5]. FONDUE uses a separately trained diagnostic model [4]. These methods reduce manual search in different ways, but they still require neural optimization before the final width is known. The unresolved question is whether the training images alone can provide a defensible channel requirement at a specified convolutional cut before that optimization begins. 
+
+# 3 Problem Formulation 
+
+For the analysis below, X is a random grayscale image, so C = 1, and E denotes expectation over the image distribution. Its population mean image is μ = E[X]. Given n training images X1, . . . , X n, we estimate the sample mean image bμ at every row u ∈ { 1, . . . , H } and column v ∈ { 1, . . . , W } by 
+
+bμ(u, v ) = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+Xi(u, v ) (1) At the population level, let Y = X − μ denote the centered random image. For the finite training sample, we form Yi = Xi − bμ. The same sample mean image bμ is subtracted from validation and test images. Throughout, “centered” means this positionwise subtraction; it does not include variance rescaling. 3Let bX denote a reconstruction of X, and let ∥ · ∥ F denote the Frobenius norm. We evaluate the reconstruction by NMSE( bX) = E∥X − bX∥2
+
+> F
+
+E∥X − μ∥2
+
+> F
+
+. (2) Let δ ∈ (0 , 1) be a user-specified distortion budget. A reconstruction is admissible when NMSE( bX) ≤ δ.Let Q be a finite set of candidate block side lengths, measured in pixels. Each q ∈ Q denotes one square 
+
+q × q block scale and therefore one candidate spatial cut; every candidate satisfies 1 ≤ q ≤ min( H, W ), but q need not divide H or W . At cut q, let Hz,q and Wz,q denote the latent grid height and width, and let Cz,q denote its channel count. We seek the smallest Cz,q satisfying the distortion target. The corresponding number of latent activation scalars is 
+
+Mq = Hz,q Wz,q Cz,q . (3) Let Cin denote the number of input channels; Cin = 1 in the grayscale experiments. Let Lq denote the parameter count of a bias-free linear encoder and decoder shared over all q × q blocks. Then 
+
+Lq = 2 q2Cin Cz,q (4) because the encoder and decoder each contain q2Cin Cz,q weights. We report the non-dominated candidates in ( Mq, L q). If activation storage is the only cost, the minimum-Mq member is a useful summary; an architecture-imposed cut or a parameter budget can select another member of the frontier. 
+
+# 4 Multiscale Spectral Rate–Distortion 
+
+For each candidate q ∈ Q , define the padded image height eHq, padded image width fWq, and number of spatial blocks Pq by 
+
+eHq = q
+
+ Hq
+
+
+
+, fWq = q
+
+ Wq
+
+
+
+, Pq = Hz,q Wz,q =
+
+ Hq
+
+  Wq
+
+
+
+. (5) Thus Hz,q = ⌈H/q ⌉ and Wz,q = ⌈W/q ⌉. After centering, each image is padded with zeros on its bottom and right edges to size eHq × fWq. We denote the resulting padded centered random image by eYq and partition it into Pq non-overlapping q × q blocks. For training-image index i ∈ { 1, . . . , n } and block-position index r ∈ { 1, . . . , P q}, let xi,r,q ∈ Rq2
+
+be the vectorized grayscale patch at scale q. In this paper, pooling patches means treating the nP q vectors from all images and all block positions as samples for one shared covariance; it does not mean max pooling, average pooling, or a learned aggregation layer. Their empirical patch mean xq and empirical covariance bΣq are 
+
+xq = 1
+
+nP qnX
+
+> i=1
+> Pq
+
+X
+
+> r=1
+
+xi,r,q , (6) 
+
+bΣq = 1
+
+nP qnX
+
+> i=1
+> Pq
+
+X
+
+> r=1
+
+(xi,r,q − xq)( xi,r,q − xq)⊤. (7) For the population counterpart, let xq ∈ Rq2
+
+be the random patch obtained by drawing an image from the population and a block position uniformly from the Pq positions. Because the population image has been centered positionwise, Exq = 0. Let Σ q be the covariance of xq, let Uq ∈ Rq2×q2
+
+be an orthogonal 4matrix whose columns are its eigenvectors, and let λq,j be the eigenvalue associated with column j of Uq.Ordering the eigenvalues so that λq, 1 ≥ · · · ≥ λq,q 2 ≥ 0 gives Σq = E[( xq − Exq)( xq − Exq)⊤] = Uq diag( λq, 1, . . . , λ q,q 2 )U ⊤ 
+
+> q
+
+, (8) For c ∈ { 0, . . . , q 2}, interpret c as the number of retained patch eigenvectors. The minimum channel count satisfying the patch NMSE bound is 
+
+cq(δ) = min 
+
+c :
+
+Pq2 
+
+> j=c+1
+
+λq,j 
+
+Pq2 
+
+> j=1
+
+λq,j 
+
+≤ δ
+
+ . (9) We abbreviate cq(δ) as cq when δ is fixed. The resulting channel count is Cz,q = cq, and the candidate latent tensor and scalar count are 
+
+Zq ∈ R⌈H/q ⌉×⌈ W/q ⌉× cq , Mq = Pqcq. (10) For compatibility with a single-number output, define the minimum-latent candidate 
+
+q† = arg min  
+
+> q∈Q
+
+Mq, (Hz , W z , C z ) = ( ⌈H/q †⌉, ⌈W/q †⌉, c q† ). (11) Ties are resolved toward smaller q. We use this candidate as the compact scalar-count summary and retain the full activation–parameter frontier for architectural comparison. Pixels that are constant across the training set become zero after centering, and their zero-variance directions cannot increase cq.
+
+4.1 Exact result for a shared linear block autoencoder 
+
+For a fixed q ∈ Q and integer channel count c ∈ { 0, . . . , q 2}, consider an encoder applying one shared matrix A ∈ Rc×q2
+
+to every non-overlapping patch and a decoder applying one shared matrix B ∈ Rq2×c.This is a convolution and transposed convolution with kernel and stride q, no overlap, no bias, and no skip connections. 
+
+Theorem 1 (Population MSE optimum) . Let beY q denote the padded centered image reconstructed from 
+
+eYq by A and B. For a fixed block size q and channel count c, the minimum expected reconstruction error over all such shared linear encoder–decoder pairs is 
+
+min  
+
+> A,B
+
+E∥ eYq − beY q∥2 
+
+> F
+
+= Pqq2
+
+X
+
+> j=c+1
+
+λq,j . (12) 
+
+It is attained by projecting each patch onto the first c eigenvectors of Σq. Consequently, Eq. (9) is the smallest channel count meeting the population padded-domain NMSE target at scale q, and Eq. (11) is the minimum-latent member of the candidate family. Cropping the reconstruction back to H × W can only remove nonnegative squared error, while zero padding adds nothing to the target norm. Adding the mean image μ back after cropping therefore gives a reconstruction on the original image domain that satisfies the same NMSE bound. Proof. Because the blocks do not overlap, image squared error is the sum of patch squared errors. Let 
+
+I ∈ Rq2×q2
+
+denote the identity matrix and let tr denote matrix trace. Pooling positions gives 
+
+E∥ eYq − beY q∥2 
+
+> F
+
+= PqE∥xq − BAx q∥22 (13) = Pq tr 
+
+h
+
+(I − BA )Σ q(I − BA )⊤i
+
+. (14) 5The matrix BA has rank at most c. Whitening in the eigencoordinates of Σ q reduces the objective to its best rank-c approximation. If Uq,c ∈ Rq2×c contains the first c columns of Uq, the Eckart–Young theorem gives the tail sum in Eq. (12), attained by BA = Uq,c U ⊤ 
+
+> q,c
+
+[10]. Minimality of cq and then Mq follows directly. 
+
+Proposition 1 (Nested-scale dominance) . Suppose q1, q 2 ∈ Q , q2 = kq 1 for a positive integer k, and both block sizes divide H and W . Then 
+
+cq2 (δ) ≤ k2cq1 (δ) and Mq2 ≤ Mq1 . (15) 
+
+Proof. A q2 × q2 block contains k2 non-overlapping q1 × q1 blocks. Applying the feasible rank-cq1 encoder and decoder independently to those sub-blocks gives a rank at most k2cq1 map with the same relative image-domain distortion. The optimal q2 map cannot require more channels. Since Pq2 = Pq1 /k 2,multiplying the channel inequality by Pq2 proves the scalar-count inequality. The proposition explains why the minimum-latent summary favors coarser nested cuts in this linear family. Coarser patches also require larger shared transforms, so the ( Mq, L q) frontier remains nontrivial. The experiments consequently report channel counts and latent scalars at explicit admissible cuts together with their activation–parameter trade-off. 
+
+4.2 Estimator and computational cost 
+
+Given n training images, covariance estimation requires accumulating nP q patch outer products and eigendecomposing a q2 × q2 matrix. The leading costs are O(nP qq4) time and O(q4) covariance storage per scale; no HW × HW covariance need be formed. Bootstrap resampling of images quantifies geometry stability. 
+
+# 5 Experimental Design 
+
+All experiments use fixed, recorded random seeds. Dataset subsampling is uniform without replacement, after which selected indices are sorted. Spectral covariance calculations use float64 accumulation and symmetric eigendecomposition; network tensors and optimization use float32. The reported GPU runs use an NVIDIA RTX 5060 Laptop GPU. Standard GPU kernels can retain limited implementation-level nondeterminism. Image-level bootstrap replicates resample only the development pool, and no label enters spectral estimation or autoencoder training. The installable implementation, locked uv environment, dataset downloaders, command-line interface, and Python API are available in the accompanying public repository [22]. From a fresh checkout, 
+
+uv sync installs the complete environment and uv run mssrd reproduce-paper runs the experiment. Exact seeds, restart behavior, custom-dataset instructions, and the artifact layout are documented in the repository README and machine-readable result files. The remainder of this section specifies the data transformations, candidate set, optimization, model selection, and evaluation boundaries needed to interpret the reported results. 
+
+5.1 Datasets and preprocessing 
+
+We use thirteen public datasets. The 28–32 pixel group contains MNIST [24], Kuzushiji-MNIST [7], Fashion-MNIST [38], CIFAR-10 and CIFAR-100 [23], and six MedMNIST v2 datasets [41]. To test whether the conclusion survives more varied contemporary imagery, we add Oxford-IIIT Pet [30] and EuroSAT [14], both evaluated at 64 × 64. Oxford-IIIT Pet includes substantial variation in breed, pose, scale, and illumination; EuroSAT contributes multispectral satellite scenes, from which we use the released RGB rendering. Labels are not used by the spectral analysis or any autoencoder. 6Table 1: Dataset pools after resizing and grayscale conversion. “Development” supplies the mean image, covariance estimate, and optimization images. “External” supplies the retrospective patch-model comparison boundary. For the U-shaped experiment, an internal validation subset is removed from Development and External is evaluated only after checkpoint selection. Counts are the images actually used after deterministic caps, not necessarily the full released split sizes.                                                     
+
+> Dataset Shape Development External Dataset Shape Development External MNIST 28 220,000 5,000 CIFAR-100 32 220,000 5,000 KMNIST 28 220,000 5,000 ChestMNIST 28 220,000 5,000 Fashion-MNIST 28 220,000 5,000 PneumoniaMNIST 28 25,232 624 CIFAR-10 32 220,000 5,000 BreastMNIST 28 2624 156 Oxford-IIIT Pet 64 23,680 3,669 OrganAMNIST 28 220,000 5,000 EuroSAT 64 220,000 5,000 RetinaMNIST 28 21,200 400 BloodMNIST 28 213,671 3,421
+
+Table 1 distinguishes the development pool from the external comparison pool. The development pool supplies the training-set mean, covariance estimate, and network-optimization images. The patch-autoencoder experiment uses the external pool retrospectively to construct its empirical comparison boundary, including checkpoint comparison, so that boundary is not presented as an unbiased deployment estimate. The U-shaped experiment instead reserves an internal validation subset from the development pool and evaluates the external pool only after checkpoint selection. We cap these pools at 20,000 and 5,000 images, respectively, and use all available images below those limits. For MedMNIST, the released training and validation images form the development pool and the released test set forms the external pool. Oxford-IIIT Pet uses its official trainval/test split. Because EuroSAT has no official split for this task, a fixed seeded permutation creates an 80/20 split before applying the caps. Oxford-IIIT Pet images are center-cropped and resized to 64 × 64 with Pillow’s antialiased Lanczos resampler [29]; EuroSAT is already 64 × 64. For an RGB pixel with red, green, and blue intensities R, G,and B, respectively, we compute the BT.601 grayscale intensity [17] as Igray = 0 .299 R + 0 .587 G + 0 .114 B.All intensities are then scaled to [0 , 1]. The per-pixel training mean bμ(u, v ) is estimated only from the development pool and subtracted from every split. Per-pixel variance scaling is omitted because it would reweight the raw-pixel MSE objective in Eq. (2). Training-set-constant pixels consequently contribute neither covariance nor selected modes. 
+
+5.2 Distortion budgets, candidate scales, and baselines 
+
+All primary patch-model comparisons use δ = 0 .01. The U-shaped experiment uses the same bound for its main comparison and additionally evaluates δ ∈ { 0.02 , 0.05 , 0.10 } to measure how the relation changes as the permissible reconstruction error widens. For every image size, Q = {2, 3, 4, 5, 6, 7, 8}. Non-divisor scales use the zero-padding and cropping rule defined above. The upper limit corresponds to the nominal receptive cell of the three stride-two encoder stages used in Sec. 5.6; allowing still larger blocks would move the comparison toward a global image code rather than the local bottleneck geometry under study. Covariances use every extracted development-pool patch. For every dataset, we also compute PCA on vectorized centered images at the same distortion budget. Let d denote the retained global PCA dimension. This baseline maps an entire H × W image to d
+
+unrestricted coefficients and is MSE-optimal among rank-d linear reconstructions. A convolutional bottleneck instead stores Cz coefficients at each of Hz Wz locations, for Hz Wz Cz scalars, while reusing the same local encoder across locations. Global PCA ignores this locality and weight-sharing constraint, so it can compare scalar counts but cannot decide how those scalars should be divided among the three tensor axes. 75.3 Resolution and aspect-ratio stress test 
+
+The thirteen-dataset benchmark tests channel prediction at the spatial cuts used by the validation architectures. It does not, by itself, distinguish the scale axis because every minimum-latent candidate reaches the largest allowed block. We therefore perform a separate controlled experiment on the Oxford-IIIT Pet training split. The same images are center-cropped and resized to 48 × 64, 64 × 64, and 64 × 96, and spectra are estimated at q ∈ { 4, 8, 12 , 16 }. This manipulation holds the source images and sample count fixed while changing resolution and aspect ratio. For every geometry, we report Mq, the shared linear parameter count Lq, and Pareto membership. These three renderings are not counted as independent datasets, and the experiment is not used in the thirteen-dataset prediction metric. 
+
+5.4 Nonlinear validation model 
+
+At each tested pair ( q, c ) of block scale and channel count, let x ∈ Rq2
+
+denote one vectorized input patch, let z ∈ Rc denote its latent code, and let bx ∈ Rq2
+
+denote the reconstructed patch. We use the Gaussian error linear unit GELU of Hendrycks and Gimpel [15]. Let h = min(128 , max(32 , 2q2)) be the residual-branch hidden width. The linear maps are A0 : Rq2
+
+→ Rc, A1 : Rq2
+
+→ Rh, A2 : Rh → Rc,
+
+B0 : Rc → Rq2
+
+, B1 : Rc → Rh, and B2 : Rh → Rq2
+
+. The shared patch autoencoder is 
+
+z = A0x + A2 GELU( A1x), (16) 
+
+bx = B0z + B2 GELU( B1z). (17) The maps A0 and B0 form the linear encoder and decoder, ( A1, A 2) form the encoder residual branch, and ( B1, B 2) form the decoder residual branch. The maps A0 and B0 are initialized with the leading patch eigenvectors. The output maps A2 and B2 are initialized to zero, so optimization begins at the exact PCA solution. Sharing the network over non-overlapping patches makes it equivalent to a one-layer strided convolutional encoder and transposed-convolutional decoder augmented by pointwise patch MLPs. There are no skip connections and no access to labels. For each scale, we test channel counts on a coarse grid containing powers of two, the spectral prediction and its two nearest neighbors on each side, then fill every integer between the highest failing coarse point and the first passing point. The empirical oracle is the smallest tested latent scalar count attaining held-out NMSE at most 0.01 over all scales. It is an evaluation reference, not a deployable selection procedure, because constructing it uses held-out reconstruction outcomes. Training uses AdamW [26] with learning rate 2 × 10 −3, weight decay 10 −6, batch size at most 8,192 patches, at most 250,000 sampled training patches per scale, and 160 update steps. We retain the lowest external-pool NMSE observed at 40-step intervals. A fixed random seed defines the main run. Two additional fixed seeds repeat three points for every dataset: the predicted bottleneck, the empirical boundary, and one channel below the boundary. Implementation uses Python 3.12 and PyTorch 2.11 with CUDA [28]. 
+
+5.5 Deployable width-selection baselines 
+
+We compare width selectors on MNIST, CIFAR-10, Oxford-IIIT Pet, and EuroSAT, spanning handwriting, natural images, and remote sensing at 28, 32, and 64 pixels. The spatial cut is fixed to the main experiment’s minimum-latent cut ( q = 7 for MNIST and q = 8 otherwise), so this comparison isolates channel selection. Up to 1,000 images are reserved from the development pool for validation; the mean image, covariance, and network weights use only the remaining images. The external pool is untouched until a width and checkpoint have been selected. Four rows are reported. MS-SRD selects cq without neural training and then fits the nonlinear patch autoencoder once at that width for external evaluation. Block PCA uses the same spectral width and the analytic linear encoder–decoder, so it tests whether neural residual branches are needed rather than 8acting as an independent width rule. Validation grid search trains the coarse-to-fine candidate set from the nonlinear experiment and selects the smallest validation-passing width. Finally, an adaptation of Least Volume [8] starts with all q2 patch coordinates. If zj denotes latent coordinate j and std( zj ) its standard deviation over training patches, the adaptation adds 10 −3 exp 
+
+ 1
+
+q2
+
+> q2
+
+X
+
+> j=1
+
+log(std( zj ) + 1) 
+
+ (18) to reconstruction loss, and spectrally normalizes every decoder linear map. Following Chen and Fuge, the adaptation retains the geometric-mean standard-deviation penalty and decoder Lipschitz control. The fixed patch architecture, regularization weight, 800-update budget, and validation-based prefix selection belong to our common comparison protocol rather than their architecture-specific experiments. Coordinates are ordered by training-set standard deviation; the smallest validation-passing prefix is retained, with pruned coordinates fixed at their training mean. The table reports selector training runs, selected width, and external NMSE; the retrospective external boundary remains a comparison target, not an input to any deployable selector. 
+
+5.6 True-bottleneck U-shaped autoencoder 
+
+The principal architecture test uses a U-shaped convolutional autoencoder derived from U-Net [34]. Its encoder has three stride-two stages with widths (16 , 32 , 64 , 96); the decoder mirrors those stages. All lateral encoder–decoder skips are closed. Consequently, every sample-dependent path crosses one terminal tensor at resolution ⌈H/ 8⌉ × ⌈ W/ 8⌉, which matches the selected MS-SRD grid for all eleven datasets in this architecture experiment. Residual blocks follow the residual-learning construction [16] and use two 3 × 3 convolutions, Group Normalization [39], and GELU activations. At channel count c, the terminal tensor is initialized with the first c patch eigenvectors. The resulting block-PCA reconstruction is an exact input–output path through the terminal tensor. A deep encoder residual is added before the cut and a deep decoder residual after it; their terminal projections are initialized to zero. Training therefore starts at the MS-SRD linear solution but can learn nonlinear and cross-patch corrections without opening a bypass. We reserve up to 1,000 images from the development pool for checkpoint selection and train on the remainder for at most 800 AdamW steps, with learning rate 10 −3, weight decay 10 −6, batch size 256, and gradient-norm clipping at 5. For each δ, integer channel counts are searched by bisection under the nested-width monotonicity assumption. The smallest validation-passing width is the deployable selection. The external split is evaluated only after checkpoint selection. For retrospective analysis, we also locate the adjacent external-split crossing; this test oracle measures the architecture’s realized boundary but is not a deployable estimator. 
+
+5.7 Full-skip architectural control 
+
+The control restores U-Net’s lateral skips and compares a zeroed terminal activation with a one-channel terminal tensor. Zeroing occurs after the bias-free bottleneck projection, so the terminal route carries no sample-dependent value. These candidates use 800 AdamW steps with learning rate 2 × 10 −3, weight decay 10 −6, and batch size 256. For a structural audit, let S be the number of non-batch activation scalars transmitted through all skips, and let M be the predicted terminal latent scalar count. Here 
+
+S = 16 HW + 32 ⌈H/ 2⌉⌈ W/ 2⌉ + 64 ⌈H/ 4⌉⌈ W/ 4⌉. (19) The ratio S/M measures raw activation traffic around the terminal tensor. It is deliberately not interpreted as statistical rank, entropy, or compressed bit rate. The zero-terminal condition, rather than this count alone, tests whether those paths suffice for reconstruction. 9Table 2: Training-free predictions and empirical nonlinear boundaries at δ = 0 .01. dPCA is the global PCA dimension at the same NMSE bound; Mpred and Memp are the predicted and empirical latent scalar counts. Error is their absolute percentage difference.                                                                                                                                                                              
+
+> Dataset dPCA MS-SRD prediction Empirical oracle Error Tensor Mpred Tensor Memp NMSE MNIST 330 4×4×38 608 4×4×38 608 .0089 0.0% KMNIST 496 4×4×37 592 4×4×38 608 .0087 2.6% Fashion-MNIST 452 4×4×37 592 4×4×37 592 .0092 0.0% CIFAR-10 431 4×4×32 512 4×4×32 512 .0092 0.0% CIFAR-100 408 4×4×30 480 4×4×30 480 .0097 0.0% ChestMNIST 151 4×4×17 272 4×4×17 272 .0091 0.0% PneumoniaMNIST 244 4×4×24 384 4×4×25 400 .0092 4.0% BreastMNIST 191 4×4×22 352 4×4×23 368 .0091 4.3% OrganAMNIST 679 4×4×45 720 4×4×45 720 .0094 0.0% RetinaMNIST 53 4×4×18 288 4×4×18 288 .0093 0.0% BloodMNIST 315 4×4×28 448 4×4×28 448 .0096 0.0%
+
+5.8 Uncertainty and metrics 
+
+Twenty nonparametric image-level bootstrap replicates [11], each of size min( n, 5000), re-estimate the full spectral selection. This resampling is especially relevant when the spectral tail lies close to δ: Weyl’s eigenvalue perturbation inequality [18] bounds each sample-eigenvalue error by the covariance perturbation norm, but even a small perturbation can move the discrete choice cq by one. We therefore report the complete bootstrap selection counts rather than only an interval for the selected latent count Mq† .Let Mpred denote the MS-SRD-predicted latent scalar count and Memp the empirical boundary from the nonlinear patch model. Prediction error is measured as |Mpred − Memp |/M emp . We report mean and median absolute percentage error (MAPE), exact matches, multiplicative tolerances, and Pearson correlation between their logarithms. 
+
+# 6 Results 
+
+6.1 Predicted versus empirical bottlenecks on compact images 
+
+Table 2 contains the compact-image results. The minimum-latent summary uses q = 7 for the 28 × 28 images and q = 8 for the 32 × 32 images, yielding 4 × 4 spatial sites. This repeated selection of the largest allowed block follows the nested-scale dominance result; the table evaluates the channel and latent-count prediction at those stated cuts. Across these eleven compact benchmarks, MS-SRD achieves 1.00% MAPE and 0.00% median absolute percentage error. Eight scalar counts are exact; KMNIST, PneumoniaMNIST, and BreastMNIST differ by one channel, and all eleven predictions are within 5% of the empirical boundary. The largest error is 4.35%, and the log-scale Pearson correlation is 0.998. Figure 2 includes these results together with the larger-image extension below. Global PCA has 33.63% MAPE and underestimates the spatial bottleneck in all thirteen datasets (Fig. 3). This is expected: a global linear code pays for each retained direction once, whereas a convolutional tensor instantiates Cz channels at every spatial site. 
+
+6.2 The spatial-cut trade-off 
+
+Figure 4 reports the controlled Oxford-IIIT Pet experiment. Across all three image geometries, q = 4, 8, and 16 are non-dominated, whereas q = 12 is dominated. Because q = 12 does not divide at least one image side in any rendering, this status comes from the direct zero-padded estimate, not Proposition 1. 10 10 33 × 10 2 4 × 10 2 6 × 10 2 2 × 10 3
+
+> Empirical minimum tested latent scalars 10 3
+> 3 × 10 2
+> 4 × 10 2
+> 6 × 10 2
+> 2 × 10 3
+> Training-free predicted latent scalars
+> 12345678910 11 12 13
+> Predicted versus empirical bottlenecks at NMSE <= 0.01
+> 1. MNIST 2. KMNIST 3. Fashion-MNIST 4. CIFAR-10 5. CIFAR-100 6. Oxford-IIIT Pet 7. EuroSAT 8. ChestMNIST 9. PneumoniaMNIST 10. BreastMNIST 11. OrganAMNIST 12. RetinaMNIST 13. BloodMNIST
+
+Figure 2: Training-free predicted latent scalar counts versus the empirical minimum tested counts. The dashed line is equality. Numbers identify datasets in the legend. Resolution and aspect ratio change both spatial repetition and the required channel count; the figure shows the resulting exchange between latent activations and shared transform parameters. These results empirically separate the two cost axes. If only latent activations are charged, q = 16 wins in every rendering, exactly as the dominance argument predicts. Once shared transform size is included, several scales lie on the Pareto frontier. MS-SRD records this trade-off as channel requirements, latent activations, and shared transform parameters across the admissible cuts. 
+
+6.3 Extension to larger, more varied images 
+
+We extend the complete patch-autoencoder protocol to Oxford-IIIT Pet and EuroSAT at 64 × 64. These experiments use the same grayscale conversion, centering rule, distortion bound, candidate scales, optimizer, and channel-search procedure as the compact suite; no dataset-specific calibration is introduced. Table 3 and Fig. 5 show the result. MS-SRD selects q = 8 for both datasets and exactly matches the empirical boundary: 33 channels for Oxford-IIIT Pet and 26 for EuroSAT. Their full-image PCA dimensions are 1,216 and 1,205, respectively. Bootstrap selections remain confined to adjacent channels at the same scale. Oxford-IIIT Pet selects 33 channels in 12 of 20 resamples and 32 in eight; EuroSAT selects 26 in 14 resamples and 25 in six. Combining the compact and larger-image experiments gives 0.84% MAPE across thirteen datasets. Ten predictions are exact, the remaining three differ by one channel, all thirteen are within 5%, and the Pearson correlation between log latent counts is 0.9996. 11 mnist kmnist fashion_mnist cifar10 cifar100 oxford_pets eurosat chestmnist pneumoniamnist breastmnist organamnist retinamnist bloodmnist 10 2  
+
+> 10 3
+> Latent scalar count
+> Global, multiscale, and empirical bottleneck dimensions
+> Global PCA MS-SRD prediction Nonlinear CNN
+
+Figure 3: Global PCA, MS-SRD, and empirical nonlinear bottleneck sizes. Global PCA uses unrestricted whole-image coefficients; MS-SRD and the empirical model count coefficients repeated over a spatial bottleneck grid. Table 3: Training-free predictions and nonlinear patch-autoencoder boundaries on the 64 × 64 extension at δ = 0 .01. The bootstrap column reports selection counts over 20 image-level resamples. 
+
+Dataset Predicted tensor Mpred Empirical tensor Memp NMSE Bootstrap Oxford-IIIT Pet 8 × 8 × 33 2,112 8 × 8 × 33 2,112 .0096 c = 33: 12; c = 32: 8 EuroSAT 8 × 8 × 26 1,664 8 × 8 × 26 1,664 .0096 c = 26: 14; c = 25: 6 
+
+6.4 Deployable selector comparison 
+
+Table 4 compares the four selectors under the internal-validation protocol. MS-SRD matches all four retrospective external widths and all four selected nonlinear models pass. Block PCA shares those widths by construction but narrowly misses the MNIST bound. Validation grid search selects one fewer channel on CIFAR-10 and Oxford-IIIT Pet; both choices pass internally and fail externally. Least Volume makes the same two underselections and adds one channel on MNIST. The stricter bound exposes small validation–external shifts that are hidden at larger reconstruction errors. In this fixed-cut experiment, the covariance-tail width provides a stronger starting point than the narrowest validation-passing candidate: it matches all four external boundaries while the latter underselects on two datasets. 
+
+6.5 Spectral and distortion behavior 
+
+Figure 6 shows representative patch spectra. Larger patches expose a longer but rapidly decaying spectrum. The prediction balances this longer channel axis against fewer spatial repetitions. Natural and medical images differ markedly in spectral tail shape, yet the same selection rule applies without dataset-specific fitting. 12 10 3 10 4  
+
+> Shared linear parameters 1.55 × 10 3
+> 1.6 × 10 3
+> 1.65 × 10 3
+> 1.7 × 10 3
+> 1.75 × 10 3
+> 1.8 × 10 3
+> 1.85 × 10 3
+> 1.9 × 10 3
+> Latent scalars
+> q=4 q=8 q=12 q=16
+> 48 x 64
+> 10 310 4
+> Shared linear parameters 2 × 10 3
+> 2.1 × 10 3
+> 2.2 × 10 3
+> 2.3 × 10 3
+> 2.4 × 10 3
+> 2.5 × 10 3
+> 2.6 × 10 3
+> q=4 q=8 q=12 q=16
+> 64 x 64
+> 10 310 4
+> Shared linear parameters 2.7 × 10 3
+> 2.8 × 10 3
+> 2.9 × 10 3
+> 3 × 10 3
+> 3.1 × 10 3
+> 3.2 × 10 3
+> 3.3 × 10 3
+> 3.4 × 10 3
+> q=4 q=8 q=12 q=16
+> 64 x 96
+
+Figure 4: Activation–parameter trade-off for the same Oxford-IIIT Pet training images rendered at three geometries. Blue points are Pareto-optimal; gray points are dominated. Larger blocks reduce repeated latent activations but require larger shared linear transforms. Table 4: Deployable fixed-cut width selection on MNIST, CIFAR-10, Oxford-IIIT Pet, and EuroSAT. The channel vector follows that order. “Fits” counts neural models used to select width; the one nonlinear fit used only to evaluate the MS-SRD-selected width is not charged as selection. MAPE compares channels with the retrospective external oracle. 
+
+Selector Selected channels Fits MAPE External passes Mean external NMSE MS-SRD 38, 32, 33, 26 0 0.00% 4/4 .00933 Block PCA 38, 32, 33, 26 0 0.00% 3/4 .00959 Validation grid 38, 31, 32, 26 46 1.54% 2/4 .00971 Least Volume 39, 31, 32, 26 4 2.20% 2/4 .00970 
+
+The nonlinear distortion curves in Fig. 7 are monotone near δ = 0 .01 and cross the bound close to the vertical spectral prediction. PCA initialization begins at the theorem’s linear solution; at this strict bound the residual nonlinear branches leave little room to reduce the required local rank, which is consistent with the close agreement in Table 2. 
+
+6.6 Boundary and sampling stability 
+
+Across two additional training seeds, all 26 empirical-boundary runs pass. The one-channel-smaller width fails in 25 of 26 runs; the sole exception is KMNIST at NMSE 0.009986, immediately below the bound. Mean NMSE is 0.00928 at the boundary and 0.01043 one channel below. The MS-SRD prediction passes in 21 of 26 runs. Its five failures comprise one KMNIST seed and both seeds for PneumoniaMNIST and BreastMNIST; the worst NMSE is 0.01023. These are the same adjacent-channel ambiguities seen in the main run rather than scale-selection errors. The bootstrap selects the same ( q, c, M ) in all 20 replicates for seven datasets: KMNIST, Fashion-MNIST, CIFAR-100, ChestMNIST, PneumoniaMNIST, OrganAMNIST, and BloodMNIST. The other six datasets split only between adjacent channel counts at the same scale. 13 10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+oxford_pets 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+eurosat 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+Figure 5: External-pool NMSE for the two 64 × 64 datasets. The dashed horizontal line is δ = 0 .01 and the dotted vertical line is the training-free predicted scalar count. Both curves cross at the predicted width. 0 10 20 30 40 50 60 Patch eigenmode 10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> Variance fraction
+
+mnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+0 10 20 30 40 50 60 Patch eigenmode 10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> Variance fraction
+
+fashion_mnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+0 10 20 30 40 50 60 Patch eigenmode 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> Variance fraction
+
+cifar10 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+0 10 20 30 40 50 60 Patch eigenmode 10 −5 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> Variance fraction
+
+chestmnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+Figure 6: Patch covariance eigenvalues, normalized by total patch variance, at each candidate scale for four representative datasets. 14 10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+mnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+fashion_mnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+cifar10 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+10 2 10 3
+
+Latent scalars 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-pool NMSE
+
+chestmnist 
+
+> q=2 q=3 q=4 q=5 q=6 q=7 q=8
+
+Figure 7: External-pool NMSE against latent scalar count for representative datasets and scales. The horizontal line is δ = 0 .01; the vertical dotted line is the MS-SRD prediction. 15 mnist kmnist fashion_mnist cifar10 cifar100 oxford_pets eurosat chestmnist pneumoniamnist breastmnist organamnist retinamnist bloodmnist 
+
+0.0090 0.0095 0.0100 0.0105 0.0110 0.0115 External-pool NMSE 
+
+Boundary stability across two additional training seeds 
+
+> 0.01 NMSE target one channel below empirical boundary MS-SRD prediction
+
+Figure 8: Mean and range across two additional seeds at δ = 0 .01. Every empirical-boundary run passes; one of 26 one-channel-smaller runs also falls just below the bound. 16 6.7 The skip-closed U-shaped bottleneck 
+
+Figure 9 shows the test distortion curves for the architecture in Section 5.6. Every marked retrospective boundary is an adjacent integer crossing: the displayed channel count passes and the next smaller count fails. Independent optimization produces three small non-monotone steps across all sampled curves; the largest increase is 0.00163 NMSE and none changes a reported crossing. For each distortion budget δ,write cMS (δ) for the MS-SRD-predicted channel count and ctest (δ) for this retrospective test boundary. At the primary bound δ = 0 .01, the median empirical-to-predicted ratio is one, the mean absolute width error is 1.36 channels, five predictions are exact, and nine lie within one channel (Table 5 and Fig. 10). Four predictions fail at the unmodified width, and each corresponding boundary is exactly one channel wider. The two larger errors are conservative overestimates on ChestMNIST and RetinaMNIST. At δ = 0 .10, the nonlinear model’s median boundary is 42.9% of the spectral width; the median rises through 0.692 and 0.967 to 1.000 as δ decreases. Deep nonlinear branches exploit additional structure when appreciable error is allowed, whereas a strict reconstruction bound carries more local directions through the terminal cut. The four budgets therefore trace a systematic transition from nonlinear savings toward agreement with the spectral width. For deployment, the architecture first fixes the grid and MS-SRD supplies cMS (δ) at that cut. At 
+
+δ = 0 .01, every residual underestimation in this study is one channel. A validation search initialized around cMS has mean absolute test-boundary error below 0.7 channels at every evaluated δ, and all 44 selected widths are within three channels of the retrospective boundary. The training-free result therefore narrows the candidate region for the architecture-specific search. Table 5: Relation between MS-SRD channel counts and protocol-specific test boundaries for the skip-closed U-shaped autoencoder. “Pass” counts datasets whose unmodified MS-SRD width meets the test bound. “Val. MAE” compares the validation-selected and retrospective test widths.                                 
+
+> δMedian ctest /c MS MS MAE Exact Within ±1Pass Val. MAE 0.01 1.000 1.36 5/11 9/11 7/11 0.64 0.02 0.967 1.91 5/11 7/11 11/11 0.45 0.05 0.692 4.55 1/11 2/11 10/11 0.55 0.10 0.429 4.36 2/11 2/11 11/11 0.45
+
+17 0 10 20 30 40 50 
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+mnist     
+
+> 10 20 30 40 50
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+kmnist    
+
+> 010 20 30
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+fashion_mnist   
+
+> 10 20 30
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+cifar10      
+
+> 510 15 20 25 30
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+cifar100   
+
+> 510 15
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+chestmnist      
+
+> 010 20 30 40 50
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+pneumoniamnist      
+
+> 010 20 30 40 50
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+breastmnist     
+
+> 10 20 30 40 50
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+organamnist   
+
+> 510 15
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+retinamnist     
+
+> 510 15 20 25
+
+Terminal channels 
+
+> 10 −2
+> 10 −1
+> Test NMSE
+
+bloodmnist 
+
+NMSE 0.1 NMSE 0.05 NMSE 0.02 NMSE 0.01 retrospective test boundary MS-SRD width Figure 9: Test NMSE versus terminal channels for the skip-closed U-shaped autoencoder. Filled circles are retrospective adjacent-channel crossings; open squares are MS-SRD widths. The test boundary is an analysis oracle, not a deployable selector. 18 10 0 10 1
+
+MS-SRD channels 10 0
+
+10 1
+
+> Empirical U-Net channels
+
+True-bottleneck width 
+
+> NMSE 0.1 NMSE 0.05 NMSE 0.02 NMSE 0.01
+
+0.1 0.05 0.02 0.01 NMSE target 0.2 0.4 0.6 0.8 1.0 Empirical / MS-SRD channels 
+
+Nonlinear width ratio 
+
+> median
+
+Figure 10: Left: MS-SRD width versus the protocol-specific test boundary. Right: their ratio by NMSE bound; diamonds connect per-bound medians. The primary δ = 0 .01 points are emphasized; looser bounds show the change in nonlinear savings. 19 6.8 A full U-Net bypasses the terminal bottleneck 
+
+Both full-skip controls satisfy δ = 0 .01 on all eleven datasets, including the models whose terminal latent activation is identically zero. The zero-terminal models have median held-out NMSE 0.000710 (0.0710%) and worst-case NMSE 0.001089 (0.1089%) on PneumoniaMNIST, still more than ninefold below the bound. Figure 11 compares the zero and one-channel conditions; both remain in the same sub-percent error regime across the eleven datasets. The skip audit explains this outcome. The skips transmit between 30.5 and 80.7 times as many raw scalars as the predicted terminal tensor, with a median ratio of 56.0. High-resolution skips provide the decoder with a direct input-dependent route, and the zero-terminal experiment shows that this route alone supports the reported reconstructions. Table 6: Full-skip U-Net audit. M is the MS-SRD-predicted terminal scalar count at δ = 0 .01, S is raw skip-path activation count, and zero NMSE is measured with the terminal activation identically zero.                                                           
+
+> Dataset MSS/M Zero NMSE Dataset MSS/M Zero NMSE MNIST 608 21,952 36.1 .0246% CIFAR-100 480 28,672 59.7 .0710% KMNIST 592 21,952 37.1 .0406% ChestMNIST 272 21,952 80.7 .0798% Fashion-MNIST 592 21,952 37.1 .0457% PneumoniaMNIST 384 21,952 57.2 .1089% CIFAR-10 512 28,672 56.0 .0654% BreastMNIST 352 21,952 62.4 .0866% OrganAMNIST 720 21,952 30.5 .0465% RetinaMNIST 288 21,952 76.2 .0888% BloodMNIST 448 21,952 49.0 .0808%
+
+20 mnist kmnist fashion_mnist cifar10 cifar100 chestmnist pneumoniamnist breastmnist organamnist retinamnist bloodmnist 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> External-split NMSE
+
+U-Net skip paths bypass the terminal bottleneck 
+
+> bottleneck disabled one channel 0.01 target
+
+Figure 11: External-split NMSE for full-skip U-Nets with a zeroed terminal path or one terminal channel. Every run lies below δ = 0 .01. 21 7 Discussion 
+
+7.1 What the result establishes 
+
+For a fixed NMSE bound and block-local model, the covariance eigenvalue tail predicts local reconstruction loss, while spatial repetition converts local rank to tensor size. This gives an exact linear solution and a useful nonlinear initialization. The U-shaped experiment separates the strict- and loose-bound regimes. At the primary δ = 0 .01 bound with skips closed, the median empirical-to-predicted channel ratio is one and every underestimation is one channel. The wider-budget experiments show that nonlinear savings grow as the reconstruction constraint is relaxed. In the full-skip control, accurate zero-terminal reconstructions confirm that the skip pathway carries substantial reconstruction capacity. MS-SRD uses covariance eigenvalues to count the local directions required by the MSE bound. The associated eigenvectors are needed only for the analytic encoder–decoder map and for initialization of the nonlinear validation model. 
+
+7.2 Limitations 
+
+Three limitations delimit the present result. 
+
+• Model and objective. The theorem covers shared linear encoders on non-overlapping local blocks under average grayscale pixel MSE. Overlapping or nonlinear operators, color covariance, perceptual and semantic objectives, and worst-case error require corresponding extensions. The reported real-valued scalar count is not a compressed bit rate without a quantizer and entropy model. 
+
+• Architecture dependence. Candidate spatial cuts are supplied by the architecture: nested-scale dominance makes latent count alone insufficient to choose encoder depth. The nonlinear relation is architecture-specific, and unrestricted U-Net skips bypass the terminal tensor; MS-SRD does not yet allocate a joint capacity budget across skip pathways and the terminal representation. 
+
+• Statistical and empirical range. Finite samples perturb eigenvalues near the selection threshold, nonlinear branches can depart from the linear projection, and a shifted test distribution can have a different covariance tail. Bootstrap resampling measures spectral sampling variation but not model-class or train–test effects. The benchmark uses grayscale images up to 64 × 64 with a 96-pixel geometry stress test, and its external crossings are retrospective comparison oracles rather than unbiased deployment estimates. 22 8 Conclusion 
+
+MS-SRD converts multiscale patch covariance spectra and an NMSE bound into bottleneck channel counts and an activation–parameter Pareto frontier before network training. At δ = 0 .01, it achieves 0.84% latent-size MAPE across thirteen nonlinear patch-model experiments; ten predictions are exact and the remaining three differ by one channel. In the skip-closed U-shaped model, the median empirical-to-predicted channel ratio is one, five predictions are exact, and nine are within one channel. Across looser bounds, the experiments quantify how nonlinear savings grow as the reconstruction constraint relaxes. These results establish local covariance spectra as a practical basis for concentrating bottleneck-width search around a small, data-dependent candidate region. 
+
+# References 
+
+[1] M. S. Abdelfattah, A. Mehrotra, Lukasz Dudziak, and N. D. Lane. Zero-cost proxies for lightweight NAS. In 
+
+Proceedings of the International Conference on Learning Representations , 2021. [2] N. Bahadur and R. C. Paffenroth. Dimension estimation using autoencoders with applications to financial market analysis. In Proceedings of the 19th IEEE International Conference on Machine Learning and Applications ,pages 527–534, 2020. [3] P. Baldi and K. Hornik. Neural networks and principal component analysis: Learning from examples without local minima. Neural Networks , 2(1):53–58, 1989. [4] L. Bonheme and M. Grzes. FONDUE: An algorithm to find the optimal dimensionality of the latent space. 
+
+arXiv preprint arXiv:2209.12806 , 2022. [5] G. Boquet, J. L. Vicario, A. Morell, and J. Serrano. Theoretical tuning of the autoencoder bottleneck layer dimension: A mutual information-based algorithm. In Proceedings of EUSIPCO , pages 1512–1516, 2021. [6] J. Bruna and S. Mallat. Invariant scattering convolution networks. IEEE Transactions on Pattern Analysis and Machine Intelligence , 35(8):1872–1886, 2013. [7] T. Clanuwat, M. Bober-Irizar, A. Kitamoto, A. Lamb, K. Yamamoto, and D. Ha. Deep learning for classical Japanese literature. arXiv preprint arXiv:1812.01718 , 2018. [8] Q. Chen and M. Fuge. Compressing latent space via least volume. In Proceedings of the International Conference on Learning Representations , 2024. [9] T. M. Cover and J. A. Thomas. Elements of Information Theory . Wiley, second edition, 2006. [10] C. Eckart and G. Young. The approximation of one matrix by another of lower rank. Psychometrika , 1:211–218, 1936. [11] B. Efron. Bootstrap methods: Another look at the jackknife. The Annals of Statistics , 7(1):1–26, 1979. [12] E. Facco, M. d’Errico, A. Rodriguez, and A. Laio. Estimating the intrinsic dimension of datasets by a minimal neighborhood information. Scientific Reports , 7:12140, 2017. [13] P. Gao, E. Trautmann, B. M. Yu, G. Santhanam, S. I. Ryu, K. V. Shenoy, and S. Ganguli. A theory of multineuronal dimensionality, dynamics and measurement. bioRxiv preprint 214262 , 2017. [14] P. Helber, B. Bischke, A. Dengel, and D. Borth. EuroSAT: A novel dataset and deep learning benchmark for land use and land cover classification. IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing , 12(7):2217–2226, 2019. [15] D. Hendrycks and K. Gimpel. Gaussian error linear units (GELUs). arXiv preprint arXiv:1606.08415 , 2016. [16] K. He, X. Zhang, S. Ren, and J. Sun. Deep residual learning for image recognition. In Proceedings of CVPR ,pages 770–778, 2016. [17] International Telecommunication Union. Studio encoding parameters of digital television for standard 4:3 and wide-screen 16:9 aspect ratios. Recommendation ITU-R BT.601-7, 2011. 
+
+23 [18] R. A. Horn and C. R. Johnson. Matrix Analysis . Cambridge University Press, second edition, 2012. [19] M. Ho, X. Zhao, and B. D. Wandelt. Ordered embeddings and intrinsic dimensionalities with information-ordered bottlenecks. Machine Learning: Science and Technology , 6(3):035010, 2025. https://doi.org/10. 1088/2632-2153/ade94d .[20] T. Koike-Akino and Y. Wang. Stochastic bottleneck: Rateless auto-encoder for flexible dimensionality reduction. 
+
+arXiv preprint arXiv:2005.02870 , 2020. [21] A. Krishnakumar, C. White, A. Zela, R. Tu, M. Safari, and F. Hutter. NAS-Bench-Suite-Zero: Accelerating research on zero cost proxies. In Advances in Neural Information Processing Systems , volume 35, 2022. [22] GGN-2015. MS-SRD: Training-free multiscale spectral bottleneck prediction. Version 0.1.0, 2026. https: //github.com/GGN-2015/mssrd .[23] A. Krizhevsky. Learning multiple layers of features from tiny images. Technical report, University of Toronto, 2009. [24] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner. Gradient-based learning applied to document recognition. 
+
+Proceedings of the IEEE , 86(11):2278–2324, 1998. [25] E. Levina and P. J. Bickel. Maximum likelihood estimation of intrinsic dimension. In Advances in Neural Information Processing Systems 17 , 2004. [26] I. Loshchilov and F. Hutter. Decoupled weight decay regularization. In Proceedings of ICLR , 2019. [27] J. Mellor, J. Turner, A. Storkey, and E. J. Crowley. Neural architecture search without training. In Proceedings of the 38th International Conference on Machine Learning , pages 7588–7598, 2021. [28] A. Paszke et al. PyTorch: An imperative style, high-performance deep learning library. In Advances in Neural Information Processing Systems 32 , 2019. [29] A. Clark et al. Pillow (PIL Fork). Python Imaging Library, https://python-pillow.org/ .[30] O. M. Parkhi, A. Vedaldi, A. Zisserman, and C. V. Jawahar. Cats and dogs. In Proceedings of CVPR , pages 3498–3505, 2012. [31] P. Pope, C. Zhu, A. Abdelkader, M. Goldblum, and T. Goldstein. The intrinsic dimension of images and its impact on learning. arXiv preprint arXiv:2104.08894 , 2021. [32] J. Portilla and E. P. Simoncelli. A parametric texture model based on joint statistics of complex wavelet coefficients. International Journal of Computer Vision , 40(1):49–71, 2000. [33] O. Rippel, M. Gelbart, and R. Adams. Learning ordered representations with nested dropout. In Proceedings of ICML , pages 1746–1754, 2014. [34] O. Ronneberger, P. Fischer, and T. Brox. U-Net: Convolutional networks for biomedical image segmentation. In Proceedings of MICCAI , pages 234–241, 2015. [35] O. Roy and M. Vetterli. The effective rank: A measure of effective dimensionality. In Proceedings of EUSIPCO ,pages 606–610, 2007. [36] L. G. Sanchez Giraldo and J. C. Principe. Rate-distortion auto-encoders. arXiv preprint arXiv:1312.7381 ,2014. [37] L. M. Tang, L. H. Lim, and P. Siebert. Parameterization of a convolutional autoencoder for reconstruction of small images. In Proceedings of the 15th International Conference on Control, Automation, Robotics and Vision , pages 1426–1431, 2018. [38] H. Xiao, K. Rasul, and R. Vollgraf. Fashion-MNIST: A novel image dataset for benchmarking machine learning algorithms. arXiv preprint arXiv:1708.07747 , 2017. [39] Y. Wu and K. He. Group normalization. In Proceedings of ECCV , pages 3–19, 2018. [40] Y. Yang, H. Mao, and P. Chaudhari. Does the data induce capacity control in deep learning? In Proceedings of ICML , pages 25166–25197, 2022. [41] J. Yang et al. MedMNIST v2—A large-scale lightweight benchmark for 2D and 3D biomedical image classifica-tion. Scientific Data , 10:41, 2023. 
+
+24
