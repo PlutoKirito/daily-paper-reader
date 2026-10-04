@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-03</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-04</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-03 22:00:36 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-04 22:44:43 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读3篇均为6.0分，聚焦模型压缩与量化：卷积自编码器的免训练瓶颈宽度规划、4-bit视频扩散Transformer的传播引导子空间校正，以及量化感知训练的最小范数方法。最值得关注视频扩散模型的4-bit量化和量化感知训练的高效化，两者都直击大模型部署成本。普通读者可优先了解量化如何在不重训的前提下压缩模型，并留意这些方法在真实推理速度上的实测表现。</p>
+<p>今日速读5篇但精读挂零，重点集中在视频扩散模型压缩与加速方向。最值得看的是《PulseQuant》用传播引导子空间校正实现4-Bit视频扩散Transformer，以及《PDMD》的投影分布匹配蒸馏。普通读者可先挑这两篇了解视频生成模型如何省显存、提速度。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Training-Free Bottleneck Width Planning for Convolutional Autoencoders">Training-Free Bottleneck Width Planning for Convolutional Autoencoders</span></li><li><span class="dpr-home-dashboard-paper-title" title="PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Q-MINO: A Minimal-Norm Method for Quantization-Aware Training">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Transform-Aligned Learned Features for Lossy Point Cloud Attribute Compression">Transform-Aligned Learned Features for Lossy Point Cloud Attribute Compression</span></li><li><span class="dpr-home-dashboard-paper-title" title="PDMD: Projected Distribution Matching Distillation for Video Diffusion Models">PDMD: Projected Distribution Matching Distillation for Video Diffusion Models</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>3</strong></span><span class="dpr-home-dashboard-tag">entropy-coding <strong>2</strong></span></div>
 </section>
 </div>
 

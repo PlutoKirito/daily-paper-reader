@@ -1,0 +1,275 @@
+Title: CASR: Content-Adaptive Neural Super-Resolution Post-Filter for Versatile Video Coding via Low-Rank Overfitting
+
+URL Source: https://arxiv.org/pdf/2609.37328v1
+
+Published Time: Wed, 30 Sep 2026 01:40:02 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# CASR: Content-Adaptive Neural Super-Resolution Post-Filter for Versatile Video Coding via Low-Rank Overfitting 
+
+Khoa Pham-Dinh *,1,2,3 , Francesco Cricri 1, Maria Santamaria 1, Honglei Zhang 1,Hamed R. Tavakoli 1,2 , Moncef Gabbouj 3, Juho Kannala 2, Miska M. Hannuksela 11Nokia , 2Aalto University , 3Tampere University 
+
+Abstract —The use of super-resolution as a post-processing step fol-lowing a video codec allows videos to be encoded at reduced spatial resolution at the encoder side and to be reconstructed and upsampled to the original resolution at the decoder side. In this way, the required bitrate is reduced and the quality of the reconstructed frames is improved without modifying the core coding architecture. However, generic SR models are typically trained offline and lack sufficient adaptability to the diverse content characteristics and compression artifacts produced by video codecs, which limits their effectiveness during test time. To address the limitation, this paper proposes CASR (Content-Adaptive Super-Resolution), a content-adaptive SR post-filter framework for Versatile Video Coding (VVC), based on encoder-side overfitting on each input sequence. In order to limit the bitrate overhead required for signalling the content adaptation signal, i.e., the weight-update, Low-Rank Adaptation (LoRA) is leveraged. The method freezes the convolution kernels of a pretrained SR network and fine-tunes only lightweight rank-r matrices attached to selected convolution layers, using VVC decoded frames and quantization-parameter (QP) maps of test sequences as supervision. The resulting low-rank update is compressed with the MPEG Neural Network Compression and Representation (NNR) standard. Experiments on the JVET common test conditions (CTC) class A1 and A2 sequences indicate that LoRA-based content adaptation provides bitrate savings over a non-adapted SR post-filter at a small signalling cost. Compared with the VVC Test Model (VTM 21.0), the proposed method achieves BD-rate savings of −10 .93% (Y), −15 .39% (U), −24 .41% (V) under random access and 
+
+−13 .43% (Y), −5.75% (U), −22 .94% (V) under all-intra. An ablation of the LoRA rank r further shows that r=4 provides the best trade-off between coding gain and signalling cost. 
+
+Index Terms —video coding, post filtering, super resolution, content adaptation, low-rank adaptation, VVC, VSEI, NNR 
+
+I. I NTRODUCTION 
+
+The latest video coding standard developed by the Joint Video Experts Team (JVET) is the Versatile Video Coding (VVC) standard, which was released in July 2020 [1]. VVC achieves substantial compression efficiency gains over previous video coding standards, enabling significant bitrate reduction for a wide range of applica-tions [2]. Nevertheless, at low and medium bitrates, reconstructed video frequently suffers from compression artifacts and loss of fine spatial details due to aggressive quantization and block-based processing. Therefore, improving reconstruction quality without mod-ifying standardized coding tools remains an important challenge. To reduce coding artifacts, VVC performs in-loop filtering, which is applied inside the prediction–reconstruction loop to reconstructed frames or blocks, so that the filtered signal is used as a reference for subsequent prediction. However, it is possible to perform post-processing filtering on the VVC-decoded pictures to reduce any remaining visible artifacts and improve perceptual quality without affecting prediction or bitstream syntax. In this paper, we focus on post-processing filtering techniques, with particular emphasis on super-resolution methods. Decoder-side post-processing has emerged as an effective strategy to enhance reconstructed video quality while preserving full compli-
+
+*Corresponding author: khoa.phamdinh@aalto.fi . Khoa Pham-Dinh was a student at Tampere University during part of the work. 
+
+ance with video coding standards. Previous work on post-filtering has been study such as Zhao et al. [3] studies post processing filter on the High Efficiency Video Coding (HEVC) [4] standard; Zhang et al. [5] proposed CNN-based post-processing for VVC using input RGB and quantization parameter (QP), the method employs five separate QP-specific trained CNN models for adaptive post-processing; Zhang et al. [6] introduce a lightweight post-processing filter that uses depthwise separable convolution and dual attention for VVC artifact removal. However, most existing post-filtering approaches rely on neural networks trained offline on generic datasets and applied uniformly across all content. To address the limited adaptability of generic neural post-filters, prior works have investigated content-adaptive neural network techniques, starting with Lam et al. [7] intro-duce a weight-update artifact removal filter, Santamaria et al. [8] [9] proposed content adaptive scheme updating only selected bias or multiplier based on energy to require much lower bitrate overhead for transmitting weight-updates. Moreover, to effectively compress the weight update for use in standardization activities, the MPEG Neural Network Compression and Representation (NNR) Standard [10] was proposed as a comprehensive toolbox combining pre-processing methods (sparsification, pruning, low-rank decomposition), quantiza-tion techniques, and DeepCABAC entropy coding [11] to achieve up to 97% compression efficiency while maintaining inference accuracy. These approaches improve performance by specializing the filtering network to the target video sequence. Recent standardization efforts have addressed the signalling of neural network–based enhancement tools through the Versatile Supplemental Enhancement Information (VSEI) standard (ISO/IEC 23002-7, ITU-T H.274) [12]. VSEI defines optional Supplemental Enhancement Information (SEI) messages that allow neural network post-filters and associated parameter updates to be conveyed to the decoder without modifying the core decoding process. In particular, VSEI introduces dedicated SEI messages for neural network post-filter (NNPF) to describe the characteristics of the post-filter neural network and to control their activation on a picture basis, enabling backward-compatible deployment of AI-based post-processing in systems using VVC, HEVC, or Advanced Video Coding (AVC) [13] standards. Among post-processing approaches, super-resolution (SR) has received considerable attention, as it enables video content to be encoded at reduced spatial resolution and subsequently reconstructed at higher resolution after decoding, leading to improved coding efficiency and visual quality [14]. Super-resolution has been explored both as a standalone post-processing tool and as part of hybrid video coding pipelines. For example, Nvidia’s Deep Learning Super Sampling (DLSS) technology relies on neural super-resolution to upscale lower-resolution frames to a target display resolution [15]. Super-resolution approaches have also been studied for post filtering of HEVC bitstreams [16]. In addition, Reference Picture Resampling (RPR) in VVC enables resolution changes during encoding to adapt to varying network conditions without inserting intra pictures [17]. Sev-arXiv:2609.37328v1 [eess.IV] 29 Sep 2026 eral works build upon RPR for neural-network-based super-resolution (NNSR) [18] [19] and have been adopted into the JVET NNVC (Neural-Network-based Video Coding) exploration model [20]. How-ever, the NNSR approach in NNVC works as an enhancement filter, where the resolution change is performed by the RPR upsampler and the neural network only refines the resampled pictures. This limits the applicability when super-resolution is desired as an independent decoder-side post-filter. In particular, to remain compatible with the VSEI NNPF signalling, a post-processing filter with the purpose of super-resolution should perform the upsampling operation within the post-processing model itself, rather than relying on the non-normative use of the RPR upsampler. In this paper, we propose CASR, a content-adaptive SR post-filtering framework for VVC, where the model’s interface (e.g., input and output tensors) is compliant with the VSEI NNPF signalling. The base SR network performs ×2 upscaling using sub-pixel convo-lution [21] and is adapted from the JVET NNSR architecture in [20], which we modify to (i) include the upsampling operation inside the post-filter and (ii) accept the inputs and signalling required by the VSEI NNPF SEI messages. For content adaptation, we depart from previous multiplier-only schemes [9] and instead apply Low-Rank Adaptation (LoRA) [22] to selected convolution layers of the SR network. The convolution weights of the pretrained network are frozen, and only two low-rank matrices per layer are fine-tuned at the encoder side using the VVC-decoded test frames as supervision. The resulting low-rank update is encoded with the NNR toolbox [10] using an adaptive QP search and DeepCABAC [11], and is transmitted to the decoder. The contributions of this paper are: (1) an SR post-filter model for VVC that is compatible with the VSEI standard, both in its input/output tensors and in incorporating the upsampling operation as part of the network; (2) a LoRA-based content-adaptation scheme that reduces the number of trainable per-sequence parameters compared with full fine-tuning while preserving full compatibility with the VVC decoder; and (3) an evaluation on the JVET CTC class A test set shows the trade-off between pretrained-only SR post-filtering, multiplier, and the proposed LoRA adaptation. The remainder of the paper is organized as follows. Section II describes our SR models and content-adaptive overfitting, Section III reports and discusses the results, and Section IV concludes the paper. II. M ETHODOLOGY 
+
+Figure 1 illustrates the proposed framework. The input high-resolution (HR) sequence is downsampled by a factor s = 2 in both spatial dimensions and encoded with VVC Test Model (VTM 21.0) under the random access (RA) and all-intra (AI) configurations. At the decoder, the decoded low-resolution (LR) frames are enhanced by an SR post-filter that is fully outside the coding loop. The post-filter is overfitted to each sequence at the encoder side by training only the LoRA matrices or the multiplier matrices attached to each convolution while the pretrained convolution kernels remain frozen. The resulting update is quantised, entropy-encoded with NNR [10], and transmitted as side information. At the decoder, the NNR bitstream is decoded, the weight update is merged to the frozen base weight, and the adapted SR network performs upsampling. 
+
+A. Network architecture 
+
+The base SR network performs ×2 upscaling from a decoded YUV 4:2:0 frame and a per-slice QP map. It follows a residual learning paradigm: the LR input x = ( xYUV , xQP ) is mapped to an HR residual that is added to a deterministic upsampling of the decoded picture, 
+
+ˆy = UNN (xYUV ) + S(x; θ), (1) where UNN is the nearest neighbour ×2 upsampler and S(·; θ) is the trained residual network that includes an upsampling layer. Figure 2 shows the SR network architecture. In general, the base SR model requires 79.4kMACs per pixel and includes 137 , 091 
+
+trainable parameters. The decoded YUV 4:2:0 frame is packed into a 6-channel LR tensor (4 sub-sampled luma channels via pixel-unshuffle, plus the U and V chroma channels). This tensor and the QP map are processed by two parallel input convolutions (3 ×3 and 1×1, D1=32 and D2=16 feature channels), concatenated along the channel dimension and merged by a 1 ×1 convolution to D3=32 
+
+channels. A separable 3 ×3 convolution then projects the feature map to 2C=64 channels, immediately followed by a sub-pixel convolution layer [21] that expands it to s2 · 2C=256 channels, performs the ×2
+
+upscaling, and reduces the channel count back to 2C=64 . The HR feature map is split along the channel dimension into a luma path (NY =8 residual blocks of width C=32 , expansion C1,Y =64 ) and a chroma path ( NU V =4 residual blocks of width C=32 , expansion 
+
+C1,U V =32 ). Each residual block is composed of a 1 ×1 expansion (with PReLU), a 1 ×1 projection, and a separable 3 ×3 convolution, with a residual skip [20]. Finally, two output convolutions produce a 4-channel luma residual (re-assembled by PixelShuffle into one HR luma plane) and a 2-channel chroma residual at HR. All nonlinearities are PReLU and inference is performed in fp32. Trainable LoRA adapters or multipliers are applied to convolution layers from the sub-pixel block onward. 
+
+B. Content adaptation Multiplier baseline: As a reference adaptation scheme, we adopt the channel-wise multiplier overfitting of Santamaria et al. [9]. Each convolution block is augmented with a channel-wise learnable multiplier vector m(l) ∈ RC(l)out that scales the post-activation output. For layer l and output channel i,
+
+y(l) 
+
+> i
+
+= σ
+
+
+
+W(l) 
+
+> i
+
+∗ x(l) + b(l)
+
+> i
+
+
+
+· m(l) 
+
+> i
+
+, (2) where ∗ is convolution, W(l) 
+
+> i
+
+and b(l) 
+
+> i
+
+are the frozen kernel and bias of channel i, and σ(·) is the PReLU non-linearity. All multipliers are initialised to 1, so the network reproduces the pretrained behaviour at the start of overfitting. During encoder-side fine-tuning, only {m(l) 
+
+> i
+
+}
+
+are trainable; the convolution kernels, biases, and PReLU coefficients are frozen. 
+
+Proposed LoRA scheme: We model the per-sequence content adaptation as a low-rank update [22] at selected convolution kernels of the base network. Let W(l) ∈ RC(l)out ×C(l)in ×k(l)  
+
+> h×k(l)
+> w
+
+be the kernel of layer l, with f (l)in = C(l)in k(l) 
+
+> h
+
+k(l) 
+
+> w
+
+and f (l)out = C(l)out . We attach two trainable matrices A(l) ∈ Rr×f (l)in and B(l) ∈ Rf (l)out ×r and, at inference time, we replace the kernel by 
+
+fW(l) = W(l) + αr reshape 
+
+
+
+B(l)A(l), W(l)shape 
+
+
+
+, (3) where r ≪ min( f (l)in , f (l)out ) is the LoRA rank and α a scaling factor. We initialise A(l) with Kaiming uniform and B(l) with zeros, so that fW(l)=W(l) at the start of overfitting. During content adaptation only {A(l), B (l)} are trainable; the convolution kernels 
+
+W(l), biases, and PReLU coefficients of the pretrained network are frozen. This formulation generalises the channel-wise multiplier overfitting of [9]: a multiplier corresponds to a rank-1 update of a 1×1 kernel, whereas LoRA allows a rank-r update of every kernel HR video  VTM encoder  
+
+> VTM
+> encoder
+> decoder
+> bitstream
+> weight-update
+> NN overfitting
+> NNR compression
+> VTM decoder
+> Decoded
+> LR video
+> Decoded
+> LR video
+> Pretrained
+> SR filter
+> Decoded
+> HR video
+> Encoder side Decoder side
+> QP slices
+
+Fig. 1: Proposed VSEI-compliant SR post-filtering pipeline with encoder side content adaptation.                        
+
+> YUV 4:2:0 6 ch QP slice 1 ch Conv 3×3
+> D1=32
+> Conv 1×1
+> D2=16
+> Concat Conv 1×1
+> →D3=32
+> Sep. 3×3
+> →2C=64
+> Sub-pixel conv
+> ×2split
+> NY=8 ×
+> ResBlock
+> C=32 , C 1,Y =64
+> NU V =4 ×
+> ResBlock
+> C=32 , C 1,U V =32
+> Conv 3×3
+> →4ch Conv 3×3
+> →2ch PixelShuffle
+> s=2 ++ˆY(HR)
+> ˆU , ˆV(HR) Nearest ×2
+> (input YUV)
+
+(a) YUV 4:2:0 and QP map are fused, upsampled ×2 via sub-pixel convolution, and split into luma/chroma paths with a residual skip. LoRA adapters or Multipliers are added to convolution layers from the sub-pixel block onward.       
+
+> 2C,H×WSep. 3×3
+> →s2(2 C)
+> PixelShuffle
+> s=2 2C,sH ×sW
+
+(b) Sub-pixel convolution: Sep. 3×3 expands to 
+
+s2(2 C) channels, PixelShuffle upsamples by s×.                        
+
+> aaaabbbbccccdddds2ch. @ H×Wababcdcdababcdcd
+> 1ch. @ sH ×sW
+
+(c) PixelShuffle (s=2 ): s2
+
+channels at H×W are inter-leaved into a single channel at 
+
+sH ×sW .         
+
+> C1×1,C→C1
+> PReLU 1×1,C1→CSep. 3×3,C→C+C
+
+(d) ResBlock: 1×1 expand, 1×1 project, Sep. 3×3
+
+conv, with residual skip. 
+
+Fig. 2: Network architecture: (a) full pipeline, (b) sub-pixel convolution block, (c) PixelShuffle rearrangement, (d) ResBlock. Pretrained weights 
+
+> Pretrained weights
+> Multiplier adaptation
+> LoRA
+
+Fig. 3: (a) Channel-wise multiplier scaling and (b) low-rank weight update (LoRA) attached to a frozen convolution layer. shape (including the separable 3 ×1 and 1 ×3 layers used in our network) and shares parameters across channels. The number of trainable LoRA parameters per layer is r(f (l)in + f (l)out ). Summed over all convolution layers of the network, this remains a small fraction of the base model parameters (reported per sequence in Sec. III). At the encoder, the LoRA matrices are fine-tuned for each sequence using the original HR frames as supervision. For each training tuple 
+
+(xn, qp n, yn) (decoded LR frame, per-slice QP map, original HR frame) we minimise a per-component MSE loss, 
+
+L = wY MSE(ˆ yY , yY ) + wU V MSE(ˆ yU V , yU V )
+
+wY + wU V 
+
+, (4) with wY = 4 , wU V = 2 , computed on the 4-channel luma residual stream and the 2-channel chroma residual stream respectively. The same loss function is used for both base-model pretraining and per-sequence content adaptation. We use multiplier-only overfitting [9] as a comparable method for comparison. Figure 3 illustrates both adaptation methods applied to a frozen convolution layer. 
+
+C. NNR coding 
+
+Both methods produce a per-sequence weight update encoded with the NNR toolbox [10]: ∆θ = {A(l), B (l)}l for LoRA and 
+
+∆θ = {m(l)}l for the Multiplier. Uniform-scalar quantisation (with-out dependent quantisation) is followed by DeepCABAC entropy coding [11]. The NNR QP is adaptive : from an initial value of −40 ,an inner rate–distortion search refines the per-tensor QP to minimise bitstream length subject to a tolerated reconstruction-loss change on the encoder-side training loader. The selected QP is signalled in the bitstream payload. At the decoder, ∆θ is dequantised and merged into the frozen base weights once per sequence via Eq. (2) or Eq. (3). TABLE I: BD-rate (%) and relative encoding/decoding time (EncT/DecT) compared to VTM. While both overfitting methods improve the base model, LoRA significantly outperforms Multiplier on chroma (UV) components.                                                                               
+
+> RA Method Y (%) U (%) V (%) EncT DecT RPR -3.94 6.62 4.83 75% 67% Base SR -1.76 34.63 19.94 74% 81% Multiplier (approx. 100% EncT) -9.41 -2.75 -5.94 102% 95% Multiplier -9.50 -3.40 -6.76 147% 95% LoRA (approx. 100% EncT) -10.46 -14.08 -22.88 101% 82% LoRA -10.93 -15.39 -24.41 145% 82% AI Method Y (%) U (%) V (%) EncT DecT RPR -4.04 16.65 14.76 90% 46% Base SR -5.08 37.61 13.76 70% 59% Multiplier (approx. 100% EncT) -12.07 9.55 -5.20 102% 69% Multiplier -12.26 7.77 -6.76 176% 69% LoRA (approx. 100% EncT) -12.86 -3.36 -20.54 98% 59% LoRA -13.43 -5.75 -22.94 170% 59%
+
+III. R ESULTS AND DISCUSSION 
+
+A. Experimental setup 
+
+Base-model pretraining. The base SR network is trained on DIV2K [23] for the all-intra (AI) configuration and on the UHD subset of BVI-DVC [24] and TVD [25] for the random-access (RA) configuration. Corresponding validation set of these test set are used for validation. Training uses Adam (lr = 1e −3) with ReduceOn-Plateau scheduling (patience 10, factor 0.5, minimum lr = 1e −6) for up to 200 epochs and batch size 256. 
+
+Content-adaptive overfitting. For each test sequence, only the content-adaptive parameters (LoRA matrices or multiplier scalars) are fine-tuned while the base-model weights remain frozen. Overfitting uses Adam (lr = 1e −3) with the same ReduceOnPlateau schedule (patience 10, factor 0.5, minimum lr = 1e −6) for up to 200 epochs, batch size 16, 64 ×64 LR patches. LoRA uses default rank r=4 and 
+
+α=4 .
+
+Evaluation. Experiments are conducted on the JVET CTC Class A1 (Tango2, FoodMarket4, Campfire) and Class A2 (CatRobot1, DaylightRoad2, ParkRunning3) sequences at 
+
+3840 ×2160 . Each sequence is downsampled by ×2 before encoding so that the SR post-filter restores the native HR resolution. Encoding uses VTM under both RA and AI configurations with five QPs {22 , 27 , 32 , 37 , 42 }. The anchor is VTM compression at full resolution with five QPs {27 , 32 , 37 , 42 , 47 }. The mismatch in QP is intentional to ensure that bitrates are matched, since the proposed methods encode at half resolution, resulting in significantly lower bitrate at the same QP. BD-rate is computed using the Bjøntegaard Delta formulation [26] with native-resolution VTM as the anchor. For all content-adaptive methods, the bitrate includes the NNR-coded side information added to the VVC bitstream. SR inference is performed in fp32 PyTorch. 
+
+B. Overall Results and Analysis 
+
+Table I summarizes the BD-rate results under both RA and AI configurations. The RPR baseline uses the RPR upsampling filter of VVC as a non-normative post-filter and achieves moderate luma savings ( −3.94 % for RA and −4.04 % for AI) but degrades chroma quality, confirming that resolution adaptation alone cannot preserve colour fidelity. The non-adapted Base SR model exhibits a similar pattern more acutely: while it provides luma gains, its chroma BD-rates are severely degraded. Both RPR and Base SR results show 10 3 10 4 
+
+> Bitrate (kbps)
+> 30.0 32.5 35.0 37.5 40.0 42.5
+> Y-PSNR (dB)
+> VTM RPR Base SR CASR-LoRA CASR-Mult RA AI
+
+Fig. 4: RD curves (Y) for ParkRunning3 (A2). Content-adaptive variants outperform SR base; LoRA yields the best trade-off. that super-resolution alone fails to recover colour. In contrast, the overfitting approaches deliver substantial luma improvements, with Multiplier reaching −9.50 % and −12 .26 % and LoRA reaching 
+
+−10 .93 % and −13 .43 % for Y under RA and AI, respectively, while also mitigating the chroma deficiencies. In particular, the Multiplier approach improves significantly over Base SR, turning most chroma BD-rates negative for RA. However, some residual positive values remain for AI (e.g. +7 .77 % for U under AI), indicating that scalar gain adjustment has limited capacity to capture spatially varying colour patterns. LoRA adaptation, by contrast, achieves consistent savings across all three components in both configurations, reaching −15 .39 % /−24 .41 % for U/V under RA. The improvement over Multiplier is particularly pronounced on chroma, confirming that low-rank weight updates offer a richer adaptation space than element-wise scaling. In terms of complexity, both adaptation methods increase encoding time to 145–176 % of VTM due to the iterative fine-tuning loop. On the decoding side, the two methods differ slightly: LoRA’s decoding time is identical to that of the Base SR, since its low-rank weights are merged into the model parameters at inference and add no computation, while the Multiplier method incurs a marginally higher decoding time. The decoding time of both methods, however, remains competitive with that of the VTM full resolution anchor. In both cases the adapted model keeps the same architecture as the Base SR, so the additional cost is confined almost entirely to the encoder side, making the approach well suited to asymmetric encode-once, decode-many scenarios. Furthermore, at ≈ 100 % of the anchor’s encoding time, both adaptive methods already yield significant luma savings, with LoRA leading, as shown in Table I. LoRA also achieves clear chroma gains (U: −14 .08% /−3.36% ; V: −22 .88% /−20 .54% for RA/AI), in contrast to RPR and Base SR, which both lose chroma. Furthermore, when measured against the non-adapted Base SR (rather than VTM), LoRA ( r=4 ) delivers an additional −10 .16% (Y), −39 .17% (U), 
+
+−39 .79% (V) under RA, confirming that the adaptation gain is substantial even on top of the already-beneficial SR post-filter. Figure 4 shows rate–distortion curves for ParkRunning3. At low bitrates (high QPs), the SR post-filter consistently outperforms the native-resolution anchor because encoding at half resolution requires significantly fewer bits. At high bitrates (low QPs), the gap narrows as the native-resolution encoder preserves more detail. The LoRA-adapted post-filter shifts the RD curve upward across the entire oper-ating range compared to the non-adapted SR baseline, demonstrating Original VTM (QP42) SR (QP37) +Mult (QP37) +LoRA (QP37) YUV Y         
+
+> PSNR=29.67 dB PSNR=29.79 dB PSNR=30.33 dB PSNR=30.96 dB
+> U
+> PSNR=27.12 dB PSNR=25.77 dB PSNR=26.35 dB PSNR=27.52 dB
+> V
+> PSNR=26.36 dB PSNR=24.97 dB PSNR=26.14 dB PSNR=28.40 dB
+
+Fig. 5: 128 ×128 crop from ParkRunning3 (class A2, AI). LoRA preserves fine texture and colour fidelity more faithfully than base SR or Multiplier adaptation. TABLE II: Effect of LoRA rank on BD-rate (%), trainable pa-rameters, and NNR signalling overhead (OH) compared to native-resolution VTM, under RA and AI.                                                         
+
+> RA AI Rank r% params Y (%) U (%) V (%) OH (%) Y (%) U (%) V (%) OH (%) 13.9% -10.13 -8.13 -14.07 1.52 -12.85 2.05 -13.03 1.25 27.8% -10.69 -13.22 -21.52 2.03 -13.26 -3.34 -20.37 1.69 415 .6% -10.93 -15.39 -24.41 2.96 -13.43 -5.75 -22.94 2.53 831 .2% -10.23 -16.75 -26.33 4.77 -12.89 -7.00 -24.75 4.16 Multiplier 2.1% -9.50 -3.40 -6.76 0.62 -12.26 7.77 -6.76 0.52
+
+that content adaptation improves quality at every rate point. Figure 5 presents visual comparisons at a matched bitrate. The VTM anchor is encoded at full resolution with QP42, while the proposed SR methods encode at half resolution with a QP37 that produces a comparable bitrate. The luma crops show that the non-adapted SR post-filter already reconstructs the Y component well, but fails to reconstruct the chroma components faithfully. Both over-fitting methods successfully restore UV components in fine detail. In particular, the LoRA-adapted model further reduces degradation in the texturally complex region compared to the Multiplier method. The chroma crops (U, V) confirm that the improvement extends to colour fidelity, not just to luma sharpness. 
+
+C. LoRA rank and signalling overhead 
+
+Table II studies the effect of LoRA rank r on coding efficiency and parameter budget. Even at r=1 , LoRA already outperforms the Multiplier baseline by capturing cross-channel interactions that simple scaling cannot express. Increasing the rank to r=4 steadily improves the BD-rate, while r=8 brings diminishing returns at the cost of a larger NNR payload. The cost of these adaptations is reported in Table III. The NNR-coded LoRA ( r=4 ) payload averages approximately 41 kbps across all QPs, while the Multiplier payload averages approximately 9 kbps. Since the absolute overhead is nearly QP-independent, the relative percentage grows at higher QPs, where the base SR bitstream is smaller. At all tested QPs, this overhead remains well below the improvement in BD-rate provided by content TABLE III: Geometric-mean bitrate overhead (%) from NNR-coded overfitting per QP. 
+
+Method Config QP22 QP27 QP32 QP37 QP42 Overall LoRA( r=1 ) RA 0.27% 0.52% 1.02% 1.96% 3.89% 1.52% AI 0.29% 0.53% 0.91% 1.59% 2.93% 1.25% LoRA( r=2 ) RA 0.35% 0.72% 1.43% 2.65% 5.07% 2.03% AI 0.40% 0.71% 1.27% 2.21% 3.91% 1.69% LoRA( r=4 ) RA 0.51% 1.12% 2.00% 3.81% 7.49% 2.96% AI 0.57% 1.08% 1.81% 3.23% 6.06% 2.53% LoRA( r=8 ) RA 0.89% 1.71% 3.60% 6.44% 11.55% 4.77% AI 1.04% 1.76% 3.14% 5.49% 9.56% 4.16% Mult. RA 0.12% 0.22% 0.42% 0.83% 1.54% 0.62% AI 0.12% 0.23% 0.38% 0.66% 1.19% 0.52% 80 100 120 140         
+
+> EncT (% of VTM)
+> 20
+> 10
+> 010 20 30
+> BD-rate (%)
+> RA
+> 75 100 125 150 175
+> EncT (% of VTM)
+> 20
+> 10
+> 010 20 30 40
+> AI
+> YUVLoRA Mult
+
+Fig. 6: BD-rate (Y, U, V) vs. encoding time. Content adaptation progressively recovers chroma degradation from Base SR, with LoRA outperforming Multiplier across all components. adaptation (Table I), confirming that LoRA adaptation pays for its own signalling cost. Balancing rank-driven gains against payload size, we select r=4 as the default operating point for our experiments. 
+
+D. Overfitting convergence 
+
+Figure 6 traces the BD-rate evolution during overfitting. At epoch 0 (Base SR), luma already achieves moderate savings, while chroma is severely degraded. Both methods then improve all components, with most gains materialising within the first 100 epochs (at approximately 110% encoding time for RA and 120% for AI); ReduceOnPlateau further refines the result by lowering the learning rate upon validation-loss stagnation. LoRA consistently outperforms Multiplier throughout finetuning, most clearly on chroma. IV. C ONCLUSION 
+
+We presented CASR, a content-adaptive super-resolution post-filter for VVC that is compliant with the VSEI neural network post-processing filter standard in terms of input/output tensors and in terms of including the upsampling operation within the model. The base network performs ×2 upscaling internally through sub-pixel convolution. Per-sequence content adaptation is realised by overfitting Low-Rank Adaptation matrices or Multipliers attached to selected convolution layers at the encoder side; the resulting weight update is compressed with NNR and signalled as side information. Experiments on the JVET CTC class A1 and A2 sequences under both RA and AI configurations show that LoRA-based overfitting improves over both a non-adapted SR post-filter and multiplier-only overfitting, with rank r=4 providing a favourable trade-off between coding gain and signalling overhead. REFERENCES 
+
+[1] Benjamin Bross, Ye-Kui Wang, Yan Ye, Shan Liu, Jianle Chen, Gary J. Sullivan, and Jens-Rainer Ohm, “Overview of the Versatile Video Coding (VVC) Standard and its Applications,” IEEE Transactions on Circuits and Systems for Video Technology , 2021. [2] Wassim Hamidouche, Thibaud Biatek, Mohsen Abdoli, Edouard Franc ¸ois, Fernando Pescador, Miloˇ s Radosavljevi´ c, Daniel Menard, and Mickael Raulet, “Versatile Video Coding Standard: A Review From Coding Tools to Consumers Deployment,” IEEE Consumer Electronics Magazine , 2022. [3] Haiwu Zhao, Ming He, Guowei Teng, Xiwu Shang, Guozhong Wang, and Yiyan Feng, “A CNN-Based Post-Processing Algorithm for Video Coding Efficiency Improvement,” IEEE Access , 2020. [4] Gary J. Sullivan, Jens-Rainer Ohm, Woo-Jin Han, and Thomas Wiegand, “Overview of the high efficiency video coding (HEVC) standard,” IEEE Transactions on Circuits and Systems for Video Technology , 2012. [5] Fan Zhang, Chen Feng, and David R. Bull, “Enhancing VVC Through Cnn-Based Post-Processing,” in IEEE International Conference on Multimedia and Expo (ICME) , 2020. [6] Hao Zhang, Cheolkon Jung, Dan Zou, and Ming Li, “WCDANN: A Lightweight CNN Post-Processing Filter for VVC-Based Video Com-pression,” IEEE Access , 2023. [7] Yat Hong Lam, Alireza Zare, Caglar Aytekin, Francesco Cricri, Jani Lainema, Emre Aksu, and Miska Hannuksela, “Compressing Weight-updates for Image Artifacts Removal Neural Networks,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) , 2019. [8] Maria Santamaria, Yat-Hong Lam, Francesco Cricri, Jani Lainema, Ramin G. Youvalari, Honglei Zhang, Miska M. Hannuksela, Esa Rahtu, and Moncef Gabbouj, “Content-adaptive convolutional neural network post-processing filter,” in IEEE International Symposium on Multimedia (ISM) , 2021. [9] Maria Santamaria, Ruiying Yang, Francesco Cricri, Honglei Zhang, Jani Lainema, Ramin G. Youvalari, Hamed R. Tavakoli, and Miska M. Hannuksela, “Overfitting multiplier parameters for content-adaptive post-filtering in video coding,” in 10th European Workshop on Visual Information Processing (EUVIP) , 2022. [10] Heiner Kirchhoffer, Paul Haase, Wojciech Samek, Karsten M¨ uller, Hamed Rezazadegan-Tavakoli, Francesco Cricri, Emre B. Aksu, Miska M. Hannuksela, Wei Jiang, Wei Wang, Shan Liu, Swayambhoo Jain, Shahab Hamidi-Rad, Fabien Racap´ e, and Werner Bailer, “Overview of the Neural Network Compression and Representation (NNR) Stan-dard,” IEEE Transactions on Circuits and Systems for Video Technology ,2021. [11] Simon Wiedemann, Heiner Kirchhoffer, Stefan Matlage, Paul Haase, Arturo Marban, Talmaj Marinˇ c, David Neumann, Tung Nguyen, Heiko Schwarz, Thomas Wiegand, Detlev Marpe, and Wojciech Samek, “Deep-CABAC: A Universal Compression Algorithm for Deep Neural Net-works,” IEEE Journal of Selected Topics in Signal Processing , 2020. [12] International Telecommunication Union and International Organization for Standardization, “Versatile supplemental enhancement information messages for coded video bitstreams,” Recommendation ITU-T H.274 — ISO/IEC 23002-7, ITU-T and ISO/IEC, Jan. 2026. [13] Thomas Wiegand, Gary J Sullivan, Gisle Bjøntegaard, and Ajay Luthra, “Overview of the H.264/AVC video coding standard,” IEEE Transac-tions on Circuits and Systems for Video Technology , 2003. [14] Mehrdad Khani, Vibhaalakshmi Sivaraman, and Mohammad Alizadeh, “Efficient Video Compression via Content-Adaptive Super-Resolution,” in Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , 2021. [15] NVIDIA Corporation, “DLSS 4: Transforming Real-Time Graphics with AI,” 2025. [16] Yifan Wang, Luka Murn, Luis Herranz, Fei Yang, Marta Mrak, Wei Zhang, Shuai Wan, and Marc Gorriz Blanch, “Efficient Super-Resolution for Compression Of Gaming Videos,” in IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2023. [17] Tianliang Fu, Kai Zhang, Li Zhang, Shanshe Wang, and Siwei Ma, “An Efficient Framework of Reference Picture Resampling (RPR) for Video Coding,” IEEE Transactions on Circuits and Systems for Video Technology , 2022. [18] Chaoyi Lin, Yue Li, Junru Li, Kai Zhang, and Li Zhang, “Low Complexity Super Resolution for Resampling-based Video Coding,” in IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2025. [19] Shimin Huang, Cheolkon Jung, Yang Liu, and Ming Li, “CNN Filter for Super-Resolution with RPR Functionality in VVC,” in ICASSP 2023 - 2023 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2023. [20] Zhuoyi Lv and Chuan Zhou, “EE1-4.1: Multiple scaling ratios coding for NNVC with NNSR,” Tech. Rep. JVET-AI0074, 2024. [21] Wenzhe Shi, Jose Caballero, Ferenc Husz´ ar, Johannes Totz, Andrew P. Aitken, Rob Bishop, Daniel Rueckert, and Zehan Wang, “Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network,” in Proceedings of IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2016. [22] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen, “LoRA: Low-Rank Adaptation of Large Language Models,” in International Conference on Learning Representations (ICLR) , 2022. [23] Eirikur Agustsson and Radu Timofte, “NTIRE 2017 Challenge on Single Image Super-Resolution: Dataset and Study,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) , 2017. [24] Di Ma, Fan Zhang, and David R. Bull, “BVI-DVC: A Training Database for Deep Video Compression,” IEEE Transactions on Multimedia , 2022. [25] Xiaozhong Xu, Shan Liu, and Zeqiang Li, “Tencent Video Dataset (TVD): A Video Dataset for Learning-based Visual Data Compression and Analysis,” arXiv preprint arXiv:2105.05961 , 2021. [26] Nabajeet Barman, Maria G Martini, and Yuriy Reznik, “Bjøntegaard Delta (BD): A Tutorial Overview of the Metric, Evolution, Challenges, and Recommendations,” arXiv preprint arXiv:2401.04039 , 2024.
