@@ -1,6 +1,11 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-10-06 <!--dpr-date:20261006-->
+    * 精读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202610/06/2610.02265v1-event-guided-neural-video-compression" data-sidebar-item="{&quot;title&quot;: &quot;Event-guided Neural Video Compression&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2610.02265v1-event-guided-neural-video-compression&quot;, &quot;score&quot;: &quot;9.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;vcodec&quot;}], &quot;evidence&quot;: &quot;事件引导神经视频编解码与运动先验时间上下文&quot;}">Event-guided Neural Video Compression</a>
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202610/06/2610.00738v1-q-mino-a-minimal-norm-method-for-quantization-aware-training" data-sidebar-item="{&quot;title&quot;: &quot;Q-MINO: A Minimal-Norm Method for Quantization-Aware Training&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2610.00738v1-q-mino-a-minimal-norm-method-for-quantization-aware-training&quot;, &quot;score&quot;: &quot;7.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;面向低位量化稳定性的量化感知训练优化器&quot;}">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</a>
   * 2026-10-04 <!--dpr-date:20261004-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202610/04/2609.33384v1-pulsequant-propagation-guided-subspace-correction-for-4-bit-video-diffusion-transformers" data-sidebar-item="{&quot;title&quot;: &quot;PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.33384v1-pulsequant-propagation-guided-subspace-correction-for-4-bit-video-diffusion-transformers&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;train-trick&quot;}], &quot;evidence&quot;: &quot;面向视频扩散Transformer的4比特量化&quot;}">PulseQuant: Propagation-Guided Subspace Correction for 4-Bit Video Diffusion Transformers</a>
