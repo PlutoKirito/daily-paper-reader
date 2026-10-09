@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-08</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-09</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-08 00:26:15 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-09 00:20:15 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读3篇均分6.0的论文，聚焦量化训练、位深蒸馏与高斯泼溅压缩。最值得看的是量化感知训练的最小范数方法Q-MINO，以及用标准视频编解码器压缩高斯泼溅序列的思路。普通读者可先挑与自身模型压缩或3D场景存储需求最贴近的一篇速读，再决定是否深挖。</p>
+<p>今日速读5篇量化相关论文，精读0篇，整体以速览为主。最值得关注的是量化感知训练的最小范数方法Q-MINO与NVFP4下VAE策略潜变量保持方案，均聚焦低比特量化的精度损失控制。普通读者可优先了解量化感知训练的基本思路，再按需深入具体场景。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Q-MINO: A Minimal-Norm Method for Quantization-Aware Training">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</span></li><li><span class="dpr-home-dashboard-paper-title" title="Progressive Multi-Ancestor Bit-Depth Distillation">Progressive Multi-Ancestor Bit-Depth Distillation</span></li><li><span class="dpr-home-dashboard-paper-title" title="Efficient Gaussian Splatting Sequence Compression with Standard Video Codecs">Efficient Gaussian Splatting Sequence Compression with Standard Video Codecs</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Q-MINO: A Minimal-Norm Method for Quantization-Aware Training">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</span></li><li><span class="dpr-home-dashboard-paper-title" title="LatentQuant: Preserving the Policy-Facing Latent Contract under NVFP4 VAE Quantization">LatentQuant: Preserving the Policy-Facing Latent Contract under NVFP4 VAE Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="Progressive Multi-Ancestor Bit-Depth Distillation">Progressive Multi-Ancestor Bit-Depth Distillation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>2</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>4</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
 </section>
 </div>
 
