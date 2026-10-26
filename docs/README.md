@@ -4,17 +4,24 @@
     <a class="dpr-home-notice-tutorial" href="#/tutorial/README">使用教程 <span aria-hidden="true">›</span></a>
   </div>
   <div class="dpr-home-notice-entry">
-    <time class="dpr-home-notice-date" datetime="2026-07-20">07.20</time>
+    <time class="dpr-home-notice-date" datetime="2026-10-05">10.05</time>
     <div>
-      <strong class="dpr-home-notice-entry-title">反馈功能上线</strong>
-      <span class="dpr-home-notice-entry-summary">新增反馈功能，欢迎大家踊跃反馈各种建议，我们会第一时间查看并协调处理。</span>
+      <strong class="dpr-home-notice-entry-title">medRxiv 自动更新已恢复</strong>
+      <span class="dpr-home-notice-entry-summary">修复超长摘要导致的向量生成失败，维护任务现会限制单条 embedding 文本长度并分片写入。受影响范围已重新同步，公开读取、关键词检索与语义检索均已验证。</span>
     </div>
   </div>
   <div class="dpr-home-notice-entry">
-    <time class="dpr-home-notice-date" datetime="2026-07-19">07.19</time>
+    <time class="dpr-home-notice-date" datetime="2026-09-16">09.16</time>
     <div>
-      <strong class="dpr-home-notice-entry-title">首页新增社区统计</strong>
-      <span class="dpr-home-notice-entry-summary">现在可以看到今天看论文的人数和项目加入人数。</span>
+      <strong class="dpr-home-notice-entry-title">日报跨日重复推荐已修复</strong>
+      <span class="dpr-home-notice-entry-summary">历史推荐现按原始召回标签与 arXiv 论文标识去重，暂停词条不再参与评分；同一专题次日不会重复推荐相同论文。已有历史页面保留，不自动删除。</span>
+    </div>
+  </div>
+  <div class="dpr-home-notice-entry">
+    <time class="dpr-home-notice-date" datetime="2026-09-09">09.09</time>
+    <div>
+      <strong class="dpr-home-notice-entry-title">90天/365天 arXiv 专题回溯</strong>
+      <span class="dpr-home-notice-entry-summary">支持分片召回、断点评审与分页查看，核心论文与待复核结果分开展示。DeepSeek 费用按实际用量计算，不下载全量 PDF。</span>
     </div>
   </div>
   <div class="dpr-home-site-stats" data-dpr-site-stats hidden aria-live="polite">
@@ -41,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-09</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-27 ~ 2026-10-26</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-09 00:20:15 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-26 13:10:29 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读5篇量化相关论文，精读0篇，整体以速览为主。最值得关注的是量化感知训练的最小范数方法Q-MINO与NVFP4下VAE策略潜变量保持方案，均聚焦低比特量化的精度损失控制。普通读者可优先了解量化感知训练的基本思路，再按需深入具体场景。</p>
+<p>今日速读聚焦图像转代码、多视图工程图纸生成与代码视频生成评测三条前沿线。</p>
+<p>最值得先看用“中间渲染”做图像转代码的强化学习，以及覆盖 T2V/I2V/V2V 的 Code2Video-Compass 统一基准。</p>
+<p>普通读者建议先读这两篇的摘要、实验设置与评测指标，再判断是否跟进复现。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -84,12 +93,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Q-MINO: A Minimal-Norm Method for Quantization-Aware Training">Q-MINO: A Minimal-Norm Method for Quantization-Aware Training</span></li><li><span class="dpr-home-dashboard-paper-title" title="LatentQuant: Preserving the Policy-Facing Latent Contract under NVFP4 VAE Quantization">LatentQuant: Preserving the Policy-Facing Latent Contract under NVFP4 VAE Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="Progressive Multi-Ancestor Bit-Depth Distillation">Progressive Multi-Ancestor Bit-Depth Distillation</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Reinforcement Learning from Intermediate Renders for Image-to-Code Generation">Reinforcement Learning from Intermediate Renders for Image-to-Code Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="DrawingsDreamer: A Unified Multi-View Engineering Drawings Generation Model">DrawingsDreamer: A Unified Multi-View Engineering Drawings Generation Model</span></li><li><span class="dpr-home-dashboard-paper-title" title="Code2Video-Compass: A Comprehensive Benchmark for General-Purpose Code-Based Video Generation across T2V, I2V, and V2V">Code2Video-Compass: A Comprehensive Benchmark for General-Purpose Code-Based Video Generation across T2V, I2V, and V2V</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">train-trick <strong>4</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">svg-lottie <strong>4</strong></span></div>
 </section>
 </div>
 
