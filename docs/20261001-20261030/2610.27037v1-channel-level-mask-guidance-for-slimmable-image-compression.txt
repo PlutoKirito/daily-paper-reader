@@ -1,0 +1,2831 @@
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+1
+Channel-Level Mask Guidance for Slimmable Image Compression
+Chen Chen , Chenggang Wu , Yongbiao Chen , Weidong Qiu , Member, IEEE,
+Zhengwei Qi , Member, IEEE, and Haibing Guan , Senior Member, IEEE
+Abstract—Learned image compression (LIC) has achieved
+promising rate-distortion performance, but most methods lack
+scalability for diverse platforms with varying computational and
+storage constraints. Existing slimmable LIC methods achieve
+flexible complexity via consecutive-channel activation, but suffer
+from two critical limitations. First, forced consecutive-channel
+selection degrades narrow-model performance at low bitrates.
+Second, the lack of stable variable-rate control limits their
+adaptability to varying bandwidth conditions.
+To address these limitations, we propose a channel-level
+mask-guided slimmable image compression method. A learnable
+channel-wise mask with sparsity-promoting regularization en-
+ables non-contiguous top-w channel selection, allowing narrow
+models to use the most informative channels. After training,
+mask merging and channel reordering convert the model into
+a standard slimmable network via Mask-to-Slimmable (M2S)
+conversion, supporting efficient inference via channel pruning
+without architectural changes. For variable-rate control, we
+combine λ- and width-conditioned modulation with quantization-
+step scaling and a progressive training pipeline stabilized by a
+freeze-then-fine-tune strategy.
+Experiments on Kodak across E2E, Hyperprior, and Checker-
+board backbones show that our method achieves superior rate-
+distortion performance across multiple widths and bitrates, with
+significant gains for narrow models at low bitrates. At the
+narrowest width (w = 48), it achieves up to 19.22%, 24.11%, and
+22.76% BD-rate savings over the same-width Slimmable baseline
+on the E2E, Hyperprior, and CKBD backbones, respectively. A
+single VBR model replaces 40 independent models, reducing
+storage by 14.8×–15.9×. Compared with existing elastic LIC
+methods, our method outperforms the same-width Slimmable
+baseline and compares favorably in terms of rate-distortion
+performance, parameter efficiency, and latency flexibility. The
+code is available at https://github.com/sjtu-tcloud/MGSIC.
+Index Terms—Neural Networks, Image Compression, Scalable
+Coding, Variable Bitrate.
+I. INTRODUCTION
+L
+EARNED image compression (LIC) has achieved re-
+markable progress in rate-distortion performance, even
+surpassing traditional codecs (e.g., H.265/H.266 intra-mode)
+in certain settings [1], [2], [3], [4], [5], [6]. However, effi-
+cient compression for resource-constrained scenarios remains
+underexplored [7], [8], [9], [10]. Traditional scalable coding
+(e.g., SVC/SHVC) transmits layered bitstreams but suffers
+from high decoding complexity [11], [12]. Several elastic LIC
+methods have thus been developed for quality and spatial
+scalability [6], [10], [13], [14], [15], [16], [17].
+Manuscript received XXX XX, 2026. The authors are with the School
+of Computer Science, Shanghai Jiao Tong University, Shanghai 200240,
+China
+(e-mail:
+chenchen825@sjtu.edu.cn;
+wuchenggang@sjtu.edu.cn;
+chenyongbiao0319@sjtu.edu.cn;
+qiuwd@sjtu.edu.cn;
+qizhwei@sjtu.edu.cn;
+hbguan@sjtu.edu.cn). (Corresponding author : Zhengwei Qi.)
+Enc
+Dec
+Bitstream
+(c)
+(b)
+Enc0
+Enc1
+Enc2
+Dec1
+Dec2
+Dec0
+Bitstream
+(a)
+Enc
+Dec
+Bitstream
+org image
+rec image
+Side Information
+Pred
+Pred
+Spatial 
+Scalability
+Down-sampling
+Up-sampling
+Element-wise Sub.
+Element-wise Add.
+Pred
+Prediction
+Bit Rate 
+(bpp)
+Distortion 
+(PSNR)
+Quality 
+Scalability
+Fig. 1: Three typical styles of Elastic LIC methods. (a) Down-
+Up Sampling Style. (b) Scalable Style. (c) Slimmable Style.
+Quantization and entropy coding are omitted. Element-wise
+addition could also be replaced by channel-wise concatenation.
+As shown in Fig. 1, elastic LIC methods fall into two cate-
+gories: spatial scalability and quality scalability. Spatial scal-
+ability downsamples the input at the encoder and upsamples
+the decoded frame at the decoder [18], [19], [20], [21], often
+incorporating side information to enhance quality [20], [22].
+Quality scalability further splits into learning-based scalable
+coding [13], [14], [6], [23] and slimmable coding [10], [15],
+[16], [17], [24]. Among these styles, slimmable coding offers
+the best flexibility-efficiency trade-off, yet suffers from two
+critical limitations. First, forced consecutive-channel selection
+severely degrades narrow-model performance at low bitrates.
+Second, existing solutions lack effective variable-rate control,
+limiting their adaptability to varying bandwidth conditions.
+Variable-rate control is essential for practical codecs. Ex-
+isting approaches typically introduce modulation networks
+conditioned on λ [25], [26], [27], but they mostly target fixed-
+width models. Integrating them into a slimmable framework is
+nontrivial: naive λ-sampling fails to decouple width adaptation
+from rate modulation, causing training instability.
+To address these challenges, we propose a channel-level
+mask-guided slimmable image compression method. A learn-
+able structured-sparsity mask enables non-contiguous top-w
+selection so that narrow models retain the most informative
+channels. Mask merging and channel reordering then convert
+the mask model into a standard slimmable network (M2S) for
+channel-pruned inference without architectural changes. For
+variable-rate control, we combine λ- and width-conditioned
+modulation with quantization-step scaling and a progressive
+freeze-then-fine-tune strategy to decouple width adaptation
+from rate modulation.
+Our main contributions are summarized as follows:
+• We propose a learnable channel-wise mask with spar-
+arXiv:2610.27037v1  [eess.IV]  19 Oct 2026
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+2
+sity regularization for non-contiguous top-w selection,
+improving narrow-model performance at low bitrates.
+• We design an M2S conversion (mask merging and chan-
+nel reordering) that transforms the mask model into
+slimmable model without altering the forward pass, mak-
+ing active channels contiguous for efficient inference.
+• We develop a variable-rate framework with λ- and width-
+conditioned modulation, quantization-step scaling, and a
+progressive freeze-then-fine-tune strategy, enabling con-
+tinuous rate control in a single slimmable model.
+• Experiments across E2E, Hyperprior, and Checkerboard
+backbones show up to 19.22%, 24.11%, and 22.76% BD-
+rate savings over the same-width Slimmable baseline at
+w = 48, with comprehensive comparisons in parameter
+efficiency, latency, and traditional codecs.
+II. BACKGROUND AND MOTIVATION
+A. Learned Image Compression
+Three representative LIC models are reviewed: E2E model
+[1], Hyperprior model [2], and Context model [3].
+E2E Model: an end-to-end optimized model is proposed with
+learnable nonlinear analysis/synthesis transforms ga/gs and
+arithmetic coding, jointly optimizing rate and distortion [1].
+As shown in Fig. 2, input x ∈RH×W ×3 is converted into
+latent y by ga. Quantization (Q) casts y into integer ˆy, which is
+compressed by arithmetic encoding (AE). Arithmetic decoding
+(AD) restores ˆy, and ˆx is reconstructed by gs:
+y = ga(x),
+ˆy = Q(y),
+ˆx = gs(ˆy)
+(1)
+Usually, uniform noise is used for quantization during training,
+and hard rounding during inference. The loss function is:
+L = R + λD
+(2)
+where R is the bitrate (bit per pixel, bpp), D is the distortion
+(e.g., MSE), and λ controls the rate-distortion trade-off. Its
+factorized entropy model (FEM) assumes i.i.d. elements within
+each channel, so it learns one distribution per channel and
+requires no per-element µ or σ.
+Hyperprior Model: the hyperprior architecture is introduced,
+adding a side branch to capture spatial dependencies in y
+[2]. As shown in Fig. 2, y undergoes hyper analysis/synthesis
+transforms ha/hs to estimate per-element mean µ and scale σ
+for y, forming a Gaussian conditional entropy model. The side
+information z between ha and hs is quantized and compressed:
+z = ha(y),
+ˆz = Q(z),
+(µ, σ) = hs(ˆz)
+(3)
+The loss extends Eq. 2 with a side-information rate term:
+L = R + Rside + λD
+(4)
+where Rside is the bitrate of ˆz.
+Context Model: Minnen et al. [3] proposed a context model
+with autoregressive priors. Its context module gcm is usually
+a masked convolution:
+gcm(x) = (Mctx ⊙W) × x + b
+(5)
+where ⊙is the Hadamard product and 0-1 mask Mctx ensures
+only decoded pixels (left and above in Z-order) are visible.
+Distortion
+Rate
+x
+y
+Q
+Bitstream
+Side Info. 
+Rate
+Q
+μ, σ
+AE
+AE
+AD
+AD
+z
+ẑ 
+ẑ 
+ŷ 
+ŷ 
+x̂ 
+Orig. image
+Rec. image
+Decoder
+Encoder
+Analysis Transform (ga)
+...
+CONV
+CONV
+CONV
+GDN
+GDN
+GDN
+...
+TPCV
+TPCV
+TPCV
+IGDN
+IGDN
+IGDN
+Hyper Analysis Trans. (ha)
+Hyper Synthesis Trans. (hs)
+CONV
+CONV
+CONV
+TPCV
+TPCV
+TPCV
+Context Model (gcm)
+M-CONV
+Entropy 
+Parameters
+(gep)
+Concat
+φ
+ψ
+Synthesis Trans. (gs)
+Quantization
+CONV
+CONV
+CONV
+LeakyReLU
+1
+1
+LeakyReLU
+LeakyReLU
+LeakyReLU
+LeakyReLU
+LeakyReLU
+2
+2
+4
+3
+3
+Fig. 2: Overview of typical LIC model with context model.
+ga and gs consist of Convolution (CONV) / Transposed
+Convolution (TPCV) with Generalized Divisive Normalization
+(GDN) / Inverse GDN (IGDN), respectively. “AE/AD” de-
+note arithmetic en-/de-coding. “Concat” denotes channel-wise
+tensor concatenation. “Q” denotes quantization. The numbers
+①–④denote the four positions for variable-rate methods
+summarized in Table I: ①feature maps, ②latent y, ③side
+information z, and ④the quantizer.
+For pixel i, gcm generates context feature ϕi from visible
+ˆy<i. It is concatenated with hyperprior feature ψi from hs(ˆz),
+and fed into entropy parameter module gep:
+ϕi = gcm(ˆy<i),
+ψi = hs(ˆz)i,
+(µ, σ)i = gep(ψi, ϕi) (6)
+where i indexes the spatial position in ˆy ∈RCy×Hy×Wy, with
+Cy, Hy, and Wy denoting channel number, height, and width
+of ˆy. ˆy<i denotes encoded/decoded pixels.
+Subsequent studies accelerated context modeling by parti-
+tioning y either spatially (e.g., Checkerboard [8]) or channel-
+wise (e.g., [7]), enabling parallel prediction. We adopt E2E,
+hyperprior, and Checkerboard models as backbones.
+B. Slimmable Image Compression
+Yu et al. [28], [29] proposed slimmable neural networks
+that support inference at different widths without retraining;
+Yang et al. [10] introduced this paradigm to LIC with Slim-
+CAE, which jointly trains multiple width sub-networks, each
+assigned its own RD trade-off λw for the target width. For
+target widths W = {w1, w2, . . . , wm}, the objective is:
+Lslim =
+X
+w∈W
+(Rw + λwDw)
+(7)
+where Rw and Dw are the bitrate and distortion at width w,
+and λw is the width-specific Lagrangian multiplier.
+Slimmable methods define sub-networks as the first K con-
+secutive channels, assuming monotonic importance in index
+order. Although this consecutive-prefix structure is system-
+friendly (active weights and activations form contiguous mem-
+ory blocks, so width adaptation maps to contiguous tensor
+slices and MAC units without dynamic gather or scatter),
+training enforces only coarse group-level ordering, so narrow
+models may inherit suboptimal channels. Fig. 3(a) shows
+scattered high-response channels in E2E, whereas SlimCAE
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+3
+0
+10
+20
+30
+40
+Channel index (grouped by 48)
+0
+48
+96
+144
+E2E
+0
+10
+20
+30
+40
+Channel index (grouped by 48)
+SlimCAE
+200
+400
+600
+800
+(a)
+E2E
+PSNR 19.72 dB
+0.118 bpp
+PSNR 23.10 dB
+0.500 bpp
+PSNR 25.47 dB
+0.901 bpp
+PSNR 29.10 dB
+1.569 bpp
+PSNR 35.95 dB
+2.543 bpp
+SlimCAE
+Top-5
+PSNR 19.98 dB
+0.121 bpp
+Top-25
+PSNR 23.04 dB
+0.503 bpp
+Top-50
+PSNR 25.89 dB
+0.899 bpp
+Top-100
+PSNR 29.34 dB
+1.548 bpp
+Top-192
+PSNR 35.90 dB
+2.489 bpp
+(b)
+Fig. 3: Channel importance and its effect on reconstruction (λ = 0.18, w = 192). (a) Channel-wise ℓ2 normalization of the
+latent y, where each row represents 48 consecutive channels. (b) Joint reconstructions using only the top-K channels ranked
+by ℓ2 norm, with K ∈{5, 25, 50, 100, 192}. PSNR and bpp are annotated on each reconstruction.
+TABLE I: Summary of variable bitrate research.
+Pos.a
+Training settingsb
+AG-VAE [30]
+②
+Random training
+DCVC [31]
+②
+Sequential training
+CAE [27]
+①④
+Sequential training with bin size=1; random
+bin size
+QVRF [25]
+②
+Train with λmax, then sequential training
+with other λs
+DCT-RES [32]
+①
+Random training, biased toward larger λ
+MAE [26]
+①
+Sequential training with total loss of all λs
+WPA [33]
+①②③
+Random training, biased toward larger λ
+DM [34]
+①②
+Sequential training
+SF [35]
+②③
+Train with λmax (freeze except scaling fac-
+tors), then sequential training
+a Positions ①–④correspond to Fig. 2. b Random: λ ∼Unif(Λ);
+Sequential: λ in ascending order over Λ; “biased toward larger λ”: larger
+λ sampled more often.
+shows clear gaps between channel groups; even within the first
+48-channel group, some channels have lower ℓ2 normalization
+than later ones. A fixed prefix thus includes less informative
+channels and excludes more useful ones. Fig. 3(b) shows top-5
+channels already capture the dominant low-frequency layout,
+with PSNR increasing monotonically with K, confirming a
+small informative subset suffices for faithful reconstruction.
+This motivates non-contiguous selection: at low bitrates, image
+energy concentrates in a few channels, so a fixed prefix
+includes redundant channels and excludes more informative
+ones. This effect diminishes as width increases.
+C. Variable Rate and Complexity Trade-off
+Variable-rate methods adapt a single model to varying RD
+trade-offs. JPEG scales quantization tables, whereas standard
+LIC trains a separate network per λ [1]. Recent methods
+condition a single model on λ or bin size [25], [26], [27],
+[30], [31], [32], [33], [34], [35] at four locations (Fig. 2): ①
+feature maps, ②latent y, ③latent z, and ④the quantizer.
+Table I summarizes representative methods. QVRF [25] and
+SF [35] use fixed λmax, while others sample larger λ more
+often [32], [33]. AG-VAE [30] and DCVC [31] scale only
+latent y, whereas MAE [26] and DM [34] modulate interme-
+diate features. QVRF uses a scalar regulator, while others use
+channel-wise vectors. SF freezes the main model and updates
+only scaling factors, degrading low-bitrate performance.
+Existing variable-rate methods target fixed-width models,
+and integrating them into a slimmable framework couples
+width and rate training, causing instability. This is because
+λ and width are intrinsically coupled: larger λ requires wider
+models, while narrow models saturate at high bitrates [2], [4].
+Since low bitrates also cause widths to converge, we decouple
+width adaptation from rate modulation.
+D. Structured Pruning and Mask-based Channel Selection
+Structured pruning removes channels for standard-hardware
+deployment [36], while dynamic pruning prunes activations
+per input but requires customized hardware [37]. Yin et al. [38]
+learn binary channel-importance masks and prune at inference;
+EVC [6] sparsifies learnable masks between convolutions and
+merges them into adjacent layers. However, these methods
+target fixed-width or static pruning and do not support non-
+contiguous selection at target widths or joint width/rate adap-
+tation, motivating our mask-guided slimmable framework.
+III. DESIGN METHODOLOGY
+Our design is motivated by two observations. First, the
+lottery ticket hypothesis [39] suggests that channel importance
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+4
+x
+Q
+Q
+AE
+AE
+AD
+AD
+z
+ẑ 
+ẑ 
+Orig. image
+sCONV
+sCONV
+sTPCV
+sTPCV
+Shuffle
+gep
+sCONV
+sCONV
+sCONV
+LeakyReLU
+(Φ, ψ) 
+sCONV
+sCONV
+sGDN
+sGDN
+sGDN
+sCONV
+gcm
+Φ=(Zero)  
+yanchor̂
+ 
+Φ=gcm(yanchor)  ̂
+ 
+ψ=hs(z)̂ 
+y
+yanchor ynon-anchor
+ynon-anchor̂
+ 
+Bitsanchor
+Bitsnon-anchor
+Bitsside
+(μ, σ)anchor
+μanchor
+μnon-anchor
+ga
+ha
+hs
+(μ, σ)non-anchor
+yanchor̂
+ 
+ynon-anchor̂
+ 
++
+=
+ŷ
+ 
+sM-CONV
+0-1 Mask
+x̂ 
+Rec. image
+sTPCV
+sTPCV
+gs
+sIGDN
+sTPCV
+sIGDN
+sTPCV
+sIGDN
+LeakyReLU
+LeakyReLU
+LeakyReLU
+LeakyReLU
+sCONV
+LeakyReLU
+sCONV
+yanchor̂
+ 
+λ
+FC
+ReLU
+Exp
+FC
+Modulation Net
+w
+FC
+ReLU
+Exp
+FC
+×9
+sCONV
+Slimmable operator
+Combined Condition variable
+'s-'
+Training/Inference Stage 
+with VBR (Slim. Model)
+Training Stage
+(Mask Model)
+Sliced operator
+'s-'
+Mask
+Mask Layer
+ŷ
+ 
+Q
+Q
+AE
+AE
+AD
+z
+ẑ 
+ẑ 
+sCONV
+sCONV
+sTPCV
+sTPCV
+Shuffle
+gep
+sCONV
+sCONV
+sCONV
+LeakyReLU
+(Φ, ψ) 
+gcm
+Φ=(Zero)  
+yanchor̂
+ 
+ψ=hs(z)̂ 
+y
+yanchor
+ynon-anchor
+ynon-anchor̂
+ 
+(μ, σ)anchor
+μanchor
+ha
+hs
+(μ, σ)non-anchor
+sM-CONV
+0-1 Mask
+LeakyReLU
+LeakyReLU
+LeakyReLU
+LeakyReLU
+sCONV
+LeakyReLU
+sCONV
+yanchor̂
+ 
+AD
+μnon-anchor
+x
+CONV
+CONV
+GDN
+GDN
+GDN
+CONV
+ga
+CONV
+Mask
+Mask
+Mask
+Mask
+x̂ 
+TPCV
+TPCV
+gs
+IGDN
+TPCV
+IGDN
+TPCV
+IGDN
+Mask
+Mask
+Mask
+Fig. 4: Overview of the proposed method. (Top) Training stage of the Mask model with learnable masks and sliced operators.
+(Bottom) Training and inference stage of the Slimmable model with variable-rate control, where λ- and width-conditioned
+modulation networks generate combined variables via Hadamard product, applied to ga/gs features and quantization step sizes
+for y/z, and channel shuffling aligns (Φ, Ψ) across widths. The M2S conversion between the two stages is detailed in Fig. 8.
+Operator configurations are in the supplementary material.
+learned at maximum width generalizes across widths. Second,
+in transform coding, natural image energy concentrates in
+low frequencies, making channel importance largely consistent
+across width budgets. We therefore learn a universal channel
+ranking at maximum width to guide non-contiguous selection.
+A. Overall Architecture
+Fig. 4 shows the pipeline with two stages connected by an
+M2S conversion. (1) Mask training: a Mask model is trained
+with learnable masks and sliced operators (Sec. III-B). The
+masks evaluate channel importance and enable non-contiguous
+selection. The transforms ga/gs contain mask layers, while ha,
+hs, gcm, and gep use sliced operators, and Concat is replaced
+by channel shuffling (Sec. III-C). (2) M2S conversion: mask
+merging and channel reordering convert the Mask model into
+a standard Slimmable network without altering the forward
+pass (Fig. 8; Sec. III-D). This allows fine-tuning to mitigate
+the sparsity regularization cost and makes active channels con-
+tiguous; modules with only sliced operators are reordered by
+their adjacent mask layers. (3) VBR training and inference:
+the converted model is fine-tuned and deployed for variable-
+rate and width-adaptive compression (Sec. III-E). The λ- and
+width-conditioned modulation networks generate combined
+variables via Hadamard product, applied to ga/gs features
+and quantization step sizes for y and z, and channel shuffling
+aligns (Φ, Ψ) across widths. A progressive multi-stage strategy
+enables one model to cover multiple rate-distortion trade-offs.
+B. Channel-Level Mask and Sliced Operators
+Fig. 5 illustrates three channel selection strategies: (1) the
+slimmable operator using a fixed prefix of consecutive chan-
+nels, (2) the learnable mask layer selecting non-contiguous
+channels, and (3) the sliced operator computing on the non-
+contiguous channel subsets selected by the learned mask.
+1) Slimmable Operator: As shown in Fig. 5(a), slimmable
+operator is executed on a sliced subset of channels, strictly
+constrained to consecutive channels starting from index 0 [10],
+[28], [29]. Let win and wout be the active input and output
+widths. The input x ∈RCin×H×W is truncated to x[0 : win, :, :
+], and the weight W ∈RCout×Cin×Kh×Kw and bias b ∈RCout
+are sliced accordingly:
+y[: wout, ::] = W[: wout, : win, ::]⋆x[: win, ::]+b[: wout], (8)
+where ⋆denotes convolution (CONV). The output is zero-
+padded to the full dimension if necessary.
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+5
+Sliced operator
+Mask Layer
+Slimmable operator
+H
+=
+C
+m[C] -0.8 1.2 0.9 0.1 0.3
+idx
+Max(mc,0)
+0
+1.2 0.9 0.1 0.3
+TopK(sc,w=3)
+s[C]
+I[w]
+4
+1
+2
+0
+1.2
+0.9
+0
+0.3
+idx
+Indexing
+x[C,H,W]
+W
+y[C,H,W]
+x[Cin,H,W]
+W[Cout,Cin,Kh,Kw]
+H
+...
+Cout
+=
+Cin
+W
+cin
+Cin
+Kh
+Kw
+idx
+cout
+Coutcout
+*
+y[Cout,:,:]
+x[Cin,H,W]
+W[Cout,Cin,Kh,Kw]
+...
+Cout
+=
+Cin
+Kh
+Kw
+idx
+Cout
+*
+y[Cout,:,:]
+Iin[win]
+H
+Cin
+W
+0
+2
+3
+Indexing
+Iout[wout]
+Indexing
+0
+1
+Fig. 5: Three channel selection strategies. (a) Traditional slimmable operator with a fixed prefix (win/out = 3/2). (b) Mask
+layer selecting top-w channels (w = 3) via a learnable mask. (c) Sliced operator with index sets Iin = [0, 2, 3], Iout = [0, 1],
+decoupling selection from execution. Gray borders in y indicate zero-padded data.
+y [Cy,Hy,Wy]
+Iy=[0, 3]
+Iout=[0,1,6,7]
+ψ=hs(z)̂ 
+[2Cy,Hy,Wy]
+Iout=⋃{2i,2i+1}
+i∈Iy
+map
+gep
+(Φ, ψ) 
+Iin=⋃{4i,4i+1,
+4i+2,4i+3}
+i∈Iy
+map
+Iin=[0,1,2,3,
+12,13,14,15]
+[4Cy,Hy,Wy]
+Sliced operator
+'s-'
+Mask
+Mask Layer
+µ-related
+σ-related
+sCONV
+...
+LeakyReLU
+Iy=[0, 3]
+sCONV
+hs
+LeakyReLU
+...
+Iin
+sCONV
+CONV
+ga
+wy
+...
+Mask
+Fig. 6: Channel index propagation from ˆy to hs and gep. The
+selected channels Iy map to Ihs
+out = S
+i∈Iy{2i, 2i + 1} in hs
+and to Iep
+in = S
+i∈Iy{4i, 4i+1, 4i+2, 4i+3} in gep. Unselected
+channels are zero-padded (gray).
+The same channel slicing applies to other operators: TPCV
+slices its weight and bias identically, channel-wise normal-
+ization layers such as GDN/IGDN slice their per-channel
+parameters, and parameter-free operators such as LeakyReLU
+act element-wise and need no modification.
+2) Mask Layer: We propose a learnable mask layer that
+identifies the most informative channels for each width,
+as illustrated in Fig. 5(b). It is inserted after selected
+CONV/TPCVs in ga and gs (Fig. 4). Inspired by the mask
+decay in EVC [6], we assign a trainable scalar mc to each
+channel, initialized to mc = 1.05, forming a mask vector
+m ∈RC. The mask score is sc = max(mc, 0). Given a
+target width w, the mask layer selects the top-w channels
+I = TopK(s, w) and produces
+xout[c, :, :] =
+(
+x[c, :, :] · sc,
+c ∈I,
+0,
+otherwise.
+(9)
+Since I is obtained by ranking the same scores sc, the selected
+sets are nested, i.e., Iw1 ⊂Iw2 for w1 < w2, which ensures
+that narrower sub-networks reuse the channels of wider ones
+and facilitates the subsequent M2S conversion.
+During training, we inject a sparsity-promoting gradient into
+each mask parameter through a backward hook:
+∂L
+∂mc
+←∂L
+∂mc
++ γ · |mc −1|,
+(10)
+which is equivalent to penalizing
+Lsparse = γ
+2
+X
+c
+(mc −1) |mc −1|.
+(11)
+Starting from mc = 1.05, this penalty pushes mc toward 1
+and then toward 0, pruning unimportant channels. Since an
+overly strong decay degrades high-bitrate reconstruction, we
+schedule γ = γ0/λ, where γ0 is a preset coefficient (e.g.,
+1 × 10−5). This applies stronger sparsification at low bitrates
+while relaxing it at high bitrates.
+Mask layers are inserted only after CONV/TPCVs in ga and
+gs, keeping a constant maximum width during training via full-
+dimensional weights with unselected channels zeroed. Since
+mc stays positive and the mask is merged into the preceding
+convolution at M2S conversion (Sec. III-D), sc = 0 does not
+arise at inference.
+3) Sliced Operators:
+Unlike slimmable operators con-
+strained to a fixed prefix, sliced operators act on non-
+contiguous channel subsets selected by the learned mask. For
+input x ∈RCin×H×W , weight W ∈RCout×Cin×Kh×Kw, and
+bias b ∈RCout, the sliced operation is
+y[Iout, :, :] = W[Iout, Iin] ⋆x[Iin, :, :] + b[Iout],
+(12)
+where ⋆denotes convolution and unselected output channels
+are zero-padded.
+The entropy-estimation modules ha, hs, gcm, and gep con-
+tain no Mask layer. Instead, they use sliced operators to enable
+the channel groups corresponding to the latent set Iy selected
+by the preceding Mask layer in ga, ensuring that the predicted
+µ/σ data remain aligned with the latent elements (Fig. 6).
+Specifically, ha operates directly on Iy; gcm takes ˆy restricted
+to Iy as input and outputs paired context features indexed by
+Ihs
+out; hs progressively maps Iy to Ihs
+out so that each active
+latent channel yields a paired (µ, σ); and gep receives the four
+entropy-related features per active channel, with input indices
+Iep
+in derived in Sec. III-C. Hence, all entropy-related modules
+operate on wy = |Iy| active latent channels.
+Index propagation. To keep each active latent channel paired
+with its mean and scale, the last sCONV of hs outputs
+Ihs
+out =
+[
+i∈Iy
+{2i, 2i + 1},
+(13)
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+6
+Slimmable
+Concat
+Φ=(Zero)  
+Φ=gcm(yanchor)  ̂
+ 
+ψ=hs(z)̂ 
+yanchor̂
+ 
+gep
+gcm
+[2Cy,Hy,Wy]
+[4Cy,Hy,Wy]
+[Cy,Hy,Wy]
+[2Cy,Hy,Wy]
+ẑ 
+hs
+PASS 2
+PASS 1
+(Φ, ψ)anchor (Φ, ψ)non-anchor
+or
+[2Cy,Hy,Wy]
+(μ, σ)non-anchor
+or
+(μ, σ)anchor
+Original
+Shuffle
+Φ=(Zero)  
+Φ=gcm(yanchor)  ̂
+ 
+ψ=hs(z)̂ 
+yanchor̂
+ 
+gep
+gcm
+[2wy,Hy,Wy]
+[4wy,Hy,Wy]
+[wy,Hy,Wy]
+[2wy,Hy,Wy]
+ẑ 
+hs
+PASS 2
+PASS 1
+(Φ, ψ)anchor (Φ, ψ)non-anchor
+or
+[2wy,Hy,Wy]
+(μ, σ)non-anchor
+or
+(μ, σ)anchor
+µ-related
+σ-related
+Fig. 7: Checkerboard model for predicting (µ, σ) of ˆy, and its
+slimmable adaptation. (top) Original two-pass prediction: Pass
+1 uses only Ψ; Pass 2 uses Ψ and Φ from decoded anchors.
+(bottom) Slimmable Model with contiguous active channels
+and channel shuffling. In Mask Model, channels may be non-
+contiguous and are handled by sliced operators with set Iy.
+where 2i and 2i + 1 correspond to the mean and scale of
+the i-th active channel. For Iy = {0, 3}, this yields Ihs
+out =
+{0, 1, 6, 7}. The corresponding input index set for gep, Iep
+in =
+S
+i∈Iy{4i, 4i + 1, 4i + 2, 4i + 3}, is derived in Sec. III-C,
+together with the explicit channel shuffling operator used in
+the Slimmable model.
+C. Channel Shuffling
+In the Checkerboard model [8], the latent y ∈RCy×Hy×Wy
+is split into anchor and non-anchor sets. As shown in
+Fig. 7(top), (µ, σ) prediction proceeds in two passes: Pass
+1 predicts anchors using only the hyperprior feature Ψ =
+[Ψµ, Ψσ] from hs; Pass 2 predicts non-anchors using both Ψ
+and the context feature Φ = [Φµ, Φσ] from gcm.
+In the Slimmable Model, the active channels form a contigu-
+ous prefix of length wy (the number of active latent channels).
+The hyperprior branch produces 2wy channels (Ψµ, Ψσ), and
+the context branch produces 2wy channels (Φµ, Φσ). To feed
+gep with correctly paired statistics, we replace Concat with
+Shuffling operator (Fig. 7(bottom)), which interleaves the two
+branches as (Φµ, Φσ, Ψµ, Ψσ) per active channel, yielding
+Shuffle(Ψ′, Φ′) ∈R4wy×Hy×Wy,
+(14)
+with unused channels zero-padded. For gep’s first sCONV, the
+input index set is
+Iep
+in = {0, 1, . . . , 4wy −1},
+(15)
+and the output index set is Iep
+out = {0, 1, . . . , 2wy −1},
+ensuring paired (µ, σ) placement.
+In the Mask Model, active channels are non-contiguous and
+given by Iy ⊆{0, . . . , Cy −1}, with wy = |Iy|. Sliced
+operators select channels from ha, hs, gcm, and gep using Iy,
+while index propagation (Sec. III-B3) preserves the ˆy-(µ, σ)
+pairings. For each i ∈Iy, the four entropy-related channels
+fed into the first sCONV of gep are indexed by
+Iep
+in =
+[
+i∈Iy
+{4i, 4i + 1, 4i + 2, 4i + 3},
+generalizing Eq. (15) to non-contiguous channels. Shuffling is
+thus implicit via index propagation and tensor rearrangement
+into the interleaved order (Φµ, Φσ, Ψµ, Ψσ), instead of an
+explicit operator. After M2S conversion, Iy becomes a con-
+tiguous prefix of length wy, and the explicit shuffling operator
+above applies to the converted Slimmable Model.
+D. M2S Conversion
+After
+training,
+M2S
+converts
+the
+Mask
+model
+into
+Slimmable model via ❶mask merging and ❷channel re-
+ordering (Fig. 8), removing the mask layer and making active
+channels contiguous for efficient inference.
+Mask merging. Each mask layer follows a CONV (or TPCV)
+and scales its output with sc = max(mc, 0), as defined in
+Eq. 9. Since M2S conversion operates at the maximum width,
+all channels are retained. The scaling is absorbed into the
+preceding CONV as:
+W′
+i,j = Wi,j · si,
+b′
+i = bi · si,
+(16)
+so the mask layer can be removed without changing the
+forward pass (Fig. 8, lower-left/middle).
+Channel reordering. Since the Mask model selects non-
+contiguous channels, we reorder channels by importance
+scores to make selected channels contiguous (Fig. 8). Each
+Mask l yields an index set Idxl, which determines the per-
+mutation of (i) the output channels of the preceding CONV l,
+(ii) the input and output channels of the following GDN l,
+and (iii) the input channels of the next CONV l +1. This per-
+layer strategy yields a transformation exact up to floating-point
+rounding errors introduced by merging.
+M2S conversion yields a slimmable network that reuses
+existing tooling, turning non-contiguous Mask training into
+contiguous-prefix inference without dynamic indexing.
+E. Variable-Rate Modulation and Training
+Baseline VBR Framework: To enable continuous rate con-
+trol, we integrate a modulation network that generates λ-
+conditioned scaling factors, following MAE approach [26].
+The analysis and synthesis branches are lightweight MLPs:
+genc = exp(MLPenc(λ)),
+gdec = exp(MLPdec(λ)). (17)
+These factors modulate the feature maps of ga and gs
+channel-wise, and the same network generates the quantization
+step sizes ∆y and ∆z for the Q variant below.
+To avoid training instability caused by simultaneous width
+and rate adaptation, we adopt a progressive multi-stage train-
+ing strategy. In Stage 0, we train a Mask model (Sec. III-B)
+with a fixed λ = λmax to learn non-contiguous channel
+importance. Stage 1 performs mask merging and channel
+reordering to convert the Mask model into a Slimmable model
+(Sec. III-D), followed by fixed-λ fine-tuning to obtain M2S
+model. In Stage 2, we fine-tune the converted model with
+random λ sampling. The training objective is:
+E
+λ∼Unif(Λ)
+X
+w∈W
+(Rw,λ + λDw,λ) ,
+(18)
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+7
+sCONV
+sCONV
+sGDN
+sGDN
+sGDN
+sCONV
+sCONV
+ga
+Mask Merging
+1
+W[C0,3,:,:]
+0
+1.2 0.9
+0
+0.3
+mc0
+0
+0
+1
+1
+2
+2
+3
+3
+4
+4
+3 0 1 4 2
+Idx0
+Channel Reordering
+2
+Permute by Idx0 = [3, 0, 1, 4, 2]
+W[C1,C0,:,:]=Wold[Idx1,Idx0,:,:]
+W[C0,C0]=Wold[Idx0, Idx0]
+0
+1
+2
+3
+4
+1
+2
+4
+0
+3
+4
+3
+2
+1
+0
+3
+0
+4
+2
+1
+W[C0,3,:,:]= Wold[Idx0,3,:,:]
+0
+1
+2
+3
+4
+0
+1
+2
+3
+4
+CONV 0 => sCONV
+GDN 0 => sGDN
+CONV 1 => sCONV
+CONV 1
+CONV 2
+GDN 0
+GDN 1
+GDN 2
+CONV 3
+CONV 0
+Mask 1
+Mask 0
+Mask 2
+Mask 3
+GDN 0
+GDN 1
+GDN 2
+Mask 1
+Mask 2
+Mask 3
+CONV 0
+CONV 1
+CONV 2
+CONV 3
+Mask 0
+Slim. operator
+'s-'
+Fig. 8: M2S conversion from the trained Mask model (top-left) to the Slimmable model (top-right) via ❶mask merging and
+❷channel reordering. Mask merging absorbs the scaling factors of Mask l into the preceding CONV l (lower-left/middle).
+Channel reordering permutes the output channels of CONV l, the input/output channels of GDN l, and the input channels of
+the next CONV l + 1 using the index set Idxl derived from Mask l (lower-right). The middle panel shows the intermediate
+state; Idx0/Idx1 are derived from Mask 0/1, and C0/C1 denote the output channel counts of the first two CONVs.
+where W = {48, 72, 96, 144, 192} is a predefined width set,
+and Unif(Λ) denotes uniform sampling over Λ. For each
+sampled λ, the loss is summed over all widths in W. We
+refer to this baseline variable-rate configuration as VBR.
+Quantization-Step Scaling (Q): To further enhance rate
+adaptability, we introduce quantization-step scaling on the
+latent y (or z for Hyperprior), following QVRF [25]:
+ˆy = round(y/∆y) ⊙∆y.
+(19)
+where ∆y is the λ- and width-conditioned quantization step
+size, generated by the modulation network and broadcast to
+the channel dimension of y. The scaled likelihood depends on
+the entropy model. For the factorized entropy model (used for
+y in E2E and for z in Hyperprior/CKBD),
+p(ˆyc | ∆y) =
+Z ˆyc+∆y,c/2
+ˆyc−∆y,c/2
+pyc(ξ) dξ.
+(20)
+For the Gaussian conditional entropy model (used for y in
+Hyperprior/CKBD), scaling ˆy by ∆y scales both the predicted
+mean and scale. For each channel c,
+p(ˆyc | ˆz, ∆y) = N(µc∆y,c, σc∆y,c)∗Unif
+
+−∆y,c
+2
+, ∆y,c
+2
+
+.
+(21)
+and the full distribution factorizes over channels as p(ˆy |
+ˆz, ∆y) = Q
+c p(ˆyc | ˆz, ∆y,c). We denote this variant VBR-Q,
+sharing VBR’s training pipeline. For CKBD, Eq. (21) applies
+separately to anchors and non-anchors with independent step
+vectors. For numerical stability, the factorized model clamps
+its quantization step to 10−2 during CDF construction to bound
+PMF bins, and the Gaussian conditional model lower-bounds
+its scale by the minimum scale-table entry; both affect only
+entropy-coding CDF tables, not forward quantization.
+Freeze-Then-Fine-Tune Strategy (F): To prevent a randomly
+initialized modulation network from disrupting the width-
+adaptive structure learned by the Mask model, we freeze ga,
+Algorithm 1: Training pipeline for VBR variants
+(illustrated with VBR-QFW). Each stage stops early
+when the learning rate decays to 1.22 × 10−8. ⋆lines
+mark the freezing/unfreezing operations.
+Require: Model Θ; width set W; λ set Λ;
+maximum epochs Emax; warm-up epochs Ew.
+1: Initialize Θ as Mask model without modulation;
+2: Stage 0: Mask pretraining
+3: for epoch = 1 to Emax do
+4:
+Fix λ = λmax; Sample batch x;
+5:
+L ←P
+w∈W(Rw,λ + λDw,λ);
+6:
+Back-propagate and update all parameters;
+7: end for
+8: Stage 1: Mask-to-Slimmable (M2S) conversion
+9: Perform mask merging and channel reordering;
+10: Convert Θ into Slimmable model without modulation;
+11: Reset optimizer states; Fine-tune Θ for Emax epochs;
+12: Stage 2: λ-based variable-rate fine-tuning
+13: Add λ-modulation network; Reset optimizer states;
+14: Freeze ga, gs;
+⋆
+15: for epoch = 1 to Emax do
+16:
+Sample λ ∼Unif(Λ) and x from dataset;
+17:
+Compute L with Eq. (18);
+18:
+if epoch = Ew + 1 then Unfreeze all parameters;
+⋆
+19:
+Back-propagate and update all trainable parameters;
+20: end for
+21: Stage 3: w-based variable-rate fine-tuning
+22: Add w-modulation network; Reset optimizer states;
+23: Freeze ga, gs, and λ-modulation network;
+⋆
+24: Execute the Stage 2 loop for Emax epochs;
+Ensure: Slimmable model Θ with λ/w modulation.
+gs, and the pre-trained λ-modulation network during warm-up,
+training only the entropy-related modules (ha/hs/gcm/gep),
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+8
+TABLE II: Comparison of variable-rate training variants.
+Variant
+λ-mod.
+Q-step scaling
+w-mod.
+Freeze
+Stage
+VBR
+✓
+2
+VBR-Q
+✓
+✓
+2
+VBR-QF
+✓
+✓
+✓
+2
+VBR-QW
+✓
+✓
+✓
+3
+VBR-QFW
+✓
+✓
+✓
+✓
+3
+then fine-tune the full network with random λ sampling. This
+variant uses the suffix F (e.g., VBR-QF).
+Width-Adaptive Modulation (W): The optimal feature mod-
+ulation is coupled with the active width w, as a narrow model
+at a high bitrate requires different scaling than a wide model.
+We introduce a width-adaptive modulation network:
+renc/dec = exp(MLPenc/dec(wnorm)).
+(22)
+where wnorm = (w −wmin)/(wmax −wmin); the final modu-
+lation is the Hadamard product of these factors:
+gfinal
+enc = genc ⊙renc,
+gfinal
+dec = gdec ⊙rdec.
+(23)
+Applied to VBR-QF, this yields VBR-QFW, where the warm-
+up freezes ga/gs and the λ-modulation network. This variant
+is detailed in Algorithm 1.
+Width-Adaptive Modulation without Freezing (VBR-QW):
+Because F harms the tightly coupled CKBD context model,
+VBR-QW adds width-adaptive modulation to a pre-trained
+VBR-Q model but skips freezing, jointly fine-tuning all pa-
+rameters with random λ and width sampling. It follows
+Algorithm 1 without the ⋆-marked freeze/unfreeze steps and
+achieves the smallest RD gap to M2S on E2E and CKBD.
+Table II summarizes the five variants. All share Stage 0
+(Mask training) and Stage 1 (M2S conversion and fixed-λ
+fine-tuning). Stage 2 adds λ- modulation, and Stage 3 adds
+w-modulation. VBR-QW initializes from VBR-Q, adds w-
+modulation, and skips freezing.
+IV. EVALUATION
+A. Experimental Setup
+Datasets. We train on CLIC 2020 and DIV2K HR1 (2357
+images), randomly cropping 256×256 patches with batch size
+8. For the models compared in Section IV-D, we additionally
+include the Flickr 2W dataset (20745 images) during the
+width-based modulation fine-tuning stage. CLIC 2021 pro-
+fessional validation2 is used for validation, and Kodak (24
+images, 768 × 512) for evaluation. Additional test sets (e.g.,
+Tecnick) are not included due to space constraints; results can
+be added in a revision if requested.
+Compared Methods. We compare with (1) traditional codecs:
+JPEG, JPEG2000, BPG, and VVC (VTM 19.2) intra-mode;
+and (2) elastic LIC methods: CBANet [15], EVC [6], and
+ELFIC [16], using publicly released pretrained models. All
+models are evaluated in PyTorch 2.6.0 with CompressAI 1.2.8.
+Implementation Details. The model is trained and evaluated
+on this predefined width set W = {48, 72, 96, 144, 192};
+1https://data.vision.ee.ethz.ch/cvl/DIV2K/
+2https://archive.compression.cc/2021/tasks/index.html
+extending to other widths would require including them in W
+during training or fine-tuning, without architectural changes.
+We use Adam with initial learning rates 10−4 (main net-
+work) and 10−6 (auxiliary entropy parameters), and Λ =
+{18, 35, 67, 130, 250, 483, 932, 1800}×10−4. Training runs for
+800 epochs until convergence, using ReduceLROnPlateau
+(factor 0.5, patience 10); convergence is reached when the
+learning rate decays to 1.22 × 10−8. Single-λ models use
+a fixed λ ∈Λ. Variable-rate models adopt the progressive
+training strategy in Section III-E. Freeze-then-fine-tune vari-
+ants (e.g., VBR-QF) use a 100-epoch warm-up in Stage 2
+(λ-modulation), and VBR-QFW additionally uses a 100-epoch
+warm-up in Stage 3 (w-modulation). For the models compared
+in Section IV-D, the Stage 3 warm-up is reduced to 5 epochs.
+Hardware. Training: Intel Xeon Platinum 8457C + Nvidia
+A100 80GiB. Evaluation: Intel Xeon 48-core E5-2650 +
+Nvidia RTX3080 10GiB.
+Metrics. We report bitrate (bpp), PSNR (dB), and MS-SSIM3
+[40]. RD curves compare methods, with BD-rate [41] as
+average bitrate saving at equivalent quality.
+B. Slimmable vs Mask vs M2S
+We compare three variants: Slimmable model, Mask
+model, and M2S model (in Sec. III-D). All variants follow
+the training protocol in Sec. IV-A and share the same width
+set W. We evaluate E2E, Hyperprior, and CKBD backbones
+to demonstrate the generality of our approach.
+Narrow widths (w = 48, 72). For all three backbones, Mask
+outperforms Slimmable at narrow widths, especially at low
+bitrates, confirming that non-contiguous selection preserves
+the most informative channels. M2S surpasses both, achieving
+the highest PSNR at every bitrate point. At w = 48, M2S
+achieves BD-rate savings over Slimmable of 19.22%, 24.11%,
+and 22.76% for E2E, Hyperprior, and CKBD, respectively;
+over Mask, the savings are 10.54%, 16.24%, and 17.08%.
+Fig. 9 shows the RD curves, where M2S dominates both
+baselines across all five widths for E2E and Hyperprior, and
+across narrow and intermediate widths for CKBD.
+Intermediate widths (w = 96, 144). At w = 96, Mask and
+Slimmable perform similarly for E2E and Hyperprior, while
+CKBD Mask is already slightly worse (+0.36%). At w = 144,
+Mask degrades for all three backbones due to regularization
+overhead, with CKBD most severe (+11.64%), yet M2S still
+recovers to −1.59%. Hyperprior exhibits slightly larger gains
+than E2E due to stronger entropy modeling, while CKBD
+benefits most from M2S conversion.
+Full width (w = 192). Mask underperforms Slimmable
+at high bitrates (e.g., ∼0.27 dB at 2.0 bpp for E2E) due
+to channel-wise regularization. M2S eliminates this for E2E
+and Hyperprior, recovering to −1.29% and −3.59% BD-rate
+savings, respectively. For CKBD, M2S reduces the degradation
+from +14.11% to +1.06%, i.e., still slightly worse than
+Slimmable but far better than Mask (−11.48% vs Mask).
+Overall, M2S largely mitigates the regularization overhead
+across all three backbones.
+3MS-SSIM (dB) = −10 log10(1 −MS-SSIM)
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+9
+0.25
+0.50
+0.75
+Bit Rate (bpp)
+26
+27
+28
+29
+PSNR (dB)
+E2E-48
+Slimmable
+Mask
+M2S
+0.5
+1.0
+Bit Rate (bpp)
+26
+27
+28
+29
+30
+31
+E2E-72
+Slimmable
+Mask
+M2S
+0.5
+1.0
+Bit Rate (bpp)
+26
+28
+30
+32
+E2E-96
+Slimmable
+Mask
+M2S
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+26
+28
+30
+32
+34
+36
+E2E-144
+Slimmable
+Mask
+M2S
+1
+2
+Bit Rate (bpp)
+26
+28
+30
+32
+34
+36
+38
+E2E-192
+Slimmable
+Mask
+M2S
+0.2
+0.4
+0.6
+Bit Rate (bpp)
+27
+28
+29
+PSNR (dB)
+Hyperprior-48
+Slimmable
+Mask
+M2S
+0.25
+0.50
+0.75
+1.00
+Bit Rate (bpp)
+27
+28
+29
+30
+31
+Hyperprior-72
+Slimmable
+Mask
+M2S
+0.5
+1.0
+Bit Rate (bpp)
+28
+30
+32
+Hyperprior-96
+Slimmable
+Mask
+M2S
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+Hyperprior-144
+Slimmable
+Mask
+M2S
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+38
+Hyperprior-192
+Slimmable
+Mask
+M2S
+0.2
+0.4
+0.6
+Bit Rate (bpp)
+27.0
+27.5
+28.0
+28.5
+29.0
+29.5
+PSNR (dB)
+CKBD-48
+Slimmable
+Mask
+M2S
+0.25
+0.50
+0.75
+Bit Rate (bpp)
+28
+29
+30
+31
+CKBD-72
+Slimmable
+Mask
+M2S
+0.5
+1.0
+Bit Rate (bpp)
+28
+29
+30
+31
+32
+33
+CKBD-96
+Slimmable
+Mask
+M2S
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+CKBD-144
+Slimmable
+Mask
+M2S
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+38
+CKBD-192
+Slimmable
+Mask
+M2S
+Fig. 9: RD performance comparison of Slimmable, Mask, and M2S on Kodak across five widths (48–192) for E2E, Hyperprior
+and CKBD backbones. M2S consistently outperforms both baselines at narrow widths (48, 72), while eliminating the
+regularization overhead of Mask at wide width (144, 192).
+48
+72
+96
+144
+192
+Width
+0.0018
+0.0035
+0.0067
+0.0130
+0.0250
+0.0483
+0.0932
+0.1800
+0.69
+0.51
+0.38
+0.22
+0.22
+0.64
+0.39
+0.27
+0.10
+0.09
+0.42
+0.28
+-0.01
+-0.13
+-0.15
+0.25
+0.42
+0.33
+0.19
+0.16
+0.30
+0.38
+0.35
+0.07
+0.04
+0.31
+0.45
+0.39
+0.16
+0.00
+0.31
+0.45
+0.33
+0.26
+0.15
+0.32
+0.33
+0.29
+0.12
+0.09
+E2E
+48
+72
+96
+144
+192
+Width
+0.49
+0.20
+-0.02
+-0.19
+-0.21
+0.40
+0.55
+0.46
+0.30
+0.17
+0.52
+0.57
+0.56
+0.23
+0.10
+0.41
+0.42
+0.33
+0.23
+0.15
+0.42
+0.51
+0.47
+0.25
+0.21
+0.48
+0.46
+0.42
+0.26
+0.21
+0.45
+0.57
+0.54
+0.37
+0.27
+0.33
+0.45
+0.42
+0.27
+0.15
+Hyperprior
+48
+72
+96
+144
+192
+Width
+0.38
+0.23
+0.09
+-0.06
+-0.12
+0.29
+0.34
+0.21
+-0.12
+-0.22
+0.22
+0.32
+0.28
+-0.03
+-0.22
+0.35
+0.29
+0.26
+0.08
+-0.03
+0.44
+0.50
+0.44
+0.16
+-0.03
+0.50
+0.59
+0.55
+0.36
+0.36
+0.14
+0.21
+0.24
+0.04
+0.01
+0.38
+0.40
+0.41
+0.17
+0.11
+CKBD
+0.1
+0.0
+0.1
+0.2
+0.3
+Gain (dB)
+Fig. 10: PSNR gain (dB) of M2S over Slimmable across all widths and λ values on Kodak. Each cell is obtained by cubic-spline
+interpolation of the RD curves at the minimum bpp for the given λ and width.
+Overall. Fig. 10 shows M2S gains over Slimmable. E2E peaks
+at 0.69 dB (w = 48, λ = 0.0018), Hyperprior shows similar
+but larger gains (consistent with Table III), and CKBD peaks
+at 0.59 dB (w = 72, λ = 0.0483), all concentrated at narrow
+widths and low bitrates. Gains diminish as width increases
+and approach zero or negative at w = 144, 192, confirming
+that non-contiguous selection benefits slimmable training most
+when the channel budget is tight, and that M2S preserves
+narrow-width gains while eliminating regularization overhead.
+C. Variable-Rate Performance
+We compare five variable-rate variants: VBR, VBR-Q,
+VBR-QW, VBR-QF, and VBR-QFW, as defined in Sec. III-E.
+The fixed-rate M2S is included as an upper bound. For
+E2E backbone and Hyperprior backbone, the variable-rate
+evaluations of parameter and latency are provided in the
+supplementary material.
+1) Rate-Distortion Performance: Fig. 11 presents the RD
+curves across five widths for the three backbones, and Table IV
+reports the BD-rate increase over the fixed-rate M2S upper
+bound. The effectiveness of the variable-rate components is
+backbone-dependent.
+E2E backbone. VBR shows the largest gap to M2S (21.6–
+36.9%). VBR-Q reduces it to 14.2–16.6% via quantization-
+step scaling, and VBR-QF further reduces it to 10.8–17.6%
+via freeze-then-fine-tune. VBR-QW achieves the best perfor-
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+10
+0.5
+1.0
+Bit Rate (bpp)
+26.5
+27.0
+27.5
+28.0
+28.5
+29.0
+29.5
+PSNR (dB)
+E2E-48
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+27
+28
+29
+30
+31
+E2E-72
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+1
+2
+Bit Rate (bpp)
+28
+30
+32
+E2E-96
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+1
+2
+Bit Rate (bpp)
+28
+30
+32
+34
+36 E2E-144
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0
+1
+2
+3
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+38 E2E-192
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+Bit Rate (bpp)
+27.0
+27.5
+28.0
+28.5
+29.0
+29.5
+PSNR (dB)
+Hyperprior-48
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+Bit Rate (bpp)
+27
+28
+29
+30
+31
+Hyperprior-72
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+27
+28
+29
+30
+31
+32
+33 Hyperprior-96
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+1
+2
+Bit Rate (bpp)
+28
+30
+32
+34
+36 Hyperprior-144
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+1
+2
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+38 Hyperprior-192
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.2
+0.4
+0.6
+Bit Rate (bpp)
+27.5
+28.0
+28.5
+29.0
+PSNR (dB)
+CKBD-48
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.25
+0.50
+0.75
+1.00
+Bit Rate (bpp)
+28
+29
+30
+31
+CKBD-72
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+Bit Rate (bpp)
+28
+29
+30
+31
+32
+33 CKBD-96
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36 CKBD-144
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+0.5
+1.0
+1.5
+Bit Rate (bpp)
+28
+30
+32
+34
+36
+38 CKBD-192
+M2S
+VBR
+VBR-Q
+VBR-QF
+VBR-QFW
+VBR-QW
+Fig. 11: RD performance comparison across five widths (48–192) on Kodak for (a) E2E, (b) Hyperprior, and (c) CKBD
+backbones. VBR-QW achieves the best performance on E2E and CKBD, while VBR-QFW remains the best on Hyperprior.
+TABLE III: BD-rate savings (%) compared to the same-width
+Slimmable baseline on Kodak.
+Width
+Mask (vs Slim)
+M2S (vs Slim)
+M2S (vs Mask)
+E2E
+48
+-10.60
+-19.22
+-10.54
+72
+-5.73
+-14.44
+-9.67
+96
++0.26
+-8.33
+-8.93
+144
++5.71
+-2.77
+-8.01
+192
++6.73
+-1.29
+-7.54
+Hyper
+48
+-11.23
+-24.11
+-16.24
+72
+-7.33
+-18.98
+-12.82
+96
+-2.36
+-13.52
+-11.91
+144
++3.72
+-6.37
+-9.79
+192
++5.95
+-3.59
+-9.08
+CKBD
+48
+-5.81
+-22.76
+-17.08
+72
+-4.63
+-17.58
+-12.68
+96
++0.36
+-11.25
+-11.94
+144
++11.64
+-1.59
+-11.87
+192
++14.11
++1.06
+-11.48
+mance, narrowing the gap to 4.9–9.7%. VBR-QFW is slightly
+worse than VBR-QW, indicating that width-modulation on top
+of freeze-then-fine-tune does not bring further gains on E2E.
+Hyperprior backbone. VBR-Q is slightly better than VBR
+only at the narrowest width (29.34% vs. 30.25% at w = 48),
+but worse at all wider widths. VBR-QF brings significant
+gains, reducing the gap to 11.3–15.3%, confirming that the
+freeze-then-fine-tune strategy is effective when the entropy
+model is loosely coupled with the transform. VBR-QFW
+TABLE IV: BD-rate increase (%) over the M2S upper bound
+on Kodak. Best results per backbone are in bold.
+Width
+48
+72
+96
+144
+192
+E2E
+VBR
+21.57
+27.64
+28.36
+31.28
+36.92
+VBR-Q
+15.86
+16.58
+14.75
+14.18
+16.47
+VBR-QW
+4.85
+7.30
+6.92
+7.82
+9.68
+VBR-QF
+10.79
+17.61
+16.51
+14.54
+16.17
+VBR-QFW
+10.37
+17.36
+16.70
+14.53
+14.84
+Hyper
+VBR
+30.25
+24.79
+20.43
+18.59
+19.00
+VBR-Q
+29.34
+31.09
+27.42
+26.99
+28.80
+VBR-QW
+16.78
+19.75
+18.30
+19.12
+20.09
+VBR-QF
+11.32
+12.29
+13.10
+15.08
+15.30
+VBR-QFW
+4.29
+4.12
+5.50
+6.83
+7.88
+CKBD
+VBR
+5.55
+10.48
+11.78
+8.43
+9.04
+VBR-Q
+-4.33
+2.36
+4.62
+4.24
+4.73
+VBR-QW
+-6.17
+0.01
+1.90
+1.35
+1.32
+VBR-QF
+16.48
+18.69
+17.14
+14.08
+14.50
+VBR-QFW
+9.60
+13.88
+13.07
+10.76
+10.73
+achieves the best performance on Hyperprior, reducing the gap
+to 4.1–7.9%.
+CKBD backbone. VBR-QF is the worst variant (14.1–18.7%),
+even worse than VBR (5.6–11.8%), because freezing ga/gs
+misaligns the tightly coupled checkerboard context model.
+VBR-Q avoids this by skipping freezing, achieving −4.3%
+to 4.7%. VBR-QW is the best, with the gap ranging from
+−6.2% to 1.9%.
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+11
+TABLE V: Parameter comparison of the CKBD backbone across different widths. The CKBD row reports single-λ single-width
+models; the M2S row reports one model covering all five widths at a fixed λ; the VBR variants cover 5 widths × 8 λ values
+with a single model. “Total (8 λs)” reports the total storage required if all eight λ values were deployed, i.e., 8× the per-model
+total for single-λ models, and a single model’s total for the VBR variants.
+Params
+Model
+Width
+ga
+gs
+ha
+hs
+FEM
+gcm
+gep
+ModNet
+Total
+Total (8 λs)
+48
+183.65 K
+183.60 K
+136.08 K
+255.98 K
+2.93 K
+115.30 K
+78.77 K
+956.36 K
+72
+410.26 K
+410.19 K
+306.07 K
+575.78 K
+4.39 K
+259.34 K
+176.90 K
+2.14 M
+96
+726.72 K
+726.63 K
+544.03 K
+1.02 M
+5.86 K
+460.99 K
+314.21 K
+3.80 M
+144
+1.63 M
+1.63 M
+1.224 M
+2.30 M
+8.78 K
+1.037 M
+706.32 K
+8.54 M
+CKBD
+192
+2.89 M
+2.89 M
+2.18 M
+4.09 M
+11.71 K
+1.84 M
+1.26 M
+0
+15.16 M
+244.80 M
+M2S
+48-192
+2.89 M
+2.89 M
+2.18 M
+4.09 M
+33.67 K
+1.84 M
+1.26 M
+0
+15.16 M
+121.29 M
+VBR
+224.64 K
+15.41 M
+15.41 M
+VBR-Q
+336.96 K
+15.52 M
+15.52 M
+VBR-QW
+48-192
+2.89 M
+2.89 M
+2.18 M
+4.09 M
+33.67 K
+1.84 M
+1.26 M
+673.92 K
+15.84 M
+15.84 M
+FEM: factorized entropy model; ModNet: modulation network.
+VBR-Q/VBR-QF and VBR-QW/VBR-QFW share the same architecture within each pair, and thus identical complexity.
+TABLE VI: Per-module latency (ms) of the CKBD (VBR-QW). “Enc/Dec ent z” and “Enc/Dec ent y” denote the
+encoding/decoding latency of the factorized entropy model for z and the Gaussian conditional entropy model for y, respectively.
+The last column is the one-time CDF construction cost, paid only when λ/w changes.
+Width
+ga
+ha
+hs
+gs
+gcm
+gep
+Enc ent z
+Enc ent y
+Dec ent z
+Dec ent y
+CDF (startup)
+48
+1.52
+0.52
+0.58
+1.94
+0.31
+0.65
+1.31
+20.80
+1.55
+24.77
+10.57–10.74
+72
+2.28
+0.54
+0.59
+2.89
+0.31
+0.68
+1.79
+23.65
+2.18
+29.50
+14.66–15.59
+96
+2.71
+0.65
+0.71
+3.20
+0.40
+0.83
+2.63
+26.94
+3.20
+34.51
+20.74–22.72
+144
+5.36
+0.54
+0.68
+5.50
+0.34
+0.66
+6.14
+33.14
+7.32
+43.81
+38.61–58.60
+192
+6.84
+0.54
+0.76
+6.94
+0.48
+0.67
+14.04
+40.10
+17.28
+54.37
+106.90–290.51
+Overall. VBR-QW is the most consistently effective variant,
+achieving the best results on E2E and CKBD. On Hyper-
+prior, VBR-QFW is best, followed by VBR-QF, while VBR-
+QW ranks third. Freeze-then-fine-tune brings clear gains on
+Hyperprior and modest gains on E2E, but harms CKBD,
+highlighting the need for backbone-aware design. At low
+bitrates (λ ≤0.0067), all variants perform similarly as the
+rate constraint dominates.
+2) Parameter
+and
+Latency
+Analysis:
+CKBD
+subsumes E2E/Hyperprior operators and has the largest
+parameter/entropy-coding footprint, so Tables V–VI are upper
+bounds; per-backbone details are in supplementary material.
+Parameter efficiency. Table V compares the parameter budget
+on CKBD, whose operator set covers E2E and Hyperprior.
+The backbone (ga, gs, ha, hs, FEM, gcm, gep) is shared across
+VBR variants, so only the modulation network differs. ModNet
+grows from 0 (M2S) to 224.64K (VBR), 336.96K (VBR-
+Q/QF), and 673.92K (VBR-QW/QFW), i.e., 1.5%, 2.2%,
+and 4.6% overhead over the 15.16M M2S baseline. The
+112.32K increase from VBR to VBR-Q on CKBD comprises
+three modulation layers: one for ∆y of anchors, one for
+∆y of non-anchors, and one for ∆z, whereas E2E requires
+only the ∆y layer. One VBR-QW/QFW model (15.84M)
+replaces 40 independent models (244.80M), a 15.4× storage
+reduction; VBR and VBR-Q/QF achieve 15.9× and 15.8×.
+E2E/Hyperprior follow the same trend with smaller backbones
+(5.816M/12.084M) and higher relative overhead (3.9/4.5/9.0%
+and 1.9/2.2/4.3%).
+Latency. Table VI reports per-module latency on CKBD
+(VBR-QW), which covers all E2E/Hyperprior operators. At
+w = 192, transform networks cost only 16.2 ms, while
+entropy coding dominates: 54.1 ms encoding and 71.7 ms
+decoding for y and z. Decoding is higher because Compres-
+sAI’s decompress allocates a new GPU tensor per sample,
+causing CPU-to-GPU transfer. CDF construction is a one-time
+startup cost paid only when λ/w changes, growing from 10.6–
+10.7 ms at w = 48 to 106.9–290.5 ms at w = 192, driven
+by the λ-dependent z step and amplified by Flickr 2W fine-
+tuning. Modulation costs 1.2–4.6 ms. Both CDF construction
+and modulation are configuration-dependent and amortized in
+steady state, while GPU-side transforms remain stable.
+Overall. The modulation network adds only 1.5–4.6% pa-
+rameters on CKBD (similar on E2E/Hyperprior), while one
+model replaces 40 independent models, cutting storage by
+14.8–15.9×. Latency is dominated by entropy coding and CDF
+construction, which scale with width and amortize per image.
+Since entropy coding scales with active channels, channel
+slimming offers a practical latency–RD trade-off in one model.
+D. Comparison with Existing Elastic LIC Methods
+Following the taxonomy in Sec. I, the compared methods
+include slimmable (ELFIC [16]) and scalable (EVC [6])
+coding, while CBANet [15] is a variable-rate method that is
+neither. The “One is all” framework [17] is excluded due to
+unavailable public code and pretrained models. Fig. 12 shows
+the RD curves on Kodak, and Table VII reports parameter
+count and en-/de-coding latency.
+Backbone configuration. Our CKBD backbone follows the
+Minnen2018-style checkerboard architecture [3], [8] with a
+mean-scale Gaussian entropy model and plain convolutional
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+12
+0.00
+0.25
+0.50
+0.75
+1.00
+1.25
+1.50
+1.75
+2.00
+Bit rate (bpp)
+21
+24
+27
+30
+33
+36
+39
+42
+PSNR (dB)
+VTM 19.2 (Intra)
+BPG 8b 444 x265 ycbcr
+JPEG2000
+JPEG
+CBANet-HP
+ELFIC
+EVC (Scale_SL enc3)
+E2E-192 (VBR-QW)
+Hyper-192 (VBR-QFW)
+CKBD-192 (VBR-QW)
+0.00
+0.25
+0.50
+0.75
+1.00
+1.25
+1.50
+1.75
+2.00
+Bit rate (bpp)
+6
+9
+12
+15
+18
+21
+24
+MS-SSIM (dB)
+VTM 19.2 (Intra)
+BPG 8b 444 x265 ycbcr
+JPEG2000
+JPEG
+CBANet-HP
+ELFIC
+EVC (Scale_SL enc3)
+E2E-192 (VBR-QW)
+Hyper-192 (VBR-QFW)
+CKBD-192 (VBR-QW)
+Fig. 12: Rate-distortion comparison on Kodak. E2E/Hyper/CKBD-192 denote variable-rate models at width 192. For CBANet,
+ELFIC, and EVC, the highest-quality RD curves among available models are used for reference.
+TABLE VII: Parameter count and en-/de-coding latency on Kodak. Rel. Cplx. (%) is method-specific: w/192 × 100% (ours),
+the decoder-computation ratio (ELFIC, CBANet), and Nenc/4 × 100% (EVC). Nλ is the number of default variable-rate
+configurations; “Interp.”: extra RD points via interpolation, not applicable to CBANet (independent bitrate-control modules).
+Ours
+E2E
+Hyper
+CKBD
+ELFIC
+(Low Rate)
+CBANet-HP
+EVC
+(Scale SL)
+Params (M)
+6.34
+12.68
+15.84
+66.99
+6.39
+17.47
+Nλ
+8 (Interp.)
+4 (Interp.)
+4
+4 (Interp.)
+Rel. Cplx. (%)
+25/37.5/50/75/100
+7.66/35.82/74.06/100
+25/50/100
+25/50/75/100
+Enc. (ms)
+10/14/18/27/36
+19/24/28/40/51
+28/32/37/51/71
+166
+36
+42/45/50/55
+Dec. (ms)
+14/20/25/38/50
+23/31/36/51/66
+32/38/45/62/86
+175/193/199/202
+54/56/58
+32
+transforms. Our CKBD-192 matches its baseline in Fig. 7
+of [8], validating our implementation. The identical backbone
+ensures a fair comparison, and the gap to Cheng2020-style
+models [4] is orthogonal to our contributions.
+Variable-rate capability (Nλ). Our single VBR model pro-
+vides Nλ
+=
+8 default configurations with interpolation,
+covering a wider bitrate range than all compared elastic LIC
+methods. For example, Hyper-192 spans 0.17–1.55 bpp with
+28.08–37.93 dB PSNR and 12.5–24.5 dB MS-SSIM. CBANet-
+HP has Nλ = 4 but cannot interpolate, because it switches
+independent BAL/IBAL modules on both sides of y; its range
+is only 0.28–0.77 bpp. ELFIC and EVC both have Nλ = 4
+with interpolation, while ELFIC (Low Rate) covers only 0.15–
+0.56 bpp. Overall, our method offers more configurations and
+continuous rate adaptation across five widths in a single model.
+Complexity and parameter efficiency. Our models achieve
+25/37.5/50/75/100%
+complexity
+with
+6.34/12.68/15.84 M
+parameters
+(E2E/Hyper/CKBD).
+ELFIC
+attains
+7.66/35.82/74.06/100%
+but
+costs
+66.99 M:
+it
+slims
+hs
+and gs yet zero-pads unused hs features to keep full width for
+the channel-wise autoregressive context model [7], replaces
+GDN with NFFT, and widens y to 320 channels. CBANet-HP
+(6.39 M, 25/50/100%) is comparable to our E2E-192 (6.34 M)
+but cannot interpolate; under the hyperprior backbone, our
+Hyper-192 achieves better RD than CBANet-HP with a
+moderate parameter increase. EVC (17.47 M, 25/50/75/100%)
+uses residual blocks, depth-wise separable convolutions, and
+mask decay that prunes inter-operator channels below the
+TABLE VIII: Summary of traditional codecs on Kodak. BPP
+and PSNR ranges are computed over all evaluated quality
+points. Enc./Dec. denote the average en-/de-coding time.
+Codec
+BPP
+PSNR (dB)
+Enc. (ms)
+Dec. (ms)
+JPEG
+0.17–2.12 21.48–37.33
+2.22
+2.28
+JPEG2000
+0.12–2.00 26.30–38.69
+230.19
+237.77
+BPG
+0.10–2.12 27.14–42.12
+470.27
+168.11
+VTM-intra 0.11–2.11 28.43–41.17 140985.54
+269.41
+predefined widths. Overall, our method offers finer complexity
+control and better parameter efficiency.
+Latency. Our CKBD-192 is faster than ELFIC across all
+widths (27.83–70.66 ms encoding, 31.76–86.41 ms decoding),
+and E2E-192/Hyper-192 are faster still. ELFIC slims gs/hs,
+but its encoder zero-pads unused hs channels before the
+channel-wise context model and keeps y full-width (320
+channels). Since entropy coding dominates latency, its en-
+coding is nearly constant (165.89 ms) and decoding remains
+high (174.93–202.31 ms), largely independent of complexity.
+CBANet-HP has a constant encoder (35.87 ms) and extends
+the decoder by selecting among parallel decoder branches
+with weighted-sum outputs, so its decoding scales with com-
+plexity (54.03–58.32 ms). EVC is fastest because it uses a
+custom multi-threaded C++ rANS entropy coder instead of
+CompressAI, minimizing Python/C++ overhead; its encoding
+grows only from 41.95 to 55.08 ms as Nenc increases from 1
+to 4, while decoding stays at 34.12 ms. With a CompressAI
+entropy coder, EVC would be close to our entropy coding
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+13
+latency (40.10/54.37 ms in Table VI), as it also uses a Gaussian
+conditional model. Overall, our VBR models offer a better
+trade-off among RD performance, parameter efficiency, and
+latency flexibility, while supporting continuous rate adaptation
+across multiple widths with a single model. The MS-SSIM
+results show the same trend as PSNR.
+E. Comparison with Traditional Codecs
+We compare our method with four traditional image and
+intra-frame compression codecs: JPEG, JPEG2000, BPG, and
+VTM 19.2 intra. All codecs are evaluated on the Kodak
+dataset, and the quality parameters are selected to cover a
+wide bitrate range, as detailed in the supplementary material.
+Table VIII summarizes the BPP and PSNR ranges as well
+as the average encoding/decoding latency of each traditional
+codec. The corresponding rate–distortion curves are shown in
+Fig. 12. Among the traditional codecs, VTM achieves the best
+rate–distortion performance, but at a high computational cost.
+As reported in Table VIII, its average encoding latency is
+substantially larger than that of JPEG, JPEG2000, and BPG,
+e.g., about 141 s per image for VTM. Our method achieves
+clear BD-rate savings over JPEG and JPEG2000, and remains
+competitive with BPG, while additionally offering flexible
+complexity and continuous rate adaptation. Traditional codecs
+run purely on the CPU, whereas LIC methods run transform
+networks on the GPU and entropy coding on the CPU.
+V. DISCUSSION
+Our method focuses on CNN-based VAE image compres-
+sion. The proposed mask-guided selection and variable-rate
+modulation can extend to attention and Transformer-based
+codecs [4], [24]. We use uniform scaling ratios within each
+module; future work may explore non-uniform, operator-
+level scaling to achieve better balance. Model quantization
+is promising for reducing computation and cross-platform
+discrepancies [42]. Operator-level redundancy can be further
+reduced via efficient transposed convolutions and pruned or
+hardware-parallelized context modeling [43]. Since entropy
+coding runs serially on the CPU while other components run
+on the GPU, it remains the latency bottleneck; future work
+may explore parallel entropy coding on CPU/GPU [44], [45].
+VI. CONCLUSION
+We proposed a channel-level mask-guided slimmable image
+compression method for flexible complexity and continuous
+variable-rate control in a single model. A learnable channel-
+wise mask with sparsity regularization enables non-contiguous
+top-w selection, while mask merging and channel reordering
+convert the model into a standard slimmable network (M2S)
+without altering the forward pass. Variable-rate control com-
+bines λ- and width-conditioned modulation with quantization-
+step scaling and a progressive freeze-then-fine-tune strategy.
+On Kodak, across E2E, Hyperprior, and Checkerboard
+backbones, M2S consistently outperforms the same-width
+Slimmable baseline, with the largest BD-rate savings at nar-
+row widths, while reducing storage over independent models.
+VBR-QW is best on E2E and CKBD, and VBR-QFW on
+Hyperprior, both approaching the fixed-rate M2S bound. Com-
+pared with existing elastic LIC methods, our method offers
+a better trade-off among rate–distortion performance, param-
+eter efficiency, and latency flexibility. Future work includes
+hardware-aware entropy coding and video compression.
+VII. ACKNOWLEDGEMENT
+This work was supported in part by the National Natural
+Science Foundation of China, and Shanghai Key Laboratory
+of Scalable Computing and Systems. DeepSeek was used only
+for language polishing.
+REFERENCES
+[1] J. Ball´e, V. Laparra, and E. P. Simoncelli, “End-to-end optimized image
+compression,” in Proc. ICLR, 2017.
+[2] J. Ball´e, D. Minnen, S. Singh, S. J. Hwang, and N. Johnston, “Variational
+image compression with a scale hyperprior,” in Proc. ICLR, 2018.
+[3] D. Minnen, J. Ball´e, and G. D. Toderici, “Joint autoregressive and
+hierarchical priors for learned image compression,” Proc. NeurIPS,
+vol. 31, 2018.
+[4] Z. Cheng, H. Sun, M. Takeuchi, and J. Katto, “Learned image com-
+pression with discretized gaussian mixture likelihoods and attention
+modules,” in Proc. CVPR, 2020, pp. 7939–7948.
+[5] J. Liu, H. Sun, and J. Katto, “Learned image compression with mixed
+transformer-cnn architectures,” in Proc. CVPR, 2023, pp. 14 388–14 397.
+[6] W. Guo-Hua, J. Li, B. Li, and Y. Lu, “Evc: Towards real-time neural
+image compression with mask decay,” in Proc. ICLR, 2023.
+[7] D. Minnen and S. Singh, “Channel-wise autoregressive entropy models
+for learned image compression,” in Proc. ICIP.
+IEEE, 2020, pp. 3339–
+3343.
+[8] D. He, Y. Zheng, B. Sun, Y. Wang, and H. Qin, “Checkerboard context
+model for efficient learned image compression,” in Proc. CVPR, 2021,
+pp. 14 771–14 780.
+[9] D. He et al., “Elic: Efficient learned image compression with unevenly
+grouped space-channel contextual adaptive coding,” in Proc. CVPR,
+2022, pp. 5718–5727.
+[10] F. Yang, L. Herranz, Y. Cheng, and M. G. Mozerov, “Slimmable
+compressive autoencoders for practical neural image compression,” in
+Proc. CVPR, 2021, pp. 4998–5007.
+[11] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the scalable video
+coding extension of the h. 264/avc standard,” IEEE Trans. Circuits Syst.
+Video Technol., vol. 17, no. 9, pp. 1103–1120, 2007.
+[12] J. M. Boyce, Y. Ye, J. Chen, and A. K. Ramasubramonian, “Overview of
+shvc: Scalable extensions of the high efficiency video coding standard,”
+IEEE Trans. Circuits Syst. Video Technol., vol. 26, no. 1, pp. 20–34,
+2015.
+[13] Y. Mei, L. Li, Z. Li, and F. Li, “Learning-based scalable image compres-
+sion with latent-feature reuse and prediction,” IEEE Trans. Multimedia,
+vol. 24, pp. 4143–4157, 2021.
+[14] D. Zhang et al., “Exploring resolution fields for scalable image com-
+pression with uncertainty guidance,” IEEE Trans. Circuits Syst. Video
+Technol., vol. 34, no. 4, pp. 2934–2948, 2023.
+[15] J. Guo, D. Xu, and G. Lu, “Cbanet: Toward complexity and bitrate
+adaptive deep image compression using a single network,” IEEE Trans.
+Image Process., vol. 32, pp. 2049–2062, 2023.
+[16] Z. Zhang et al., “Elfic: A learning-based flexible image codec with rate-
+distortion-complexity optimization,” in Proc. MM, 2023, pp. 9252–9261.
+[17] C. Li et al., “One is all: A unified rate-distortion-complexity framework
+for learned image compression under energy concentration criteria,”
+IEEE Trans. Multimedia, 2025.
+[18] E. Zamfir, Z. Wu, N. Mehta, Y. Zhang, and R. Timofte, “See more
+details: Efficient image super-resolution by experts mining,” in Proc.
+ICML, 2024.
+[19] Y. Li et al., “Convolutional neural network-based block up-sampling for
+intra frame coding,” IEEE Trans. Circuits Syst. Video Technol., vol. 28,
+no. 9, pp. 2316–2330, 2017.
+[20] J. Park, J. Lee, and M. Kim, “Compass: High-efficiency deep image
+compression with arbitrary-scale spatial scalability,” in Proc. ICCV,
+2023, pp. 12 826–12 835.
+[21] M. Shen, P. Xue, and C. Wang, “Down-sampling based video coding
+using super-resolution technique,” IEEE Trans. Circuits Syst. Video
+Technol., vol. 21, no. 6, pp. 755–765, 2011.
+
+
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 18, NO. 9, SEPTEMBER 2020
+14
+[22] J.-H. Lee, S. Jeon, K. P. Choi, Y. Park, and C.-S. Kim, “Dpict: Deep
+progressive image compression using trit-planes,” in Proc. CVPR, 2022,
+pp. 16 113–16 122.
+[23] M. Dasari, K. Kahatapitiya, S. R. Das, A. Balasubramanian, and
+D. Samaras, “Swift: Adaptive video streaming with layered neural
+codecs,” in Proc. USENIX NSDI, 2022, pp. 103–118.
+[24] Z. Hu and D. Xu, “Complexity-guided slimmable decoder for efficient
+deep video compression,” in Proc. CVPR, 2023, pp. 14 358–14 367.
+[25] K. Tong et al., “Qvrf: A quantization-error-aware variable rate frame-
+work for learned image compression,” in Proc. ICIP.
+IEEE, 2023, pp.
+1310–1314.
+[26] F. Yang et al., “Variable rate deep image compression with modulated
+autoencoder,” IEEE Signal Process. Letters, vol. 27, pp. 331–335, 2020.
+[27] Y. Choi, M. El-Khamy, and J. Lee, “Variable rate deep image compres-
+sion with a conditional autoencoder,” in Proc. ICCV, 2019, pp. 3146–
+3154.
+[28] J. Yu et al., “Slimmable neural networks,” in Proc. ICLR, New Orleans,
+LA, USA, May 6-9, 2019.
+OpenReview.net, 2019.
+[29] J. Yu and T. S. Huang, “Universally slimmable networks and improved
+training techniques,” in Proc. ICCV, 2019, pp. 1803–1811.
+[30] Z. Cui et al., “Asymmetric gained deep image compression with
+continuous rate adaptation,” in Proc. CVPR, 2021, pp. 10 532–10 541.
+[31] J. Li, B. Li, and Y. Lu, “Hybrid spatial-temporal entropy modelling for
+neural video compression,” in Proc. MM, 2022, pp. 1503–1511.
+[32] L. R. Duong, B. Li, C. Chen, and J. Han, “Multi-rate adaptive transform
+coding for video compression,” in Proc. ICASSP. IEEE, 2023, pp. 1–5.
+[33] R. Wang, W. Jiang, H. Sun, and J. Katto, “Variable bitrate models
+for learned image compression with multi-gain units and weighted
+probability assignment,” in Proc. VCIP.
+IEEE, 2024, pp. 1–5.
+[34] J. Lin, D. Liu, J. Liang, H. Li, and F. Wu, “A deeply modulated scheme
+for variable-rate video compression,” in Proc. ICIP.
+IEEE, 2021, pp.
+3722–3726.
+[35] T. Chen and Z. Ma, “Variable bitrate image compression with quality
+scaling factors,” in Proc. ICASSP.
+IEEE, 2020, pp. 2163–2167.
+[36] M. A. F. Hossain and F. Zhu, “Structured pruning and quantization for
+learned image compression,” in Proc. ICIP.
+IEEE, 2024, pp. 3730–
+3736.
+[37] S. Yin et al., “Universal efficient variable-rate neural image compres-
+sion,” in Proc. ICASSP, Virtual and Singapore, 23-27 May 2022. IEEE,
+2022, pp. 2025–2029.
+[38] ——, “Exploring structural sparsity in neural image compression,” in
+Proc. ICIP, Bordeaux, France, 16-19 October 2022.
+IEEE, 2022, pp.
+471–475.
+[39] J. Frankle and M. Carbin, “The lottery ticket hypothesis: Finding sparse,
+trainable neural networks,” in Proc. ICLR, 2018.
+[40] Z. Wang, E. P. Simoncelli, and A. C. Bovik, “Multiscale structural
+similarity for image quality assessment,” in The thrity-seventh asilomar
+conference on signals, systems & computers, 2003, vol. 2.
+Ieee, 2003,
+pp. 1398–1402.
+[41] G. Bjontegaard, “Calculation of average psnr differences between rd-
+curves,” ITU SG16 Doc. VCEG-M33, 2001.
+[42] H. Sun, L. Yu, and J. Katto, “Learned image compression with fixed-
+point arithmetic,” in Picture Coding Symposium (PCS).
+IEEE, 2021,
+pp. 1–5.
+[43] C. Chen et al., “Optimizing hardware acceleration for learned image
+compression with parallel context model,” IEEE Trans. Comput.-Aided
+Design Integr. Circuits Syst., 2026.
+[44] H. Yu et al., “Evaluating the practicality of learned image compression,”
+arXiv preprint arXiv:2207.14524, 2022.
+[45] W. Huang et al., “Mans: Efficient and portable ans encoding for multi-
+byte integer data on cpus and gpus,” in Proc. SC, 2025, pp. 1299–1314.

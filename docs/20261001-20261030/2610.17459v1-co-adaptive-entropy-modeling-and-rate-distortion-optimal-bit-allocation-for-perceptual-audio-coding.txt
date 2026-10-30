@@ -1,0 +1,551 @@
+Co-Adaptive Entropy Modeling and
+Rate–Distortion-Optimal Bit Allocation
+for Perceptual Audio Coding
+Soohyun Kim∗‡, Jiwon Jeong†‡, and Marina Bosi∗
+∗Center for Computer Research
+†Department of Electrical Engineering
+in Music and Acoustics (CCRMA)
+Stanford University
+Stanford University
+Stanford, CA 94305, USA
+Stanford, CA 94305, USA
+jeongjw@stanford.edu
+{soohyun,mab}@ccrma.stanford.edu
+Abstract
+We present a perceptual audio coder in which the entropy-coding model and the bit alloca-
+tion co-adapt across blocks without model side information. Mantissas are coded by a hy-
+brid of bit packing and arithmetic coding with per-band probability models learned online.
+Encoder and decoder accumulate identical histograms from decoded blocks and advance
+the same model state. The model enters bit allocation directly: per-band rate–distortion
+frontiers combine measured perceptual distortion with entropy-coded rate estimates under
+the current model, and a dynamic program attains the exact minimum of total objective
+perceptual distortion for each block’s budget under the model’s rate estimates, with reser-
+voir carry-over. Under a strict per-block rate, entropy-coding-aware bit allocation lowers
+this distortion (band noise-to-mask ratio in linear scale) by 15–24 % relative to the same
+solver without it, and co-adaptation removes a further 3–4 % (up to 15 % on oboe) that a
+backward-adaptive coder alone cannot realize in one pass; a MUSHRA test at 80 kbps per
+channel confirms the ranking.
+Introduction and Background
+Perceptual coders shape quantization noise below the masked threshold of a psy-
+choacoustic model and typically allocate a fixed or locally-variable bit budget across
+frequency bands [1, 2, 3, 4]. To improve the performance of such coders, we combine
+two research lines. The first is allocation: perceptually motivated bit allocation dates
+to [1, 5]—Voran’s allocations use a raw bits-times-lines rate model with no entropy
+coding—and discrete rate–distortion allocation with general rate models is classical
+[6, 7]. Closest to our solver layer, Aggarwal et al. [8] select MPEG Advanced Audio
+Coding (AAC) [9] scale factors and Huffman codebooks by a trellis search minimizing
+average or maximum noise-to-mask ratio (NMR), exact for each Lagrange multiplier,
+with rates taken from the static, standardized Huffman tables. Oger et al. set the
+quantizer step from a generalized-Gaussian spectrum model fitted at the encoder and
+Preprint of a manuscript submitted to the 2027 Data Compression Conference (DCC 2027).
+This work has been submitted to the IEEE for possible publication. Copyright may be transferred
+without notice, after which this version may no longer be accessible.
+‡Soohyun Kim and Jiwon Jeong contributed equally to this work.
+arXiv:2610.17459v1  [eess.AS]  12 Oct 2026
+
+
+code the coefficients with an adaptive stack-run arithmetic coder, but the coder’s
+adaptive state does not price the allocation [10].
+The second line is adaptive entropy coding: Context-based Adaptive Binary Arith-
+metic Coding (CABAC) [11], MPEG Unified Speech and Audio Coding (USAC)’s
+context-adaptive arithmetic coder (CAAC) [12], which switches among fixed trained
+context tables, and time–frequency context arithmetic coding for G.719 [13] adapt
+per symbol from decoded context; in the audio coders among them, the adaptation
+state is not used to price allocation candidates. Malvar’s run-length/Golomb–Rice
+coder and lapped-transform audio coder likewise adapt from previously decoded data
+without side information [14, 15], within the entropy layer only. Conversely, AC-
+3’s “hybrid backward/forward adaptive” allocation runs the same core allocation in
+encoder and decoder from the decoded spectral envelope [16], but with no entropy
+coding in the loop. To our knowledge, no perceptual audio coder closes the loop
+between a backward-adaptive entropy model and a discrete rate–distortion-optimal
+bit-allocation stage: if the entropy model is learned online from decoded data, the
+bit-allocation stage can be made aware of the current coded cost of every candidate
+quantization choice—at zero side-information cost.
+Our contribution is this closed loop: a decoder-synchronized entropy model is
+coupled to entropy-coding-aware perceptual bit allocation, so that the two co-adapt
+across blocks without transmitting model parameters.
+Concretely: (i) Entropy-
+coding-aware allocation. Per-band rate–distortion frontiers are built from mea-
+sured quantization distortion (weighted by the masked threshold) and entropy-coded
+rate estimates under the current arithmetic model. (ii) Exact and approximate
+solvers. A trellis dynamic program (DP) attains the exact minimum of total objec-
+tive perceptual distortion for each block’s budget under the model’s rate estimates;
+we compare it to a marginal-analysis solver in the style of the generalized Breiman–
+Friedman–Olshen–Stone (BFOS) algorithm [7] and a Lagrangian solver [6], exposing
+a quality–complexity trade-off. (iii) Causal co-adaptation. Encoder and decoder
+advance a shared per-(bit precision, band) histogram model from decoded mantissas;
+a control with the coder adapting but the allocation costs frozen isolates the alloca-
+tion feedback. (iv) Validation. Objective distortion and CPU time on six standard
+excerpts at 64 and 80 kbps/channel, and a listening test in the style of Multiple Stim-
+uli with Hidden Reference and Anchor (MUSHRA) [17] at 80 kbps/channel. Under a
+strict per-block rate, entropy-coding-aware bit allocation lowers total objective per-
+ceptual distortion by 15–24 % relative to the same solver without it, and co-adaptation
+removes a further 3–4 % (up to 15 % on oboe) that a backward-adaptive coder alone
+cannot realize in one pass; with an unbounded reservoir the increments shrink to 1–
+3 % and 0.3–0.5 %, the complete system reaches 57–63 % of conventional water-filling,
+and the listening test places the exact-DP conditions 22–25 MUSHRA points above
+water-filling, with a further 3.4 points for co-adaptation.
+Codec Overview
+The coder processes pulse-code-modulated (PCM) audio; in the current implementa-
+tion, the two channels of a 16-bit stereo signal sampled at 44.1 kHz are coded inde-
+
+
+pendently (no joint-stereo tools), and all rates are quoted per channel. Each channel
+is analyzed with a sine-windowed modified discrete cosine transform (MDCT) [18] of
+N=1024 frequency lines (2048-sample blocks, 50% overlap). Lines are grouped into
+K=50 scale-factor bands with equal width on the equivalent-rectangular-bandwidth
+(ERB) rate scale [19]; band k holds Lk lines. A block floating-point quantizer with
+4-bit scale factors and per-band mantissa precision bk ∈{0} ∪{2, . . . , 16} quan-
+tizes each band.
+A side-chain fast Fourier transform (FFT)-based psychoacoustic
+model (tonal maskers, threshold in quiet [3]) yields per-band signal-to-mask ratios
+SMRk; the masking curve rises toward the masker at 27 dB/Bark and falls above
+it at 27 −0.367(L−40) dB/Bark, where L is the masker level in dB; the tested im-
+plementation leaves L−40 unclamped. Per block and channel, the encoder builds
+per-band rate–distortion frontiers, solves the allocation, and writes the bitstream
+with per-band arithmetic-coding (AC)/bit-packing selection; both sides then update
+the shared entropy model, and unspent bits enter a reservoir.
+Hybrid Entropy Coding Layer
+Arithmetic coding [20, 21] encodes both scale factors and mantissas. Each AC payload
+has an 8-bit header giving its length in bits, which keeps the overhead low, followed
+by the coded symbols; payloads longer than 255 bits fall back to bit packing. For
+the scale factors of a block and the mantissas of each band, the encoder selects the
+shorter of bit packing and arithmetic coding, signaling each choice with one flag bit.
+Scale factors are encoded as differences between consecutive bands under a static,
+empirically derived probability model; neighboring bands tend to have similar scale
+factors, giving the differences lower entropy.
+Each (bit precision, frequency band) pair has an initial mantissa probability model:
+precision sets the alphabet size, and distributions vary by band. Each model uses a
+maximum-likelihood double-geometric fit, with the same geometric distribution for
+positive and negative mantissas. This model is updated in the co-adaptive mode,
+as described in the Causal Co-Adaptation of Model and Allocation section. Because
+lower frequency bands have fewer mantissas per band, plain bit packing tends to beat
+arithmetic coding with its 8-bit header there, so bit packing is used for bands 0 to 34
+and the hybrid option is enabled from band 35, an empirically chosen threshold.
+Entropy-Coding-Aware Rate–Distortion Frontiers
+Fix a block t and channel. Let xk ∈RLk denote the vector of MDCT coefficients on the
+Lk spectral lines of band k, and let bk denote the number of mantissa bits assigned
+to band k, to be selected by the bit-allocation stage from the candidate set Bk =
+{0} ∪{2, . . . , 15} in the arithmetic-coded region and up to 16 elsewhere (a precision
+of 1 is invalid for the midtread quantizer). For each candidate bk, write ˆxk(bk) ∈RLk
+for the reconstruction of xk by the codec’s block floating-point quantizer/dequantizer
+with 4-bit overall block and per-band scale factors, with ˆxk(0) = 0.
+
+
+Objective measure of perceptual distortion
+We use a perceptual distortion metric that normalizes the squared reconstruction error
+of each candidate by the band’s squared masking threshold. For band k, let ak =
+maxj |xk,j| denote the peak amplitude and mk = ak 10−SMRk/20 the mask amplitude.
+We define
+dk(bk) =
+1
+m2
+k
+xk −ˆxk(bk)
+2.
+(1)
+Silent bands have dk(bk) = 0. This objective perceptual distortion is the band’s noise-
+to-mask ratio (NMR) in linear scale, summed over the Lk lines of band k.
+Note
+that this quantity is invariant to the overall block scale. Minimizing its sum over all
+bands k—the total objective perceptual distortion—is the allocation objective of the
+Allocation Solvers section.
+Model-dependent rate
+The rate of a candidate is the smaller of plain bit packing and the entropy-coded
+cost under the current probability tables ˆp(t), updated as described in Causal Co-
+Adaptation of Model and Allocation:
+rk(bk) =
+
+
+
+
+
+
+
+0,
+bk = 0,
+bk Lk,
+k < k0,
+min
+
+bk Lk,
+
+h + P
+j −log2 ˆp(t)
+k,bk(qk,j(bk))
+
+,
+k ≥k0,
+(2)
+where qk,j(bk) are the integer mantissa symbols produced by the quantizer (whose
+dequantization yields ˆxk(bk)), h=8 is the per-band payload length header, and k0=35
+is the first arithmetic-coded band.
+The cross-entropy estimate in (2) avoids trial
+encoding but omits the coder’s termination bits and the 255-bit payload cap, so it is
+a surrogate for the written cost: it typically tracks the written payload to within a few
+bits per block, and the reservoir absorbs the residual (see Reservoir coupling below).
+Every candidate precision thus yields one rate–distortion point (rk(bk), dk(bk)) for
+band k, and each band’s point set is Pareto-pruned: a candidate is discarded whenever
+another candidate of the same band has no higher rate and strictly lower distortion,
+leaving a compact per-band frontier Fk. Pruning does not change the optimum of
+the allocation problem (4) introduced in the next section, because a dominated choice
+can always be replaced by the candidate that dominates it without increasing rate or
+distortion. The frontiers are Pareto-pruned but not necessarily convex-pruned, which
+is what separates the exact solver from the greedy and Lagrangian ones.
+Allocation Solvers
+The per-channel mantissa budget available to block t is
+B = max
+ 0,
+
+R0 −S + v(t)/C
+
+,
+(3)
+where R0 is the target bits per channel and block, S = 420 reserves scale factors,
+allocations and flags, and v(t) is shared by the C channels.
+
+
+Exact dynamic program for total objective perceptual distortion
+Consistent with [8], minimizing the total (average) objective perceptual distortion
+correlates better with subjective quality than the classic minimax-NMR objective;
+we therefore seek
+min
+(b1,...,bK)
+K
+X
+k=1
+dk(bk)
+s.t.
+K
+X
+k=1
+rk(bk) ≤B.
+(4)
+Define Vk(u) as the minimum accumulated objective perceptual distortion over bands
+1, . . . , k using exactly u bits, for integers 0 ≤u ≤B. With no bands, only zero bits is
+reachable: V0(0) = 0 and V0(u>0) = ∞. The recurrence and terminal minimum are
+Vk(u) =
+min
+bk∈Bk, rk(bk)≤u
+h
+Vk−1
+ u −rk(bk)
+
++ dk(bk)
+i
+,
+D⋆(B) = min
+0≤u≤B VK(u).
+(5)
+Ties favor smaller u; backtracking recovers the allocation. Since rates are integers,
+the trellis over (k, u) states provides an exact solution to problem (4)—no convexity
+assumption on Fk is required. The guarantee holds for the block’s budget under the
+rate estimates (2): written bits can differ by the residual described above, and the
+block sequence is handled causally through the reservoir, not jointly optimized. Given
+the mean frontier size ¯F (≤16), the complexity is O(KB ¯F) in time and O(KB) in
+traceback memory.
+Marginal analysis (BFOS-style) and Lagrangian relaxation
+The marginal-analysis solver, in the style of the generalized BFOS algorithm [7],
+starts each band at its cheapest point and repeatedly takes the affordable step of
+largest −∆d/∆r; unlike generalized BFOS it does not first take the lower convex hull
+of each frontier, and with unequal, indivisible rate steps even convex frontiers do not
+guarantee optimality, so it is a heuristic for these discrete frontiers. The Lagrangian
+solver [6] minimizes P
+k dk(bk)+λrk(bk) per band, bisects on λ (30 iterations) to meet
+B, then greedily projects remaining slack onto the steepest steps. All solvers use the
+same frontier construction, so their comparisons isolate the optimization method from
+the cost model (in complete runs the reservoirs, and with co-adaptation the models,
+evolve separately).
+Reservoir coupling
+After coding, v(t+1) = v(t) + C R0 −R(t)
+used, where R(t)
+used is the coded payload for
+block t across channels. Entropy-coded rates let the solver use coding savings to
+reduce the current block’s distortion in one pass. There is no stop-at-mask condition;
+unused bits, scale-factor savings and rate-estimation residuals enter the reservoir. In
+our entropy-unaware water-filling control, coding savings instead affect later blocks
+through the reservoir. With an unbounded reservoir, payload rates average 63.99 and
+79.99 kbps/ch, and every stream ends with a non-negative reservoir. File headers,
+
+
+32-bit per-channel block-length fields, byte alignment and final flush blocks add about
+1.7–1.8 kbps/ch, excluded from nominal rates. The prototype does not constrain the
+instantaneous rate; Table 2 also evaluates bounded reservoir policies.
+Causal Co-Adaptation of Model and Allocation
+The model state is a table of per-(precision, band) symbol histograms H(t) = {H(t)
+b,k}
+where b and k denote precision and band, respectively; the coder starts from a fixed
+double-geometric fit and the observed counts start empty. After block t is coded, both
+encoder and decoder execute the identical update from the decoded mantissas q(t):
+H(t+1)
+b,k
+= H(t)
+b,k +
+X
+ch
+hist
+ q(t)
+k
+
+· 1
+
+b(t)
+k =b
+
+,
+k ≥k0, 2 ≤b ≤bmax,
+(6)
+applied on a window cadence: accumulated counts are merged into the model every
+T=10 blocks, and a cell is (re)built only once its window count reaches τ=20 samples
+(smaller windows are discarded); precisions are capped at bmax=13 to keep the bands
+with large alphabets stable. The first merged window replaces the parametric prior of
+its cell with the learned nonparametric table (integer frequencies floored at one and
+rescaled to the coder’s precision), later windows accumulate without forgetting, and
+untouched cells retain the prior. The frequency tables of the arithmetic coder and the
+rate terms (2) of the bit-allocation stage are rebuilt from H(t+1), so the next block’s
+allocation is optimized against the model the coder will actually use. Windowing
+(T), the count threshold (τ), and the precision cap (bmax) damp the feedback between
+allocation and model; we observed no oscillatory behavior in any test item.
+Synchronization invariant
+The update rule (6) depends only on quantities the decoder reproduces exactly: the
+transmitted allocations b(t)
+k
+and the decoded mantissas. By induction, if both sides
+start from the same preinstalled base model (the co-adaptive mode is signaled in the
+stream header), then H(t)—and hence every arithmetic table—is identical on both
+sides for all t, and no model side information is ever transmitted. This invariant is
+what makes nonparametric per-(b, k) tables practical at all: transmitting 12 × 15
+learned cells with up to 213 symbols forward would dwarf the payload.
+Codec complexity
+Frontier construction quantizes and prices every candidate precision before pruning.
+Lagrangian search costs O(IK ¯F) for I multiplier evaluations; marginal analysis and
+the final greedy fill scan all bands per step, costing O(K2 ¯F). At 80 kbps/channel,
+DP takes about 20 times the Lagrangian encode CPU time for about 0.5 % lower
+distortion (Table 1). Co-adaptation accumulates histograms each block and rebuilds
+coder and rate tables only for changed cells every T blocks; its average encoding
+overhead over static AC is about 1 %. The decoder adds histogram accumulation and
+occasional table rebuilds.
+
+
+Figure 1: (a) Mean total objective perceptual distortion (both channels, unbounded reser-
+voir) per excerpt at 80 kbps/channel as a percentage of Water-filling (static AC) (dashed
+line at 100). (b) Per-block total objective perceptual distortion on the oboe excerpt (blocks
+100–200; Lagrangian and Exact DP (static AC) overlap): once the co-adaptive model has
+adapted, Exact DP (co-adaptive AC), solid red, tracks below Exact DP (static AC), black
+dashed, in nearly every block.
+Experimental Results
+Setup
+Six excerpts from the European Broadcasting Union (EBU) Sound Quality Assess-
+ment Material (SQAM) disc [22] (oboe, glockenspiel, castanets, German male speech,
+orchestra, soprano) were selected to evaluate the system at 64 and 80 kbps per chan-
+nel. Conditions are labeled solver (entropy mode) as defined in Table 1; all share the
+MDCT filterbank, psychoacoustic model, and quantizer, and the AC conditions also
+share the bitstream syntax, so only the allocation solver and the entropy model differ.
+The initial entropy model was fitted on SQAM material that includes four of the six
+excerpts (glockenspiel, speech, castanets, oboe); all conditions share this model, and
+we report these four as in-domain and orchestra and soprano, which were not used in
+the fit, as out-of-domain. Encode and decode CPU times were measured on a single
+core.
+Objective results
+Table 1 reports the objective of (4) relative to Water-filling (static AC), and Fig. 1
+breaks the 80 kbps/channel result down by excerpt and block.
+Without entropy
+coding, distortion rises to 139 % (64 kbps/ch) and 162 % (80 kbps/ch) of Water-
+filling (static AC). The exact DP on entropy-coding-aware frontiers reaches 59–66 %
+of that baseline, the co-adaptive model removes a further 3–4 % for the Lagrangian
+and the exact DP, and the Lagrangian solver stays within about 0.5 % of the exact
+DP at about 1/20 of its encode CPU time under both entropy modes.
+Role of entropy-coding awareness. The gap between water-filling and the exact DP
+mixes two changes: allocating on measured, mask-weighted distortion with an exact
+solver, and pricing each candidate at its entropy-coded rate. A control that runs the
+same solver with every candidate priced at its uncoded length bkLk separates them.
+
+
+Table 1: Mean total objective perceptual distortion over the six excerpts (both channels,
+unbounded reservoir), as % of Water-filling (static AC) per excerpt, averaged over excerpts;
+lower is better. Static AC = fixed pretrained entropy model; co-adaptive AC = model and
+allocation costs updated from decoded data; no AC = plain bit packing with the same
+reservoir policy. Encode and decode CPU times are relative to Water-filling (static AC) at
+80 kbps/ch (single-threaded Python prototype).
+Condition
+64 kbps/ch
+80 kbps/ch
+Enc. CPU
+Dec. CPU
+Water-filling (no AC)
+138.8
+161.7
+0.8×
+0.6×
+Water-filling (static AC)
+100.0
+100.0
+1×
+1×
+Marginal analysis (static AC)
+67.7
+79.9
+4.1×
+1×
+Lagrangian (static AC)
+59.5
+66.0
+4.1×
+1×
+Exact DP (static AC)
+59.3
+65.7
+88×
+1×
+Lagrangian (co-adaptive AC)
+57.7
+63.7
+4.2×
+1×
+Exact DP (co-adaptive AC)
+57.5
+63.5
+88×
+1×
+Figure 2: Subjective listening test results: mean MUSHRA scores with 95% confidence
+intervals across 20 listeners, per excerpt and overall, at 80 kbps/channel (AC conditions use
+an unbounded reservoir).
+Under a strict per-block rate (Table 2), entropy-coding awareness lowers distortion
+by 15 % (64 kbps/ch) and 24 % (80 kbps/ch) relative to that control, up to 39 % on
+oboe, in- and out-of-domain alike; with a reservoir of one block or more, the reservoir
+forwards the mispriced bits to later blocks and the increment shrinks to 1–3 %. The
+remaining 33–40 points of the gap come from the measured-distortion frontiers and
+the exact solver.
+Role of co-adaptation. Co-adaptation changes both the arithmetic coder’s tables
+and the rate terms of the bit-allocation stage; the coder-only control of Table 2
+separates the two. Under a strict per-block rate, co-adaptation retains the 3.3–3.6 %
+reduction (up to 15 % on oboe; 1.6–1.7 % out-of-domain); once the reservoir can carry
+even one block’s budget forward, it delivers most of the savings to later blocks by itself
+and the allocation feedback adds a further 0.3–0.5 %. The feedback thus spends the
+coder’s savings in the block where they arise, so that the co-adaptive gain is realized
+under every tested reservoir policy; Fig. 1(b) shows it block by block on oboe.
+
+
+Table 2: Controlled increments for the exact DP under three reservoir policies. Control and
+Proposed: total objective perceptual distortion (both channels) as % of Water-filling (static
+AC) under the same policy, mean over the six excerpts, at 64 / 80 kbps/ch. Gain: relative
+reduction from control to proposed per excerpt, mean over the six excerpts. The coder-
+only control adapts the entropy coder as a self-contained lossless layer, as prior backward-
+adaptive coders do [12, 13, 14, 15], without updating allocation costs.
+Reservoir
+Control
+Proposed
+Gain (%)
+Entropy-coding awareness: uncoded rates →entropy-coded rates
+None (strict per-block rate)
+58.0 / 62.7
+49.5 / 48.1
+15.0 / 23.7
+One block budget
+60.7 / 67.5
+59.7 / 66.3
+1.6 / 1.8
+Unbounded (as in Table 1, Figs. 1–2)
+60.1 / 66.8
+59.3 / 65.7
+1.4 / 1.7
+Co-adaptation: coder only →co-adaptive
+None (strict per-block rate)
+49.5 / 48.1
+48.2 / 46.7
+3.3 / 3.6
+One block budget
+58.2 / 64.4
+58.1 / 64.2
+0.3 / 0.3
+Unbounded (as in Table 1, Figs. 1–2)
+57.7 / 63.6
+57.5 / 63.5
+0.4 / 0.3
+Subjective listening test results
+A MUSHRA test [17] with a hidden reference and a single 3.5 kHz low-pass anchor
+(no 7 kHz mid anchor) compared Water-filling (no AC), Water-filling (static AC),
+Exact DP (static AC), and Exact DP (co-adaptive AC) on the six excerpts at 80
+kbps/channel; the no-AC stimuli used an earlier configuration without a reservoir or
+strategy flags and have about 3 % lower objective distortion than the no-AC condition
+in Table 1. All 20 listeners were retained; they used the same Sennheiser HD 600
+headphones in a listening room after familiarization with standard coding artifacts,
+with the hidden conditions randomized within each trial. Mean scores were 44.9 for
+Water-filling (no AC), 55.0 for Water-filling (static AC), 76.6 for Exact DP (static
+AC), and 80.0 for Exact DP (co-adaptive AC), compared to 95.1 for the reference
+and 27.1 for the anchor (Fig. 2). On paired listener means, co-adaptive minus static
+DP is +3.4 points (95 % confidence interval 0.3–6.5, paired t-test p = .035).
+Conclusion
+We have presented co-adaptive entropy modeling and entropy-coding-aware percep-
+tual bit allocation without transmitted model side information; the dynamic program
+is exact per block under the model’s rate estimates. Under a strict per-block rate,
+entropy-coding-aware bit allocation lowers total objective perceptual distortion by
+15–24 % relative to the same solver without it, and co-adaptation removes a further
+3–4 % that a backward-adaptive coder alone cannot realize in one pass; both gains
+hold in- and out-of-domain. With a reservoir of one block or more, the two increments
+shrink to 1–3 % and 0.3–0.5 %, so the co-adaptive gain is realized under every tested
+reservoir policy. The Lagrangian solver stays within about 0.5 % of the exact DP at
+about 1/20 of its encode CPU time. In the MUSHRA test at 80 kbps/channel with
+an unbounded reservoir, both exact-DP conditions score 22–25 points above water-
+filling, and co-adaptive DP scores 3.4 points above static DP. Natural extensions are
+
+
+rate smoothing under a bounded reservoir and a faster exact solver.
+References
+[1] J. D. Johnston, “Transform coding of audio signals using perceptual noise criteria,”
+IEEE J. Sel. Areas Commun., vol. 6, no. 2, pp. 314–323, 1988.
+[2] K. Brandenburg and G. Stoll, “ISO/MPEG-1 audio: A generic standard for coding of
+high-quality digital audio,” J. Audio Eng. Soc., vol. 42, no. 10, pp. 780–792, 1994.
+[3] M. Bosi and R. E. Goldberg, Introduction to Digital Audio Coding and Standards.
+Kluwer Academic Publishers, 2003.
+[4] J. Herre, S. Quackenbush, M. Kim, and J. Skoglund, “Perceptual audio coding: A
+40-year historical perspective,” in Proc. IEEE ICASSP, 2025, pp. 1–5.
+[5] S. D. Voran, “Perception-based bit-allocation algorithms for audio coding,” in Proc.
+IEEE WASPAA, October 1997.
+[6] Y. Shoham and A. Gersho, “Efficient bit allocation for an arbitrary set of quantizers,”
+IEEE Trans. Acoust., Speech, Signal Process., vol. 36, no. 9, pp. 1445–1453, 1988.
+[7] E. A. Riskin, “Optimal bit allocation via the generalized BFOS algorithm,” IEEE
+Trans. Inf. Theory, vol. 37, no. 2, pp. 400–402, 1991.
+[8] A. Aggarwal, S. L. Regunathan, and K. Rose, “A trellis-based optimal parameter value
+selection for audio coding,” IEEE Trans. Audio, Speech, Lang. Process., vol. 14, no. 2,
+pp. 623–633, 2006.
+[9] M. Bosi, K. Brandenburg, S. Quackenbush, L. Fielder, K. Akagiri, H. Fuchs, M. Dietz,
+J. Herre, G. Davidson, and Y. Oikawa, “ISO/IEC MPEG-2 advanced audio coding,”
+J. Audio Eng. Soc., vol. 45, no. 10, pp. 789–814, 1997.
+[10] M. Oger, S. Ragot, and M. Antonini, “Transform audio coding with arithmetic-coded
+scalar quantization and model-based bit allocation,” in Proc. IEEE ICASSP, 2007, pp.
+IV–545–IV–548.
+[11] D. Marpe, H. Schwarz, and T. Wiegand, “Context-based adaptive binary arithmetic
+coding in the H.264/AVC video compression standard,” IEEE Trans. Circuits Syst.
+Video Technol., vol. 13, no. 7, pp. 620–636, 2003.
+[12] G. Fuchs, V. Subbaraman, and M. Multrus, “Efficient context adaptive entropy coding
+for real-time applications,” in Proc. IEEE ICASSP, 2011, pp. 493–496.
+[13] J. Wang, X. Ji, S. Zhao, X. Xie, and J. Kuang, “Context-based adaptive arithmetic
+coding in time and frequency domain for the lossless compression of audio coding
+parameters at variable rate,” EURASIP J. Audio Speech Music Process., vol. 2013,
+no. 1, 2013, art. no. 9.
+[14] H. S. Malvar, “Adaptive run-length/Golomb–Rice encoding of quantized generalized
+Gaussian sources with unknown statistics,” in Proc. Data Compression Conf. (DCC),
+2006, pp. 23–32.
+[15] ——, “Lossless and near-lossless audio compression using integer-reversible modulated
+lapped transforms,” in Proc. Data Compression Conf. (DCC), 2007, pp. 323–332.
+[16] G. A. Davidson, L. D. Fielder, and B. D. Link, “Parametric bit allocation in a percep-
+tual audio coder,” in Proc. 97th AES Conv., November 1994, preprint 3921.
+[17] ITU-R, “Recommendation BS.1534-3: Method for the subjective assessment of inter-
+mediate quality level of audio systems,” 2015.
+[18] J. P. Princen, A. W. Johnson, and A. B. Bradley, “Subband/transform coding using
+filter bank designs based on time domain aliasing cancellation,” in Proc. IEEE ICASSP,
+1987, pp. 2161–2164.
+
+
+[19] B. R. Glasberg and B. C. J. Moore, “Derivation of auditory filter shapes from notched-
+noise data,” Hearing Research, vol. 47, no. 1–2, pp. 103–138, 1990.
+[20] I. H. Witten, R. M. Neal, and J. G. Cleary, “Arithmetic coding for data compression,”
+Commun. ACM, vol. 30, no. 6, pp. 520–540, 1987.
+[21] T. Odland,
+“arithmetic-coding,”
+2024,
+https://github.com/tommyod/arithmetic-
+coding.
+[22] European Broadcasting Union, “Sound quality assessment material recordings for sub-
+jective tests,” EBU, Tech. Rep. EBU Tech 3253, 2008.

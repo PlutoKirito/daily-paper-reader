@@ -1,0 +1,974 @@
+AV-FlowEdit: Training-Free Prompt-Driven Audio-Visual Editing with
+Event-Aware Spectral Trajectory Preservation
+Shaohua Pan* and Xiao Liu*
+Abstract
+Joint audio-video diffusion models generate synchronized
+content, but editing existing clips requires target changes
+without disrupting non-target structure or cross-modal cor-
+respondence. We present AV-FlowEdit, a training-free and
+inversion-free framework for prompt-driven audio-video edit-
+ing. Our key insight is that source–target flow differences
+provide both cross-modal editing directions and preserva-
+tion cues. Under shared perturbations, they jointly update the
+video and audio branches, supporting visual-only, audio-only,
+and joint edits while retaining pretrained cross-modal interac-
+tions. To suppress drift accumulated during sampling, Cross-
+Modal Event-Aware Spectral Trajectory Preservation com-
+bines flow saliency, aligned audio activity, multiscale low-
+frequency displacement, and diffusion-stage scheduling. This
+adaptively preserves unsupported regions while allowing in-
+tended audio-visual events. AV-FlowEdit requires no model
+training, external masks, or optimization-based inversion. Ex-
+periments show strong prompt alignment and temporal con-
+sistency, together with competitive audio quality and cross-
+modal coherence.
+Introduction
+Recent advances in video generative modeling have substan-
+tially improved spatial fidelity, temporal coherence, and text
+alignment (Ho et al. 2022; Lipman et al. 2022; Peebles and
+Xie 2023; Kondratyuk et al. 2024). Joint audio-video gen-
+erative models further extend this progress by jointly mod-
+eling visual content, audio, and text within a unified gener-
+ation process, enabling them to capture cross-modal event
+semantics and temporal correspondence (Ruan et al. 2023;
+Kim et al. 2024; Wang et al. 2024; Ishii et al. 2025).
+Editing an observed clip, however, imposes stricter con-
+straints than generating a new sample: the model must in-
+troduce the requested change while preserving source iden-
+tity, background layout, camera motion, and audio-visual
+correspondence outside the intended edit (Ku et al. 2024;
+Zhang et al. 2025; Mai et al. 2025).
+Existing video editing methods can be broadly orga-
+nized by whether they require model adaptation and, among
+training-free approaches, whether they reconstruct a source
+diffusion trajectory. Model-adaptation methods optimize
+pretrained generators for a source video or editing task, but
+*Equal contribution.
+introduce per-instance or task-specific training costs (Wu
+et al. 2023; Shin et al. 2024). Training-free methods avoid
+parameter updates and instead modify the inference pro-
+cess. Many such methods rely on diffusion inversion, first
+recovering a source noise or latent trajectory and then re-
+sampling it under a target prompt; however, inversion er-
+rors can accumulate over time, while strong source-feature
+constraints may restrict large changes in content, action, or
+scene (Qi et al. 2023; Liu et al. 2023; Ceylan, Huang, and
+Mitra 2023; Geyer et al. 2024). More recently, inversion-
+free flow-based methods estimate editing directions directly
+from differences between source- and target-conditioned ve-
+locity fields, avoiding explicit reconstruction of the source
+trajectory (Kulikov et al. 2025; Kim et al. 2025). Related
+flow-steering principles have also been extended to video
+editing, providing a lightweight route to editing video con-
+tent, actions, and dynamics without per-example inversion
+or training (Li et al. 2025; Kulikov et al. 2026).
+Despite these advances, extending inversion-free flow-
+based editing to general audio-video editing presents two
+unresolved challenges. First, existing methods operate pri-
+marily on the visual modality and do not jointly update
+the accompanying audio. Pairing them with a separate au-
+dio editing system bypasses the bidirectional interactions
+learned by a joint audio-video model, potentially weakening
+the semantic and temporal correspondence between the two
+modalities. Second, iterative source-target flow updates can
+accumulate unintended deviations across sampling steps,
+leading to background drift, subject deformation, and in-
+consistent camera motion. Simple preservation mechanisms
+introduce their own trade-offs: fixed source-feature injec-
+tion may suppress the requested edit, spatial masks depend
+on reliable region-level priors, and uniform low-frequency
+constraints may remove the coarse spatiotemporal changes
+required by intended actions or synchronized audio-visual
+events.
+To address both challenges, we propose AV-FlowEdit, a
+training-free framework that jointly edits audio and video
+using a frozen joint audio-video generative model. At
+each sampling step, AV-FlowEdit uses differences between
+source- and target-conditioned velocity fields to update both
+modalities, thereby retaining their cross-modal interactions
+without explicit source inversion. Our key idea is to use
+these source–target flow differences not only to drive the de-
+arXiv:2610.13072v1  [cs.SD]  9 Oct 2026
+
+
+Figure 1: Results of our training-free audio-video editing framework. Given a source video and a target prompt, our method
+performs consistent semantic editing while preserving scene structure, camera motion, and audio-video synchronization.
+sired edit, but also to identify where source structure should
+be preserved. Strong flow responses indicate spatiotempo-
+ral positions where target-driven changes are supported,
+whereas weak responses identify content that should remain
+close to the source. To suppress accumulated structural drift,
+we decompose the source-to-edit video displacement across
+multiple spatiotemporal scales and adaptively correct unsup-
+ported components according to flow saliency, target-audio
+activity, and the diffusion stage. This correction preserves
+non-target structure while allowing the coarse spatiotempo-
+ral changes required by intended audio-visual events. Fig. 1
+presents representative examples of target-driven editing and
+non-target scene preservation with AV-FlowEdit. In conclu-
+sion, our main contributions include:
+• We propose AV-FlowEdit, a training-free and inversion-
+free framework for prompt-driven audio-video editing
+with pretrained joint generative models. By comput-
+ing source–target difference flows for video and audio
+within the same frozen transformer, AV-FlowEdit sup-
+ports visual-only, audio-only, and joint edits in a uni-
+fied inference procedure while retaining the pretrained
+model’s cross-modal interactions. It requires neither per-
+example inversion nor separate modality-specific editing
+pipelines.
+• We introduce Cross-Modal Event-Aware Spectral Trajec-
+tory Preservation, which uses source–target flow saliency
+and temporally aligned target-audio activity to identify
+unsupported changes, decomposes accumulated video
+displacement into multiscale low-frequency structural
+components, and schedules their correction according
+to the diffusion noise level. This adaptive mechanism
+suppresses non-target structural drift while allowing
+the coarse spatiotemporal changes required by target-
+supported audio-visual events.
+• We evaluate AV-FlowEdit against independent, cascaded,
+and joint audio-video editing baselines using metrics for
+target alignment, source preservation, temporal stability,
+audio quality, and cross-modal coherence. The results
+show strong target alignment and temporal consistency,
+together with competitive audio and cross-modal perfor-
+mance, under a training-free and inversion-free setting.
+Related Work
+Video and Audio-Video Foundation Models
+Video generation has evolved from spatiotemporal diffusion
+models, such as Lumiere (Bar-Tal et al. 2024), to large-scale
+DiT-based architectures, including Wan (Wan et al. 2025),
+HunyuanVideo (Kong et al. 2024), and LTX-Video (HaCo-
+hen et al. 2024). Recent models typically adopt diffusion,
+rectified flow, or flow matching objectives, achieving sub-
+stantial improvements in visual fidelity and temporal consis-
+tency (Ho et al. 2022; Lipman et al. 2022; Esser et al. 2024).
+However, these models are primarily designed for content
+generation from noise rather than structure-preserving edit-
+ing of observed videos.
+Most existing systems synthesize video and audio sepa-
+rately, making event-level semantic and temporal synchro-
+nization difficult(Hua et al. 2025; Ren et al. 2025; Dai et
+al. 2026). LTX-2 (HaCohen et al. 2026) instead employs
+separate video and audio branches that exchange informa-
+tion through cross-attention, enabling joint audio-video gen-
+eration while preserving modality-specific representations.
+Nevertheless, its generation and retake pipelines are not de-
+signed for source-to-target prompt editing, which requires
+
+
+target-driven changes and source-content preservation to be
+balanced within the same inference process.
+Training-Based Video Editing
+Training-based video editing adapts pretrained generative
+models to a source video or a specific editing task. One-
+shot methods such as Tune-A-Video and Edit-A-Video op-
+timize model parameters using a single source video to pre-
+serve its appearance and motion while enabling prompt-
+guided modifications (Wu et al. 2023; Shin et al. 2024). Al-
+though these methods reduce the need for large paired edit-
+ing datasets, they still require source-specific optimization
+and may incur additional storage and computational costs
+for each input video. Training-free methods instead keep
+the pretrained model parameters fixed and control the edit-
+ing process through inference-time operations, avoiding per-
+video model adaptation.
+Training-Free Video Editing
+Training-free video editing can be broadly divided into
+inversion-based and inversion-free methods.
+Inversion-based editing. Early training-free approaches
+are largely built upon diffusion inversion, which reconstructs
+the latent noise or diffusion trajectory of a source video be-
+fore resampling under a target prompt. Representative meth-
+ods include FateZero (Qi et al. 2023), Video-P2P (Liu et al.
+2023), Pix2Video (Ceylan, Huang, and Mitra 2023), and To-
+kenFlow (Geyer et al. 2024). These methods combine source
+inversion with attention control, feature injection, or fea-
+ture propagation to preserve source appearance and tempo-
+ral consistency during editing. However, inversion errors can
+accumulate over long video sequences, while strong source
+constraints may limit large motion and semantic edits. Ex-
+tending inversion to joint audio-video generation is further
+complicated by heterogeneous latent spaces and temporal
+resolutions across modalities.
+Inversion-free editing. Recent methods avoid explicit
+inversion by directly modifying the generation trajectory.
+FlowEdit (Kulikov et al. 2025) edits videos using the dif-
+ference between source- and target-conditioned flow fields,
+while FlowAlign (Kim et al. 2025), FlowDirector (Li et
+al. 2025), and DynaEdit (Kulikov et al. 2026) further im-
+prove trajectory consistency, region-aware control, and dy-
+namic content editing. More recently, OmniEdit (Lin, Jin,
+and Zhang 2026) extends training-free editing to the audio-
+visual domain by jointly enabling lip synchronization and
+content editing without model fine-tuning.
+Despite these advances, existing methods either focus
+on visual editing or target specialized audio-visual scenar-
+ios such as talking-head lip synchronization, rather than
+general-purpose audio-video semantic editing. Moreover,
+their preservation strategies typically rely on fixed attention
+guidance or low-frequency constraints, making it difficult
+to adaptively balance structural preservation and semantic
+editing. Our method follows the inversion-free difference-
+flow paradigm, extends it to a unified audio-video trajectory,
+and introduces an adaptive spectral trajectory preservation
+mechanism for more consistent cross-modal editing.
+Method
+Problem Formulation and Overall Framework
+Given a source audio-video clip Xs = (Xv
+s , Xa
+s), its source
+prompt, and a target editing prompt, our goal is to generate
+an edited clip Xe = (Xv
+e, Xa
+e). The output should follow
+the target prompt while preserving source content outside
+the intended edit and maintaining temporal correspondence
+between visual and acoustic events.
+As shown in Fig. 2, our framework addresses two cou-
+pled challenges in training-free audio-video editing. First, it
+must obtain reliable cross-modal editing directions without
+additional training or diffusion inversion. To this end, we
+encode audio and video into modality-specific latents and
+estimate source–target difference flows with a frozen joint
+audio-video denoiser, followed by trajectory stabilization.
+Second, it must preserve non-target structure without sup-
+pressing the intended edit. We address this challenge with
+Cross-Modal Event-Aware Spectral Trajectory Preservation,
+which combines event-aware flow saliency, multiscale struc-
+tural decomposition, and diffusion-stage scheduling.
+Modality-Specific Encoding and Joint Difference
+Flow
+Video, Audio, and Text Representations
+We use LTX-
+2 (HaCohen et al. 2026) as the backbone and retain
+its modality-specific representation spaces. The pretrained
+video and audio VAEs, together with their token-packing op-
+erations, encode the source clip as
+zv
+s = Ev(Xv
+s ),
+za
+s = Ea(Xa
+s).
+(1)
+Here, Ev and Ea denote the frozen video and audio en-
+coders, respectively. In our notation, X denotes an observa-
+tion in the original video or audio space, z denotes its packed
+latent representation, the subscript s identifies the source
+clip, and the superscripts v and a identify the video and au-
+dio modalities. Thus, zv
+s and za
+s are the source video and
+audio latents, respectively; the modality superscripts are la-
+bels rather than exponents. The frozen text encoder maps the
+source and target prompts to the conditions cs and ct shown
+in Fig. 2. The packed video latent retains its spatiotemporal
+token coordinates, while the audio latent follows the native
+temporal organization of the audio branch. Video and au-
+dio tokens remain in their respective frozen branches and
+exchange information through cross-attention. We initialize
+each edited latent from its source counterpart:
+zm
+e,0 = zm
+s ,
+m ∈{v, a},
+(2)
+Here, the subscript e denotes the edited trajectory, while
+m ∈{v, a} specifies the video or audio modality. The in-
+dex 0 marks the initial trajectory state before the first editing
+update.
+Joint Editing Direction under Shared Perturbations
+Following the inversion-free FlowEdit formulation (Kulikov
+et al. 2025), we derive the editing direction from the differ-
+ence between source- and target-conditioned velocity fields.
+Let
+t0 > t1 > · · · > tN = 0
+
+
+Figure 2: Overall AV-FlowEdit framework. Modality-specific encoders produce separate video and audio latents, while frozen
+dual branches exchange cross-modal information to estimate coupled source–target editing directions. Flow saliency, multiscale
+spatiotemporal decomposition, and diffusion scheduling jointly guide spectral trajectory preservation.
+denote the decreasing flow-time schedule, where ti is the
+flow time at the i-th sampling step.
+At step i, we use Ki candidate perturbation pairs,
+ ϵv
+i,j, ϵa
+i,j
+	Ki
+j=1 ,
+for the video and audio modalities. Here, Ki is the num-
+ber of candidates at step i, and j indexes one candidate
+pair. Each candidate contains a video perturbation ϵv
+i,j and
+an audio perturbation ϵa
+i,j. The perturbations follow stan-
+dard Gaussian distributions and are progressively correlated
+across sampling steps, as described in the next subsection.
+For each candidate j and modality m ∈{v, a}, we con-
+struct paired source- and target-conditioned states as
+xm
+s,i,j = (1 −ti)zm
+s + tiϵm
+i,j,
+xm
+t,i,j = zm
+e,i + xm
+s,i,j −zm
+s .
+(3)
+The source state xm
+s,i,j interpolates between the source la-
+tent zm
+s and the candidate perturbation ϵm
+i,j at flow time ti.
+The target state transfers the same perturbation-induced off-
+set, xm
+s,i,j −zm
+s , to the current edited latent zm
+e,i. Thus, within
+each modality, the source- and target-conditioned predic-
+tions are evaluated under the same perturbation.
+For ℓ∈{s, t}, let
+xℓ,i,j =
+ xv
+ℓ,i,j, xa
+ℓ,i,j
+
+collect the video and audio states. The frozen joint audio-
+video denoiser Fθ, implemented with separate video and
+audio branches, predicts
+uℓ,i,j = Fθ (xℓ,i,j; cℓ, ti) ,
+ℓ∈{s, t},
+(4)
+where
+uℓ,i,j =
+ uv
+ℓ,i,j, ua
+ℓ,i,j
+
+contains the predicted video and audio velocities, and cs and
+ct are the source and target text conditions, respectively.
+The candidate editing direction for modality m is defined
+as
+∆um
+i,j = um
+t,i,j −um
+s,i,j.
+(5)
+Because the source and target predictions use the same
+perturbation, their difference primarily captures the change
+induced by the target condition and the current editing tra-
+jectory. Moreover, each forward pass jointly processes the
+video and audio branches, allowing ∆uv
+i,j and ∆ua
+i,j to re-
+tain the cross-modal interactions of the pretrained model.
+Trajectory Stabilization
+Following DynaEdit (Kulikov et al. 2026), we stabilize the
+difference flow using cross-step correlated perturbations and
+source-consistent candidate aggregation. For candidate j,
+the perturbation evolves as
+ϵm
+i,j = αiϵm
+i−1,j +
+q
+1 −α2
+i ηm
+i,j,
+ηm
+i,j ∼N(0, I), (6)
+where αi ∈[0, 1] controls cross-step correlation and
+ϵm
+0,j is initialized from the same Gaussian distribution. We
+
+
+project each candidate direction to the clean endpoint and
+aggregate candidates according to their source similarity:
+bzm
+i,j = zm
+e,i −ti∆um
+i,j,
+wm
+i,j = softmaxj
+ sim(bzm
+i,j, zm
+s )/τ
+
+,
+∆um
+i =
+zm
+e,i −PKi
+j=1 wm
+i,jbzm
+i,j
+ti
+.
+(7)
+Here, sim(·, ·) is mean-centered cosine similarity and τ >
+0 is the softmax temperature. With hi = ti −ti+1 > 0 and
+modality-specific edit scale γm, the temporary next state is
+ezm
+e,i+1 = zm
+e,i −hiγm∆um
+i .
+(8)
+This state is subsequently corrected by the preservation
+module.
+Cross-Modal Event-Aware Spectral Trajectory
+Preservation
+Although the stabilized difference flow drives the requested
+edit, repeated updates can accumulate unintended displace-
+ment in the background, subject geometry, and camera mo-
+tion. We therefore correct the temporary video state in
+Eq. (8) by determining where editing is supported (and thus
+where to preserve), what structural displacement should be
+removed, and when the correction should be applied.
+Flow Saliency for Determining Where to Edit
+We use
+the magnitude of the stabilized video difference flow as a
+self-derived edit signal. For video token n, its instantaneous
+saliency is
+sv
+i,n =
+∆uv
+i,n
+
+2 ,
+sv
+i,n = βssv
+i−1,n+(1−βs)sv
+i,n, (9)
+where βs ∈[0, 1) is the cross-step EMA coefficient. We
+apply quantile normalization and spatiotemporal smoothing
+to sv
+i . To incorporate event timing, we also aggregate the
+magnitude of ∆ua
+i over audio time bins and align the re-
+sulting activity profile to video-token times. Modulating the
+smoothed visual saliency with this aligned audio activity
+produces the event-aware edit gate Gevt
+i
+∈[0, 1]Nv shown
+in Fig. 2, where Nv is the number of packed video tokens.
+Without an audio edit signal, the gate is determined by vi-
+sual flow saliency alone. Large gate values indicate loca-
+tions supported by the target-conditioned flow difference.
+The corresponding preservation gate is
+Pi = 1 −Gevt
+i
+,
+(10)
+where 1 ∈RNv is the all-ones vector. Visually salient
+tokens are released more strongly when they coincide with
+the aligned audio event, whereas weakly supported tokens
+receive larger preservation weights.
+Spatiotemporal Multiscale Decomposition for Determin-
+ing What to Preserve
+We measure the accumulated video
+displacement after the temporary flow update as
+Dv
+i+1 = ezv
+e,i+1 −zv
+s .
+(11)
+Let R map the packed video tokens to their dense spa-
+tiotemporal grid in Rdv×T ×H×W , where dv is the video-
+latent channel dimension and (T, H, W) are the tempo-
+ral, height, and width dimensions of the video-token grid.
+For each scale r ∈K = {local, mid, global}, a three-
+dimensional low-pass operator Lr extracts structural dis-
+placement at a different receptive field. The combined low-
+frequency displacement is
+Lv
+i+1 = R−1
+"X
+r∈K
+πrLr
+ R(Dv
+i+1)
+
+#
+,
+πr ≥0,
+X
+r∈K
+πr = 1.
+(12)
+Small receptive fields capture short-range structural de-
+viations, while larger fields capture object-level motion and
+global scene-layout drift. Combining these scales avoids ty-
+ing preservation to a single spatiotemporal frequency range.
+Diffusion Schedule for Determining When to Preserve
+The flow schedule controls when structural correction is
+most active. With ti ∈[0, 1] decreasing from the high-noise
+to the clean endpoint, we use
+p(ti) = tκ
+i ,
+κ > 0,
+(13)
+which applies stronger correction while coarse scene
+structure is formed and gradually relaxes it toward the low-
+noise endpoint. The final correction and next video state are
+Cv
+i+1 = λp(ti)Pi ⊙Lv
+i+1,
+zv
+e,i+1 = ezv
+e,i+1 −Cv
+i+1,
+za
+e,i+1 = eza
+e,i+1,
+(14)
+where λ ≥0 is the overall preservation strength and ⊙
+denotes token-wise multiplication with broadcasting over la-
+tent channels. The audio branch is not directly corrected; in-
+stead, its temporally aligned activity is absorbed into Gevt
+i
+before the preservation gate is formed in Eq. (10). After the
+final step, the frozen VAE decoders reconstruct the edited
+modalities:
+Xv
+e = Dv(zv
+e,N),
+Xa
+e = Da(za
+e,N),
+(15)
+where Dv and Da include inverse token packing and the
+video and audio VAE decoders, respectively. The decoded
+streams are synchronized using the source frame rate and
+duration to form Xe.
+Experiments
+Baselines
+We compare AV-FlowEdit with representative visual editing,
+cascaded audio-visual editing, and joint audio-visual editing
+methods.
+For independent editing pipelines, we select Con-
+trolVideo (Zhang et al. 2024), TokenFlow (Geyer et al.
+2024), and RAVE (Kara et al. 2024) as video editing models,
+and combine them with audio editing models SDEdit (Meng
+et al. 2021) and ZEUS (Manor and Michaeli 2024) to estab-
+lish audio-visual editing baselines.
+
+
+Table 1: Quantitative comparison of different audio-video editing methods.
+Video Model
+Audio Model
+CLIP-F↑
+CLIP-T↑
+Obj.↑
+DINO↑
+CLAP↑
+LPAPS↓
+IB.↑
+AV-Align↑
+ControlVideo
+SDEdit
+0.883
+0.255
+0.176
+0.892
+0.190
+6.93
+0.21
+0.29
+TokenFlow
+SDEdit
+0.876
+0.252
+0.173
+0.924
+0.190
+6.93
+0.19
+0.26
+RAVE
+SDEdit
+0.885
+0.251
+0.170
+0.881
+0.190
+6.93
+0.18
+0.31
+ControlVideo
+ZEUS
+0.883
+0.255
+0.176
+0.892
+0.211
+6.41
+0.21
+0.30
+TokenFlow
+ZEUS
+0.876
+0.252
+0.173
+0.924
+0.211
+6.41
+0.20
+0.27
+RAVE
+ZEUS
+0.885
+0.251
+0.170
+0.881
+0.211
+6.41
+0.18
+0.31
+RAVE
+Diff-Foley
+0.885
+0.251
+0.170
+0.881
+0.191
+7.33
+0.16
+0.35
+DDS
+0.890
+0.250
+0.175
+0.921
+0.210
+5.93
+0.20
+0.33
+AvED
+0.903
+0.260
+0.180
+0.956
+0.226
+5.55
+0.23
+0.42
+AV-FlowEdit (Ours)
+0.920
+0.273
+0.673
+0.592
+0.255
+4.10
+0.320
+0.297
+For cascaded editing pipelines, we adopt RAVE together
+with Diff-Foley (Luo et al. 2023), where the edited video
+serves as the condition for subsequent audio generation.
+For joint audio-visual editing, we compare with Delta De-
+noising Score (DDS) (Hertz, Aberman, and Cohen-Or 2023)
+and Zero-shot Audio-Visual Editing via Cross-modal Delta
+Denoising (AvED) (Lin et al. 2026).
+Evaluation Metrics
+To comprehensively evaluate AV-FlowEdit for audio-visual
+joint editing, we assess the performance from three perspec-
+tives: video editing quality, audio editing quality, and cross-
+modal consistency.
+Video Quality and Editing Consistency. We adopt
+CLIP-F, CLIP-T, Obj., and DINO to evaluate video edit-
+ing quality. CLIP-F measures temporal semantic consis-
+tency across frames, CLIP-T evaluates the alignment be-
+tween edited videos and target prompts, Obj. measures tar-
+get object generation accuracy, and DINO evaluates visual
+structure preservation.
+Audio Quality and Editing Consistency. We use CLAP
+and LPAPS to evaluate audio editing quality. CLAP mea-
+sures audio-text semantic alignment, while LPAPS evaluates
+perceptual consistency between the source and edited audio.
+Audio-Visual Consistency. ImageBind similarity (IB.)
+and AV-Align are used to evaluate cross-modal consistency,
+measuring high-level audio-visual semantic alignment and
+temporal synchronization between visual events and audio
+events.
+Experimental Results
+Tab. 1 presents quantitative comparisons between AV-
+FlowEdit and existing audio-video editing methods in terms
+of video editing quality, audio editing quality, and cross-
+modal consistency. Overall, AV-FlowEdit achieves a bet-
+ter balance among target semantic editing capability, source
+content preservation, and audio-visual consistency under a
+training-free and inversion-free setting.
+The results in Tab. 1 and Fig. 3 demonstrate that AV-
+FlowEdit achieves strong performance in target semantic
+editing, obtaining superior results on CLIP-T and Obj. com-
+pared with existing methods. This indicates that the pro-
+Table 2: Ablation of the adaptive trajectory preservation
+mechanism.
+Variant
+CLIP-T↑
+Video
+Obj.↑
+Video
+CLAP↑
+Audio
+AV-Align↑
+Joint
+w/o spectral
+0.263
+0.668
+0.236
+0.286
+Fixed
+0.270
+0.671
+0.251
+0.294
+Adaptive
+0.273
+0.673
+0.255
+0.297
+posed method can effectively understand target prompts and
+generate content that satisfies the desired editing objectives.
+Meanwhile, CLIP-F and DINO reflect the inherent trade-off
+between semantic modification and source content preser-
+vation. Since AV-FlowEdit enables larger semantic changes,
+the generated results may exhibit more noticeable visual dif-
+ferences from the source video, leading to an impact on the
+DINO score, which measures source-target visual similarity.
+Overall, AV-FlowEdit achieves a favorable balance between
+editing flexibility and content preservation.
+For audio editing and cross-modal consistency, AV-
+FlowEdit achieves competitive performance on CLAP,
+LPAPS, and IB., demonstrating that joint audio-video flow
+trajectory modeling can effectively exploit cross-modal in-
+formation to generate semantically consistent audio while
+maintaining coordination between visual and audio events.
+Compared with independent modality editing pipelines and
+cascaded approaches, AV-FlowEdit performs unified tra-
+jectory modeling within a frozen joint audio-video Trans-
+former, resulting in more coherent audio-visual editing out-
+comes.
+Further Analysis
+The adaptive trajectory preservation mechanism is designed
+to alleviate the conflict between target semantic editing and
+source content preservation during the editing process. To
+evaluate the contribution of each component, we construct
+three variants:
+(1) w/o Spectral Preservation: The trajectory preserva-
+tion module is removed, and editing is performed only based
+on the joint source-target flow difference and trajectory sta-
+bilization mechanism.
+
+
+Figure 3: Qualitative comparison with AvED on prompt-driven audio-video editing.
+(2) Fixed Preservation: A fixed-strength structural
+preservation constraint is introduced without considering
+editing saliency or diffusion-stage information.
+(3) Adaptive Preservation (Full): The complete adap-
+tive trajectory preservation mechanism is adopted, which
+dynamically adjusts the preservation strength according to
+editing saliency, multi-scale structural information, and dif-
+fusion scheduling.
+As shown in Tab. 2, removing the trajectory preserva-
+tion mechanism still enables semantic editing, but leads to
+degraded structural stability. Introducing fixed preservation
+constraints improves content consistency; however, the lack
+of adaptive adjustment according to editing regions and dif-
+fusion stages may limit the desired semantic transformation.
+In contrast, Adaptive Preservation achieves a better balance
+between structural stability and editing capability, obtain-
+ing improved performance on CLIP-T, Obj., CLAP, and AV-
+Align, which validates the effectiveness of the adaptive tra-
+jectory preservation mechanism.
+Conclusion
+In this work, we present AV-FlowEdit, a unified, training-
+free, and inversion-free framework for prompt-driven joint
+audio-video editing. Experimental results demonstrate that
+AV-FlowEdit outperforms existing training-free editing
+methods in terms of spatial consistency, temporal coher-
+ence, and audio-visual semantic alignment. This work val-
+idates the effectiveness of unified audio-video editing based
+on joint flow trajectory modeling and provides a promising
+direction for future controllable multimodal generation and
+editing.
+References
+Bar-Tal, O.; Chefer, H.; Tov, O.; Herrmann, C.; Paiss, R.;
+Zada, S.; Ephrat, A.; Hur, J.; Liu, G.; Raj, A.; et al. 2024.
+Lumiere: A space-time diffusion model for video genera-
+tion. In SIGGRAPH Asia 2024 Conference Papers, 1–11.
+Ceylan, D.; Huang, C.-H. P.; and Mitra, N. J.
+2023.
+Pix2video: Video editing using image diffusion. In Proceed-
+ings of the IEEE/CVF international conference on computer
+vision, 23206–23217.
+
+
+Dai, Y.; Chen, Z.; Jiang, Y.; Gao, B.; Ke, Q.; Cai, J.; and Zhu,
+J. 2026. Omni2sound: Towards unified video-text-to-audio
+generation. arXiv preprint arXiv:2601.02731.
+Esser, P.; Kulal, S.; Blattmann, A.; Entezari, R.; M¨uller, J.;
+Saini, H.; Levi, Y.; Lorenz, D.; Sauer, A.; Boesel, F.; et al.
+2024. Scaling rectified flow transformers for high-resolution
+image synthesis. In Forty-first international conference on
+machine learning.
+Geyer, M.; Bar Tal, O.; Bagon, S.; and Dekel, T. 2024. To-
+kenflow: Consistent diffusion features for consistent video
+editing. In International Conference on Learning Represen-
+tations, volume 2024, 1608–1620.
+HaCohen, Y.; Chiprut, N.; Brazowski, B.; Shalem, D.;
+Moshe, D.; Richardson, E.; Levin, E.; Shiran, G.; Zabari,
+N.; Gordon, O.; et al. 2024. Ltx-video: Realtime video la-
+tent diffusion. arXiv preprint arXiv:2501.00103.
+HaCohen, Y.; Brazowski, B.; Chiprut, N.; Bitterman, Y.;
+Kvochko, A.; Berkowitz, A.; Shalem, D.; Lifschitz, D.;
+Moshe, D.; Porat, E.; et al.
+2026.
+Ltx-2: Effi-
+cient joint audio-visual foundation model. arXiv preprint
+arXiv:2601.03233.
+Hertz, A.; Aberman, K.; and Cohen-Or, D.
+2023.
+Delta
+denoising score. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision, 2328–2337.
+Ho, J.; Salimans, T.; Gritsenko, A. A.; Chan, W.; Norouzi,
+M.; and Fleet, D. J. 2022. Video diffusion models. In ICLR
+workshop on deep generative models for highly structured
+data.
+Hua, D.; Wang, X.; Zeng, B.; Huang, X.; Liang, H.; Niu, J.;
+Chen, X.; Xu, Q.; and Zhang, W. 2025. Vabench: A com-
+prehensive benchmark for audio-video generation.
+arXiv
+preprint arXiv:2512.09299.
+Ishii, M.; Hayakawa, A.; Shibuya, T.; and Mitsufuji, Y.
+2025. A simple but strong baseline for sounding video gen-
+eration: Effective adaptation of audio and video diffusion
+models for joint generation.
+In 2025 International Joint
+Conference on Neural Networks (IJCNN), 1–9. IEEE.
+Kara, O.; Kurtkaya, B.; Yesiltepe, H.; Rehg, J. M.; and Ya-
+nardag, P. 2024. Rave: Randomized noise shuffling for fast
+and consistent video editing with diffusion models. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, 6507–6516.
+Kim, G.; Martinez, A.; Su, Y.-C.; Jou, B.; Lezama, J.; Gupta,
+A.; Yu, L.; Jiang, L.; Jansen, A.; Walker, J. C.; et al. 2024.
+A versatile diffusion transformer with mixture of noise lev-
+els for audiovisual generation. In The Thirty-eighth Annual
+Conference on Neural Information Processing Systems.
+Kim, J.; Hong, Y.; Park, J.; and Ye, J. C. 2025. Flowalign:
+Trajectory-regularized, inversion-free flow-based image
+editing. arXiv preprint arXiv:2505.23145.
+Kondratyuk, D.; Vu, H.; Seo, M.; Kang, J.; Kim, J.-t.; Joshi,
+G.; et al.
+2024.
+Videopoet: A large language model for
+zero-shot video generation. In Proceedings of the 41st Inter-
+national Conference on Machine Learning (ICML), 25017–
+25039. PMLR.
+Kong, W.; Tian, Q.; Zhang, Z.; Min, R.; Dai, Z.; Zhou, J.;
+Xiong, J.; Li, X.; Wu, B.; Zhang, J.; et al. 2024. Hunyuan-
+video: A systematic framework for large video generative
+models. arXiv preprint arXiv:2412.03603.
+Ku, M.; Wei, C.; Ren, W.; Yang, H.; and Chen, W. 2024.
+Anyv2v: A tuning-free framework for any video-to-video
+editing tasks. arXiv preprint arXiv:2403.14468.
+Kulikov, V.; Kleiner, M.; Huberman-Spiegelglas, I.; and
+Michaeli, T. 2025. Flowedit: Inversion-free text-based edit-
+ing using pre-trained flow models. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision,
+19721–19730.
+Kulikov, V.; Paiss, R.; Voynov, A.; Mosseri, I.; Dekel, T.;
+and Michaeli, T.
+2026.
+Versatile editing of video con-
+tent, actions, and dynamics without training. arXiv preprint
+arXiv:2603.17989.
+Li, G.; Yang, Y.; Song, C.; and Zhang, C. 2025. Flowdi-
+rector: Training-free flow steering for precise text-to-video
+editing. arXiv preprint arXiv:2506.05046.
+Lin, Y.-B.; Lin, K.; Yang, Z.; Li, L.; Wang, J.; Lin, C.-
+C.; Wang, X.; Bertasius, G.; and Wang, L.
+2026.
+Zero-
+shot audio-visual editing via cross-modal delta denoising.
+In 2026 IEEE/CVF Winter Conference on Applications of
+Computer Vision (WACV), 7344–7354. IEEE.
+Lin, L.; Jin, S.; and Zhang, J. 2026. Omniedit: A training-
+free framework for lip synchronization and audio-visual
+editing. arXiv preprint arXiv:2603.09084.
+Lipman, Y.; Chen, R. T.; Ben-Hamu, H.; Nickel, M.; and
+Le, M. 2022. Flow matching for generative modeling. In
+The eleventh international conference on learning represen-
+tations.
+Liu, S.; Zhang, Y.; Li, W.; Lin, Z.; and Jia, J.
+2023.
+Video-p2p: Video editing with cross-attention control. arXiv
+preprint arXiv:2303.04761.
+Luo, S.; Yan, C.; Hu, C.; and Zhao, H. 2023. Diff-foley:
+Synchronized video-to-audio synthesis with latent diffusion
+models. Advances in Neural Information Processing Sys-
+tems 36:48855–48876.
+Mai, J.; Wang, C.; Qian, G. G.; Menapace, W.; Tulyakov, S.;
+Ghanem, B.; Wonka, P.; and Mirzaei, A. 2025. Easyv2v:
+A high-quality instruction-based video editing framework.
+arXiv preprint arXiv:2512.16920.
+Manor, H., and Michaeli, T. 2024. Zero-shot unsupervised
+and text-based audio editing using ddpm inversion. arXiv
+preprint arXiv:2402.10009.
+Meng, C.; He, Y.; Song, Y.; Song, J.; Wu, J.; Zhu, J.-Y.;
+and Ermon, S. 2021. Sdedit: Guided image synthesis and
+editing with stochastic differential equations. arXiv preprint
+arXiv:2108.01073.
+Peebles, W., and Xie, S. 2023. Scalable diffusion models
+with transformers. In Proceedings of the IEEE/CVF inter-
+national conference on computer vision, 4195–4205.
+Qi, C.; Cun, X.; Zhang, Y.; Lei, C.; Wang, X.; Shan, Y.;
+and Chen, Q.
+2023.
+Fatezero: Fusing attentions for
+zero-shot text-based video editing. In Proceedings of the
+
+
+IEEE/CVF International Conference on Computer Vision,
+15932–15942.
+Ren, Y.; Li, C.; Xu, M.; Liang, W.; Gu, Y.; Chen, R.; and Yu,
+D. 2025. Sta-v2a: Video-to-audio generation with seman-
+tic and temporal alignment.
+In ICASSP 2025-2025 IEEE
+International Conference on Acoustics, Speech and Signal
+Processing (ICASSP), 1–5. IEEE.
+Ruan, L.; Ma, Y.; Yang, H.; He, H.; Liu, B.; Fu, J.; Yuan,
+N. J.; Jin, Q.; and Guo, B. 2023. Mm-diffusion: Learn-
+ing multi-modal diffusion models for joint audio and video
+generation. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, 10219–10228.
+Shin, C.; Kim, H.; Lee, C. H.; Lee, S.-g.; and Yoon, S. 2024.
+Edit-a-video: Single video editing with object-aware consis-
+tency. In Asian Conference on Machine Learning, 1215–
+1230. PMLR.
+Wan, T.; Wang, A.; Ai, B.; Wen, B.; Mao, C.; Xie, C.-W.;
+Chen, D.; Yu, F.; Zhao, H.; Yang, J.; et al. 2025. Wan: Open
+and advanced large-scale video generative models. arXiv
+preprint arXiv:2503.20314.
+Wang, K.; Deng, S.; Shi, J.; Hatzinakos, D.; and Tian,
+Y.
+2024.
+Av-dit: Efficient audio-visual diffusion trans-
+former for joint audio and video generation. arXiv preprint
+arXiv:2406.07686.
+Wu, J. Z.; Ge, Y.; Wang, X.; Lei, S. W.; Gu, Y.; Shi, Y.; Hsu,
+W.; Shan, Y.; Qie, X.; and Shou, M. Z. 2023. Tune-a-video:
+One-shot tuning of image diffusion models for text-to-video
+generation. In Proceedings of the IEEE/CVF international
+conference on computer vision, 7623–7633.
+Zhang, Y.; Wei, Y.; ZHANG, X.; Zuo, W.; Tian, Q.; et al.
+2024. Controlvideo: Training-free controllable text-to-video
+generation. In International Conference on Learning Repre-
+sentations, volume 2024, 54441–54461.
+Zhang, Y.; Chen, J.-K.; Lyu, J.; and Wang, Y.-X.
+2025.
+V2edit: Versatile video diffusion editor for videos and 3d
+scenes. arXiv preprint arXiv:2503.10634.

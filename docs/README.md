@@ -51,14 +51,14 @@
       <span class="dpr-home-dashboard-kicker">2026-10-01 ~ 2026-10-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 17 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 36 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
-    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>2 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>14</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>22</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-30 08:53:43 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-30 09:21:54 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>本期共扫读 17 篇论文（精读 6 篇、速读 11 篇），聚焦视频生成与扩散模型的强化学习。最值得看的是两篇 9.0 分精读《Token-Level Video Reinforcement Learning》和《DiffusionART》，它们分别指向视频 token 级 RL 与扩散模型高效稳定 RL；速读中个性化世界模型、可控图像编辑和少步生成奖励对齐也值得关注。普通读者可先读这两篇 9 分精读建立主线，再按兴趣补看 8 分速读中的编辑与奖励对齐方向。</p>
+<p>2026年10月，我梳理了36篇论文，精读14篇、速读22篇，重点放在视频生成与扩散模型强化学习。最值得关注的是《Token-Level Video Reinforcement Learning》和《DiffusionART》，两者均为9.0分，前者关注视频生成的强化学习，后者关注扩散模型的高效稳定强化；图像编辑、长视频生成和交互式世界生成也有8.0分的速读价值。普通读者可先精读这两篇9.0分论文，再按需速读8.0分应用方向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +78,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">14 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Token-Level Video Reinforcement Learning">Token-Level Video Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models">DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="VideoAWR: Reinforcing Video Flow Models with Decoupled-Timestep Advantage-Weighted Rectification">VideoAWR: Reinforcing Video Flow Models with Decoupled-Timestep Advantage-Weighted Rectification</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Token-Level Video Reinforcement Learning">Token-Level Video Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models">DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Unified Generative Video Compression with Autoregressive and Bidirectional Video Diffusion">Unified Generative Video Compression with Autoregressive and Bidirectional Video Diffusion</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>6</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>5</strong></span><span class="dpr-home-dashboard-tag">ec <strong>3</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">11 篇</strong>
+    <strong class="dpr-home-dashboard-count">22 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PWM: Personalized World Models with Online Reinforcement Learning">PWM: Personalized World Models with Online Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Scalable Minimal-Change Learning for Controllable Image Editing">Scalable Minimal-Change Learning for Controllable Image Editing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Noise-Space Reward Alignment for Few-Step Generative Models">Noise-Space Reward Alignment for Few-Step Generative Models</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Scalable Minimal-Change Learning for Controllable Image Editing">Scalable Minimal-Change Learning for Controllable Image Editing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Recast the Past: Stable Long Video Generation with Full Context Memory">Recast the Past: Stable Long Video Generation with Full Context Memory</span></li><li><span class="dpr-home-dashboard-paper-title" title="Hy-Nomas: Towards Free-form Interactive World Generation">Hy-Nomas: Towards Free-form Interactive World Generation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>11</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>16</strong></span><span class="dpr-home-dashboard-tag">vcodec <strong>3</strong></span><span class="dpr-home-dashboard-tag">ec <strong>2</strong></span><span class="dpr-home-dashboard-tag">train-trick <strong>1</strong></span></div>
 </section>
 </div>
 

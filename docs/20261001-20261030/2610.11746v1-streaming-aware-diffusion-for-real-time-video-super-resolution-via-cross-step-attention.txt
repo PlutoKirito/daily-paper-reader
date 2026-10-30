@@ -1,0 +1,1056 @@
+Streaming-Aware Diffusion for Real-Time Video
+Super-Resolution via Cross-Step Attention
+Harris Partaourides
+Ethical AI Novelties
+Limassol, Cyprus
+harris.partaourides@ethicalaicy.com
+Sotirios Chatzis
+Cyprus University of Technology
+Limassol, Cyprus
+sotirios.chatzis@cut.ac.cy
+Abstract
+Real-time video super-resolution requires high spatio-temporal fidelity under strict
+latency constraints, challenging diffusion models due to their iterative sampling
+cost and limited temporal coordination. We propose a streaming-aware frame-
+work that adapts pretrained single-image latent diffusion models for efficient video
+super-resolution (VSR) by exploiting the sequential structure of video streams. Our
+Cross-Step Attention mechanism reuses intermediate denoising features across ad-
+jacent frames and diffusion steps, enabling temporal information exchange without
+explicit temporal modeling. We further introduce Trajectory-Coupled Diffusion
+Scheduling, which aligns adjacent diffusion states and provides cleaner interme-
+diate representations for cross-step conditioning, improving temporal coherence.
+These components are integrated into a streaming inference pipeline that incremen-
+tally propagates latent states across frames, reducing the effective computational
+complexity from O(N · S) to O(N + S) for N frames and S diffusion steps.
+Experiments on REDS4 and YouHQ40-Test demonstrate improved perceptual
+quality and temporal realism while maintaining frame-wise stability. Our method
+achieves over 40 FPS at 512 × 512 resolution after cold start, enabling real-time
+VSR without explicit temporal modeling.
+1
+Introduction
+Real-time, high-quality video super-resolution (VSR) is important for streaming applications such
+as video-on-demand, live broadcasting, video conferencing, and cloud gaming [5, 27, 25]. These
+applications require both high visual fidelity and low latency, making efficient temporal processing
+essential [11, 6]. Diffusion-based single-image super-resolution (SISR) models achieve strong
+perceptual quality and high-frequency detail synthesis [19, 9, 15], but applying them independently to
+video frames causes flickering and temporal inconsistency [23]. Existing VSR methods address this
+through motion estimation, optical flow, or recurrent alignment [22, 18, 28], but these mechanisms
+introduce additional computational and architectural overhead that limits real-time streaming.
+We propose a streaming-aware diffusion framework that adapts pretrained SISR diffusion models for
+efficient and temporally consistent VSR. Our key idea is to exploit the sequential structure shared
+by video streams and diffusion trajectories. We introduce a model-agnostic Cross-Step Attention
+mechanism that allows the current frame at diffusion step s to attend to intermediate features of the
+previous frame at step s + 1. This reuses progressively refined representations across both frames
+and diffusion steps, providing implicit temporal coordination without explicit motion modeling
+or additional temporal modules. To support this interaction, we introduce Trajectory-Coupled
+Diffusion Scheduling, which couples adjacent diffusion states through a vectorized noise schedule.
+The resulting trajectory-aligned representation exposes cleaner intermediate states from the previous
+frame as conditioning information during denoising, forming a cross-step clean prior that improves
+temporal coherence while remaining compatible with standard diffusion training. We further develop
+Preprint.
+arXiv:2610.11746v1  [cs.CV]  8 Oct 2026
+
+
+a streaming inference pipeline that incrementally propagates latent states across frames. Instead of
+independently executing all S diffusion steps for each of N frames, the pipeline maintains a FIFO
+buffer aligned with the diffusion trajectory and advances the buffered states jointly. This amortizes
+diffusion computation across the stream and reduces the effective complexity from O(N · S) to
+O(N + S), enabling real-time inference after the initial pipeline latency.
+We evaluate the proposed framework on REDS [14] and YouHQ40 [28] using lightweight latent
+diffusion models [16]. Experiments demonstrate improvements in perceptual quality and temporal
+realism while maintaining frame-wise temporal stability. The streaming implementation achieves
+over 40 FPS at 512 × 512 resolution after cold start. We further validate the model-agnostic design
+across SDEdit [13], Stable Diffusion [16], and SDXL [15], showing consistent efficiency gains under
+streaming inference.
+In summary, our contributions are:
+• Cross-Step Attention: A model-agnostic attention mechanism that reuses intermediate
+diffusion features across adjacent frames and diffusion steps, enabling temporal coordination
+without explicit temporal modeling.
+• Trajectory-Coupled Diffusion Scheduling: A trajectory-aligned formulation that couples
+adjacent diffusion states and provides cleaner intermediate representations for cross-step
+conditioning.
+• Streaming-Aware Diffusion Pipeline: A FIFO-based inference pipeline that amortizes
+diffusion computation across frames, reducing effective complexity from O(N · S) to
+O(N + S) and enabling real-time VSR.
+2
+Related Work
+Diffusion-based Super-Resolution: Diffusion models [10, 7] have shown strong capability for
+perceptual super-resolution by synthesizing realistic high-frequency details. SR3 [19] performs
+iterative pixel-space denoising, while latent diffusion models (LDMs) [16] reduce the computational
+cost by operating in latent space. Pretrained models such as Stable Diffusion [16] and SDXL [15]
+have also been adapted for image restoration and super-resolution [22]. However, these methods
+process images independently and do not explicitly address temporal consistency.
+Diffusion-based Video Super-Resolution: VSR requires both spatial detail restoration and temporal
+consistency. Existing VSR methods typically employ motion estimation, optical flow, recurrent
+propagation, or feature alignment [22, 18, 28]. Recent diffusion-based VSR approaches further
+introduce temporal attention or multi-frame conditioning, improving consistency at the cost of
+additional computation. These designs are less suitable for real-time streaming, where frames arrive
+sequentially under strict latency constraints.
+Cross-frame Diffusion Feature Reuse. Another line of work has demonstrated that pretrained image
+diffusion models can be adapted to temporally coherent video generation by reusing intermediate
+diffusion features across frames. Text-to-video diffusion methods [2, 3, 24] and Text2Video-Zero [12],
+for example, exploit cross-frame representations or intermediate diffusion states to establish temporal
+correspondence without training a fully dedicated video diffusion model. These methods reveal an
+important property of diffusion models: intermediate denoising representations can serve as effective
+carriers of temporal information. Our work builds on this principle but introduces a fundamentally
+different coupling strategy. Instead of reusing features at the same diffusion step, Cross-Step Attention
+connects adjacent video frames at neighboring denoising steps and combines this interaction with
+Trajectory-Coupled Diffusion Scheduling. This design turns the diffusion trajectory itself into a
+mechanism for causal temporal propagation, while avoiding explicit motion estimation and multi-
+frame temporal architectures.
+3
+Methodology
+Our objective is to develop a stream-oriented diffusion framework for real-time video super-resolution
+(VSR). As illustrated in Fig. 1, we integrate Cross-Step Attention into a latent diffusion backbone
+[17], coupling the temporal progression of video frames with the diffusion denoising trajectory. This
+2
+
+
+UNet
+...
+...
+Decoder
+Cross-Step
+Attention
+Vector Noise
+Scheduler
+Linear
+Projection
+Linear
+Projection
+Linear
+Projection
+Figure 1: Cross-Step Attention for stream-oriented diffusion. Frame n at step s attends to frame n−1
+at step s+1 for efficient feature reuse and temporal consistency.
+enables intermediate feature reuse across frames and diffusion steps while avoiding explicit temporal
+modules.
+3.1
+Latent Diffusion Model
+Latent diffusion models (LDMs) improve efficiency by operating in a compressed latent space instead
+of pixel space. Given an input image x0, a variational autoencoder (VAE) encoder E maps it to a
+latent representation:
+z0 = E(x0).
+(1)
+A forward diffusion process is then defined in the latent space as:
+q(zs | zs−1) = N(zs; √αszs−1, (1 −αs)I),
+(2)
+where αs is the noise schedule. This yields the closed-form marginal:
+q(zs | z0) = N(zs; √¯αsz0, (1 −¯αs)I),
+(3)
+with ¯αs = Qs
+m=1 αm.
+The reverse process is modeled by a neural network ϵθ:
+pθ(zs−1 | zs) = N(zs−1; µθ(zs, s), Σ),
+(4)
+where µθ is parameterized via the predicted noise ϵθ(zs, s). The model is trained using the standard
+denoising objective:
+L(θ) = Ez0,ϵ,s
+
+∥ϵ −ϵθ(zs, s)∥2
+,
+(5)
+with ϵ ∼N(0, I).
+The denoised latent is finally mapped back to image space using the VAE decoder D:
+ˆx0 = D(z0).
+(6)
+Within the UNet backbone of LDMs, self-attention is applied to latent feature maps Z ∈RH×W ×C
+by projecting them into queries, keys, and values. Attention is computed as:
+Attn(Q, K, V ) = Softmax
+QK⊤
+√
+C
+
+V.
+(7)
+This mechanism enables long-range spatial interactions and improves detail synthesis. However,
+in standard LDMs, self-attention is applied independently to each image and diffusion timestep,
+without any temporal interaction across frames. As a result, they are not inherently designed for
+video generation or temporal consistency.
+3
+
+
+3.2
+Cross-Step Streaming Attention
+To address this limitation, we introduce a Cross-Step Attention mechanism that enables structured
+information exchange across frames and diffusion timesteps in a streaming setting. By integrating
+this module into the self-attention layers of a pretrained SISR diffusion model, we obtain a causal and
+plug-and-play adaptation for video while preserving the sequential nature of both diffusion denoising
+and streaming inference.
+Our design is inspired by cross-frame attention mechanisms in Text2Video-Zero [12], but differs in
+two key aspects. First, we operate in a strictly streaming setting, where each frame only attends to
+the immediately preceding frame rather than a global reference frame. At frame index n, standard
+self-attention is replaced by cross-frame attention between the current latent zn and the previous
+latent zn−1:
+Zn = [zn, zn−1] ∈R2×H×W ×C,
+(8)
+where queries are computed from zn, while keys and values are computed from zn−1. This yields:
+CF-Attn(Qn, Kn−1, Vn−1) = Softmax
+QnK⊤
+n−1
+√
+C
+
+Vn−1,
+(9)
+with standard self-attention recovered for n = 1.
+Second, we extend this mechanism along the diffusion trajectory by introducing Cross-Step Attention.
+Instead of attending within the same diffusion timestep, we exploit the sequential nature of the
+denoising trajectory and let the current frame at step s attend to the previous frame further along the
+denoising trajectory at step s + 1:
+Zs
+n =
+
+zs
+n, zs+1
+n−1
+
+∈R2×H×W ×C.
+(10)
+This produces queries from zs
+n and keys/values from zs+1
+n−1, leading to:
+CS-Attn(Qs
+n, Ks+1
+n−1, V s+1
+n−1) = Softmax
+ 
+Qs
+n(Ks+1
+n−1)⊤
+√
+C
+!
+V s+1
+n−1.
+(11)
+By leveraging intermediate denoising states further along the denoising trajectory of the previous
+frame, the model reuses progressively refined structural information to guide the current denoising
+process. This enforces temporal consistency while avoiding redundant computation across both
+frames and diffusion steps, leading to improved stability and efficiency in streaming video generation.
+This formulation naturally interacts with the denoising trajectory, motivating a Trajectory-Coupled
+Diffusion Scheduling strategy that aligns intermediate states across diffusion steps for both training
+and inference.
+3.3
+Trajectory-Coupled Diffusion Scheduling
+To support Cross-Step Attention in a streaming setting, we introduce a Trajectory-Coupled Diffusion
+Scheduling formulation that models local dependencies along the denoising trajectory. Instead of
+treating each timestep independently, we lift the scalar noise schedule into a paired representation
+over adjacent diffusion steps.
+Given a standard scalar noise schedule {αs}S
+s=1, we construct a vectorized schedule by stacking
+consecutive values:
+αs =
+
+αs
+αs+1
+
+,
+(12)
+which explicitly couples adjacent diffusion steps s and s + 1.
+This induces a corresponding paired latent representation along the denoising trajectory:
+˜zs
+n = (zs
+n, zs+1
+n
+),
+(13)
+enabling simultaneous access to two consecutive states within the same trajectory without modifying
+the underlying diffusion process.
+We construct trajectory-aligned training pairs:
+P = {(zs
+n, zs+1
+n−1)},
+(14)
+4
+
+
+aligning the current frame at step s with the previous frame at a more advanced step s + 1. This
+induces a cross-step clean prior, where zs+1
+n−1 provides a refined denoising signal for zs
+n. During
+training, the conditioning state zs+1
+n−1 is obtained by applying the forward process of Eq. (2) to the
+previous frame at level s + 1, whereas at inference it is the model-produced latent already present in
+the streaming buffer at that diffusion depth. Because keys and values originate from a more advanced
+(cleaner) step than the query, the conditioning distribution remains close across the two regimes,
+which limits the train–inference mismatch in practice.
+The model is trained using the standard diffusion denoising objective:
+L(θ) = E(zsn,zs+1
+n−1),ϵ
+hϵ −ϵθ(zs
+n, zs+1
+n−1)
+2i
+,
+(15)
+with ϵ ∼N(0, I).
+At inference, this formulation enables consistent access to coupled states ˜zs
+n = (zs
+n, zs+1
+n
+), reducing
+redundancy across diffusion steps and frames while complementing Cross-Step Attention. This
+structured coupling naturally leads to a unified streaming inference formulation, described next.
+3.4
+Streaming-Aware Diffusion for Video Super-Resolution
+Our streaming inference pipeline builds on Cross-Step Attention and the trajectory-coupled diffusion
+formulation, enabling structured reuse of intermediate denoising states across both diffusion timesteps
+and video frames.
+Real-time video super-resolution requires aligning computational throughput with the incoming
+frame rate. However, even efficient diffusion models struggle under high FPS or resource-constrained
+settings, making it necessary to decouple frame arrival from full diffusion completion through
+amortized computation. In standard SISR-based diffusion, each frame is independently denoised over
+S steps, leading to a computational cost of O(N · S) for a sequence of N frames due to the lack of
+temporal state reuse.
+To address this, we reformulate inference as a streaming FIFO pipeline with buffer size S, matching
+the diffusion horizon. At time n, the system maintains a structured latent state:
+Zn = {zk
+n−k | k = 1, . . . , S},
+(16)
+where each element corresponds to a frame progressing through a specific diffusion depth. Each
+incoming frame is encoded into its initial latent state and enters the buffer at diffusion step 0. At every
+iteration, all latents advance by one diffusion step under the trajectory-coupled denoising process
+with Cross-Step Attention. Consequently, each frame traverses the buffer over S updates before being
+decoded at the final stage.
+This induces a pipeline latency of S steps, after which the system produces one output frame per
+iteration in steady state. The resulting process transforms diffusion from independent per-frame
+generation into a continuous state evolution over a shared denoising trajectory. Computationally, each
+diffusion update is executed once per time step rather than S times per frame, yielding amortized
+complexity: O(N + S). The FIFO-aligned design ensures temporal consistency, efficient state reuse,
+and full compatibility with the underlying diffusion process.
+4
+Experiments
+We evaluate the proposed streaming-aware diffusion framework on two complementary VSR bench-
+marks: REDS4 [14] and YouHQ40-Test [28] enabling evaluation of reconstruction quality, perceptual
+quality, temporal consistency, and streaming efficiency.
+REDS Dataset: The REDS dataset [14] is a standard benchmark for video restoration tasks, consisting
+of high-quality video sequences with diverse motion patterns. Following prior work, we evaluate
+on the REDS4 subset, which contains four commonly used test sequences (000, 011, 015, and 020).
+We adopt the standard 4× super-resolution setting using the provided low-resolution sequences
+(320×180 →1280×720). For fine-tuning, we use the official REDS validation split, which contains
+30 video sequences.
+YouHQ40-Test Set: YouHQ40-Test [28] is a real-world high-quality VSR benchmark derived from
+the YouHQ dataset. It consists of 40 video clips (approximately 32 frames each), covering diverse
+5
+
+
+Table 1: Quantitative comparison on REDS4 and YouHQ40-Test with 30 diffusion steps. LDMCS
+denotes Cross-Step Attention, while LDM∗
+CS is fine-tuned on REDS for 15 epochs.
+Method
+PSNR
+SSIM
+LPIPS
+DISTS
+FID
+tLPIPS
+tDISTS
+FVD
+REDS4
+Bicubic
+26.13
+0.73
+0.453
+0.186
+5.80
+0.023
+0.003
+18.89
+Real-ESRGAN
+23.35
+0.67
+0.242
+0.105
+2.97
+0.006
+0.007
+23.48
+Stable-VSR
+28.15
+0.80
+0.101
+0.046
+0.06
+0.004
+0.006
+2.59
+LDM
+24.66
+0.69
+0.214
+0.097
+2.20
+0.030
+0.025
+11.71
+LDMCS
+24.07
+0.65
+0.198
+0.092
+1.43
+0.044
+0.027
+8.84
+LDM∗
+CS
+25.26
+0.69
+0.180
+0.083
+0.84
+0.028
+0.023
+7.30
+YouHQ40-Test
+Bicubic
+27.60
+0.78
+0.365
+0.163
+2.20
+0.019
+0.004
+73.41
+Real-ESRGAN
+23.80
+0.68
+0.269
+0.137
+2.79
+0.007
+0.007
+71.02
+Stable-VSR
+27.58
+0.78
+0.175
+0.087
+0.17
+0.009
+0.006
+64.19
+LDM
+25.25
+0.70
+0.241
+0.123
+1.53
+0.059
+0.031
+66.73
+LDMCS
+24.42
+0.65
+0.240
+0.126
+1.30
+0.093
+0.038
+65.27
+LDM∗
+CS
+26.12
+0.72
+0.199
+0.107
+0.35
+0.060
+0.029
+65.63
+scenes including urban environments, natural landscapes, human activities, underwater scenes, and
+low-light conditions. The dataset includes both 1920 × 1080 (Full HD) and 1080 × 1080 (square)
+videos. For evaluation, we apply 4× super-resolution on 1080 × 1080 videos (270 × 270 →
+1080 × 1080). For 1920 × 1080 videos, we extract a center-cropped 1080 × 1080 region and apply
+the same degradation setting for consistency.
+Implementation details: We implement our method in PyTorch using the Diffusers library. Cross-
+Step Attention is implemented as a modular attention processor compatible with pretrained latent
+diffusion backbones, supporting both AttnProcessor and AttnProcessor2_0. Experiments are
+conducted on a single NVIDIA RTX 4090 GPU under identical inference settings. We fine-tune
+only the attention-related modules while keeping the pretrained diffusion backbone fixed. Streaming
+throughput is measured after the initial cold-start period.
+Evaluation Metrics: We evaluate performance using spatial fidelity, perceptual quality, and temporal
+consistency metrics. Following the perception–distortion trade-off [4], we emphasize perceptual
+metrics while reporting distortion-based measures for completeness. For spatial fidelity, we report
+Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index (SSIM). To better capture
+perceptual quality, we use Learned Perceptual Image Patch Similarity (LPIPS) [26] and Deep Image
+Structure and Texture Similarity (DISTS) [8]. We also report Fréchet Inception Distance (FID) [20]
+as a distribution-level metric computed over extracted frame features. For temporal consistency,
+we report Fréchet Video Distance (FVD) [21], which measures distributional similarity in a spatio-
+temporal feature space. In addition, we use temporal LPIPS (tLPIPS) and temporal DISTS (tDISTS)
+to measure frame-to-frame perceptual stability. Following prior work [18, 1], temporal LPIPS is
+defined as the absolute change in perceptual distance between consecutive frames:
+tLPIPSt =
+LPIPS(ft, ft+1) −LPIPS(f ∗
+t , f ∗
+t+1)
+ ,
+(17)
+where ft and f ∗
+t denote ground-truth and generated frames, respectively. tDISTS is defined analo-
+gously by replacing LPIPS with DISTS.
+4.1
+Cross-Step Attention Evaluation
+We evaluate Cross-Step Attention using an LDM, denoted as LDMCS, on REDS4 and YouHQ40-Test
+with 30 diffusion steps. We compare against bicubic interpolation, vanilla LDM, Stable-VSR, and
+Real-ESRGAN. Table 1 reports spatial reconstruction, perceptual, and temporal metrics. For the
+fine-tuned variant LDM∗
+CS, we fine-tune the attention-related parameters on the REDS validation set
+for 15 epochs using Adam with a learning rate of 1 × 10−5. The resulting model is evaluated directly
+on both REDS4 and YouHQ40-Test without additional adaptation.
+The results reveal a clear distinction between the zero-shot and fine-tuned settings. In the zero-shot
+setting, LDMCS improves perceptual and distribution-level temporal metrics over vanilla LDM,
+6
+
+
+although this comes with a degradation in distortion-based and frame-wise temporal metrics. On
+REDS4, LPIPS decreases from 0.214 to 0.198 and FID from 2.20 to 1.43, while FVD decreases from
+11.71 to 8.84. Similarly, on YouHQ40-Test, FID decreases from 1.53 to 1.30 and FVD from 66.73
+to 65.27. These improvements indicate that cross-step feature reuse can improve perceptual and
+distribution-level temporal quality without task-specific training. However, PSNR/SSIM decrease and
+frame-wise temporal errors increase, particularly on YouHQ40-Test. This behavior is consistent with
+the perception–distortion trade-off [4], where improved perceptual realism can occur at the expense
+of pixel-level fidelity and local frame-to-frame stability.
+Fine-tuning substantially improves this trade-off. On REDS4, LDM∗
+CS improves PSNR from 24.66
+to 25.26 relative to vanilla LDM, while reducing LPIPS from 0.214 to 0.180, DISTS from 0.097
+to 0.083, and FID from 2.20 to 0.84. FVD also decreases from 11.71 to 7.30. On YouHQ40-Test,
+PSNR increases from 25.25 to 26.12, while LPIPS, DISTS, and FID decrease from 0.241, 0.123, and
+1.53 to 0.199, 0.107, and 0.35, respectively. The improvement transfers to YouHQ40-Test despite
+training only on REDS, suggesting that the learned cross-step representations generalize beyond
+the fine-tuning domain. Importantly, fine-tuning also mitigates the frame-wise temporal instability
+introduced by the zero-shot model: on REDS4, tLPIPS/tDISTS improve from 0.044/0.027 for LDMCS
+to 0.028/0.023 for LDM∗
+CS, approaching or improving upon the corresponding vanilla LDM values.
+On YouHQ40-Test, the temporal metrics remain essentially unchanged relative to vanilla LDM while
+the perceptual metrics improve substantially. Thus, lightweight fine-tuning provides a more favorable
+operating point that retains the perceptual benefits of Cross-Step Attention while largely recovering
+frame-wise temporal stability.
+The comparison with existing methods further highlights the quality-efficiency trade-off. Stable-VSR
+achieves the strongest reconstruction and perceptual quality among the compared methods, benefiting
+from explicit temporal modeling. However, this comes with substantially higher computational cost
+(see Section 4.2). Real-ESRGAN provides efficient inference but achieves weaker perceptual quality,
+while bicubic interpolation serves as a simple reconstruction baseline. In contrast, LDM∗
+CS provides
+a lightweight alternative that improves the perceptual quality of a pretrained diffusion backbone
+without introducing a dedicated temporal architecture.
+Qualitative comparisons are shown in Fig. 2. LDM∗
+CS produces sharper details and more coherent
+structures than vanilla LDM, particularly around object boundaries, repetitive patterns, and fine-
+grained textures. In the first row, repetitive structures on the car and bus are reconstructed with
+improved geometric regularity and fewer visible distortions. In the second row, the dress exhibits more
+consistent appearance and fewer local artifacts. In the third row, fine details on the moving vehicle
+are better preserved, with less visible blurring in high-frequency regions. In the final row, object
+boundaries between the window and pedestrian regions appear cleaner, with reduced foreground–
+background ambiguity. These visual differences are consistent with the improvements in LPIPS,
+DISTS, and FID reported in Table 1.
+Overall, the results show that Cross-Step Attention provides a useful mechanism for transferring
+intermediate diffusion representations across adjacent frames. In the zero-shot setting, this primarily
+improves perceptual and distribution-level temporal quality, while lightweight fine-tuning substan-
+tially reduces the associated loss in frame-wise temporal stability. The resulting approach therefore
+provides a practical way to introduce temporal feature reuse into pretrained diffusion restoration
+models without explicit motion estimation or a dedicated multi-frame temporal architecture.
+4.2
+Efficiency Analysis for Real-Time Video Super-Resolution
+We evaluate inference efficiency at 5122 and 10242 resolutions using LDM, SDx4, SDEdit, and
+SDXL, with and without Cross-Step Attention and streaming inference. We additionally compare
+against bicubic interpolation, Real-ESRGAN, and StableVSR. All diffusion-based methods use 30
+sampling steps. We report runtime per 1-second video, diffusion throughput, and output FPS in
+Table 2.
+Standard diffusion models remain computationally expensive for video processing. At 5122, LDM,
+SDx4, SDEdit, and SDXL achieve only 2.2, 1.0, 1.4, and 0.8 FPS, respectively. Adding CS attention
+alone does not improve throughput, since diffusion is still performed independently for each frame. In
+contrast, the streaming pipeline reorganizes the same denoising updates into a continuous execution
+schedule, allowing intermediate states to be reused across consecutive frames.
+7
+
+
+(a) Bicubic
+(b) LDM
+(c) LDMCS
+(d) LDM ∗
+CS
+(e) High-Res
+Figure 2: REDS4 examples with different methods.
+The resulting streaming variants substantially increase throughput. At 5122, LDMstream
+CS
+, SDx4stream
+CS
+,
+SDEditstream
+CS
+, and SDXLstream
+CS
+achieve 44, 17, 34, and 17 FPS, respectively. At 10242, they achieve
+12, 4.5, 9, and 7.5 FPS. These results show that the main efficiency gain comes from streaming
+reorganization, which amortizes diffusion computation across consecutive frames.
+StableVSR provides strong reconstruction quality but requires 120 s per 1-second video at 5122,
+compared with only 0.7 s for LDMstream
+CS
+. Bicubic and Real-ESRGAN remain faster in some settings,
+but do not provide comparable diffusion-based perceptual reconstruction. Together with the quality
+results in Table 1, these measurements demonstrate the practical efficiency advantage of the proposed
+streaming formulation.
+The streaming and non-streaming variants use identical model weights and denoising updates, with
+the streaming buffer size matched to the number of diffusion steps. To verify that streaming does not
+alter reconstruction behavior, we compare LDMstream
+CS
+with LDMCS. At 5122, the streaming and non-
+streaming variants obtain FID/FVD values of 0.84/7.47 and 0.84/7.30 on REDS4, and 0.35/65.67 and
+0.35/65.63 on YouHQ40-Test, respectively. Peak diffusion process memory is also nearly unchanged,
+measuring 4.98/4.96 GB at 5122 and 18.54/18.50 GB at 10242 for streaming/non-streaming inference.
+These results indicate that streaming primarily changes the execution order while preserving the
+underlying denoising computation.
+To further assess potential error propagation during streaming, we compare performance across the
+first, middle, and final thirds of the REDS4 sequences. Temporal quality does not degrade over time;
+instead, FVD decreases from 9.95 to 7.95 to 7.52, while tLPIPS decreases from 0.030 to 0.028 to
+0.026 and tDISTS from 0.024 to 0.023 to 0.023, with spatial quality remaining largely stable. These
+results suggest that the causal one-hop cross-step design does not introduce accumulating temporal
+errors during streaming.
+8
+
+
+Table 2: Inference efficiency at 5122 and 10242 resolutions.
+Method
+Runtime ↓
+Steps/s ↑
+FPS ↑
+5122
+10242
+5122
+10242
+5122
+10242
+Bicubic
+1.5
+3
+–
+–
+20
+10
+Real-ESRGAN
+3.3
+9.1
+–
+–
+9
+3.3
+StableVSR
+120
+750
+–
+–
+–
+–
+LDM
+13
+36
+67
+25
+2.2
+0.8
+LDMCS
+20
+75
+44
+12
+1.5
+0.4
+LDMstream
+CS
+0.7
+2.5
+44
+12
+44
+12
+SDx4
+30
+100
+30
+9
+1.0
+0.3
+SDx4CS
+53
+200
+17
+4.5
+0.6
+0.2
+SDx4stream
+CS
+2
+7
+17
+4.5
+17
+4.5
+SDEdit
+21
+56
+42
+16
+1.4
+0.5
+SDEditCS
+26
+100
+34
+9
+1.1
+0.3
+SDEditstream
+CS
+1
+3
+34
+9
+34
+9
+SDXL
+38
+64
+24
+14
+0.8
+0.5
+SDXLCS
+53
+120
+17
+7.5
+0.6
+0.3
+SDXLstream
+CS
+2
+4
+17
+7.5
+17
+7.5
+4.3
+Effect of Diffusion Steps on Reconstruction Performance
+Table 3 examines how the diffusion-step budget affects perceptual and temporal quality on REDS4
+and YouHQ40-Test. Increasing the number of diffusion steps consistently improves the vanilla LDM,
+with the largest gains occurring at low step budgets and diminishing improvements at higher budgets.
+Cross-Step Attention achieves comparable or better perceptual quality at substantially fewer steps,
+indicating improved sample efficiency of the diffusion process.
+On REDS4, the zero-shot LDMCS already provides substantial gains at low and moderate step
+budgets. At 10 steps, LDMCS10 achieves an LPIPS of 0.213, comparable to the 0.214 obtained by
+the 30-step vanilla LDM, while using only one-third of the denoising steps. Its DISTS and FID,
+however, remain slightly higher at 0.100 and 2.75 compared with 0.097 and 2.20 for LDM30. The
+benefit becomes more pronounced after fine-tuning. LDM∗
+CS10 achieves LPIPS/DISTS/FID/FVD of
+0.199/0.091/2.00/10.15, improving over the 30-step vanilla LDM at 0.214/0.097/2.20/11.71 despite
+using only 10 diffusion steps. On YouHQ40-Test, the zero-shot gains are more modest, particularly
+at low step budgets. Fine-tuning substantially improves the perceptual metrics: LDM∗
+CS10 achieves
+LPIPS, DISTS, and FID of 0.212, 0.113, and 0.94, compared with 0.241, 0.123, and 1.53 for LDM30.
+FVD is 68.76 compared with 66.73 for the 30-step baseline, indicating that the reduction in diffusion
+steps comes with a small degradation in distribution-level temporal quality on this more diverse
+dataset. Increasing the step budget progressively reduces this gap, with LDM∗
+CS30 achieving the best
+results at 0.199 LPIPS, 0.107 DISTS, 0.35 FID, and 65.63 FVD.
+These results demonstrate that Cross-Step Attention can substantially improve the sample efficiency
+of diffusion-based VSR. In particular, the fine-tuned 10-step model on REDS4 matches or exceeds
+the perceptual and temporal quality of the 30-step vanilla LDM while requiring only one-third of the
+denoising steps. On YouHQ40-Test, the same reduction in steps preserves strong perceptual gains
+but introduces a modest temporal-quality trade-off, which is progressively reduced as more diffusion
+steps are used.
+5
+Conclusion
+We presented a streaming-aware framework for real-time video super-resolution that adapts pretrained
+single-image latent diffusion models through Cross-Step Attention and Trajectory-Coupled Diffusion
+Scheduling. By reusing intermediate denoising representations across adjacent frames and diffusion
+steps, the proposed approach enables implicit temporal information propagation without explicit
+motion estimation or dedicated temporal modules.
+9
+
+
+Table 3: Effect of diffusion step budgets on reconstruction and temporal quality.
+Method
+REDS4
+YouHQ40-Test
+LPIPS↓
+DISTS↓
+FID↓
+FVD↓
+LPIPS↓
+DISTS↓
+FID↓
+FVD↓
+LDM5
+0.300
+0.144
+5.72
+21.84
+0.302
+0.154
+3.96
+76.10
+LDM10
+0.263
+0.121
+3.74
+16.44
+0.275
+0.137
+2.31
+71.06
+LDM15
+0.240
+0.109
+2.98
+14.20
+0.259
+0.130
+1.91
+69.17
+LDM20
+0.228
+0.103
+2.61
+13.18
+0.250
+0.126
+1.71
+67.95
+LDM25
+0.220
+0.100
+2.35
+12.21
+0.245
+0.124
+1.61
+67.30
+LDM30
+0.214
+0.097
+2.20
+11.71
+0.241
+0.123
+1.53
+66.73
+LDMCS5
+0.253
+0.126
+5.85
+19.90
+0.289
+0.155
+4.96
+76.96
+LDMCS10
+0.213
+0.100
+2.75
+12.77
+0.244
+0.130
+2.00
+68.70
+LDMCS15
+0.202
+0.095
+1.99
+11.62
+0.239
+0.127
+1.52
+66.69
+LDMCS20
+0.199
+0.093
+1.69
+9.93
+0.237
+0.126
+1.38
+65.86
+LDMCS25
+0.198
+0.092
+1.52
+9.66
+0.238
+0.125
+1.32
+65.10
+LDMCS30
+0.197
+0.092
+1.30
+8.84
+0.240
+0.126
+1.30
+65.27
+LDM ∗
+CS5
+0.232
+0.107
+4.21
+15.26
+0.236
+0.124
+2.45
+73.36
+LDM ∗
+CS10
+0.199
+0.091
+2.00
+10.15
+0.212
+0.113
+0.94
+68.76
+LDM ∗
+CS15
+0.188
+0.086
+1.38
+8.69
+0.203
+0.109
+0.60
+67.37
+LDM ∗
+CS20
+0.184
+0.084
+1.10
+8.08
+0.201
+0.108
+0.46
+66.91
+LDM ∗
+CS25
+0.182
+0.084
+0.94
+7.70
+0.200
+0.107
+0.39
+66.09
+LDM ∗
+CS30
+0.180
+0.083
+0.84
+7.30
+0.199
+0.107
+0.35
+65.63
+Experiments on REDS4 and YouHQ40-Test demonstrate improved perceptual quality and distribution-
+level temporal realism over vanilla latent diffusion, while lightweight fine-tuning further improves
+frame-wise temporal stability. Cross-Step Attention also improves diffusion step efficiency, enabling
+strong perceptual quality with fewer denoising steps. Combined with the streaming inference pipeline,
+the proposed framework achieves over 40 FPS at 5122 after cold start, demonstrating the feasibility
+of real-time diffusion-based VSR.
+Overall, our results show that exploiting the structure of the diffusion trajectory provides a simple
+and effective way to bridge high-quality diffusion restoration and real-time video processing.
+Acknowledgements
+This work was funded by the European Union’s Horizon Europe research and innovation programme
+under the Marie Skłodowska-Curie grant agreement No. 101129865 (ACCESS).
+References
+[1] Tserendorj Adiya, Jae Shin Yoon, Jung Eun Lee, Sanghun Kim, and Hwasup Lim. Bidirec-
+tional temporal diffusion model for temporally consistent human animation. In International
+Conference on Learning Representations, volume 2024, pages 44419–44439, 2024.
+[2] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Do-
+minik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion:
+Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127, 2023.
+[3] Andreas Blattmann, Robin Rombach, Huan Ling, Tim Dockhorn, Seung Wook Kim, Sanja
+Fidler, and Karsten Kreis. Align your latents: High-resolution video synthesis with latent
+diffusion models. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), pages
+22563–22575, 2023.
+[4] Yochai Blau and Tomer Michaeli. The perception-distortion tradeoff. In Proc. IEEE/CVF Conf.
+Comput. Vis. Pattern Recognit. (CVPR), pages 6228–6237, 2018.
+[5] Jose Caballero, Christian Ledig, Andrew Aitken, Alejandro Acosta, Johannes Totz, Zehan
+Wang, and Wenzhe Shi. Real-time video super-resolution with spatio-temporal networks and
+motion compensation. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), pages
+4778–4787, 2017.
+10
+
+
+[6] Yanpeng Cao, Chengcheng Wang, Changjun Song, Yongming Tang, and He Li. Real-time
+super-resolution system of 4k-video based on deep learning. In IEEE 32nd Int. Conf. on
+Application-specific Systems, Architectures and Processors (ASAP), pages 69–76, 2021.
+[7] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis.
+Advances in neural information processing systems, 34:8780–8794, 2021.
+[8] Keyan Ding, Kede Ma, Shiqi Wang, and Eero P Simoncelli. Image quality assessment: Unifying
+structure and texture similarity. IEEE Trans. Pattern Anal. Mach. Intell., 44(5):2567–2581,
+2020.
+[9] Sicheng Gao, Xuhui Liu, Bohan Zeng, Sheng Xu, Yanjing Li, Xiaoyan Luo, Jianzhuang Liu,
+Xiantong Zhen, and Baochang Zhang. Implicit diffusion models for continuous super-resolution.
+In Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), pages 10021–10030, 2023.
+[10] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances
+in neural information processing systems, 33:6840–6851, 2020.
+[11] Andrey Ignatov, Andres Romero, Heewon Kim, and Radu Timofte. Real-time video super-
+resolution on smartphones with deep learning, mobile ai 2021 challenge: Report. In Proc.
+IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), pages 2535–2544, 2021.
+[12] Levon Khachatryan, Andranik Movsisyan, Vahram Tadevosyan, Roberto Henschel, Zhangyang
+Wang, Shant Navasardyan, and Humphrey Shi. Text2video-zero: Text-to-image diffusion
+models are zero-shot video generators. In Proc. IEEE/CVF Int. Conf. Comput. Vis. (ICCV),
+pages 15954–15964, 2023.
+[13] Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and Stefano
+Ermon. Sdedit: Guided image synthesis and editing with stochastic differential equations.
+arXiv:2108.01073, 2021.
+[14] Seungjun Nah, Radu Timofte, Shuhang Gu, Sungyong Baik, Seokil Hong, Gyeongsik Moon,
+Sanghyun Son, and Kyoung Mu Lee. Ntire 2019 challenge on video super-resolution. In Proc.
+IEEE/CVF Conf. Comput. Vis. Pattern Recognit. Worksh. (CVPR), 2019.
+[15] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas Müller, Joe
+Penna, and Robin Rombach. Sdxl: Improving latent diffusion models for high-resolution image
+synthesis. arXiv preprint arXiv:2307.01952, 2023.
+[16] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-
+resolution image synthesis with latent diffusion models. In Proc. IEEE/CVF Conf. Comput. Vis.
+Pattern Recognit. (CVPR), pages 10684–10695, 2022.
+[17] Olaf Ronneberger, Philipp Fischer, and Thomas Brox.
+U-net: Convolutional networks
+for biomedical image segmentation. In Medical image computing and computer-assisted
+intervention–MICCAI 2015: 18th international conference 2015, proceedings, part III 18, pages
+234–241. Springer, 2015.
+[18] Claudio Rota, Marco Buzzelli, and Joost van de Weijer. Enhancing perceptual quality in video
+super-resolution through temporally-consistent detail synthesis using diffusion models. In Proc.
+Eur. Conf. Comput. Vis. (ECCV), pages 36–53, 2024.
+[19] Chitwan Saharia, Jonathan Ho, William Chan, Tim Salimans, David J Fleet, and Mohammad
+Norouzi. Image super-resolution via iterative refinement. IEEE transactions on pattern analysis
+and machine intelligence, 45(4):4713–4726, 2022.
+[20] Tim Salimans, Ian Goodfellow, Wojciech Zaremba, Vicki Cheung, Alec Radford, and Xi Chen.
+Improved techniques for training GANs. Adv. Neural Inf. Process. Syst. (NeurIPS), 29, 2016.
+[21] Thomas Unterthiner, Sjoerd Van Steenkiste, Karol Kurach, Raphael Marinier, Marcin Michalski,
+and Sylvain Gelly. Towards accurate generative models of video: A new metric & challenges.
+arXiv:1812.01717, 2018.
+11
+
+
+[22] Jianyi Wang, Zongsheng Yue, Shangchen Zhou, Kelvin CK Chan, and Chen Change Loy.
+Exploiting diffusion prior for real-world image super-resolution. Int. J. Comput. Vis., 132:
+5929–5949, 2024.
+[23] Liangbin Xie, Xintao Wang, Shuwei Shi, Jinjin Gu, Chao Dong, and Ying Shan. Mitigating
+artifacts in real-world video super-resolution models. In Proc. AAAI Conf. Artif. Intell. (AAAI),
+volume 37, pages 2956–2964, 2023.
+[24] Shuai Yang, Yifan Zhou, Ziwei Liu, and Chen Change Loy. Rerender a video: Zero-shot
+text-guided video-to-video translation. In SIGGRAPH Asia 2023 Conference Papers, pages
+1–11, 2023.
+[25] Aoyang Zhang, Qing Li, Ying Chen, Xiaoteng Ma, Longhao Zou, Yong Jiang, Zhimin Xu, and
+Gabriel-Miro Muntean. Video super-resolution and caching—an edge-assisted adaptive video
+streaming solution. IEEE Transactions on Broadcasting, 67(4):799–812, 2021.
+[26] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. The unreason-
+able effectiveness of deep features as a perceptual metric. In Proc. IEEE/CVF Conf. Comput.
+Vis. Pattern Recognit. (CVPR), pages 586–595, 2018.
+[27] Yinjie Zhang, Yuanxing Zhang, Yi Wu, Yu Tao, Kaigui Bian, Pan Zhou, Lingyang Song, and
+Hu Tuo. Improving quality of experience by adaptive video streaming with super-resolution.
+In IEEE INFOCOM 2020-IEEE Conference on Computer Communications, pages 1957–1966.
+IEEE, 2020.
+[28] Shangchen Zhou, Peiqing Yang, Jianyi Wang, Yihang Luo, and Chen Change Loy. Upscale-
+a-video: Temporal-consistent diffusion model for real-world video super-resolution. In Proc.
+IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), pages 2535–2545, 2024.
+12

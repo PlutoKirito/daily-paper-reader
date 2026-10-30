@@ -1,0 +1,4725 @@
+NEURAL VIDEO CODING UNDER LIMITED DELAY:
+THEORETICAL OPTIMALITY AND SYSTEM DESIGN
+Likun Cai1, Jun Chen2 and Ashish Khisti1
+1University of Toronto
+2 McMaster University
+likun.cai@mail.utoronto.ca
+chenjun@mcmaster.ca
+akhisti@ece.utoronto.ca
+ABSTRACT
+Traditional neural video compression (NVC) methods predominantly follow
+strictly causal predictive-coding paradigm, treating zero-frame delay as a fixed
+constraint rather than delay as an explicit design parameter. From an information-
+theoretic perspective, allowing limited frame delay enables a codec to exploit
+correlations with future frames within the delay window, thereby reducing un-
+certainty that is inaccessible to strictly causal prediction and potentially improv-
+ing the rate-distortion tradeoff. In this work, we formalize this intuition through
+a rigorous rate–distortion analysis builds on the clique factorization of Markov
+networks, and propose Graph-Factored Sequential Coding (GFSC), a principled
+framework for sequential video coding under limited delay. To our knowledge,
+we provide the first theoretical result showing that, for general K-order Markov
+sources with positive distributions, a K-frame delay is sufficient to attain joint-
+coding rate-distortion optimality over a nontrivial distortion region, a guarantee
+unavailable to zero-delay causal coding in general. In practice, we instantiate
+GFSC through lightweight neural modules, allowing existing causal predictive
+codecs to be augmented without modifying their core architectures. Experiments
+across multiple NVC models and datasets show that GFSC consistently improves
+rate-distortion performance over the corresponding causal counterparts. Under
+matched delay budgets, GFSC also achieves competitive performance compared
+with representative bidirectional codecs.
+1
+INTRODUCTION
+Video compression can be fundamentally viewed as a sequential lossy source coding prob-
+lem (Viswanathan & Berger, 2002; Yang et al., 2011; Ma et al., 2007). Most existing neural video
+compression (NVC) models follow a strictly causal predictive coding paradigm (Agustsson et al.,
+2020; Lu et al., 2019; 2020; Li et al., 2021; Mentzer et al., 2022), where each frame is encoded
+using only previously reconstructed frames and therefore cannot exploit future correlations. For
+temporally correlated video, future frames provide predictive information about the current frame
+and reduce its uncertainty, potentially improving the rate-distortion tradeoff. In addition, allowing
+limited frame delay does not necessarily incur substantial additional latency. At 60 fps, a single-
+frame lookahead introduces only 16.67 ms of buffering latency, which is modest relative to the
+inference latency of modern NVC models and tolerable in many practical scenarios. Frame delay
+should therefore be treated as an explicit design parameter rather than fixed a priori to zero.
+The information-theoretic basis of limited delay coding has been studied through delayed sequen-
+tial coding (Ma et al., 2007). In particular, for K-order Gauss-Markov sources, a K-frame delay is
+sufficient to attain joint-coding rate-distortion optimality over a nonempty distortion region, a guar-
+antee that zero-delay causal coding does not generally enjoy. However, it remains unclear whether
+this optimality extends beyond Gaussian sources, and the current theory does not provide a con-
+structive architectural principle for translating a given delay budget into a practical coding system.
+Existing bidirectional codecs (Wu et al., 2018; Djelouah et al., 2019; Xu et al., 2024; Yang et al.,
+2020; Yılmaz & Tekalp, 2021) exploit future frames in practice, but typically rely on fixed anchor-
+based structures designed for relatively large delay budgets, thereby inefficient in the limited-delay
+1
+arXiv:2610.25729v1  [cs.LG]  19 Oct 2026
+
+
+f1
+g1
+W
+W
+M1
+ˆ
+X1
+f2
+g2
+W
+W
+M2
+ˆ
+X2
+f3
+g3
+W
+W
+M3
+ˆ
+X3
+X1
+X2
+X2
+X3
+X3
+0.03
+0.05
+0.07
+0.09
+34
+35
+36
+37
+Rate (bpp)
+PSNR (dB)
+Causal
+K = 1
+K = 2
+K = 3
+1
+1.5
+2
+Latency (s/frame)
+Causal
+GFSC
+DCVC-B
+Causal
+K = 1
+K = 2
+K = 3
+−30
+−20
+−10
+0
+10
+BD-rate (%)
+Figure 1: Left: GFSC-1 coding architecture for three frames. Middle: Rate-PSNR comparison
+between zero-delay DCVC and GFSC with delays K = 1, 2, 3 on UVG. Right: Latency (top; lower
+the better) and BD-rate (bottom; lower the better) of GFSC and DCVC-B at matched delays, with
+zero-delay DCVC as the baseline. BD-rate is measured relative to zero-delay DCVC.
+regime of interest. Consequently, a unified framework that characterizes limited-delay optimality
+for general Markov sources while enabling flexible practical NVC remains largely underexplored.
+In this work, we propose Graph Factored Sequential Coding (GFSC), a principled framework for
+sequential coding under limited delay. To our knowledge, we are the first to prove that, for general
+K-order Markov sources with positive distributions, a K-frame delay is sufficient to attain joint-
+coding rate-distortion optimality over a nontrivial distortion region. Our analysis builds on prob-
+abilistic graphical models, where K-order Markov dependencies factorize into local clique-wise
+interactions. For K-order Gauss-Markov sources, the conditional independence structure further re-
+duces to pairwise interactions with linear interpolation sufficient statistics. Figure 1 (left) illustrates
+the resulting GFSC architecture under one-frame delay. Although real videos are not assumed to
+follow an exact Markov model, their temporal dependencies are strongly local. As shown in Fig-
+ure 2, the estimated inverse covariance of video features is approximately banded, with the strongest
+dependencies concentrated within a small temporal neighborhood. This empirical locality further
+motivates exploiting short, configurable delays.
+We show that GFSC can be implemented using lightweight neural modules that exploit delayed-
+frame information to reduce the coding uncertainty of the current frame and improve its rate-
+distortion tradeoff. Only minimal modifications are required to existing causal NVC architectures.
+Experiments across multiple models, datasets, and delay settings show consistent rate-distortion im-
+provements over causal baselines and representative B-frame codecs under matched delay budgets.
+The main contributions of this work are summarized as follows:
+1. We propose GFSC, a flexible delayed sequential coding framework that uses clique-wise
+interactions architecture to systematically exploit a configurable frame-delay budget.
+2. We establish rigorous rate-distortion guarantees for GFSC. For general K-order Markov
+sources, we prove that K-delay GFSC attains joint-coding rate-distortion optimality over a
+nontrivial distortion region. For K-order Gauss-Markov sources, the clique-wise construc-
+tion further reduces to pairwise linear interpolation.
+3. We realize GFSC using lightweight neural modules that can be integrated into existing
+causal NVC models with minimal architectural changes. Experiments demonstrate consis-
+tent rate-distortion gains over causal baselines and competitive performance against repre-
+sentative B-frame codecs under matched delay budgets.
+2
+PRELIMINARIES
+2.1
+JOINT CODING
+Consider an L-frame sequence X ≜(X1, · · · , XL) where Xℓ∈Xℓand X ∼PX. In joint coding
+(JC), all frames are available prior to compression. We adopt a one-shot setup (Li & El Gamal,
+2018), where a single source sequence x is compressed at one time. Given that encoder and decoder
+share the common randomness W ∈W independent of source, a JC system is specified by
+f : X1 × · · · × XL × W →M,
+g : M × W →ˆ
+X1 × · · · × ˆ
+XL,
+2
+
+
+0
+10
+20
+30
+0
+10
+20
+30
+010¡2
+10¡1
+100
+Absolute information matrix
+Frame index
+Frame index
+0
+5
+10
+15
+20
+25
+30
+0
+0.2
+0.4
+0.6
+0.8
+1
+Separation
+Mean APC
+Mean APC vs. Separation
+Figure 2: Temporal-dependence analysis for UVG dataset. Left: Estimated information matrix for
+32-frame UVG video clips. Right: Mean APC vs. Separation curve. APC denotes Absolute partial
+correlation. Separation denotes the distance between two frame positions, i.e. |j −k| for (Xj, Xk).
+where the message M ∈M = {0, 1}∗is a binary string with expected length E[l(M)]. The
+reconstruction ˆX follows P ˆX|X(·|x), i.e., ˆX = g(f(x, W), W) ∼P ˆX|X(·|x). The reconstruction
+fidelity for each Xℓis measured by a distortion function dℓ: Xℓ× Xℓ→[0, ∞), with dℓ(x, x) = 0
+and dℓ(x, w) > 0 for w̸ = x. According to Li & El Gamal (2018), there exists a one-shot coding
+scheme such that minimum achievable RJC,o satisfies:
+RJC,o ≤I(X; ˆX) + O(log I(X; ˆX)).
+where the mutual information I(X; ˆX) is the theoretical optimal solution in the asymptotic setting
+(infinite blocklength), i.e. JC rate-distortion function (Csisz´ar & K¨orner, 2011).
+Theorem 2.1 (JC rate-distortion function). Define P ≜{P ˆX|X : E[dℓ(Xℓ, ˆXℓ)] ≤Dℓ, 1 ≤ℓ≤L},
+the single-letter JC rate-distortion function is
+RJC(D) =
+min
+P ˆ
+X|X∈P I(X; ˆX).
+(1)
+2.2
+DELAYED SEQUENTIAL CODING
+In delayed sequential coding (DSC), source frames are observed sequentially with a limited look-
+ahead of K frames (K < L). Following Ma et al. (2007), there are three canonical setups. We
+focus on the noncausal-causal (NC-C) setting, which is most relevant to NVC, and defer the causal-
+noncausal (C-NC) and noncausal-noncausal (NC-NC) settings to Appendix A.1. An NC-C coding
+architecture is specified by:
+fℓ: X1 × · · · × Xmin{ℓ+K,L} × W →Mℓ,
+gℓ: M1 × · · · × Mℓ× W →ˆ
+Xℓ,
+where Mℓ∈Mℓdenotes ℓ-th encoder message. Under K-delay relaxation, the ℓ-th encoder has
+access up to Xℓ+K. The reconstruction ˆXℓfollows P ˆ
+Xℓ|Xℓ+K(·|xℓ+K) determined by {fj, gj}ℓ
+j=1.
+A key result in Ma et al. (2007) shows that, for K-order Gauss-Markov sources, a K-frame delay
+is sufficient for DSC to asymptotically attain the joint-coding rate-distortion function in the high-
+resolution regime. However, this leaves two gaps. First, the result is established for the Gauss-
+Markov setting and does not characterize whether the same optimality extends to general K-order
+Markov sources. Second, DSC specifies the admissible information flow and its fundamental limits
+and does not provide an architectural principle for realizing these limits in practical coding systems.
+In this work, we address both issues. We first establish the joint-coding optimality of K-delay
+sequential coding for a broader class of K-order Markov sources through a probabilistic graphical
+model analysis. We then introduce GFSC as a constructive realization of this structure.
+3
+GRAPH FACTORED SEQUENTIAL CODING
+We introduce Graph Factored Sequential Coding (GFSC), inspired by Markov networks. We adopt
+a one-shot setting and analyze the associated rate-distortion performance.
+3
+
+
+General Markov
+Maximal cliques C(G)
+{C1, C2, C3}
+↓
+{{1, 2, 3}, {2, 3, 4}, {3, 4, 5}}
+Clique factorization of pX
+p(x3
+1) p(x4 | x3
+2) p(x5 | x4
+3)
+↓
+ψ1(x3
+1) ψ2(x4
+2) ψ3(x5
+3)
+X1
+X2
+X3
+X4
+X5
+C1
+C2
+C3
+Second-order Markov graph G
+Gauss-Markov
+J = Σ−1
+∗∗∗0 0
+∗∗∗∗0
+∗∗∗∗∗
+0 ∗∗∗∗
+0 0 ∗∗∗
+Information matrix
+Figure 3: Second-order Markov structure illustration. Left: Maximal cliques and clique factoriza-
+tion. Middle: Second-order Markov network. Right: The information matrix J for Gauss-Markov
+satisfying Jij = 0 for |i −j| > 2. “∗” denotes potentially nonzero entries.
+3.1
+MARKOV NETWORKS
+Definition 3.1 (K-order Markov). A K-order Markov source is a random vector X satisfying
+Markov chains Xℓ→(Xℓ+1, · · · , Xℓ+K) →(Xℓ+K+1, · · · , XL) for all ℓ.
+Definition 3.2 (Maximal clique). Let G = (V, E) be an undirected graph. A nonempty subset C ⊆V
+is a clique if {i, j} ∈E for every pair of distinct nodes i, j ∈C. A clique is maximal if it is not
+strictly contained in any other clique of G.
+Markov networks. A Markov network represents the conditional-independence structure of a joint
+distribution PX through an undirected graph G = (V, E), where each node denotes a random vari-
+able (Koller & Friedman, 2009). Let C(G) be the set of maximal cliques of G. For a strictly positive
+distribution, the Hammersley-Clifford theorem gives the clique factorization of probability den-
+sity/mass function pX(x) =
+1
+Z
+Q
+Cj∈C(G) ψj(xCj), where ψj is a positive clique factor and Z a
+normalization constant. For K-order Markov sources as in Definition 3.1, the graph has a sim-
+ple temporal structure. Its maximal cliques are the consecutive (K + 1)-variable windows, i.e.
+Cj ≜{j, . . . , j + K}. More importantly, the K-order Markov property itself directly yields a
+clique-wise factorization, without requiring the positivity condition:
+pX(x) = p(xK+1)
+Y
+j
+p(xj+K | xj+K−1
+j
+) ≜
+Y
+j
+ψj(xCj),
+(2)
+where ψ1(xC1) ≜p(xK+1) and ψj(xCj) ≜p(xj+K|xj+K−1
+j
+) for j ≥2. Hence, the dependency
+structure of a K-order Markov source decomposes into local interactions over (K + 1)-variable
+cliques. Figure 3 (Left) shows the clique factorization for a 2-order Markov example. This observa-
+tion motivates the construction of GFSC introduced in Section 3.2.
+Gaussian graphical models (GGMs). GGMs specialize Markov networks to Gaussian sources and
+have been exploited in multi-terminal source coding (Chen et al., 2017; 2020; Xie et al., 2020). For
+a Gaussian source X ∼N(0, Σ), let J ≜Σ−1 be its information matrix. The induced GGM G(J)
+has edge set E = {{i, j} : i̸ = j, Jij̸ = 0}. For a K-order Gauss-Markov source, J is K-banded,
+as illustrated in Figure 3 (Right). Moreover, the Gaussian density admits the pairwise factorization
+pX(x) ∝
+Y
+ℓ
+exp
+
+−1
+2Jℓℓx2
+ℓ
+ Y
+{i,j}
+exp (−Jijxixj) .
+(3)
+This additional structure leads to the edge-wise and node-wise auxiliary construction and, ultimately,
+the pairwise interpolation form derived in Section 3.5.
+3.2
+ARCHITECTURE OF CODING SCHEME
+Let X = (X1, · · · , XL) be a sequentially observed source and K the allowed delay relaxation
+(K < L −1). We define the encoding and decoding mappings of GFSC-K architecture as follows.
+Encoding / decoding. At each stage ℓ, the encoder observes at most K-delay source window Xℓ+K
+ℓ
+and previous messages M ℓ−1. It then produces a new message Mℓ. The ℓ-th decoder reconstructs
+4
+
+
+Xℓusing all messages available up to stage ℓ. The encoding and decoding mappings are given by:
+fℓ: X min{ℓ+K,L}
+ℓ
+× Mℓ−1 × W →Mℓ,
+gℓ: Mℓ× W →ˆ
+Xℓ.
+There are L decoding stages for L source frames respectively. Compared with the NC-C DSC-K
+architecture, this formulation imposes a local-window structure. Figure 1 (left) and Figure 4 (Right)
+illustrate the structure for K = 1, 2. Now we characterize the operational rate-distortion region.
+Definition 3.3 (Operational RD region). A rate-distortion tuple (R, D) is achievable for one-shot
+GFSC-K system, if there exist encoder and decoder as defined above such that
+Rℓ≥E[l(Mℓ)],
+Dℓ≥E[dℓ(Xℓ, ˆXℓ)],
+where Mℓ∈Mℓdenotes the ℓ-th encoder message. The operational RD region Ro
+K is the closure
+of the set of all achievable (R, D). For a given D, the rate region Ro
+K(D) consists of all R such
+that (R, D) ∈Ro
+K, and the minimum sum-rate function is RGFSC,o
+K,sum (D) = minR∈Ro
+K(D)
+P Rℓ.
+3.3
+RATE-DISTORTION ANALYSIS
+The operational region Ro
+K cannot be directly computed as it involves all possible one-shot encoders
+and decoders. Here we provide a tractable approximation in terms of mutual information, which
+corresponds to the information RD region. We introduce auxiliary variable Uℓ, which serves as a
+single-letter representation of the information conveyed by the ℓ-th encoder message.
+Definition 3.4 (Information RD region). For a given source X, the single-letter information RD
+region of a GFSC-K system, denoted by RK, consists of all (R, D) satisfying
+Rℓ≥I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1),
+Dℓ≥E[dℓ(Xℓ, ˆXℓ)],
+(4)
+for some auxiliary random variables U and ˆX satisfying ˆXℓ= gℓ(U ℓ) and the Markov conditions:
+Uℓ→(Xmin{ℓ+K,L}
+ℓ
+, U ℓ−1) →X,
+(5)
+where gℓ(·) are deterministic functions. For a given D, the information rate region RK(D) is
+the closure of all R such that (R, D) ∈RK, and the information minimum sum-rate function is
+RGFSC
+K,sum(D) = minR∈RK(D)
+P Rℓ.
+Remark 3.1 (Role of the auxiliary variables). The auxiliary variable Uℓserves as a single-letter
+representation of the information generated at the ℓ-th GFSC stage. For a K-order Markov source,
+the local window observed by this stage is naturally associated with the local clique Cℓof the under-
+lying Markov network. Thus, Uℓcan be viewed as a compressed representation of this clique, while
+U ℓ−1 carries information accumulated from preceding overlapping cliques. The Markov condition
+in equation 5 ensures that this representation respects the sequential information flow of GFSC.
+Theorem 3.5 (Rate-distortion characterization). For a given distortion tuple D and any R ∈
+RK(D), the operational rate region Ro
+K(D) satisfies R + log(R + 1) + 5 ∈Ro
+K(D) ⊆RK(D).
+Moreover, the operational sum-rate function satisfies
+RGFSC
+K,sum(D) ≤RGFSC,o
+K,sum (D) ≤RGFSC
+K,sum(D) + O
+ log RGFSC
+K,sum(D)
+
+.
+(6)
+Proof. See Appendix B.1.
+Theorem 3.5 connects the information sum-rate function to the operational GFSC-K architecture
+up to a logarithmic one-shot overhead. We next identify a particular class of clique-wise auxil-
+iary variables that satisfies the GFSC constraints together with stronger Markov conditions (See
+Appendix B.2 for more details). For K-order Markov sources with positive distribution, this con-
+struction suffices to show that the GFSC information sum-rate function coincides with the JC rate-
+distortion function in Theorem 2.1 over a nonempty distortion region.
+5
+
+
+Markov network augmentation
+X1
+X2
+X3
+X4
+X5
+X1
+X2
+X3
+X4
+X5
+Z1
+Z2
+Z3
+X1
+X2
+X3
+X4
+X5
+W1
+W2
+W3
+W4
+W5
+Z1
+Z2
+Z3
+GFSC with optimal auxiliaries
+Sources
+Encoders
+Auxiliaries
+Messages
+Decoders
+Reconstructions
+X1
+f1
+U1
+M1
+g1
+ˆX1
+X2
+f2
+U2
+M2
+g2
+ˆX2
+X3
+f3
+U3
+M3
+g3
+ˆX3
+X4
+f4
+U4
+M4
+g4
+ˆX4
+X5
+f5
+U5
+M5
+g5
+ˆX5
+Sequential coding order
+U4 ≜W4
+U5 ≜W5
+U1 ≜(W1, Z1)
+U2 ≜(W2, Z2)
+U3 ≜(W3, Z3)
+Figure 4: Left: Second-order Markov network (top), its augmentation by clique-wise auxiliary vari-
+ables Zj (middle), and further augmentation by node-wise auxiliary variables Wℓ(bottom). Right:
+GFSC architecture with 2-delay and optimal auxiliary variables constructed in Left.
+3.4
+JOINT-CODING OPTIMALITY FOR MARKOV SOURCES
+3.4.1
+GENERAL MARKOV SOURCES
+As discussed in Section 3.1, a K-order Markov source factorizes over consecutive cliques Cj =
+{j, . . . , j + K}. This graphical structure motivates a clique-wise auxiliary construction: each aux-
+iliary variable is generated from the source variables within one local clique, while the collection
+of overlapping auxiliaries captures the global source dependence through local interactions. For the
+optimality proof, we construct a particular class of such auxiliaries satisfying stronger Markov con-
+ditions than those required by GFSC. These conditions preserve the relevant dependency structure
+while remaining admissible under the GFSC-K information-flow constraints.
+Definition 3.6 (K-order Markov source with positive distribution). Let X be a K-order Markov
+source as in Definition 3.1. Moreover, each Xj has finite alphabet 2 ≤|Xj| < ∞and the joint
+distribution is positive, i.e. pX(x) > 0 for all x ∈X1 × · · · × XL.
+Theorem 3.7 (JC optimality). Consider a Markov source X as in Definition 3.6. There exists a
+non-empty distortion region Dϵ ≜{D : 0 < Dℓ≤ϵℓ, 1 ≤ℓ≤L }, such that for all D ∈Dϵ, a set
+of clique-wise auxiliaries U can be constructed for GFSC-K and the following hold:
+1. Uℓ→(Xmin{ℓ+K,L}
+ℓ
+, U min{ℓ,L−K}
+max{1,ℓ−K} ) →X.
+2. RGFSC
+K,sum(D) = RJC(D), where RJC(D) is JC rate-distortion function in Theorem 2.1.
+Proof. See Appendix B.2.
+Remark 3.2 (Graphical interpretation). To our knowledge, Theorem 3.7 is the first rigorous result
+showing that K-delay coding can attain JC rate-distortion optimality for general K-order Markov
+sources. The key is the locality of the Markov network: clique-wise auxiliary variables compress
+local dependencies while preserving the conditional-independence structure required for optimal
+coding. Figure 4 explicitly illustrates this construction, where clique-wise auxiliary variables Zℓ
+induce the desired conditional independencies and node-wise auxiliary variables Wℓfurther refine
+individual reconstructions. This locality is also consistent with real video, whose estimated inverse
+covariance in Figure 2 is largely banded, with the strongest dependencies concentrated within about
+three off-diagonals. In practice, we show that these local clique-wise interactions can be efficiently
+realized in NVC using learnable neural modules.
+6
+
+
+X1
+X2
+X3
+X4
+X5
+X1
+X2
+X3
+X4
+X5
+U1,2
+U1,3
+U2,3
+U2,4
+U3,4
+U3,5
+U4,5
+Xj
+Uj,k
+Xk
+Uj,k = ωj,kXj + ¯ωj,kXk + Nj,k
+= ˜Xj,k + Nj,k.
+Linear
+interpolation
+Xj
+Xk
+˜Xj,k
+Figure 5: Left: A second-order GGM and its augmented representation within DG
+ϵ ; dashed arrows
+indicate sequential coding. Right: Edge-wise auxiliary construction by linear interpolation and
+additive noise, where ¯ωj,k = 1 −ωj,k.
+3.5
+GAUSS-MARKOV SOURCES UNDER MSE
+The general result above relies on clique-wise interactions of the underlying Markov network. Under
+the Gauss-Markov assumption and MSE distortion, the graphical structure further decomposes into
+edge-wise interactions as discussed in Section 3.1, allowing the clique-wise auxiliaries to be replaced
+by pairwise Gaussian auxiliaries.
+Theorem 3.8 (Gauss-Markov specialization). Consider a K-order Gauss-Markov source X under
+MSE distortion. There exists a nonempty distortion region DG
+ϵ such that
+RGFSC−G
+K,sum
+(D) = RJCG(D),
+∀D ∈DG
+ϵ .
+(7)
+Moreover, the optimal clique-wise construction can be realized using pairwise Gaussian auxiliaries
+associated with the edges of the underlying GGM, with linear interpolations as sufficient statistics.
+Proof. See Appendix C.4.
+Gaussianity is not required for GFSC, but provides a particularly simple interpretation of its optimal
+auxiliary structure: (K + 1)-variable clique interactions reduce to ordered pairwise interactions
+within the K-frame neighborhood. Figure 5 illustrates this decomposition for a second-order Gauss-
+Markov source. Representative characterizations of DG
+ϵ for first-order Gauss-Markov example are
+provided in Appendix C.5.
+4
+EXPERIMENTAL RESULTS
+We conduct experiments on several NVC models based on causal predictive coding, including
+the DCVC (Li et al., 2021), video compression transformer (VCT) (Mentzer et al., 2022), and
+DHVC (Lu et al., 2024). We compare the rate-distortion performance of the GFSC extension and
+its causal counterparts. We further compare against both neural and conventional delayed coding
+baselines (bidirectional) under the same delay constraints. For quantitative comparison, we report
+BD-rate results on UVG (Mercat et al., 2020) and MCL-JCV (Wang et al., 2016).
+Clique-wise interaction.
+For a K-delay setting, GFSC operates on the clique-wise latent
+(yℓ, . . . , yℓ+K), where yℓ= fℓ(xℓ) denotes the latent representation of frame xℓ. We implement
+this interaction using a window-based spatial-temporal attention module Liu et al. (2022), which
+jointly models the current and lookahead latent representations within each local spatial window.
+This enables configurable K-delay fusion without modifying the underlying analysis transforms and
+naturally handles boundary cases with fewer than K available future frames. Architectural details
+are provided in Appendix D.2.
+4.1
+RATE-DISTORTION ANALYSIS
+Causal counterparts. We evaluate GFSC on three causal NVC models. Figure 6 shows the rate-
+PSNR curves for the baselines and their GFSC-enhanced variants with delays K = 1, 2, 3. Across
+all models, incorporating the delay window interaction consistently improves rate-distortion perfor-
+mance, with gains increasing as K grows. Notably, even a single-frame delay yields significant
+improvement. Table 1 further quantifies the BD-rate improvements. Across all datasets and models,
+GFSC achieves consistent bitrate reductions relative to causal baselines, demonstrating the effec-
+tiveness of limited delay for improving rate-distortion performance. See Appendix D.3 for results
+on 4K video dataset.
+7
+
+
+0.03
+0.05
+0.07
+0.09
+34
+35
+36
+37
+PSNR (dB)
+DCVC
+0.10
+0.20
+0.30
+0.40
+32
+34
+36
+38
+VCT
+0.10
+0.20
+0.30
+35
+36
+37
+38
+39
+DHVC
+0.06
+0.08
+0.10
+0.12
+35
+36
+37
+38
+Rate (bpp)
+PSNR (dB)
+0.10
+0.20
+0.30
+33
+34
+35
+36
+37
+38
+Rate (bpp)
+0.10
+0.20
+0.30
+36
+37
+38
+39
+40
+Rate (bpp)
+Causal
+1-Delay
+2-Delay
+3-Delay
+UVG
+MCL-JCV
+Figure 6: Rate-PSNR comparison between causal and GFSC-enhanced models on UVG and MCL-
+JCV dataset. Columns show DCVC, VCT, and DHVC, respectively.
+Table 1: BD-rate (%) of GFSC-enhanced models rela-
+tive to causal baselines.
+UVG (1080p)
+MCL-JCV (1080p)
+Delay
+DCVC
+VCT
+DHVC DCVC
+VCT
+DHVC
+K = 1 -20.57 -28.38
+-7.39
+-10.90 -32.35 -13.35
+K = 2 -25.29 -48.00 -10.17
+-17.32 -50.14 -14.65
+K = 3 -28.22 -55.78 -11.91
+-20.30 -56.70 -16.07
+Delayed baselines.
+In Fig. 7, we com-
+pare GFSC with delayed coding base-
+lines, including DCVC-B (Sheng et al.,
+2025) and HM (random access), under de-
+lay budgets K ≤3. For DCVC-B, we
+evaluate K = 1, 2, 3, corresponding to
+I-B-I, I-B-B-I, and I-B-B-B-I, re-
+spectively. For HM, due to its supported
+GOP structures, we evaluate K = 1, 3 us-
+ing I-B-I and I-B-B-B-I. We also include DCVC-L, a widened DCVC baseline with a pa-
+rameter count matched to DCVC-GFSC, to isolate the gain from delayed modeling and that due to
+increased model capacity. GFSC consistently achieves better rate-distortion performance than both
+the delayed and capacity-matched baselines. The corresponding BD-rate are reported in Table 2.
+Complexity analysis. Table 2 compares DCVC-GFSC with causal DCVC and DCVC-B. GFSC
+introduces only modest additional latency over the causal baseline as the delay budget increases,
+while consistently improving rate-distortion performance. Under matched delay constraints, GFSC
+remains substantially faster than DCVC-B and also achieves better BD-rate performance. These
+results show that GFSC provides a more efficient use of limited delay, offering stronger compression
+gains with considerably lower latency than bidirectional coding.
+5
+RELATED WORK
+Neural video compression. Recent NVC methods have achieved rate-distortion performance com-
+petitive with conventional video codecs. Most existing approaches follow a strictly causal predictive
+coding paradigm, in which each frame is encoded using only previously reconstructed frames. Early
+methods adopt motion compensation followed by residual coding (Lu et al., 2019; Agustsson et al.,
+2020; Lin et al., 2020), whereas more recent approaches directly model temporal dependencies in
+the latent space through learned conditional coding (Li et al., 2021; Sheng et al., 2022; Li et al.,
+2023; 2024; Mentzer et al., 2022). Although these methods support zero-frame delay coding, they
+cannot exploit correlations with future frames. Bidirectional codecs address this limitation through
+interpolation-based prediction (Wu et al., 2018; Djelouah et al., 2019; Xu et al., 2024) or bidirec-
+tional conditional modeling (Yang et al., 2020; Yılmaz & Tekalp, 2021; Sheng et al., 2025). How-
+ever, they typically rely on fixed anchor-frame structures and are designed for relatively large frame
+8
+
+
+0.04
+0.08
+0.12
+0.16
+33
+34
+35
+36
+37
+38
+Rate (bpp)
+PSNR (dB)
+0.04
+0.08
+0.12
+0.16
+33
+35
+37
+Rate (bpp)
+PSNR (dB)
+(a) UVG
+(b) MCL-JCV
+DCVC (causal)
+DCVC-B
+HM-RA
+DCVC-GFSC
+K = 1
+K = 2
+K = 3
+Figure 7: Rate-PSNR comparison under delay K ≤3 on (a) UVG and (b) MCL-JCV. Colors identify
+model families. Line styles and markers distinguish delay settings.
+Table 2: BD-rate (%) and computational complexity under matched delay budgets. Latency, mem-
+ory, FLOPs, and model parameters are reported for DCVC, DCVC-GFSC, and DCVC-B.
+Method
+Delay
+BD-rate
+Enc. Latency
+Dec. Latency
+Memory
+FLOPs
+Params
+K
+(%)
+(s/frame)
+(s/frame)
+(GB)
+(G/frame)
+(M)
+DCVC
+0
+0.0
+0.52
+0.44
+5.54
+4430.53
+34.53
+DCVC-L
+0
+-8.57
+0.53
+0.44
+5.54
+4447.51
+39.21
+DCVC-B
+1
+3.70
+0.84
+0.64
+10.95
+7153.37
+55.38
+2
+-18.64
+1.14
+0.89
+10.95
+8805.79
+55.38
+3
+-27.24
+1.16
+0.90
+10.95
+9632.01
+55.38
+DCVC-GFSC
+1
+-20.57
+0.65
+0.44
+5.52
+5916.28
+39.21
+2
+-25.29
+0.80
+0.44
+5.52
+7451.81
+39.21
+3
+-28.22
+0.88
+0.44
+5.52
+8987.58
+39.21
+delays, making them less flexible under small delay budgets. More recently, Xiang et al. (2025)
+incorporated 1-frame delay into a unified intra/inter coding framework. Their method, however, is
+specialized to the 1-delay setting and does not provide either a general construction for arbitrary
+delay budgets or an information-theoretic justification of the resulting rate-distortion gains.
+Delayed sequential coding. The information-theoretic foundations of delayed sequential coding
+have been studied in Ma et al. (2007); Ma & Ishwar (2007), showing that limited delay can improve
+the rate-distortion performance of sequential coding and even a single-frame delay holds potential
+for matching the JC optimality in specific cases, e.g. first-order Gauss-Markov sources. However,
+these results do not establish whether such optimality extends to general K-order Markov sources,
+nor do they provide a constructive coding architecture for practical video compression.
+6
+CONCLUSION
+We introduced GFSC, a general framework that treats frame delay as an explicit coding resource
+rather than fixing sequential video coding to the causal setting. By exploiting the clique structure
+of K-order Markov sources, we established the first rigorous result showing that a K-frame delay
+can attain joint-coding rate-distortion optimality for a broad class of general Markov sources. For
+Gauss-Markov sources, this construction further reduces to pairwise interactions with linear inter-
+polation sufficient statistics, revealing a simple structure behind the optimal auxiliaries. GFSC can
+be implemented with lightweight neural modules and integrated into existing NVC models with
+minimal architectural changes. Experiments consistently demonstrate improved rate-distortion per-
+formance over causal coding and bidirectional codecs under matched delay budgets. Together, these
+results identify limited delay as a fundamental and practically useful design dimension for neural
+video compression, bridging information-theoretic optimality and implementable coding architec-
+tures. Limitations and future directions are discussed in Appendix E.
+9
+
+
+REFERENCES
+Eirikur Agustsson, David Minnen, Nick Johnston, Johannes Ball´e, Sung Jin Hwang, and George
+Toderici. Scale-space flow for end-to-end optimized video compression. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 8503–8512, 2020.
+Jean B´egaint, Fabien Racap´e, Simon Feltman, and Akshay Pushparaja.
+Compressai:
+a py-
+torch library and evaluation platform for end-to-end compression research.
+arXiv preprint
+arXiv:2011.03029, 2020.
+Toby Berger. Rate-distortion theory. Wiley Encyclopedia of Telecommunications, 2003.
+Jun Chen, Farrokh Etezadi, and Ashish Khisti. Generalized gaussian multiterminal source cod-
+ing and probabilistic graphical models. In 2017 IEEE International Symposium on Information
+Theory (ISIT), pp. 719–723. IEEE, 2017.
+Jun Chen, Li Xie, Yameng Chang, Jia Wang, and Yizhong Wang. Generalized gaussian multiter-
+minal source coding: The symmetric case. IEEE Transactions on Information Theory, 66(4):
+2115–2128, 2020.
+Thomas M Cover. Elements of information theory. John Wiley & Sons, 1999.
+Imre Csisz´ar and J´anos K¨orner. Information theory: coding theorems for discrete memoryless sys-
+tems. Cambridge University Press, 2011.
+Abdelaziz Djelouah, Joaquim Campos, Simone Schaub-Meyer, and Christopher Schroers. Neural
+inter-frame compression for video coding. In Proceedings of the IEEE/CVF international confer-
+ence on computer vision, pp. 6421–6429, 2019.
+Robert M Gray and Thomas G Stockham. Dithered quantizers. IEEE Transactions on Information
+Theory, 39(3):805–812, 2002.
+Daphne Koller and Nir Friedman. Probabilistic graphical models, volume 165. MIT press Cam-
+bridge, 2009.
+Cheuk Ting Li and Abbas El Gamal. Strong functional representation lemma and applications to
+coding theorems. IEEE Transactions on Information Theory, 64(11):6967–6978, 2018.
+Jiahao Li, Bin Li, and Yan Lu. Deep contextual video compression. Advances in Neural Information
+Processing Systems, 34:18114–18125, 2021.
+Jiahao Li, Bin Li, and Yan Lu. Neural video compression with diverse contexts. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern recognition, pp. 22616–22626, 2023.
+Jiahao Li, Bin Li, and Yan Lu. Neural video compression with feature modulation. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 26099–26108,
+2024.
+Jianping Lin, Dong Liu, Houqiang Li, and Feng Wu. M-lvc: Multiple frames prediction for learned
+video compression. In Proceedings of the IEEE/CVF conference on computer vision and pattern
+recognition, pp. 3546–3554, 2020.
+Ze Liu, Jia Ning, Yue Cao, Yixuan Wei, Zheng Zhang, Stephen Lin, and Han Hu. Video swin
+transformer. In 2022 IEEE/CVF conference on computer vision and pattern recognition (CVPR),
+pp. 3192–3201. IEEE, 2022.
+Guo Lu, Wanli Ouyang, Dong Xu, Xiaoyun Zhang, Chunlei Cai, and Zhiyong Gao.
+Dvc: An
+end-to-end deep video compression framework. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pp. 11006–11015, 2019.
+Guo Lu, Xiaoyun Zhang, Wanli Ouyang, Li Chen, Zhiyong Gao, and Dong Xu. An end-to-end
+learning framework for video compression. IEEE transactions on pattern analysis and machine
+intelligence, 43(10):3292–3308, 2020.
+10
+
+
+Ming Lu, Zhihao Duan, Fengqing Zhu, and Zhan Ma. Deep hierarchical video compression. In
+Proceedings of the AAAI Conference on Artificial Intelligence, volume 38, pp. 8859–8867, 2024.
+Nan Ma and Prakash Ishwar.
+The value of frame-delays in the sequential coding of correlated
+sources. In 2007 IEEE International Symposium on Information Theory, pp. 1496–1500. IEEE,
+2007.
+Nan Ma, Ye Wang, and Prakash Ishwar. Delayed sequential coding of correlated sources. In 2007
+Information Theory and Applications Workshop, pp. 214–222. IEEE, 2007.
+Fabian Mentzer, George Toderici, David Minnen, Sung-Jin Hwang, Sergi Caelles, Mario Lucic, and
+Eirikur Agustsson. Vct: A video compression transformer. arXiv preprint arXiv:2206.07307,
+2022.
+Alexandre Mercat, Marko Viitanen, and Jarno Vanne. Uvg dataset: 50/120fps 4k sequences for
+video codec analysis and development. In Proceedings of the 11th ACM multimedia systems
+conference, pp. 297–302, 2020.
+Zaixi Shang, Joshua P Ebenezer, Alan C Bovik, Yongjun Wu, Hai Wei, and Sriram Sethuraman.
+Subjective assessment of high dynamic range videos under different ambient conditions. In 2022
+IEEE international conference on image processing (ICIP), pp. 786–790. IEEE, 2022.
+Xihua Sheng, Jiahao Li, Bin Li, Li Li, Dong Liu, and Yan Lu. Temporal context mining for learned
+video compression. IEEE Transactions on Multimedia, 25:7311–7322, 2022.
+Xihua Sheng, Li Li, Dong Liu, and Shiqi Wang. Bi-directional deep contextual video compression.
+IEEE Transactions on Multimedia, 2025.
+Lucas Theis and Eirikur Agustsson.
+On the advantages of stochastic encoders.
+arXiv preprint
+arXiv:2102.09270, 2021.
+Harish Viswanathan and Toby Berger. Sequential coding of correlated sources. IEEE Transactions
+on Information Theory, 46(1):236–246, 2002.
+Haiqiang Wang, Weihao Gan, Sudeng Hu, Joe Yuchieh Lin, Lina Jin, Longguang Song, Ping Wang,
+Ioannis Katsavounidis, Anne Aaron, and C-C Jay Kuo. Mcl-jcv: a jnd-based h. 264/avc video
+quality assessment dataset. In 2016 IEEE international conference on image processing (ICIP),
+pp. 1509–1513. IEEE, 2016.
+Chao-Yuan Wu, Nayan Singhal, and Philipp Krahenbuhl. Video compression through image inter-
+polation. In Proceedings of the European conference on computer vision (ECCV), pp. 416–431,
+2018.
+Hui Xiang, Yifan Bian, Li Li, Jingran Wu, Xianguo Zhang, and Dong Liu. Real-time neural video
+compression with unified intra and inter coding. arXiv preprint arXiv:2510.14431, 2025.
+Li Xie, Xiaolan Tu, Siyao Zhou, and Jun Chen. Generalized gaussian multiterminal source coding
+in the high-resolution regime. IEEE Transactions on Communications, 68(6):3782–3791, 2020.
+Chenming Xu, Meiqin Liu, Chao Yao, Weisi Lin, and Yao Zhao. Ibvc: Interpolation-driven b-frame
+video compression. Pattern Recognition, 153:110465, 2024.
+Tianfan Xue, Baian Chen, Jiajun Wu, Donglai Wei, and William T Freeman. Video enhancement
+with task-oriented flow. International Journal of Computer Vision, 127(8):1106–1125, 2019.
+En-Hui Yang, Lin Zheng, Da-Ke He, and Zhen Zhang. Rate distortion theory for causal video cod-
+ing: Characterization, computation algorithm, and comparison. IEEE transactions on information
+theory, 57(8):5258–5280, 2011.
+Ren Yang, Fabian Mentzer, Luc Van Gool, and Radu Timofte. Learning for video compression with
+hierarchical quality and recurrent enhancement. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition, pp. 6628–6637, 2020.
+M Akın Yılmaz and A Murat Tekalp. End-to-end rate-distortion optimized learned hierarchical
+bi-directional video compression. IEEE Transactions on Image Processing, 31:974–983, 2021.
+11
+
+
+Yichi Zhang and Fengqing Zhu. Opendcvcs: a pytorch open source implementation and perfor-
+mance evaluation of the dcvc series video codecs. arXiv preprint arXiv:2508.04491, 2025.
+Jacob Ziv. On universal quantization. IEEE Transactions on Information Theory, 31(3):344–347,
+2003.
+12
+
+
+A
+COMPARISON OF CODING STRUCTURES
+A.1
+DELAYED SEQUENTIAL CODING
+X1
+X2
+X3
+X4
+f1
+f2
+f3
+f4
+g1
+g2
+g3
+g4
+W
+W
+W
+W
+W
+W
+W
+W
+M1
+M2
+M3
+M4
+ˆ
+X1
+ˆ
+X2
+ˆ
+X3
+ˆ
+X4
+X1
+X2
+X3
+X4
+f1
+f2
+f3
+f4
+g1
+g2
+g3
+g4
+W
+W
+W
+W
+W
+W
+W
+W
+M1
+M2
+M3
+M4
+ˆ
+X1
+ˆ
+X2
+ˆ
+X3
+ˆ
+X4
+X1
+X2
+X3
+X4
+f1
+f2
+f3
+f4
+g1
+g2
+g3
+g4
+W
+W
+W
+W
+W
+W
+W
+W
+M1
+M2
+M3
+M4
+ˆ
+X1
+ˆ
+X2
+ˆ
+X3
+ˆ
+X4
+Figure 8: Illustration of three coding architectures for a four-frame source under 2-frame delay. Left:
+C-NC. Middle: NC-NC. Right: NC-C.
+For completeness, we briefly review the three canonical setups of delayed sequential coding intro-
+duced in Ma et al. (2007). These include: (i) noncausal encoder and causal decoder (NC-C), (ii)
+causal encoder and noncausal decoder (C-NC), and (iii) noncausal encoder and noncausal decoder
+(NC-NC). The NC-C setting is defined in Section 2.2. Here we provide the definitions of the re-
+maining two setups.
+C-NC (causal encoder, noncausal decoder). In the C-NC setting, the encoder operates causally,
+while the decoder is allowed a delay of K frames. The encoding and decoding mappings are given
+by
+fℓ: X1 × · · · × Xℓ× W →Mℓ,
+gℓ: M1 × · · · × Mmin{ℓ+K,L} × W →ˆ
+Xℓ.
+That is, the ℓ-th encoder has access only to past and current frames (X1, · · · , Xℓ), while the decoder
+reconstructs ˆXℓusing messages up to time ℓ+ K.
+NC-NC (noncausal encoder, noncausal decoder). In NC-NC setting, both encoders and decoders
+are allowed limited lookahead. Let K1 and K2 denote the delays at the encoder and decoder, re-
+spectively, such that K1 + K2 = K. The encoding and decoding mappings are defined as
+fℓ: X1 × · · · × Xmin{ℓ+K1,L} × W →Mℓ,
+gℓ: M1 × · · · × Mmin{ℓ+K2,L} × W →ˆ
+Xℓ.
+Thus, the encoder can access future frames up to K1 steps ahead, while the decoder reconstructs
+each frame with an additional delay of K2.
+These three setups characterize different ways of distributing the delay budget between the encoder
+and decoder, and together provide a unified framework for analyzing delayed sequential coding
+systems. We illustrate the corresponding system architectures for the three delayed setup in Figure 8.
+From a theoretical perspective, Corollary 6.1 in Ma et al. (2007) shows that all three setups achieve
+the same sum-rate performance for a given total delay K.
+A.2
+NVC PARADIGM COMPARISON
+We briefly review common practical video coding paradigms and compare them with the proposed
+GFSC architecture. Figure 9 provides a systematic comparison of these coding paradigms.
+P-frame coding. P-frame coding follows a causal predictive coding paradigm, where each frame
+is encoded conditioned only on previously reconstructed frames. This design enables low-latency
+13
+
+
+X1
+X2
+X3
+X4
+I
+P
+P
+P
+(a) Causal coding
+X1
+X2
+X3
+X4
+X5
+I
+B
+B
+B
+I
+(b) Bidirectional coding
+X1
+U1
+X2
+U2
+X3
+R
+A
+R
+A
+R
+(c) GFSC-1
+Figure 9: Left: graphical illustration for causal predictive coding. Middle: graphical illustration for
+bidirectional coding. Right: graphical illustration for proposed GFSC-1.
+processing and efficient implementation, and forms the foundation of most existing neural video
+compression methods. However, the strictly causal structure prevents the encoder from exploiting
+future frames, which limits the ability to capture longer-range temporal dependencies.
+B-frame coding. B-frame coding extends the predictive paradigm by incorporating both past and
+future frames through bidirectional prediction. In practice, this is typically implemented via inter-
+polation or bidirectional motion modeling between anchor frames. While such designs can improve
+compression efficiency, they usually rely on fixed temporal structures and are better suited to larger-
+delay settings. As a result, they are less flexible in scenarios with limited delay budgets.
+GFSC. The proposed GFSC framework generalizes these paradigms by explicitly modeling a lim-
+ited delay budget. Instead of relying on fixed bidirectional structures, GFSC constructs clique-wise
+dependencies within a delay window, enabling a flexible tradeoff between delay and compression
+efficiency. This formulation bridges the gap between strictly causal coding and joint coding, while
+remaining compatible with modern NVC architectures.
+B
+MARKOV SOURCE MODELS UNDER GENERAL DISTORTION
+B.1
+OPERATIONAL RATE-DISTORTION ANALYSIS
+Recall the information RD region for GFSC in Definition 3.4. We first derive the information sum-
+rate function.
+Theorem B.1 (Information minimum sum-rate). For a given distortion tuple D, the minimum in-
+formation sum-rate of GFSC-K as in Definition 3.4 is
+RGFSC
+K,sum(D) = min I(X; U),
+(8)
+and the minimum is taken over all auxiliary variables U satisfying Markov chains in equation 5 and
+the distortion constraints in equation 4.
+Proof. By Definition 3.4, for a given distortion tuple D, the minimum sum-rate is given by
+RGFSC
+K,sum(D) = min
+L
+X
+ℓ=1
+I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1),
+where the minimization is over all feasible auxiliary variables satisfying the constraints in equa-
+tion 5 and the distortion constraints. For notational convenience, we denote each stage rate as
+I(Xℓ+K
+ℓ
+; Uℓ|U ℓ−1). Then by the Markov chain in equation 5, we apparently have:
+I(X; Uℓ|U ℓ−1) = I(Xℓ+K
+ℓ
+; Uℓ|U ℓ−1) + I(X \ Xℓ+K
+ℓ
+; Uℓ|Xℓ+K
+ℓ
+, U ℓ−1)
+= I(Xℓ+K
+ℓ
+; Uℓ|U ℓ−1).
+Substituting this into the sum-rate expression, we have
+RGFSC
+K,sum(D) = min
+L
+X
+ℓ=1
+I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1)
+(9)
+= min
+L
+X
+ℓ=1
+I(X; Uℓ|U ℓ−1)
+(10)
+= min I(X; U),
+(11)
+14
+
+
+where equation 10 follows from the Markov chain in equation 5, and equation 11 follows from the
+chain rule. This completes the proof.
+Next, we show the proof for Theorem 3.5 to characterize the operational RD region.
+Theorem B.2 (Rate-distortion characterization). For a given distortion tuple D, the following holds:
+1. For any R ∈RK(D), the operational rate region Ro
+K(D) satisfies
+R + log(R + 1) + 5 ∈Ro
+K(D),
+(12)
+and
+Ro
+K(D) ⊆RK(D).
+(13)
+2. The operational sum-rate satisfies
+RGFSC
+K,sum(D) ≤RGFSC,o
+K,sum (D) ≤RGFSC
+K,sum(D) + O
+ log RGFSC
+K,sum(D)
+
+.
+(14)
+where RGFSC
+K,sum(D) is characterized in Theorem B.1.
+Proof. Part 1. One-shot achievability
+By Strong Functional Representation Lemma (SFRL) in Li & El Gamal (2018), for jointly dis-
+tributed random variables X, Y ∼PXY , there exists Z independent of X, and function f such that
+Y = f(X, Z). Z is not necessarily unique. SFRL further states that there exists a Z such that:
+H(Y |Z) ≤I(X; Y ) + log(I(X; Y ) + 1) + 4.
+Notice that this can be extended to conditional distribution case. Given PXY |W , there exists Z
+independent of (X, W) such that Y = f(X, W, Z) and:
+H(Y |W, Z) ≤I(X; Y |W) + log(I(X; Y |W) + 1) + 4.
+Proof of equation 12: R + log(R + 1) + 5 ∈Ro
+K(D).
+For a given D and R ∈RK(D), let U be jointly distributed with X, where the Markov chains in
+equation 5, rate and distortion constraints in equation 4 are all satisfied. Denote the joint distribution
+of such (X, U, ˆX) by PXU ˆX and according to the Markov chains in equation 5, we have:
+PXU ˆX = PX ·
+L
+Y
+ℓ=1
+PUℓ|Xmin{ℓ+K,L}
+ℓ
+,U ℓ−1 ·
+L
+Y
+ℓ=1
+1{ ˆXℓ= gℓ(U ℓ)}.
+(15)
+Now, fix the marginal distribution PU in equation 15 and use it to construct the codebook, i.e.,
+PU = PUL|U L−1 · · · PUℓ|U ℓ−1 · · · PU1.
+(16)
+By the SFRL, we have:
+1. (First stage) There exists a random variable Z1 independent of XK+1 and a deterministic
+function q1 such that U1 = q1(XK+1, Z1) and:
+H(U1|Z1) ≤I(XK+1; U1) + log(I(XK+1; U1) + 1) + 4.
+Therefore, the first stage encoder applies the deterministic function q1 to get U1 whose
+distribution needs to be preserved according to equation 16.
+2. (Intermediate stages) By the conditional SFRL, there exists a random variable Zℓin-
+dependent of (U ℓ−1, Xmin{ℓ+K,L}
+ℓ
+) and a deterministic function qℓsuch that Uℓ
+=
+qℓ(U ℓ−1, Xmin{ℓ+K,L}
+ℓ
+, Zℓ) and:
+H(Uℓ|U ℓ−1, Zℓ) ≤I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1)+log
+
+I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1) + 1
+
++4
+At the intermediate ℓ-th stage (including the last stage), the ℓ-th encoder has access to U ℓ−1
+from earlier stages. So upon observing the delayed source window Xmin{ℓ+K,L}
+ℓ
+, it applies
+qℓto get Uℓwhose conditional distribution needs to be preserved according to equation 16.
+15
+
+
+Now the encoding and decoding schemes are as follows:
+1. (First stage encoder) With Z1 available at encoder and decoder, we can design prefix-free
+codes indexed by Z1 to losslessly represent U1 with the expected codeword length ¯R1
+¯R1 ≤H(U1|Z1) + 1 ≤I(XK+1; U1) + log(I(XK+1; U1) + 1) + 5
+2. (Intermediate stage encoders) With Zℓavailable at encoder and decoder, we can design
+prefix-free codes indexed by (Zℓ, U ℓ−1) to losslessly represent Uℓwith the expected code-
+word length ¯Rℓ
+¯Rℓ≤H(Uℓ|U ℓ−1, Zℓ) + 1
+≤I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1) + log(I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1) + 1) + 5
+3. (Decoders) Upon receiving all U ℓ, the ℓ-th decoder generate the reconstruction via ˆXℓ=
+gℓ(U ℓ).
+Then we have R + log(R + 1) + 5 ∈Ro
+K(D).
+Proof of equation 13: Ro
+K(D) ⊆RK(D).
+For any D and R ∈Ro
+K(D), shared randomness W ∈W, encoding and decoding functions
+fℓ: X min{ℓ+K,L}
+ℓ
+× Mℓ−1 × W →Mℓ,
+gℓ: Mℓ× W →ˆ
+Xℓ,
+such that:
+Rℓ≥E[l(Mℓ)],
+ℓ= 1, · · · , L,
+(17)
+Dℓ≥E[dℓ(Xℓ, ˆXℓ)],
+ℓ= 1, · · · , L,
+(18)
+we need to lower bound the expected length of messages l(Mℓ). Define:
+U1 ≜(M1, W),
+Uℓ≜(M ℓ, W), ℓ= 1, · · · , L.
+(19)
+Then for the first stage:
+R1 ≥E[l(M1)] ≥H(M1|W) = I(XK+1; U1).
+(20)
+For the intermediate stages:
+Rℓ≥E[l(Mℓ)] ≥H(Mℓ|M ℓ−1, W)
+= I(Xmin{ℓ+K,L}
+ℓ
+; Mℓ|M ℓ−1, W)
+= I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1).
+(21)
+Notice that equation 19 implies the following Markov chains:
+Uℓ→(Xmin{ℓ+K,L}
+ℓ
+, U ℓ−1) →X,
+ℓ= 1, · · · , L.
+(22)
+On the other hand, by the definition of decoding functions and equation 19, we have that:
+ˆXℓ= gℓ(M ℓ, W) ≜ηℓ(U ℓ)
+(23)
+where ηℓare deterministic functions.
+Now consider the fact that the set of constraints in eqs. (17), (18), (20) and (21), Markov chains
+in eq. (22) and deterministic functions in eq. (23) constitute an information rate-distortion region,
+denote by ˜RK, which is the set of (R, D) such that:
+Rℓ≥I(Xmin{ℓ+K,L}
+ℓ
+; Uℓ|U ℓ−1),
+ℓ= 1, · · · , L,
+Dℓ≥E[dℓ(Xℓ, ˆXℓ)],
+ℓ= 1, · · · , L,
+for all auxiliary random variables U and ˆX satisfying:
+ˆXℓ= ηℓ(U ℓ),
+Uℓ→(Xmin{ℓ+K,L}
+ℓ
+, U ℓ−1) →X,
+16
+
+
+where ηℓare some deterministic functions. By the definition of RK in Definition 3.4, apparently we
+have ˜RK = RK. Therefore, Ro
+K(D) ⊆˜RK(D) = RK(D). This completes the proof of Part 1.
+Part 2. Sum-rate bounds
+As we have already shown in Theorem B.1 that the information minimum sum-rate function of
+GFSC-K system is:
+RGFSC
+K,sum(D) = min I(X; U),
+subject to constraints in eqs. (4) and (5). We also have Ro
+K(D) ⊆RK(D) in the proof of equa-
+tion 13. Thus, we have the following lower bound:
+RGFSC,o
+K,sum (D) =
+min
+R∈Ro
+K(D)
+L
+X
+ℓ=1
+Rℓ≥
+min
+R∈RK(D)
+X
+ℓ=1
+Rℓ= RGFSC
+K,sum(D).
+(24)
+For the sum-rate upper bound, based on the proof of equation 12, we have:
+RGFSC,o
+K,sum (D) =
+min
+R∈Ro
+K(D)
+L
+X
+ℓ=1
+Rℓ
+(25)
+≤
+min
+R∈RK(D)
+L
+X
+ℓ=1
+(Rℓ+ log(Rℓ+ 1) + 5)
+(26)
+=
+min
+R∈RK(D)
+L
+X
+ℓ=1
+Rℓ+
+L
+X
+ℓ=1
+log(Rℓ+ 1) + 5L
+(27)
+≤
+min
+R∈RK(D) I(X; U) + L · log
+ PL
+ℓ=1(Rℓ+ 1)
+L
+!
++ 5L
+(28)
+≤RGFSC
+K,sum(D) + L · log
+ 
+RGFSC
+K,sum(D) + L
+L
+!
++ 5L
+(29)
+= RGFSC
+K,sum(D) + O
+ log RGFSC
+K,sum(D)
+
+,
+(30)
+where equation 26 follows equation 12, equation 28 follows the Jensen’s inequality for logarithms.
+This completes the proof of Part 2.
+B.2
+JOINT-CODING OPTIMALITY FOR GENERAL MARKOV SOURCES
+We provide several definitions for a general distortion function.
+Definition B.3 (Distortion function). Define the general distortion function form as:
+d : X × X →[0, ∞),
+with d(x, x) = 0 and d(x, w) > 0 for w, x ∈X, w̸ = x.
+Definition B.4. Define dmin ≜minx̸=w d(x, w) > 0 for all x, w ∈X.
+Definition B.5. Define dmax ≜maxx̸=w d(x, w) < ∞for all x, w ∈X.
+For a general K-order Markov source as in Definition 3.6, its probability mass function pX can be
+naturally factorized as pX(x) = QL−K
+j=1 ψj(xCj) according to eq. (2), where Cj ≜{j, · · · , j + K}.
+With the positive distribution assumption, ψj(xCj) is strictly positive factor. We define ψj as the
+corresponding vectorized factor.
+Definition B.6. For pX, define the minimum probability mass pmin ≜minx∈X1×···×XL pX(x) > 0.
+Definition B.7. Define the clique minimum mass cj ≜minxCj ψj(xCj) > 0 for 1 ≤j ≤L −K.
+Definition B.8. Define the index set Iℓ≜{max{1, ℓ−K}, · · · , min{ℓ, L −K}} for 1 ≤ℓ≤L.
+Now we provide the proof for Theorem 3.7.
+17
+
+
+X1
+X2
+X3
+X4
+X5
+X1
+X2
+X3
+X4
+X5
+U1
+U2
+U3
+Figure 10: Clique-wise augmentation of a second-order Markov network, where Uj is associated
+with the maximal clique (Xj, Xj+1, Xj+2).
+Lemma B.9 (Nontrivial clique-wise auxiliary variables). Let X be a K-order Markov source as in
+Definition 3.6. Define a positive constant δ0 as follow:
+δ0 ≜
+min
+1≤j≤L−K
+(
+1 −
+
+1 +
+cj
+∥ψj∥2
+−
+1
+K+1 )
+.
+(31)
+Then for any 0 < δ < δ0, there exist clique-wise auxiliary random variables (U (δ))L−K, jointly
+distributed with X, such that:
+1. Joint distribution of (X, (U (δ))L−K) is also positive.
+2. The following Markov chains hold:
+U (δ)
+j
+→Xj+K
+j
+→(X, U (δ)
+−j ),
+j = 1, . . . , L −K,
+(32)
+Xℓ→U (δ)
+Iℓ→X−ℓ,
+ℓ= 1, . . . , L.
+(33)
+3. Define ∆ℓ(δ) ≜mingℓE[dℓ(Xℓ, gℓ(U (δ)
+Iℓ))] over arbitrary deterministic mapping gℓ. Then
+∆ℓ(δ) is nontrivial, i.e. 0 < ∆ℓ(δ) ≤dℓ,max.
+Proof. We provide the proof in two parts. We first show that ∆ℓ(δ) < dℓ,max is generally true
+based on the definition of distortion in Definition B.3. Then we provide a way to explicitly construct
+auxiliary variables (U (δ))L−K, which satisfy the Markov conditions in eqs. (32) and (33) and induce
+strictly positive distortion for each source variable, i.e. ∆ℓ(δ) > 0, for all 0 < δ < δ0.
+Part I. ∆ℓ(δ) ≤dℓ,max.
+For arbitrary decoder input UIℓ, we define Vℓ≜UIℓwith Vℓ≜Umax{1,ℓ−K} × · · · × Umin{ℓ,L−K}.
+Let ˆxℓ≜gℓ(vℓ) denote the decoder reconstruction given observation vℓ∈Vℓ. By the definition of
+distortion dℓ: Xℓ× Xℓ→[0, ∞), we also have ˆxℓ∈Xℓ. Let pXℓVℓbe the joint distribution of Xℓ
+and Vℓ, then we can bound the induced distortion:
+∆ℓ= min
+gℓE[dℓ(Xℓ, gℓ(Vℓ))]
+(34)
+≤E[dℓ(Xℓ, gℓ(Vℓ))]
+(35)
+=
+X
+xℓ,vℓ
+pXℓVℓ(xℓ, vℓ)dℓ(xℓ, ˆxℓ)
+(36)
+≤
+X
+xℓ,vℓ
+pXℓVℓ(xℓ, vℓ)dℓ,max
+(37)
+= dℓ,max < ∞,
+(38)
+where equation 35 is from the definition of ∆ℓ, equation 37 is from Definition B.5. So ∆ℓ≤dℓ,max
+is generally true for arbitrary auxiliary variables Vℓ.
+Part II. ∆ℓ(δ) > 0.
+For ∆ℓ(δ) > 0, we proceed in two steps. First, for the general distortion function in Definition B.3,
+we derive the necessary and sufficient condition to attain positive distortion. We then construct a
+set of auxiliary random variables {Uj}L−K
+j=1
+and show that they satisfy both the required Markov
+conditions in eqs. (32) and (33) and the derived condition for positive distortion.
+18
+
+
+Positive distortion analysis. For a given observation vℓ∈Vℓat decoder side, the goal of j-stage
+decoding is to minimize expected distortion:
+E[dℓ(Xℓ, gℓ(Vℓ))] =
+X
+vℓ
+pVℓ(vℓ)
+X
+xℓ
+pXℓ|Vℓ(xℓ|vℓ)dℓ(xℓ, ˆxℓ).
+(39)
+Here, we define the conditional risk Rvℓ(ˆxℓ) ≜P
+xℓpXℓ|Vℓ(xℓ|vℓ)dℓ(xℓ, ˆxℓ). Apparently we have
+Rvℓ(ˆxℓ) ≥minˆxℓ∈XℓRvℓ(ˆxℓ), thereby
+E[dℓ(Xℓ, gℓ(Vℓ))] ≥
+X
+vℓ
+pVℓ(vℓ) min
+ˆxℓ∈XℓRvℓ(ˆxℓ).
+(40)
+Then the optimal decoding function g∗
+ℓsatisfies:
+g∗
+ℓ(vℓ) ∈arg min
+ˆxℓ∈Xℓ
+X
+xℓ∈Xℓ
+pXℓ|Vℓ(xℓ|vℓ)dℓ(xℓ, ˆxℓ).
+(41)
+In addition, as in Definition B.3, we have dℓ(xℓ, xℓ) = 0 and dℓ(xℓ, ˆxℓ) > 0 for any xℓ̸ = ˆxℓ. Then
+for the minimum conditional risk minˆxℓRvℓ(ˆxℓ), we have:
+min
+ˆxℓRvℓ(ˆxℓ) = min
+ˆxℓ
+X
+xℓ
+pXℓ|Vℓ(xℓ|vℓ)dℓ(xℓ, ˆxℓ)
+(42)
+= min
+ˆxℓ
+X
+xℓ̸=ˆxℓ
+pXℓ|Vℓ(xℓ|vℓ)dℓ(xℓ, ˆxℓ)
+(43)
+≥min
+ˆxℓ
+X
+xℓ̸=ˆxℓ
+pXℓ|Vℓ(xℓ|vℓ)dj,min
+(44)
+= dj,min
+
+1 −max
+ˆxℓpXℓ|Vℓ(ˆxℓ|vℓ)
+
+.
+(45)
+The minimum conditional risk is zero if and only if pXℓ|Vℓ(·|vℓ) is Dirac delta function, i.e.,
+pXℓ|Vℓ(xℓ|vℓ) = δ(xℓ−ˆxℓ) =
+1,
+xℓ= ˆxℓ,
+0,
+xℓ̸ = ˆxℓ.
+(46)
+Therefore, the induced distortion ∆ℓis zero if and only if pXℓ|Vℓ(·|vℓ) is delta function for all vℓ
+with pVℓ(vℓ) > 0. This is also equivalent to H(Xℓ|Vℓ) = 0. It is obvious that both distortion ϵℓ
+and pXℓ|Vℓentries are non-negative. Therefore, it suffice to induce positive distortion ∆ℓ(δ) > 0 if
+we can construct auxiliary variables Vℓwith positive distribution and positive backward test channel
+pXℓ|Vℓfor all ℓ. In the following part, we provide an explicit construction.
+Construction of auxiliary variables. In this part, we show that for K-order Markov source X as
+defined in Definition 3.6, we can always construct appropriate auxiliary variables, which satisfy all
+the conditions. For X ∼pX, pX naturally adopts the following clique factorization:
+pX(x) =
+L−K
+Y
+j=1
+ψj(xCj)
+(47)
+where Cj ≜{j, · · · , j + K}, and ψj(xCj) > 0 is a positive clique factor since X has positive joint
+distribution. In addition, ψj(xCj) can be further represented by a vectorized clique factor ψj ∈RNj
++
+with Nj ≜Qj+K
+r=j |Xr|.
+For j-th clique, we define the following auxiliary variable U (δ)
+j
+with (K + 1) components:
+U (δ)
+j
+≜(U (δ)
+j,r : r ∈Cj)
+with
+U (δ)
+j,r ∈Xr,
+(48)
+which is also U (δ)
+j
+≜(U (δ)
+j,j , · · · , U (δ)
+j,j+K). Now suppose a positive constant 0 < δ < 1, for each
+U (δ)
+j,r , we consider a transition matrix Q(δ)
+j,r ∈R|Xr|×|Xr| from U (δ)
+j,r to Xr with each entry as:
+Q(δ)
+j,r(xr, u(δ)
+j,r) = qXr|U (δ)
+j,r (xr|u(δ)
+j,r) = (1 −δ)1{xr = u(δ)
+j,r} + δ · νr(xr),
+(49)
+19
+
+
+where νr denotes arbitrary positive distribution over Xr. Here, we choose νr(xr) to be the uniform
+distribution, therefore νr(xr) =
+1
+|Xr| for all xr ∈Xr. Then Q(δ)
+j,r can be further written as:
+Q(δ)
+j,r = (1 −δ) · I +
+δ
+|Xr| · 11⊤=
+
+
+1 −δ +
+δ
+|Xr|
+· · ·
+δ
+|Xr|
+...
+...
+...
+δ
+|Xr|
+· · ·
+1 −δ +
+δ
+|Xr|
+
+
+|
+{z
+}
+u(δ)
+j,r∈Xr
+
+
+
+
+
+xr ∈Xr.
+(50)
+It can be verified that Q(δ)
+j,r has eigenvalues:
+λ(Q(δ)
+j,r) = {1, 1 −δ}.
+Therefore as long as 0 < δ < 1, Q(δ)
+j,r is invertible and has all positive entries, which makes it a valid
+transition matrix. We also have the following form of the inverse of Q(δ)
+j,r
+
+Q(δ)
+j,r
+−1
+=
+1
+1 −δ
+
+I −
+δ
+|Xr|11⊤
+
+.
+(51)
+For the maximal clique Cj, we further define the clique-wise transition matrix Q(δ)
+j
+∈RNj×Nj
++
+as:
+Q(δ)
+j
+≜
+O
+r∈Cj
+Q(δ)
+j,r,
+(52)
+where N denotes the matrix Kronecker product. Each entry Q(δ)
+j (xCj, u(δ)
+j ) represents the backward
+test channel from u(δ)
+j
+to xCj, i.e. qXCj |U (δ)
+j (xCj|u(δ)
+j ). For example, consider the 2-order Markov
+source (X1, · · · , X5) in Figure 10, we define the following constructions:
+U (δ)
+1
+≜(U (δ)
+1,1, U (δ)
+1,2, U (δ)
+1,3)
+Q(δ)
+1
+≜Q(δ)
+1,1⊗Q(δ)
+1,2⊗Q(δ)
+1,3
+−−−−−−−−−−−−−−−→(X1, X2, X3)
+U (δ)
+2
+≜(U (δ)
+2,2, U (δ)
+2,3, U (δ)
+2,4)
+Q(δ)
+2
+≜Q(δ)
+2,2⊗Q(δ)
+2,3⊗Q(δ)
+2,4
+−−−−−−−−−−−−−−−→(X2, X3, X4)
+U (δ)
+3
+≜(U (δ)
+3,3, U (δ)
+3,4, U (δ)
+3,5)
+Q(δ)
+3
+≜Q(δ)
+3,3⊗Q(δ)
+3,4⊗Q(δ)
+3,5
+−−−−−−−−−−−−−−−→(X3, X4, X5)
+(53)
+For 0 < δ < 1, Q(δ)
+j
+is also invertible since the Kronecker product of invertible matrices is also
+invertible. It can be verified that Q(δ)
+j
+has the following set of eigenvalues:
+λ(Q(δ)
+j ) = {1, 1 −δ, · · · , (1 −δ)K+1}.
+(54)
+Accordingly, the eigenvalues for its inverse (Q(δ)
+j )−1 can be written as (1−δ)−k, k = 0, · · · , K +1.
+Recall the positive vectorized clique factor ψj for clique Cj, given Q(δ)
+j
+constructed above, we need
+to further find a positive vectorized factor ϕ(δ)
+j
+satisfying:
+ψj = Q(δ)
+j ϕ(δ)
+j .
+(55)
+Since Q(δ)
+j
+is invertible, it is equivalent to find a valid positive factor such that:
+ϕ(δ)
+j
+≜(Q(δ)
+j )−1ψj ∈RNj.
+(56)
+Now we will show that Q(δ)
+j
+→I as δ →0, thereby ϕ(δ)
+j
+→ψj. Let ∥· ∥2 denotes the induced
+spectral norm of a matrix. It is known that the spectral norm of a positive semi-definite matrix is
+also its maximum eigenvalue. Notice that (Q(δ)
+j )−1 −I is a positive semi-definite matrix, then
+(Q(δ)
+j )−1 −I
+
+2 = λmax
+
+(Q(δ)
+j )−1 −I
+
+= (1 −δ)−(K+1) −1.
+(57)
+20
+
+
+By the definition of ϕ(δ)
+j
+in equation 56, we further have:
+∥ϕ(δ)
+j
+−ψj∥∞≤∥ϕ(δ)
+j
+−ψj∥2
+(58)
+=
+(Q(δ)
+j )−1ψj −ψj
+
+2
+(59)
+=
+
+
+(Q(δ)
+j )−1 −I
+
+ψj
+
+2
+(60)
+≤
+(Q(δ)
+j )−1 −I
+
+2 ∥ψj∥2
+(61)
+=
+
+(1 −δ)−(K+1) −1
+
+∥ψj∥2 ≜F(δ).
+(62)
+We know that ψj is strictly positive factor due to positive joint distribution of source X. By the
+definition of U (δ)
+j
+in equation 48, we have Uj = XCj. Therefore, vectorized factors ϕ(δ)
+j
+and ψj have
+the same coordinate ordering. Then we can have:
+ϕ(δ)
+j (uj) ≥ψj(uj) −|ϕ(δ)
+j (uj) −ψj(uj)|
+(63)
+≥cj −∥ϕ(δ)
+j
+−ψj∥∞
+(64)
+≥cj −F(δ).
+(65)
+Now we can set δ as following:
+0 < δ < 1 −
+
+1 +
+cj
+∥ψj∥2
+−
+1
+K+1
+.
+(66)
+Then it can be verified that F(δ) < cj, thereby ϕ(δ)
+j (uj) > 0 for every uj. As we have L −K
+maximal cliques for the K-order Markov source X, we can define the following positive constant:
+δ0 ≜
+min
+1≤j≤L−K
+(
+1 −
+
+1 +
+cj
+∥ψj∥2
+−
+1
+K+1 )
+(67)
+Thus for any 0 < δ < δ0 and all j, ϕ(δ)
+j
+is a valid positive vectorized factor. By equation 56, we also
+have ψj(xCj) = P
+u(δ)
+j
+ϕ(δ)
+j (u(δ)
+j ) Q
+r∈Cj Q(δ)
+j,r(xr, u(δ)
+j,r). Now we define the following augmented
+joint distribution:
+q
+
+x, u(δ)
+1 , · · · , u(δ)
+L−K
+
+≜
+L−K
+Y
+j=1
+
+ϕ(δ)
+j (u(δ)
+j )
+Y
+r∈Cj
+Q(δ)
+j,r(xr, u(δ)
+j,r)
+
+.
+(68)
+First, we already know that Q(δ)
+j,r has all positive entries and ϕ(δ)
+j
+is a positive vectorized factor for
+0 < δ < δ0. Then q
+ x, (u(δ))L−K
+is also positive for 0 < δ < δ0. Second, we have:
+X
+x
+X
+(u(δ))L−K
+q
+
+x, (u(δ))L−K
+=
+X
+x
+X
+u(δ)
+1
+· · ·
+X
+u(δ)
+L−K
+L−K
+Y
+j=1
+
+ϕ(δ)
+j (u(δ)
+j )
+Y
+r∈Cj
+Q(δ)
+j,r(xr, u(δ)
+j,r)
+
+
+=
+X
+x
+L−K
+Y
+j=1
+X
+u(δ)
+j
+
+ϕ(δ)
+j (u(δ)
+j )
+Y
+r∈Cj
+Q(δ)
+j,r(xr, u(δ)
+j,r)
+
+
+=
+X
+x
+L−K
+Y
+j=1
+ψj(xCj)
+=
+X
+x
+pX(x) = 1.
+(69)
+Therefore, this is a valid positive joint distribution for (X, (U (δ))L−K). Next we show that the
+above constructed auxiliary variables and the corresponding joint distribution satisfy all the Markov
+constraints and the positive induced distortion.
+21
+
+
+Markov conditions in equation 32. Now we verify the constructed joint distribution satisfy Markov
+conditions in equation 32. First, Markov conditions in equation 32 is equivalent to:
+p(uL−K|x) =
+L−K
+Y
+j=1
+p(uj|xCj)
+(70)
+Based on the joint distribution defined in equation 68, we can write:
+q
+
+(u(δ))L−K|x
+
+= q
+ x, (u(δ))L−K
+pX(x)
+=
+QL−K
+j=1
+
+ϕ(δ)
+j (u(δ)
+j ) Q
+r∈Cj Q(δ)
+j,r(xr, u(δ)
+j,r)
+
+QL−K
+j=1 ψj(xCj)
+=
+L−K
+Y
+j=1
+ϕ(δ)
+j (u(δ)
+j ) Q
+r∈Cj Q(δ)
+j,r(xr, u(δ)
+j,r)
+ψj(xCj)
+(71)
+Then it can be verified that q(uL−K|x) = QL−K
+j=1 q(uj|xj+K
+j
+) is true, thereby the Markov conditions
+in equation 32 are satisfied.
+Markov conditions in equation 33. Now we verify the constructed joint distribution satisfy Markov
+conditions in equation 33, which is equivalent to:
+p(x|uL−K) = p(x1|u1)p(x2|u2) · · · p(xℓ|uℓ
+ℓ−K) · · · p(xL|uL−K)
+=
+L
+Y
+ℓ=1
+p(xℓ|umin{ℓ,L−K}
+max{1,ℓ−K}) =
+L
+Y
+ℓ=1
+p(xℓ|uIℓ).
+(72)
+Now for the constructed joint distribution in equation 68, we can reorder the probability mass func-
+tion as:
+q
+
+x, (u(δ))L−K
+=
+
+
+L−K
+Y
+j=1
+ϕ(δ)
+j (u(δ)
+j )
+
+
+
+
+L−K
+Y
+j=1
+Y
+r∈Cj
+Q(δ)
+j,r(xr, u(δ)
+j,r)
+
+
+=
+
+
+L−K
+Y
+j=1
+ϕ(δ)
+j (u(δ)
+j )
+
+
+" L
+Y
+ℓ=1
+Y
+m∈Iℓ
+Q(δ)
+m,ℓ(xℓ, u(δ)
+m,ℓ)
+#
+=
+
+
+L−K
+Y
+j=1
+ϕ(δ)
+j (u(δ)
+j )
+
+
+" L
+Y
+ℓ=1
+Fℓ(xℓ, u(δ)
+Iℓ)
+#
+(73)
+It can be verified that we have the following conditional distribution form:
+q
+
+xj|x−j, (u(δ))L−K
+=
+Fj(xj, u(δ)
+Ij )
+P
+y∈Xj Fj(y, u(δ)
+Ij )
+,
+(74)
+so the factorized form of this conditional distribution is only dependent on u(δ)
+Ij . Therefore, Xj ⊥⊥
+(X−j, U \ UIj)|UIj, which is equivalent to the Markov conditions in equation 33.
+Positive induced distortion. We have already shown that ∆ℓ(δ) > 0 if and only if pXℓ|Vℓis not point
+mass. For arbitrary 0 < δ < δ0, we can construct auxiliary variables U (δ)
+j
+≜(U (δ)
+j,j , · · · , U (δ)
+j,j+K)
+and the corresponding joint distribution q
+ x, (u(δ))L−K
+with all positive entries. Therefore the
+induced distortion for each Xℓis also positive, i.e. ∆ℓ(δ) > 0 for 0 < δ < δ0. Specifically, for Xℓ
+22
+
+
+and a set of auxiliary variables (U (δ))L−K constructed above, we have the induced distortion:
+∆ℓ(δ) ≜min
+gℓE[dℓ(Xℓ, gℓ(U (δ)
+Iℓ))]
+(75)
+=
+X
+u(δ)
+Iℓ
+q(u(δ)
+Iℓ) min
+ˆxℓ∈Xℓ
+X
+xℓ
+Q(δ)(xℓ, uIℓ)dℓ(xℓ, ˆxℓ)
+(76)
+≥
+X
+u(δ)
+Iℓ
+q(u(δ)
+Iℓ)dℓ,min min
+ˆxℓ
+X
+xℓ̸=ˆxℓ
+Q(δ)(xℓ, uIℓ) > 0
+(77)
+where minˆxℓ
+P
+xℓ̸=ˆxℓQ(δ)(xℓ, uIℓ) is a positive function of ˆxℓ. Moreover, for arbitrary δ such that
+0 < δ < δ0, we can define the following distortion region:
+DAUX ≜{D : 0 < Dℓ< ∆ℓ(δ), 1 ≤ℓ≤L}.
+(78)
+Within this distortion region DAUX, there always exist appropriate auxiliary variables (U (δ))L−K
+constructed as above. This completes the proof.
+Lemma B.9 shows that there always exist a class of clique-wise auxiliary variables for a K-order
+Markov source with positive distribution, such that the induced distortion for each source variable is
+also positive. Next we prove two Lemmas to characterize the RD optimal backward test channel for
+a positive distributed source. We first define the Neumann series which will be used in the proof.
+Definition B.10 (Neumann series). For a matrix A ∈Rn×n, the series P∞
+k=0 Ak, with A0 = In, is
+called the Neumann series associated with A. If ∥A∥1 < 1, where ∥· ∥1 denotes the induced matrix
+1-norm, this series converges, and In −A is invertible with
+(In −A)−1 =
+∞
+X
+k=0
+Ak.
+(79)
+Moreover, we have
+(In −A)−1 −In
+
+1 ≤
+∞
+X
+k=1
+∥A∥k
+1 =
+∥A∥1
+1 −∥A∥1
+.
+(80)
+Lemma B.11. Consider random variable X ∈X with alphabet size 2 ≤|X| < ∞and positive
+distribution. Let W ∈X denote arbitrary reconstruction of X with D ≜E[d(X, W)] and T the
+backward test channel from W to X. Then for any joint distribution of (X, W) satisfying 0 < D <
+pmindmin, we have:
+1. pW is positive distribution, i.e. pW (w) > 0 for all w ∈X.
+2. T is arbitrarily close to but not exact identity matrix:
+2D
+dmax
+≤∥T −I∥1 ≤
+2D
+pmindmin −D.
+(81)
+3. If additionally D < pmindmin
+3
+, then T is invertible and
+∥T −1 −I∥1 ≤
+2D
+pmindmin −3D.
+(82)
+Proof. Part 1. Positive reconstruction distribution.
+Consider arbitrary joint distribution pXW with D = E[d(X, W)]. We have:
+D = E[d(X, W)]
+(83)
+=
+X
+w
+X
+x̸=w
+pXW (x, w)d(x, w)
+(84)
+≥dmin
+X
+w
+X
+x̸=w
+pXW (x, w)
+(85)
+= dmin · Pr{X̸ = W}.
+(86)
+23
+
+
+Therefore Pr{X̸ = W} ≤
+D
+dmin . By the coupling inequality for total variation distance, for any
+w ∈X we have:
+Pr{X̸ = W} ≥dT V (pX, pW )
+(87)
+= sup
+A∈X
+|pX(A) −pW (A)|
+(88)
+≥pX(w) −pW (w)
+(89)
+≥pmin −pW (w).
+(90)
+Then for all 0 < D < dminpmin, we have Pr{X̸ = W} ≤
+D
+dmin < pmin, thereby:
+pW (w) ≥pmin −Pr{X̸ = W} > 0.
+(91)
+This completes the proof of Part 1.
+Part 2. Transition matrix.
+For all w ∈X, we have:
+X
+x
+|T(x, w) −I(x, w)| = 1 −T(w, w) +
+X
+x̸=w
+T(x, w)
+(92)
+= 2Pr{X̸ = W|W = w}
+(93)
+= 2Pr{X̸ = W, W = w}
+pW (w)
+(94)
+≤2Pr{X̸ = W}
+pW (w)
+(95)
+≤2
+Pr{X̸ = W}
+pmin −Pr{X̸ = W}
+(96)
+≤
+2D
+pmindmin −D.
+(97)
+Therefore by the definition of induced matrix 1-norm, we have ∥T −I∥1 ≤
+2D
+pmindmin−D. This proves
+the upper bound in equation 81. In addition, we also have:
+D =
+X
+x̸=w
+pXW (x, w)d(x, w)
+(98)
+≤dmax
+X
+x̸=w
+pXW (x, w)
+(99)
+= dmax
+X
+w
+pW (w)
+X
+x̸=w
+pX|W (x|w)
+(100)
+= dmax
+X
+w
+pW (w) (1 −T(w, w))
+(101)
+≤dmax max
+w
+(1 −T(w, w))
+(102)
+= dmax
+2
+∥T −I∥1.
+(103)
+Therefore, we have ∥T −I∥1 ≥
+2D
+dmax > 0, which proves the lower bound in equation 81. This
+completes the proof of equation 81.
+Part 3. Existence of inverse matrix.
+Now we define E ≜I −T, then:
+∥E∥1 = ∥I −T∥1 ≤
+2D
+pmindmin −D.
+If D < pmindmin
+3
+, then ∥E∥1 < 1. Therefore, consider P∞
+k=0 Ek as the Neumann series, it converges
+and T −1 = P∞
+k=0 Ek exists. By the definition of Neumann series in Definition B.10, we also have:
+T −1 −I = E0 +
+∞
+X
+k=1
+Ek −I =
+∞
+X
+k=1
+Ek.
+(104)
+24
+
+
+Then:
+∥T −1 −I∥1 =
+
+∞
+X
+k=1
+Ek
+
+1
+≤
+∞
+X
+k=1
+∥E∥k
+1
+≤
+∞
+X
+k=1
+
+2D
+pmindmin −D
+k
+=
+2D
+pmindmin −3D.
+(105)
+Then we have equation 82. This completes the proof.
+For arbitrary random vector, recall the characterization of joint-coding rate-distortion function in
+Theorem 2.1, i.e.,
+RJC(D) ≜min
+P I(X; ˆX).
+where P ≜{P ˆX|X : E[dℓ(Xℓ, ˆ
+Xℓ)] ≤Dℓ, ℓ= 1, · · · , L}. For the per-letter distortion Dℓ, we have
+the general form of Shannon lower bound:
+I(X; ˆX) = H(X) −H(X| ˆX)
+(106)
+≥H(X) −
+L
+X
+ℓ=1
+H(Xℓ| ˆXℓ)
+(107)
+= H(X) −
+L
+X
+ℓ=1
+H(Xℓ) +
+L
+X
+ℓ=1
+I(Xℓ; ˆXℓ)
+(108)
+≥H(X) −
+L
+X
+ℓ=1
+H(Xℓ) +
+L
+X
+ℓ=1
+Rℓ(Dℓ),
+(109)
+where Rℓ(Dℓ) denotes the marginal rate-distortion function of source variable Xℓ. Next we prove
+that for source with positive distribution, the Shannon lower bound can be achieved within a non-
+empty distortion region.
+Lemma B.12 (SLB achievability). Consider arbitrary source X with finite component alphabets
+2 ≤|Xℓ| < ∞and positive joint distribution. For per-letter distortion function in Definition B.3,
+there exists a non-empty distortion region DSLB = {D : 0 < Dℓ≤εℓ, ℓ= 1, · · · , L}, such that for
+all D ∈DSLB, the Shannon lower bound can be attained.
+Proof. The main idea of the proof is to construct a valid joint reconstruction distribution from the
+marginal rate-distortion optimal backward test channels, and show that the SLB can be achieved.
+First, we define the following positive constants:
+p∗
+min ≜min
+x pX(x) > 0,
+pℓ,min ≜min
+xℓpXℓ(xℓ),
+dℓ,min ≜min
+xℓ̸=wℓdℓ(xℓ, wℓ),
+τ ≜
+p∗
+min
+2 + p∗
+min
+,
+εℓ≜pℓ,mindℓ,minτ
+2L + τ
+.
+Since τ < 1
+2, we have εℓ< pℓ,mindℓ,min
+3
+. Then we start the proof.
+Step 1. Marginal RD problem. For each ℓ, select any Wℓthat achieves the marginal RD function of
+Xℓ. Such Wℓexists because Xℓhas finite alphabet. Denote the vectorized reconstruction probability
+of pWℓas rℓand the backward transition matrix as:
+Tℓ(xℓ, wℓ) = pXℓ|Wℓ(xℓ|wℓ).
+(110)
+By Lemma B.11, for all 0 < Dℓ≤εℓ< pℓ,mindℓ,min
+3
+, we have:
+∥Tℓ−I∥1 ≤
+2Dℓ
+pℓ,mindℓ,min −Dℓ
+≤τ
+L,
+(111)
+25
+
+
+Apparently, T −1
+ℓ
+exists and we further have:
+∥T −1
+ℓ
+−I∥1 ≤
+2Dℓ
+pℓ,mindℓ,min −3Dℓ
+≤
+τ
+L −τ .
+(112)
+Step 2. Joint backward test channel. In this part, we first provide an explicit way to construct
+a valid joint backward test channel based on marginal test channels. Then we show that this con-
+structed joint backward test channel achieves Shannon lower bound within a non-empty distortion
+region. We first define the product backward transition matrix form:
+S ≜
+L
+O
+ℓ=1
+Tℓ.
+(113)
+Then for εℓdefined above and all D ∈DSLB, S−1 exists. Let p be the vectorized source distribution
+pX. Then we need to show that there exists a valid probability vector r satisfying:
+r = S−1p.
+(114)
+Since each Tℓis column transition matrix, we have ∥Tℓ∥1 = 1 for all ℓ. Let N ≜QL
+ℓ=1 |Xℓ|. Using
+the telescoping expansion:
+L
+O
+ℓ=1
+Tℓ−
+L
+O
+ℓ=1
+I|Xℓ| =
+L
+X
+ℓ=1
+
+
+ℓ−1
+O
+j=1
+Tj
+
+⊗(Tℓ−I|Xℓ|) ⊗
+ 
+L
+O
+k=ℓ+1
+I|Xk|
+!
+,
+(115)
+we have the following inequality:
+∥S −IN∥1 =
+
+L
+O
+ℓ=1
+T1 −
+L
+O
+ℓ=1
+I|Xℓ|
+
+(116)
+≤
+L
+X
+ℓ=1
+
+
+ℓ−1
+Y
+j=1
+∥Tj∥1
+
+Tℓ−I|Xℓ|
+
+1
+ 
+L
+Y
+k=ℓ+1
+∥I|Xk|∥1
+!
+(117)
+=
+L
+X
+ℓ=1
+Tℓ−I|Xℓ|
+
+1 ≤τ < 1.
+(118)
+By again applying the Neumann series, we have:
+∥S−1 −IN∥≤
+τ
+1 −τ = p∗
+min
+2
+.
+(119)
+Then for the probability vectors, we have:
+max
+w |r(w) −pX(w)| = ∥r −p∥∞
+(120)
+≤∥r −p∥1
+(121)
+= ∥(S−1 −I)p∥1
+(122)
+≤∥S−1 −I∥1∥p∥1
+(123)
+≤p∗
+min
+2
+.
+(124)
+Therefore, for the reconstruction probability vector r, we have:
+1. r(w) ≥pX(w) −p∗
+min
+2
+≥p∗
+min
+2
+> 0.
+2. 1⊤r = 1⊤S−1p = 1⊤SS−1p = 1⊤p = 1.
+Thus r is a valid positive probability distribution vector. Furthermore, by marginalizing the con-
+structed joint distribution S, it can be verified that pXℓ= Tℓrℓ. Therefore, the marginal RD optimal
+backward test channels are preserved.
+26
+
+
+Step 3. Shannon lower bound achievability. For any feasible reconstruction ˆX, the general form
+of Shannon lower bound (SLB) is shown in eq. (109). For the constructed auxiliary random variables
+W, the product backward test channel and marginal RD optimality give:
+I(X; W) = H(X) −
+X
+ℓ
+H(Xℓ) +
+X
+ℓ
+Rℓ(Dℓ).
+(125)
+Therefore, the Shannon lower bound is attained by those constructed auxiliary variables W and
+the product backward test channel. Therefore, for all 0 < Dℓ< εℓ, there always exist auxiliary
+variables W such that SLB is attained. This completes the proof.
+By Lemma B.9, for a K-order Markov source X as in Definition 3.6, we can construct nontrivial
+auxiliary random variables U L−K satisfying the Markov constraints in eqs. (32) and (33). Those
+constructed auxiliary variables also satisfy the Markov constraints in Definition 3.4, thereby feasible
+for the GFSC architecture. For example, for first-order Markov, we can construct:
+X1 →U1 →X2 →U2 →· · · →UL−1 →XL.
+(126)
+Apparently Xℓ→(Uℓ−1, Uℓ) →X−ℓholds. Next, to prove the JC rate-distortion optimality of
+GFSC architecture for general K-order Markov source, we introduce auxiliary random variables W
+satisfying the following properties:
+1. Define Vℓ≜UIℓand Xℓ→Wℓ→Vℓholds.
+2. The backward test channel from Wℓto Xℓis rate-distortion optimal.
+Next, we show that such auxiliary variables can always be constructed within a nonempty distortion
+region for source with positive distribution.
+Definition B.13. Let Qℓ∈R|Xℓ|×|Vℓ| be the transition matrix constructed in Lemma B.9, represent-
+ing the backward test channel maps PVℓto PXℓ, i.e., PXℓ= QℓPVℓwith Qℓ(x, v) = pXℓ|Vℓ(x|v).
+Definition B.14. Let Tℓ∈R|Xℓ|×|Wℓ| be the transition matrix constructed in Lemma B.12, rep-
+resenting the RD optimal backward test channel for Xℓ, i.e., PXℓ= TℓPWℓwith Tℓ(x, w) =
+pXℓ|Wℓ(x|w).
+Definition B.15. For Qℓ, define the positive term q(δ)
+ℓ,min ≜minx,v Qℓ(x, v).
+Before we start, we define the following positive constant:
+ηℓ(δ) ≜
+pℓ,mindℓ,minq(δ)
+ℓ,min
+2 + 3q(δ)
+ℓ,min
+.
+(127)
+Lemma B.16 (RD-optimal refinement of clique auxiliary variables). Fix the clique-wise auxiliary
+variables constructed by equation 68 with 0 < δ < δ0. Assume the finite-alphabet and distortion
+conditions established above. Let εℓ> 0 be the distortion thresholds proved in Lemma B.12. Define
+ϵℓ(δ) ≜min{εℓ, ηℓ(δ)} and the corresponding nonempty distortion region:
+Dϵ ≜{D : 0 < Dℓ≤ϵℓ(δ), ℓ= 1, · · · , L}.
+(128)
+Then for any D ∈Dϵ, there exist auxiliary variables W ∈X1 × · · · × XL such that:
+1. The Markov conditions hold:
+Xℓ→Wℓ→U (δ)
+Iℓ→X−ℓ,
+ℓ= 1, · · · , L.
+(129)
+2. The reconstruction ˆXℓ≜Wℓand the corresponding backward test channel pXℓ|Wℓare
+jointly rate-distortion optimal.
+27
+
+
+Proof. Step 1. Construction.
+For a given δ such that 0 < δ < δ0, by the definition of ηℓ(δ) and ∆ℓ(δ), we have:
+∆ℓ(δ) ≜min
+gℓE[dℓ(Xℓ, gℓ(U (δ)
+Iℓ))]
+(130)
+=
+X
+u(δ)
+Iℓ
+q(u(δ)
+Iℓ) min
+ˆxℓ∈Xℓ
+X
+xℓ
+Q(δ)(xℓ, uIℓ)dℓ(xℓ, ˆxℓ)
+(131)
+≥
+X
+u(δ)
+Iℓ
+q(u(δ)
+Iℓ)dℓ,min min
+ˆxℓ
+X
+xℓ̸=ˆxℓ
+Q(δ)(xℓ, uIℓ)
+(132)
+≥
+X
+u(δ)
+Iℓ
+q(u(δ)
+Iℓ)dℓ,min min
+ˆxℓ
+X
+xℓ̸=ˆxℓ
+q(δ)
+ℓ,min
+(133)
+= (|Xℓ| −1)dℓ,minq(δ)
+ℓ,min ≥ηℓ(δ).
+(134)
+Then for Dϵ defined in equation 128, we have:
+Dϵ ⊆DSLB,
+Dϵ ⊆DAUX.
+(135)
+Therefore, for all D ∈Dϵ:
+1. Lemma B.12 provides a backward test channel construction from W to X:
+pX|W(x|w) =
+L
+Y
+ℓ=1
+Tℓ(xℓ, wℓ),
+such that the Shannon lower bound can be attained. Thereby it is jointly rate-distortion
+optimal. Tℓdenotes the marginal rate-distortion optimal test channel from Wℓto Xℓ.
+2. Lemma B.9 provides a backward test channel construction from (U (δ))L−K to X such that
+the induced distortion ∆ℓ(δ) is positive and the following Markov conditions hold:
+U (δ)
+j
+→Xj+K
+j
+→(X, U (δ)
+−j ),
+j = 1, . . . , L −K,
+Xℓ→U (δ)
+Iℓ→X−ℓ,
+ℓ= 1, . . . , L.
+Denote the backward test channel from Vℓ≜UIℓto Xℓas Qℓ.
+Then it suffices to show that such constructed auxiliary variables Wℓand Vℓalso satisfy the Markov
+conditions in equation 129.
+Step 2. Markov conditions.
+For constructed Tℓ∈R|Xℓ|×|Wℓ| and Qℓ∈R|Xℓ|×|Vℓ|, the Markov condition in equation 129 boils
+down to finding a valid transition matrix Aℓ∈R|Wℓ|×|Vℓ| such that
+Qℓ= TℓAℓ.
+(136)
+As we already shown in Lemma B.11, Tℓis close to but not exactly an identity matrix and T −1
+ℓ
+exists. This is equivalent to showing that Aℓ= T −1
+ℓ
+Qℓis a valid transition matrix.
+Non-negativity.
+We first show that all the entries of T −1
+ℓ
+Qℓare non-negative. First, by Lemma B.11, we have
+∥Aℓ−Qℓ∥1 =
+(T −1
+ℓ
+−I)Qℓ
+
+1
+(137)
+≤
+T −1
+ℓ
+−I
+
+1 ∥Qℓ∥1
+(138)
+≤
+2Dℓ
+pℓ,mindℓ,min −3Dℓ
+(139)
+≤
+2ηℓ(δ)
+pℓ,mindℓ,min −3ηℓ(δ)
+(140)
+= q(δ)
+ℓ,min.
+(141)
+28
+
+
+Then we have:
+Aℓ(wℓ, vℓ) = Qℓ(wℓ, vℓ) −(Qℓ(wℓ, vℓ) −Aℓ(wℓ, vℓ))
+(142)
+≥Qℓ(wℓ, vℓ) −∥Aℓ−Qℓ∥1
+(143)
+≥q(δ)
+ℓ,min −q(δ)
+ℓ,min = 0.
+(144)
+Therefore all entries of Aℓare non-negative by construction.
+Column sum.
+Moreover, for the column sum of Aℓ, we directly have:
+1⊤Aℓ= 1⊤T −1
+ℓ
+Qℓ= 1⊤TℓT −1
+ℓ
+Qℓ= 1⊤Qℓ= 1⊤.
+(145)
+Combining eqs. (144) and (145), this proves that Aℓis a valid transition matrix.
+Therefore, for any D ∈Dϵ, we can always construct W with jointly rate-distortion optimal back-
+ward test channel. This completes the proof.
+Theorem B.17 (JC optimality of GFSC). Consider a K-order Markov source X with positive dis-
+tribution. There exist a non-empty distortion region Dϵ ≜{D : 0 < Dℓ≤ϵℓ, ℓ= 1, · · · , L }, such
+that for all D ∈Dϵ, the minimum information sum-rate RGFSC
+K,sum(D) achieves the JC rate-distortion
+function:
+RGFSC
+K,sum(D) = RJC(D),
+∀D ∈Dϵ.
+(146)
+Proof. Step 1. Achievability.
+Fix an admissible δ in the clique-wise auxiliary variable construction such that 0 < δ < δ0. Choose
+the positive threshold ϵℓ(δ) supplied by the Lemma B.16, and fix any D ∈Dϵ. Then Lemma B.16
+provides jointly distributed variables:
+
+X, (U (δ))L−K, W
+
+(147)
+with the following properties:
+1. The source marginal is still the prescribed pX.
+2. The Markov conditions hold:
+Xℓ→Wℓ→UIℓ,
+ℓ= 1, · · · , L.
+(148)
+3. The refinement auxiliary variables W achieve the joint-coding rate-distortion function
+RJC(D) for all D ∈Dϵ.
+We now construct augmented auxiliary variables satisfying the GFSC architecture. Specifically, we
+define:
+Zℓ≜
+(
+(U (δ)
+ℓ
+, Wℓ),
+1 ≤ℓ≤L −K,
+Wℓ,
+L −K < ℓ≤L.
+(149)
+Apparently, auxiliary variables {Zℓ}L
+ℓ=1 are just regrouping of constructed {U (δ)
+j
+}L−K
+j=1
+and W. By
+equation 149, the previously received messages Zℓ−1 contains
+ (U (δ))ℓ−1, W ℓ−1
+. We first verify
+the required encoder Markov conditions in equation 5, i.e.,
+Zℓ→(Xmin{ℓ+K,L}
+ℓ
+, Zℓ−1) →X.
+(150)
+For 1 ≤ℓ≤L −K, we have the following:
+U (δ)
+ℓ
+→Xℓ+K
+ℓ
+→(X, U (δ)
+−ℓ)
+Wℓ→(Xℓ, U (δ)
+Iℓ) →X−ℓ
+)
+⇒Zℓ→(Xℓ+K
+ℓ
+, U (δ)
+Iℓ) →X.
+(151)
+For L −K < ℓ≤L, we have Zℓ= Wℓ. Then:
+Zℓ→(Xℓ, U (δ)
+Iℓ) →X−ℓ
+(152)
+29
+
+
+Therefore, the encoder Markov conditions in equation 5 hold for every stage. Next, define the
+deterministic reconstruction as
+ˆXℓ= Wℓ
+(153)
+For ℓ≤L −K, the decoder extracts the second component of Zℓ. For ℓ> L −K, the decoder
+directly keep Zℓitself. Thus this is admissible for the defined stronger decoder gℓ(Zℓ). For ℓ-th
+encoding stage and augmented auxiliary variables Zℓ, by the conditional source coding theorem, the
+associate rate ¯Rℓis:
+¯Rℓ= I(Xmin{ℓ+K,L}
+ℓ
+; Zℓ|Zℓ−1)
+(154)
+which also belongs to the information RD region in Definition 3.4. By the Markov condition in
+eq. (5), we have
+I(Xmin{ℓ+K,L}
+ℓ
+; Zℓ|Zℓ−1) = I(X; Zℓ|Zℓ−1)
+(155)
+Consequently, we have the following sum-rate form by chain rule:
+L
+X
+ℓ=1
+¯Rℓ=
+L
+X
+ℓ=1
+I(Xmin{ℓ+K,L}
+ℓ
+; Zℓ|Zℓ−1)
+(156)
+=
+L
+X
+ℓ=1
+I(X; Zℓ|Zℓ−1)
+(157)
+= I(X; Z)
+(158)
+= I(X; U L−K, W)
+(159)
+= I(X; W) = RJC(D).
+(160)
+Since this is just one possible realization of GFSC architecture, then we have:
+RGFSC
+K,sum(D) ≤RJC(D),
+∀D ∈Dϵ.
+(161)
+Step 2. Converse.
+By the Shannon lower bound, we have:
+RGFSC
+K,sum(D) ≥RSLB(D) = RJC(D),
+∀D ∈Dϵ.
+(162)
+Combine with eq. (161), we have RGFSC
+K,sum(D) = RJC(D) for all D ∈Dϵ. This completes the
+proof.
+C
+GAUSS-MARKOV SOURCE MODELS UNDER MSE DISTORTION
+First, we review joint coding rate-distortion function for Gaussian source. Consider Gaussian source
+X ∼N(0, Σ) with Σ ≻0. Let Σe ≜E[(X −ˆX)(X −ˆX)⊤] be the error covariance, the JC rate-
+distortion function in Theorem 2.1 admits a closed-form characterization
+RJCG(D) = min
+Σe
+1
+2 log |Σ|
+|Σe|
+s.t.
+0 ≺Σe ⪯Σ, (Σe)ℓℓ≤Dℓ.
+(163)
+Moreover, in the distortion region DJC ≜{D : diag(D1, · · · , DL) ⪯Σ}, it simplifies to
+RJCG(D) = 1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(164)
+This coincides with the Shannon lower bound (SLB) (Cover, 1999), which is tight over DJC. Next,
+we briefly review Gaussian graphical models (GGMs).
+C.1
+GAUSSIAN GRAPHICAL MODEL
+For Gaussian sources, as previously mentioned in Section 3.1, its graphical structure can be obtained
+directly from its inverse covariance matrix, i.e. information matrix or precision matrix. Let J ≜Σ−1
+denote the information matrix. The corresponding Gaussian graphical model is the undirected graph
+30
+
+
+G(J) = (V, E(J)), with node set V ≜{1, . . . , L} and edge set E(J) ≜{{j, k} : Jjk̸ = 0}, where
+Jjk denotes the (j, k)-th entry. For any A ⊆V, write XA ≜(Xi)i∈A. The neighborhood of source
+node ℓis
+N(ℓ) ≜{i ∈V \ {ℓ} : {ℓ, i} ∈E(J)}.
+For Gaussian sources, a missing edge has an exact conditional-independence interpretation:
+Jjk = 0
+⇐⇒
+Xj ⊥⊥Xk|XV\{j,k}.
+Consequently, each variable is conditionally independent of all non-neighboring variables given its
+local neighborhood, i.e. Xℓ⊥⊥XV\(N (ℓ)∪{ℓ})|XN (ℓ). For a K-order Gauss-Markov source, J is
+K-banded, i.e. Jjk = 0 for |j −k| > K. Therefore,
+N(ℓ) ⊆{ℓ−K, . . . , ℓ−1, ℓ+ 1, . . . , ℓ+ K} ∩V.
+Thus, conditioned on at most 2K neighboring frames, Xℓis independent of all remaining source
+variables. Figure 3 illustrates this structure for a second-order Gauss-Markov source, whose edges
+connect only frames separated by at most two time steps.
+We introduce several definitions that can be used to specify a subset of edges in GGMs, and will be
+used later to define a sequential coding order for the Gaussian version coding system. For a K-order
+model, we first define
+E(K) ≜{(j, k) : 1 ≤j < k ≤L, k −j ≤K}.
+(165)
+Here, equation 165 contains all frame pairs within the K neighbors, which also represents the edge
+set of a K-order Gauss-Markov model. As illustrated in Figure 3, E(2) includes all pairs with form
+(j, j + 1) and (j, j + 2), which are processed according to the ordering in equation 166. Then, we
+process the pairs in E(K) lexicographically. Specifically, let
+(i, ℓ) ≺(j, k)
+⇐⇒
+i < j or (i = j and ℓ< k).
+(166)
+For any pair-indexed collection ZN ≜(Zj,k)(j,k)∈E(K) with N ≜|E(K)|, define
+Z<(j,k) ≜(Zi,ℓ)(i,ℓ)∈E(K),(i,ℓ)≺(j,k),
+(167)
+Z≤j ≜(Zi,ℓ)(i,ℓ)∈E(K),i≤j.
+(168)
+Here, Z<(j,k) contains all variables generated before stage (j, k), whereas Z≤j contains all variables
+available after completing stage j. We apply this convention to messages and auxiliary variables,
+yielding M<(j,k), M≤j, U<(j,k), and U≤j.
+C.2
+GFSC WITH PAIR-WISE FACTORIZATION
+As discussed in Section 3.1, the clique factorization can be further decomposed as pair-wise factor-
+ization. In addition, as discussed in Section 3.5, the pair-wise interaction can be formalized as linear
+interpolation between frame pairs. We rename the further factorized system as Interpolation based
+Sequential Coding (ISC). Let X = (X1, · · · , XL) be a sequentially observed source and K the
+allowed delay relaxation (K < L −1). We define the encoding and decoding mappings of ISC-K
+architecture as follows.
+Encoding. The encoding proceeds sequentially over the set E(K). For each stage (j, k) ∈E(K), the
+encoder first constructs a “virtual frame” ˜Xj,k with an pair-wise operator hj,k : Xj × Xk →˜
+Xj,k.
+˜Xj,k is then encoded into message using a zero-delay sequential encoder ϕj,k : ˜
+Xj,k × M<(j,k) ×
+W →Mj,k. The encoding mapping is given by fj,k = ϕj,k ◦hj,k, i.e.,
+fj,k : Xj × Xk × M<(j,k) × W →Mj,k,
+(j, k) ∈E(K).
+(169)
+This formulation makes explicit that delay is handled through interpolation between (Xj, Xk), while
+the coding process itself remains strictly sequential. There are generally N ≜|E(K)| encoding
+stages. N = L −1 for 1-delay system and N ≥L for K > 1 delay system.
+Decoding. The ℓ-th decoder reconstructs Xℓusing all messages available up to ℓ-stage decoding.
+The decoding mapping is given by:
+gℓ: M≤ℓ× W →ˆ
+Xℓ,
+ℓ= 1, · · · , L.
+(170)
+There are L decoding stages for L source frames respectively. So encoders and decoders are not
+necessarily matched one-by-one. Notice that we can combine and define a multi-stage encoder
+˜fℓ≜fℓ,ℓ+K ◦· · ·◦fℓ,ℓ+1 with input Xℓ+K
+ℓ
+. This can be seen as a special case of GFSC architecture.
+31
+
+
+C.3
+RATE-DISTORTION ANALYSIS
+For convenience, we only characterize the information RD region and sum-rate function of ISC-K
+architecture. The analysis imposes no assumptions on the source distribution and therefore applies
+to general sources. We first introduce the notation used throughout this section. For the length-L
+source and distortion sequences, define:
+X ≜(X1, · · · , XL),
+D ≜(D1, · · · , DL),
+For sequences indexed by the ordered set E(K), define:
+U N ≜{Uj,k : (j, k) ∈E(K)},
+RN ≜{Rj,k : (j, k) ∈E(K)},
+where N ≜|E(K)| and the entries follow the prescribed ordering of E(K). With this notation in
+place, we begin with the definition of information rate-distortion region associated with the ISC-K
+system.
+Definition C.1 (Information RD region of ISC-K). For a given source X, the single-letter informa-
+tion RD region of ISC-K, denoted by RK, consists of all (RN, D) satisfying
+Rj,k ≥I( ˜Xj,k; Uj,k|U<j,k),
+(j, k) ∈E(K),
+(171)
+Dℓ≥E[∥Xℓ−ˆXℓ∥2],
+ℓ= 1, · · · , L,
+(172)
+for all auxiliary random variables { ˜Xj,k, Uj,k}(j,k)∈E(K) and ˆX satisfying ˜Xj,k = hj,k(Xj, Xk),
+ˆXℓ= gℓ(U≤ℓ) and the Markov constraints:
+Uj,k →( ˜Xj,k, U<j,k) →(Xj, Xk, U<j,k) →X,
+(173)
+where hj,k(·) and gℓ(·) are deterministic functions. For a given D, the information rate region
+RK(D) is the closure of all RN such that (RN, D) ∈RK.
+Theorem C.2 (Information minimum sum-rate). For a given distortion tuple D, the information
+minimum sum-rate function of ISC-K is
+RISC
+K,sum(D) = min I(X; U N).
+(174)
+The minimum is taken over all auxiliary variables {Uj,k}(j,k)∈E(K) satisfying Markov chains in
+equation 173 and the distortion constraints Dℓ≥E[∥Xℓ−gℓ(U≤ℓ)∥2] for all ℓ.
+Proof. From Definition C.1, for a given distortion tuple D, the minimum sum-rate is given by
+RISC
+K,sum(D) = min
+X
+(j,k)∈E(K)
+I( ˜Xj,k; Uj,k|U<j,k),
+(175)
+where the minimization is over all feasible auxiliary variables satisfying the constraints in equa-
+tion 173 and the distortion constraints. Since ˜Xj,k = hj,k(Xj, Xk) is a deterministic function of
+(Xj, Xk), we have
+I( ˜Xj,k; Uj,k|U<j,k) ≤I(Xj, Xk; Uj,k|U<j,k).
+On the other hand, by the Markov chain Uj,k →( ˜Xj,k, U<j,k) →(Xj, Xk, U<j,k), the data pro-
+cessing inequality implies
+I( ˜Xj,k; Uj,k|U<j,k) ≥I(Xj, Xk; Uj,k|U<j,k).
+Combining the above two inequalities gives I( ˜Xj,k; Uj,k|U<j,k) = I(Xj, Xk; Uj,k|U<j,k). Substi-
+tuting this into the sum-rate expression, we have
+RISC
+K,sum(D) = min
+X
+(j,k)∈E(K)
+I(Xj, Xk; Uj,k|U<j,k)
+(176)
+= min
+X
+(j,k)∈E(K)
+I(X; Uj,k|U<j,k)
+(177)
+= min I(X; U N),
+(178)
+where equation 177 follows from the Markov chain Uj,k →(Xj, Xk, U<j,k) →X and equa-
+tion 178 follows from the chain rule of mutual information under the ordering induced by E(K).
+This completes the proof.
+32
+
+
+C.4
+JOINT-CODING OPTIMALITY FOR GAUSS-MARKOV SOURCES
+In this section, we prove that the ISC architecture achieves JC rate-distortion optimality for Gauss-
+Markov sources within a nontrivial distortion region.
+Typically, the Gaussian graphical model
+(GGM) associated with a Gaussian source can be represented by G = (V, E), where E = {{i, j} :
+Jij̸ = 0} denotes the set of undirected edges. For notational convenience, in this section, we
+identify each undirected edge {i, j} with the unique ordered pair (i, j) satisfying i < j and write
+E = {(i, j) : Jij̸ = 0, i < j}. This convention merely provides a unique indexing of the edges. It
+neither assigns directions to edges nor changes the underlying graph.
+Lemma C.3 (Existence of a nontrivial distortion region). Consider correlated Gaussian vector
+X ∼N(0, Σ) with Σ ≻0 and the GGM G(J) induced by its information matrix J ≜Σ−1.
+Let {Uj,k}(j,k)∈E be a set of Gaussian random variables jointly distributed with X satisfying:
+Uj,k = ωj,kXj + (1 −ωj,k)Xk + Nj,k,
+(j, k) ∈E,
+(179)
+and the Markov chains:
+Xj →
+ XN (j)\{k}, Uj,k
+
+→Xk,
+(j, k) ∈E,
+(180)
+Xℓ→Uℓ,N (ℓ) →X−ℓ,
+ℓ= 1, · · · , L,
+(181)
+where Nj,k ∼N(0, σ2
+Nj,k) are Gaussian random variables independent of X. Then for any ωj,k ∈
+R\{0, 1}, the induced MSE distortion for each source variable Xℓ, denoted as ϵℓ≜E[∥Xℓ−
+E[Xℓ|Uℓ,N(ℓ)]∥2], is nontrivial, i.e.,
+0 < ϵℓ< ¯Dℓ,
+(182)
+where ¯Dℓ≜E[∥Xℓ−E[Xℓ|XN(ℓ)]∥2].
+Proof. Construction of appropriate auxiliary variables:
+First we show how to construct auxiliary random variables satisfying eqs. (179) to (181). For Gaus-
+sian source X ∼N(0, Σ) with information matrix J ≜Σ−1, its probability density function can be
+written as:
+p(x) =
+1
+(2π)
+L
+2 |Σ|
+1
+2 exp
+
+−1
+2x⊤Jx
+
+(183)
+=
+1
+(2π)
+L
+2 |Σ|
+1
+2 exp
+
+−1
+2
+L
+X
+ℓ=1
+Jℓℓx2
+ℓ−
+X
+1≤j<k≤L
+Jjkxjxk
+
+
+(184)
+=
+1
+(2π)
+L
+2 |Σ|
+1
+2 exp
+
+−1
+2
+L
+X
+ℓ=1
+Jℓℓx2
+ℓ−
+X
+(j,k)∈E
+Jjkxjxk
+
+,
+(185)
+where equation 184 follows from that J is a symmetric matrix, and equation 185 follows from that
+Jjk = 0 for (j, k) /∈E. Thus, the dependency structure of a Gaussian source X is completely
+characterized by the edge set E of its GGM. By equation 179, each auxiliary variable Uj,k is asso-
+ciated with edge (j, k) in the GGM and independent additive Gaussian noise Nj,k. Therefore, its
+conditional density function given (Xj, Xk) = (xj, xk) can be written as:
+p(uj,k|xj, xk) =
+1
+q
+2πσ2
+Nj,k
+exp
+ 
+−(uj,k −ωj,kxj −¯ωj,kxk)2
+2σ2
+Nj,k
+!
+,
+(186)
+where ¯ωj,k ≜1 −ωj,k. In addition, since those noise items {Nj,k}(j,k)∈E are also mutually in-
+dependent with each other, {Uj,k}(j,k)∈E are conditionally independent given X, i.e., p(u|x) =
+Q
+(j,k)∈E p(uj,k|xj, xk). Applying Bayes’ rule, we have p(x|u) ∝p(x)p(u|x), which yields:
+p(x|u) ∝exp
+
+−1
+2
+L
+X
+ℓ=1
+Jℓℓx2
+ℓ−
+X
+{j,k}∈E
+Jjkxjxk −
+X
+{j,k}∈E
+(uj,k −ωj,kxj −¯ωj,kxk)2
+2σ2
+Nj,k
+
+(187)
+33
+
+
+Expanding the quadratic terms and collecting coefficients gives
+p(x|u) ∝exp
+
+−1
+2
+L
+X
+ℓ=1
+λℓx2
+ℓ+
+L
+X
+ℓ=1
+γℓ(u)xℓ−
+X
+(j,k)∈E
+ 
+Jjk + ωj,k¯ωj,k
+σ2
+Nj,k
+!
+xjxk
+
+,
+(188)
+where
+λℓ≜Jℓℓ+
+X
+(ℓ,k)∈E
+ω2
+ℓ,k
+σ2
+Nℓ,k
++
+X
+(j,ℓ)∈E
+¯ω2
+j,ℓ
+σ2
+Nj,ℓ
+,
+(189)
+γℓ(u) ≜
+X
+(ℓ,k)∈E
+ωℓ,k
+σ2
+Nℓ,k
+uℓ,k +
+X
+(j,ℓ)∈E
+¯ωj,ℓ
+σ2
+Nj,ℓ
+uj,ℓ.
+(190)
+The Markov constraints in eqs. (180) and (181) imply that the source variables are conditionally
+independent given the adjacent auxiliary variables, i.e. p(x | u) = QL
+ℓ=1 p(xℓ|u). Therefore, all
+pairwise interaction terms xjxk in equation 188 must vanish, i.e.,
+Jjk + ωj,k¯ωj,k
+σ2
+Nj,k
+= 0,
+(191)
+which yields σ2
+Nj,k = −ωj,k ¯ωj,k
+Jjk
+. As σ2
+Nj,k denotes the noise variance, to ensure σ2
+Nj,k > 0, we need
+to set ωj,k ∈(0, 1) if Jjk < 0, and set ωj,k > 1 otherwise. With appropriate coefficients ωj,k, the
+constructed auxiliary variables apparently satisfy Markov constraints in eqs. (179) to (181). This
+completes the construction of the auxiliary random variables.
+Nontrivial MSE distortion analysis:
+We now establish the distortion bounds for the auxiliary random variables {Uj,k}(j,k)∈E constructed
+above. Without loss of generality, we consider the source node ℓ= 1. Suppose X is a pairwise
+correlated Gaussian vector, the set of neighbors for X1 is apparently N(1) = {2, . . . , L}.
+First, for the upper bound in equation 182, i.e.,
+ϵ1 = E[∥X1 −E[X1|U1,N (1)]∥2] < ¯D1,
+(192)
+this follows directly from the Markov chain conditions in eqs. (179) to (181), which guarantee that
+the auxiliary random variables U1,N(1) capture all the dependence of X1 on the remaining source
+variables. Next, we prove the strict positivity in equation 182. Since the MSE is always nonnegative,
+it suffices to show that ϵ1̸ = 0. Equivalently, it suffices to show that X1 cannot be recovered exactly
+from U1,N(1). Suppose, for contradiction, that
+X1 = E[X1 | U1,N (1)]
+a.s.
+(193)
+Since (X1, U1,N(1)) are jointly Gaussian and zero mean, the conditional expectation is thereby a
+linear transformation. Therefore, equation 193 is equivalent to that there exist constants a2, . . . , aL
+such that
+X1 =
+L
+X
+k=2
+akU1,k =
+L
+X
+k=2
+ak (ω1,kX1 + ¯ω1,kXk + N1,k)
+a.s.
+(194)
+Rearranging terms gives
+ 
+1 −
+L
+X
+k=2
+akω1,k
+!
+X1 −
+L
+X
+k=2
+ak¯ω1,kXk =
+L
+X
+k=2
+akN1,k
+a.s.
+(195)
+The left-hand side of equation 195 is a linear function of X, whereas the right-hand side is a linear
+function of the independent Gaussian noises {N1,k}L
+k=2. Hence the two sides are two independent
+Gaussian random variables. As they are equal almost surely, both sides must be almost surely
+constant. Because all variables have zero mean, this constant must be zero. Thus, we need
+ 
+1 −
+L
+X
+k=2
+akω1,k
+!
+X1 −
+L
+X
+k=2
+ak¯ω1,kXk = 0
+a.s.,
+(196)
+L
+X
+k=2
+akN1,k = 0
+a.s.,
+(197)
+34
+
+
+where equation 196 implies that: 
+
+1 −PL
+k=2 akω1,k
+−a2¯ω1,2
+...
+−aL¯ω1,L
+
+∈ker(Σ),
+(198)
+Since Σ ≻0, we have ker(Σ) = {0}. Therefore, equation 196 is equivalent to
+1 −
+L
+X
+k=2
+akω1,k = 0,
+ak¯ω1,k = 0 for k = 2, . . . , L.
+(199)
+Because appropriate auxiliary variable construction requires ω1,k ∈R \ {0, 1}, which implies
+ω1,k, ¯ω1,k̸ = 0. Therefore, ak¯ω1,k = 0 requires ak = 0 for all k = 2, . . . , L. This contradicts
+1 −PL
+k=2 akω1,k = 0. Therefore, equation 196 cannot hold for appropriate constructed auxiliary
+variables. Now for equation 197, since the noises {N1,k}L
+k=2 are mutually independent Gaussian
+random variables with zero mean, equation 197 holds if and only if
+Var
+ L
+X
+k=2
+akN1,k
+!
+=
+L
+X
+k=2
+a2
+kσ2
+N1,k = 0.
+(200)
+Therefore, we must have either ak = 0 or σ2
+N1,k = 0 for k = 2, . . . , L. Recall that for appropriate
+constructed auxiliary variables, we have σ2
+N1,k = −ω1,k ¯ω1,k
+J1k
+, where J1k̸ = 0. Since ω1,k ∈R \
+{0, 1}, we have ω1,k¯ω1,k̸ = 0 and thereby σ2
+N1,k > 0. Therefore equation 197 implies that ak = 0,
+for k = 2, . . . , L. Substituting this into X1 = PL
+k=2 akU1,k yields X1 = 0 almost surely, which
+contradicts Σ ≻0. Hence equation 197 also cannot hold for appropriate constructed auxiliary
+variables. Combining the above arguments, we conclude that ϵ1 is strictly positive and finite.
+This proof can be easily extended to all remaining source nodes Xℓ, ℓ= 2, · · · , L, with the same col-
+lection of auxiliary random variables {Uj,k}(j,k)∈E. Therefore, let ϵℓ≜E[∥Xℓ−E[Xℓ|Uℓ,N (ℓ)]∥2]
+denotes the induced distortion for each source node Xℓ, we have 0 < ϵℓ< ¯Dℓ, for ℓ= 1, · · · , L.
+This completes the proof.
+The above Lemma C.3 mainly shows that the existence of appropriate edge-wise auxiliary variables
+{Uj,k}(j,k)∈E(K) for Gaussian source, which induce nontrivial MSE distortion ϵℓ(strictly positive
+and bounded) for each source variable Xℓ. A specific distortion region Dϵ can be thereby determined
+by those edge-wise auxiliary variables. The following Theorem C.5 further provide rate-distortion
+optimality analysis based on the result of Lemma C.3.
+Berger-Tung scheme.
+Before proving Theorem C.5, we briefly review the Berger-Tung achiev-
+ability scheme (Berger, 2003) through a simple example. Consider three correlated sources X =
+(X1, X2, X3) and two encoders observing the overlapping source pairs (X1, X2) and (X2, X3),
+respectively. Choose auxiliary variables according to PX,U1,2,U2,3 = PXPU1,2|X1,X2PU2,3|X2,X3,
+i.e.,
+U1,2 →(X1, X2) →X3,
+U2,3 →(X2, X3) →X1,
+(201)
+and let ˆXℓ= gℓ(U1,2, U2,3) satisfy the desired distortion constraint for each ℓ= 1, 2, 3. Each en-
+coder quantizes its observation into an auxiliary codeword and transmits its bin index. The decoder
+then jointly recovers both auxiliary codewords and reconstructs X. The Berger-Tung inner bound
+guarantees that any rate pair satisfying
+R1,2 ≥I(X1, X2; U1,2|U2,3),
+(202)
+R2,3 ≥I(X2, X3; U2,3|U1,2),
+(203)
+R1,2 + R2,3 ≥I(X; U1,2, U2,3),
+(204)
+is achievable. Thus, for fixed auxiliary variables, the minimum achievable sum-rate is
+Rsum = I(X; U1,2, U2,3).
+(205)
+The same construction extends to an arbitrary collection of overlapping source subsets. In the proof
+below, the constructed pairwise and node-wise auxiliary variables play the roles of the Berger-Tung
+auxiliaries, yielding the desired achievable sum-rate upper bound.
+35
+
+
+X1
+X3
+X5
+X2
+X4
+U1,2
+U1,3
+U2,3
+U2,4
+U3,4
+U3,5
+U4,5
+U1
+U3
+U5
+U2
+U4
+Figure 11: Augmented graphical model with node-wise and edge-wise auxiliary variables.
+Definition C.4. Define a non-empty distortion region under the Gaussian case as DG
+ϵ
+≜
+{(D1, · · · , DL) : 0 < Dℓ≤ϵℓ, ℓ= 1, · · · , L} for some strictly positive 0 < ϵj < ∞.
+Theorem C.5 (Gaussian optimality). Consider a K-order Gauss-Markov source X ∼N(0, Σ)
+with Σ ≻0. There exists a non-empty distortion region DG
+ϵ , such that for all D ∈DG
+ϵ , the following
+sets of random variables can be constructed:
+i) (Gaussian auxiliary variables) It suffices to consider jointly Gaussian auxiliary random vari-
+ables { ˜Xj,k, Uj,k}(j,k)∈E(K), {Uℓ}L
+ℓ=1, and ˆX. Moreover, the optimal Uj,k and Uℓsatisfy the
+Markov constraints:
+Xj →(XN (j)\{k}, Uj,k) →Xk,
+(j, k) ∈E(K),
+Uj,k →(Xj, Xk) →X,
+(j, k) ∈E(K)
+Uℓ→Xℓ→Uℓ,N (ℓ) →X−ℓ,
+ℓ= 1, · · · , L.
+(206)
+ii) (Linear interpolation) Given (Xj, Xk) and Uj,k, there exists some coefficients ωj,k ∈R\{0, 1}
+such that auxiliary variable ˜Xj,k admit linear deterministic functions for (Xj, Xk):
+˜Xj,k = ωj,kXj + (1 −ωj,k)Xk,
+(207)
+and satisfies the Markov chain Uj,k →˜Xj,k →(Xj, Xk) →X.
+iii) (Linear reconstruction) The optimal ˆX adopt linear decoding mappings.
+Moreover, with those constructed auxiliary variables, the sum-rate distortion of such system
+achieves the Shannon lower bound in equation 164 and hence the joint coding rate-distortion opti-
+mality.
+Proof. Existence of DG
+ϵ :
+First, as established in Lemma C.3, for the edge-wise auxiliary random variables {Uj,k}(j,k)∈E(K)
+constructed according to eqs. (179) to (181), the induced distortion for each source variable Xℓ,
+defined as ϵℓ≜E[∥Xℓ−E[Xℓ|Uℓ,N(ℓ)]∥2], is strictly positive and bounded, i.e. 0 < ϵℓ< ∞. This
+establishes the existence of a nontrivial distortion region:
+DG
+ϵ ≜{(D1, · · · , DL) : 0 < Dℓ≤ϵℓ, ℓ= 1, · · · , L} .
+(208)
+Moreover, for each source variable Xℓin a K-order Gauss-Markov source, it has the K-
+banded conditional-dependence structure, i.e.
+N(ℓ) ⊂{ℓ−K, · · · , ℓ−1, ℓ+ 1, · · · , ℓ+
+K}.
+Therefore, by the Markov constraints in equation 206, E[Xℓ|Uℓ,N (ℓ)] is a function of
+(Uℓ−K,ℓ, · · · , Uℓ−1,ℓ, Uℓ,ℓ+1, · · · , Uℓ,ℓ+K).
+Gaussian auxiliary variables:
+Next, we show that arbitrary distortion tuple within the induced region, i.e. D ∈DG
+ϵ , can be
+achieved by introducing a set of node-wise Gaussian auxiliary random variables {Uℓ}L
+ℓ=1 satisfying
+the Markov chains:
+Uℓ→Xℓ→(X−ℓ, Uℓ,N (ℓ)),
+(209)
+36
+
+
+and then the JC optimality is also achieved. Suppose the edge-wise auxiliary random variables
+{Uj,k}(j,k)∈E(K) have been constructed according to eqs. (179) to (181), which are all Gaussian
+variables. Then each source node Xℓcan be decomposed as
+Xℓ= E[Xℓ|Uℓ,N (ℓ)] + Nℓ,
+ℓ= 1, · · · , L,
+(210)
+where Nℓ∼N(0, σ2
+Nℓ) denotes Gaussian residual and is independent of (Uℓ,N (ℓ), XN (ℓ)). To
+further refine the reconstruction of Xℓ, we first introduce a Gaussian auxiliary random variable ˜Uℓ
+such that:
+Uℓ= Xℓ+ Wℓ,
+with Wℓ∼N(0, σ2
+Wℓ), Wℓ⊥⊥Xℓ.
+(211)
+Apparently, we have Uℓ→Xℓ→(X−ℓ, Uℓ,N (ℓ)). It can be verified that Xℓcan be further decom-
+posed as Xℓ= E[Xℓ|Uℓ,N(ℓ), Uℓ] + Zℓ, where Zℓ∼N(0, σ2
+Zℓ) denote an independent Gaussian
+noise. With ϵℓ≜E[∥Xℓ−E[Xℓ|Uℓ,N (ℓ)]∥2] and introduced node-wise Uℓ, then we further have
+the corresponding distortion term as Dℓ= (ϵℓ+
+1
+σ2
+Wℓ)−1. Observe that by setting the variance σ2
+Wℓ
+arbitrarily small, the induced distortion of Xℓ, i.e.,
+Dℓ= E[∥Xℓ−E[Xℓ|Uℓ,N (ℓ), Uℓ]∥2],
+(212)
+can be made arbitrarily close to zero. Therefore, by introducing such auxiliary variables {Uℓ}L
+ℓ=1
+for each component, the achievable distortion can be continuously controlled over the range
+(0, ϵℓ]. Consequently, any distortion tuple D ∈DG
+ϵ is achievable. For example, Figure 11 illus-
+trates the construction of {Uj,k}(j,k)∈E(2) and {Uℓ}5
+ℓ=1 for a second-order Gauss-Markov source
+(X1, · · · , X5).
+For the above designed coding system, by applying Lemma 1 in Chen et al. (2017) together with the
+Berger-Tung inner/achievability bound, we obtain that, for all distortion tuples D ∈DG
+ϵ ,
+RISC
+K,sum(D) ≤1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(213)
+Conversely, by the Shannon lower bound, we have for any D ∈DG
+ϵ ⊆DJC,
+RISC
+K,sum(D) ≥1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(214)
+Combining the upper and lower bounds, for any D ∈Dϵ, it follows that
+RISC
+K,sum(D) = 1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(215)
+This coincides with the joint coding rate-distortion function in equation 164, and hence establishes
+joint coding optimality. This completes the proof.
+Linear interpolation.
+For jointly Gaussian X and {Uj,k}(j,k)∈E(K), the conditional expectation E[Uj,k|Xj, Xk] is linear
+on (Xj, Xk). Hence, Uj,k admits the orthogonal decomposition
+Uj,k = γj,kXj + θj,kXk + ˜Nj,k,
+(216)
+where ˜Nj,k is also Gaussian and independent of (Xj, Xk). Since scaling of Uj,k does not affect the
+rate-distortion tradeoff, we can normalize the coefficients by γj,k + θj,k to obtain
+Uj,k = ωj,kXj + (1 −ωj,k)Xk + Nj,k,
+(217)
+where ωj,k =
+γj,k
+γj,k+θj,k and Nj,k is Gaussian and independent of (Xj, Xk). Furthermore, as shown
+in Lemma C.3, the noise variance satisfies
+σ2
+Nj,k = −ωj,k(1 −ωj,k)
+Jjk
+.
+In particular, ωj,k ∈(0, 1) when Jjk < 0, while ωj,k > 1 when Jjk > 0.
+37
+
+
+Linear reconstruction:
+Given constructed edge-wise auxiliary variables {Uj,k}(j,k)∈E(K) and node-wise auxiliary variables
+{Uℓ}L
+ℓ=1, the final step is to reconstruct each source node Xℓ. Due to the Markov constraints in
+equation 206, for each source variable Xℓ, we have the following reconstruction:
+ˆXℓ= E[Xℓ|{Uj,k}(j,k)∈E(K), {Uℓ}L
+ℓ=1] = E[Xℓ|Uℓ,N (ℓ), Uℓ].
+Without loss of generality, we let Uℓ,N (ℓ) = (Uℓ−K,ℓ, · · · , Uℓ−1,ℓ, Uℓ,ℓ+1, · · · , Uℓ,ℓ+K). Then for
+jointly Gaussian auxiliary variables, we have the optimal reconstruction ˆXℓwith linear decoding
+function:
+ˆXℓ= a(ℓ)⊤[Uℓ−K,ℓ, · · · , Uℓ−1,ℓ, · · · , Uℓ,ℓ+1, · · · , Uℓ,ℓ+K, Uℓ]⊤
+=
+K−1
+X
+k=0
+a(ℓ)
+K−k · Uℓ−1−k,ℓ+
+2K−1
+X
+k=K
+a(ℓ)
+k
+· Uℓ,ℓ−K+1+k + a(ℓ)
+2K · Uℓ
+=
+K−1
+X
+k=0
+a(ℓ)
+K−k · (ωℓ−1−k,ℓXℓ−1−k + ¯ωℓ−1−k,ℓXℓ+ Nℓ−1−k,ℓ)
++
+2K−1
+X
+k=K
+a(ℓ)
+k
+· (ωℓ,ℓ−K+1+kXℓ+ ¯ωℓ,ℓ−K+1+kXℓ−K+1+k + Nℓ,ℓ−K+1+k) + a(ℓ)
+2Kλℓ· Xℓ
+=
+K
+X
+k=−K
+βK+1+kXℓ+k + Zℓ,
+where Zℓ= PK−1
+k=0 a(ℓ)
+K−kNℓ−1−k,ℓ+ P2K−1
+k=K a(ℓ)
+k Nℓ,ℓ−K+1+k is a Gaussian random variable in-
+dependent with X. This completes the proof.
+Theorem C.6 (JC rate-distortion optimality). Under the source model setting of Theorem C.5, there
+exists a non-empty distortion region DG
+ϵ , such that for all D ∈DG
+ϵ , RISC
+K,sum(D) achieves the joint-
+coding rate-distortion function:
+RISC
+K,sum(D) = RJCG(D),
+∀D ∈DG
+ϵ .
+(218)
+Proof. Theorem C.5 already establishes the existence of two sets of edge-wise auxiliary random
+variables {Uj,k}(j,k)∈E(K) and node-wise auxiliary variables {Uj}L
+j=1, which satisfy the desired
+Markov constraints in equation 206 and achieve Shannon lower bound in the distortion region Dϵ.
+In this proof, we show that these auxiliary variables are operationally compatible with the structure
+of the proposed ISC-K system.
+Step 1. Achievability scheme for ISC:
+In this part, we show those edge-wise and node-wise auxiliary variables can be incorporated into the
+proposed ISC-K system without violating its coding structure:
+1. Regrouped auxiliary variables. As in the Definition C.1, there are only edge-wise aux-
+iliary variable form Uj,k involved in the ISC-K system. We first clarify how edge-wise
+auxiliary variables can be extended when node-wise auxiliary variables are present. Ba-
+sically, the node-wise variables do not require a separate class of messages. They can be
+incorporated into the pair-indexed ISC auxiliaries through a deterministic augmentation.
+Given edge-wise and node-wise auxiliary variables as constructed in Theorem C.5, we
+consider a set of augmented auxiliary variables:
+Vj,k ≜
+
+
+
+Uj,k,
+j < L −1, k < min{j + K, L},
+(Uj,k, Uj),
+j < L −1, k = min{j + K, L},
+(UL−1,L, UL−1, UL),
+j = L −1, k = L.
+(219)
+The idea is to simply augment the node-wise variable Uj into the last edge-wise auxiliary
+variable associated with source node Xj. The exception is the case when j = L −1,
+where we have to append both UL−1 and UL as there are no future frames after frame
+XL. Obviously, {Vj,k}(j,k)∈E(K) is a regrouping of components of {Uj,k}(j,k)∈E(K) and
+{Uℓ}L
+ℓ=1. Therefore it represents the same collection of auxiliary variables.
+38
+
+
+2. ISC Encoding. As defined in Section 3.2, ISC-K encoding mapping fj,k can be decom-
+posed as fj,k = ϕj,k ◦hj,k, where hj,k denotes the deterministic interpolation function and
+ϕj,k denotes a sequential encoder. For deterministic functions hj,k, we adopt the following
+realizations:
+hj,k(Xj, Xk) = ˜Yj,k ≜
+
+
+
+˜Xj,k,
+j < L −1, k < min{j + K, L},
+( ˜Xj,k, Xj),
+j < L −1, k = min{j + K, L},
+( ˜Xj,k, Xj, Xk),
+j = L −1, k = L.
+(220)
+Here, ˜Xj,k is attained by performing a linear interpolation between (Xj, Xk) as stated in
+Theorem C.5. Apparently we have the following Markov chains:
+Uj,k →˜Xj,k →(Xj, Xk) →X
+Uℓ→Xℓ→X−ℓ
+
+⇒Vj,k →˜Yj,k →(Xj, Xk) →X.
+(221)
+Since the RHS Markov condition in equation 221 is stronger than the encoder-side Markov
+condition of ISC-K system in equation 5. Therefore, the constructed auxiliary variables
+Vj,k and ˜Yj,k are a valid instantiation of encoder test channels permitted of ISC-K system.
+Then we perform the ISC-K encoder on source pair (Xj, Xk) to generate Vj,k.
+3. ISC Decoding. As in equation 5, given received V≤ℓat ℓ-stage ISC-K decoder, we adopt
+the deterministic decoding function ˆXℓ= gℓ(V≤ℓ).
+For augmented auxiliary variables {Vj,k}(j,k)∈E(K) and coding scheme constructed above, we have
+the following key observations:
+1. Since each Vj,k contains all information of Uj,k, it also follow the Markov constraints
+analogous to Uj,k stated in eqs. (180) and (181).
+2. Based on the definition of ISC-K encoder, for each (j, k)-encoding stage and auxiliary
+variable Vj,k, the associate rate ¯Rj,k follows from the conditional source coding theorem.
+¯Rj,k = I( ˜Yj,k; Vj,k|V<j,k).
+(222)
+Note that this has the same mutual information form as in Definition C.1, while ISC-K
+coding is optimized over all admissible auxiliary variables.
+Now for those constructed auxiliary variables, we can characterize the associate sum-rate and per-
+letter distortion. Specifically, for j < L−1 and k < min{j +K, L}, the associate rate ¯Rj,k follows
+by chain rule:
+¯Rj,k = I( ˜Yj,k; Vj,k|V<j,k)
+(223)
+= I( ˜Xj,k; Vj,k|V<j,k)
+(224)
+= I(Xj, Xk; Vj,k|V<j,k).
+(225)
+For j < L −1 and k = min{j + K, L}, the associate rate ¯Rj,k follows by chain rule:
+¯Rj,k = I( ˜Yj,k; Vj,k|V<j,k)
+(226)
+= I( ˜Xj,k, Xj; Vj,k|V<j,k)
+(227)
+= I(Xj, Xk; Vj,k|V<j,k).
+(228)
+For j = L −1 and k = L, the associate rate RL−1,L:
+¯RL−1,L = I( ˜YL−1,L; VL−1,L|V<L−1,L)
+(229)
+= I( ˜XL−1,L, XL−1, XL; VL−1,L|V<L−1,L)
+(230)
+= I(XL−1, XL; VL−1,L|V<L−1,L).
+(231)
+39
+
+
+Now we can directly apply the same steps in eqs. (176) to (178) in the proof of Theorem C.2 to
+augmented auxiliary variables {Vj,k}(j,k)∈E(K), i.e.,
+X
+(j,k)∈E(K)
+¯Rj,k =
+X
+(j,k)∈E(K)
+I(Xj, Xk; Vj,k|V<j,k)
+(232)
+=
+X
+(j,k)∈E(K)
+I(X; Vj,k|V<j,k)
+(233)
+= I(X; {Vj,k}(j,k)∈E(K))
+(234)
+= I(X; {Uj,k}(j,k)∈E(K), U1, · · · , UL)
+(235)
+Now for decoding distortion of each source node Xℓ, since X and {Vj,k}(j,k)∈E(K) are jointly Gaus-
+sian, we can adopt the decoding introduced in the proof of Theorem C.5, i.e. E[Xℓ|Uℓ,N (ℓ), Uℓ],
+which is valid for the ISC architecture based on the definition of ℓ-th decoding function, i.e.
+ˆXℓ= gℓ(V≤ℓ). Therefore we have the induced distortion D = (D1, · · · , DL) ∈DG
+ϵ and the
+corresponding rate-distortion function in equation 215. Notice that given the induced distortion D,
+this is only one possible realization of ISC-K coding system. Therefore we have the following upper
+bound:
+RISC
+K,sum(D) ≤¯Rsum(D) = 1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(236)
+Step 2. Converse part
+For the Gauss-Markov source X and arbitrary given distortion tuple D ∈DG
+ϵ ⊆DJC, we can again
+use the Shannon lower bound:
+RISC
+K,sum(D) ≥RJCG(D) = 1
+2 log
+|Σ|
+QL
+ℓ=1 Dℓ
+.
+(237)
+Then apparently, for K-order Gauss-Markov source and arbitrary distortion D ∈DG
+ϵ , we can adopt
+the ISC-K coding scheme alongside those auxiliary random variables constructed in Theorem C.5
+and achieve the Shannon lower bound, thereby the joint-coding rate-distortion function. This com-
+pletes the proof.
+C.5
+GAUSSIAN EXAMPLE
+In this section, we provide the explicit numerical calculation for the two-frame Gaussian source
+(X1, X2) ∼N(0, Σ). We assume the symmetric setting with unit variances σ2
+1 = σ2
+2 = 1 and
+correlation coefficient ρ > 0, such that:
+Σ =
+
+1
+ρ
+ρ
+1
+
+.
+(238)
+C.5.1
+SYMMETRIC DISTORTION CASE
+We first consider the symmetric distortion constraint:
+E[∥Xj −ˆXj∥2] ≤D,
+j = 1, 2
+(239)
+Joint coding.
+Recall the Gaussian joint coding rate-distortion function in equation 163. Let Σe
+denote the reconstruction error covariance matrix. Under the symmetric distortion constraint, we
+parametrize:
+Σe =
+
+d
+θ
+θ
+d
+
+.
+(240)
+where d ≜(Σe)11 = (Σe)22. Then the joint coding rate-distortion optimization problem becomes:
+RG
+JC(D) = min
+Σe
+1
+2 log 1 −ρ2
+|Σe|
+s.t. 0 ≺Σe ⪯Σ,
+(Σe)jj ≤D,
+j = 1, 2.
+(241)
+40
+
+
+Under the above parameterizations, this further reduces to
+RG
+JC(D) = min
+θ
+1
+2 log 1 −ρ2
+D2 −θ2
+s.t. −D < θ < D,
+ρ + D −1 ≤θ ≤ρ + 1 −D.
+(242)
+Solving the above optimization yields:
+RG
+JC(D) =
+
+
+
+
+
+1
+2 log 1−ρ2
+D2 ,
+0 < D ≤1 −ρ,
+1
+2 log
+1+ρ
+2D+ρ−1,
+1 −ρ < D ≤1,
+0,
+D ≥1.
+(243)
+The regime 0 < D ≤1 −ρ corresponds to the high-resolution region where the Shannon lower
+bound is tight.
+Sequential coding.
+We next consider the strictly causal sequential coding setting. According to
+Corollary 1.2 in Ma et al. (2007), the sequential coding sum-rate function for the two-frame Gaussian
+source (X1, X2) under symmetric distortion constraint is given by
+Rseq,sum(D) =
+(
+1
+2 log 1
+D + 1
+2 log ρ2D+(1−ρ2)
+D
+,
+0 < D ≤1,
+0,
+D ≥1.
+(244)
+The above expression can be interpreted as the sum of two terms corresponding to the sequential
+coding process:
+R1(D) = 1
+2 log 1
+D,
+R2(D) = 1
+2 log ρ2D + (1 −ρ2)
+D
+.
+(245)
+The first term corresponds to encoding the first source X1 without future information. The second
+term represents the additional rate required for encoding X2 conditioned on the reconstruction of
+X1. Compared with the joint-coding rate-distortion function in equation 243, the sequential coding
+system incurs a nonzero performance gap due to the causal constraint, which prevents the encoder
+from jointly exploiting the correlation between (X1, X2).
+ISC.
+We now consider the proposed ISC-1 framework. For the symmetric distortion setting, we
+fix the interpolation coefficient to ω1,2 = 1
+2, and construct the interpolation-based auxiliary variable:
+˜X1,2 = 1
+2X1 + 1
+2X2,
+U1,2 = ˜X1,2 + N1,2,
+(246)
+where N1,2 is Gaussian noise independent of (X1, X2). The interpolated source has σ2
+˜
+X1,2 = 1+ρ
+2 .
+In the high resolution regime corresponding to the Markov chain X1 →U1,2 →X2, the noise
+variance is given by σ2
+N1,2 = −
+1
+4J12 = 1−ρ2
+4ρ . This induces the distortion region:
+Dϵ = {(D1, D2) : D1, D2 ≤1 −ρ}
+(247)
+where the JC optimality is achieved through the introduction of additional auxiliary random variables
+U1 and U2.
+Next, consider the low-resolution regime D ∈(1−ρ, 1]. Under the symmetric distortion constraint,
+we have
+D = D1 = E[∥X1 −ˆX1∥2]
+= σ2
+1 −E[X1U1,2]2
+σ2
+U1,2
+= 1 −
+1
+4(1 + ρ)2
+1+ρ
+2
++ σ2
+N1,2
+.
+(248)
+Solving for the noise variance yields:
+σ2
+N1,2 = (1 + ρ)(2D + ρ −1)
+4(1 −D)
+.
+(249)
+41
+
+
+The corresponding rate is
+R = I( ˜X1,2; U1,2)
+= 1
+2 log
+ σ2
+˜
+X1,2
+σ2
+N1,2
++ 1
+!
+= 1
+2 log
+1 + ρ
+2D + ρ −1
+(250)
+This coincides exactly with the joint-coding rate-distortion function in equation 243 for the low-
+resolution regime. Combined with the high-resolution result above, ISC-1 therefore achieves the
+Gaussian joint-coding rate-distortion performance for the two-frame Gaussian source.
+C.5.2
+ASYMMETRIC DISTORTION
+We next consider the asymmetric distortion constraints:
+E[∥X1 −ˆX1∥2] ≤D1,
+E[∥X2 −ˆX2∥2] ≤D2,
+(251)
+where D1 ∈(0, 1] is fixed. For convenience to compare within the high resolution regime, we
+further assume D1 ∈(0, 1 −ρ2].
+Joint coding.
+Under the asymmetric distortion setting, the reconstruction error covariance matrix
+takes the form
+Σe =
+
+D1
+θ
+θ
+d2
+
+(252)
+where d2 ≤D2. Then joint-coding rate-distortion optimization becomes:
+RG
+JC(D) = min
+θ,d2
+1
+2 log
+1 −ρ2
+D1d2 −θ2
+s.t. D1d2 −θ2 > 0,
+(1 −D1)(1 −d2) −(ρ −θ)2 ≥0,
+d2 ≤D2.
+(253)
+Solving the above optimization yields the following rate-distortion function:
+RG
+JC(D) =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+2 log 1−ρ2
+D1D2 ,
+0 < D2 ≤1 −ρ2 −D1
+1 −D1
+,
+1
+2 log
+1−ρ2
+D1D2−
+
+ρ−√
+(1−D1)(1−D2)
+2 ,
+1 −ρ2 −D1
+1 −D1
+< D2 < 1 −(1 −D1)ρ2,
+1
+2 log
+1
+D1 ,
+D2 ≥1 −(1 −D1)ρ2.
+(254)
+The three regions correspond to different operating regimes of the Gaussian joint-coding solution.
+In particular, when D2 is sufficiently small, the Shannon lower bound is tight and the optimal rate-
+distortion function reduces to the product form in the first case. As D2 increases, the optimal re-
+construction error covariance becomes correlated, leading to the middle regime. Finally, when D2
+is sufficiently large, only the distortion constraint on X1 remains active, and the sum-rate reduces to
+the scalar Gaussian rate-distortion function of X1 alone.
+Sequential coding.
+For the strictly causal sequential coding setting, the sum-rate function under
+asymmetric distortion constraints is given by:
+Rseq,sum(D) =
+
+
+
+
+
+
+
+
+
+1
+2 log
+1
+D1 + 1
+2 log ρ2D1+(1−ρ2)
+D2
+,
+D2 < ρ2D1 + (1 −ρ2),
+1
+2 log
+1
+D1 ,
+ρ2D1 + (1 −ρ2) ≤D2 ≤1,
+0,
+D1 ≥1, D2 ≥1.
+(255)
+The above characterization still reflects the sequential nature of the coding process. When D2 ≥
+ρ2D1 + (1 −ρ2), the distortion requirement on X2 can already be satisfied using only the recon-
+struction of X1, and therefore no additional rate is required for the second stage.
+42
+
+
+ISC.
+We now analyze the proposed ISC-1 under asymmetric distortion constraints. Unlike the
+symmetric setting, the interpolation coefficient ω1,2 is optimized jointly with the distortion con-
+straint. From the proof of Lemma C.3, for ρ > 0, the optimal interpolation coefficient satisfies
+ω1,2 > 0. We first characterize the high resolution regime where JC optimality is achieved through
+additional auxiliary random variables U1 and U2. Setting ϵ1 ≜D1, the corresponding distortion
+threshold for the second source is
+ϵ2 = 1 −ρ2 −ϵ1
+1 −ϵ1
+.
+(256)
+Therefore, for arbitrary D1 ∈(0, 1 −ρ2] and D2 ≤
+1−ρ2−D1
+1−D1
+, ISC achieves JC rate-distortion
+function. Notably, the region coincides with the high-resolution regimes of the Gaussian joint-
+coding solution in equation 254. Outside this region, the sum-rate optimization reduces to:
+R1,sum(D) = min
+ω1,2
+1
+2 log
+σ2
+U1,2
+σ2
+N1,2
+s.t. E[∥X1 −ˆX1∥2] = D1,
+E[∥X2 −ˆX2∥2] ≤D2.
+(257)
+The variance term of auxiliary variables are:
+σ2
+U1,2 = σ2
+˜
+X1,2 + σ2
+N1,2
+(258)
+σ2
+˜
+X1,2 = ω2
+1,2 + 2ω1,2(1 −ω1,2)ρ + (1 −ω1,2)2.
+(259)
+We first consider the equality distortion constraint on the first source:
+D1 = E[∥X1 −ˆX1∥2]
+= 1 −(ω1,2 + (1 −ω1,2)ρ)2
+σ2
+U1,2
+.
+(260)
+Equivalently, we have the noise variance:
+σ2
+U1,2 = (ω1,2 + (1 −ω1,2)ρ)2
+1 −D1
+.
+(261)
+For the second source, we obtain:
+D2 ≥E[∥X2 −ˆX2∥2]
+= 1 −
+ω1,2ρ + (1 −ω1,2)
+ω1,2 + (1 −ω1,2)ρ
+2
+(1 −D1).
+(262)
+Define:
+t ≜ω1,2ρ + (1 −ω1,2)
+ω1,2 + (1 −ω1,2)ρ.
+(263)
+Since ω1,2 ∈(0, 1), we have t > 0. The distortion constraint in equation 262 becomes
+t2 ≥1 −D2
+1 −D1
+.
+(264)
+which is equivalent to t ≥
+q
+1−D2
+1−D1 . Substituting this relation to the rate expression yields
+1
+2 log
+σ2
+U1,2
+σ2
+N1,2
+= 1
+2 log
+1
+1 −σ2
+˜
+X1,2/σ2
+U1,2
+= 1
+2 log
+1
+1 −
+1−D1
+(ω1,2+(1−ω1,2)ρ)2 σ2
+˜
+X1,2
+= 1
+2 log
+1
+1 −1−D1
+1−ρ2 (1 −2ρt + t2)
+(265)
+43
+
+
+Joint
+Causal
+ISC
+0
+0.2
+0.4
+0.6
+0.8
+1
+0
+1
+2
+3
+Distortion D
+Rate (Bits)
+0
+0.2
+0.4
+0.6
+0.8
+1
+0
+0.1
+Distortion D
+Rate Gap (Bits)
+0
+0.2
+0.4
+0.6
+1
+2
+3
+Distortion D2 (with D1 = d1)
+Rate (Bits)
+Figure 12: Gaussian source (X1, X2) with σ2
+1 = σ2
+2 = 1 and ρ = 0.7. Left: rate-distortion
+R(D) comparisons for symmetric distortion constraint D. Interpolation coefficient ω1,2 = 0.5
+for ISC. Middle: Rate gap between joint coding (ISC) and causal coding for symmetric distortion
+case. Right: rate-distortion R(D2) comparisons for asymmetric distortion constraint with fixed
+d1 = 0.1, 0.2, and 0.4 upside down.
+Therefore, the optimization reduces to minimizing 1 −2ρt + t2, whose unconstrained minimizer is
+t∗= ρ. Combining this with the distortion constraint in equation 262 gives:
+t∗= max
+(
+ρ,
+r
+1 −D2
+1 −D1
+)
+.
+(266)
+When t∗= ρ, the coding degenerates to ω1,2 = 1, corresponding to coding only the first source.
+Otherwise, we have the optimal interpolation coefficient:
+ω∗
+1,2 =
+1 −ρ
+q
+1−D2
+1−D1
+1 −ρ + (1 −ρ)
+q
+1−D2
+1−D1
+,
+(267)
+for D2 < 1 −ρ2(1 −D1). Finally, the ISC sum-rate-distortion function becomes:
+R1,sum(D) =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+2 log 1−ρ2
+D1D2 ,
+0 < D2 ≤1 −ρ2 −D1
+1 −D1
+,
+1
+2 log
+1−ρ2
+D1D2−
+
+ρ−√
+(1−D1)(1−D2)
+2 ,
+1 −ρ2 −D1
+1 −D1
+< D2 < 1 −(1 −D1)ρ2,
+1
+2 log
+1
+D1 ,
+D2 ≥1 −(1 −D1)ρ2.
+(268)
+This coincides exactly with the Gaussian joint-coding rate-distortion function in equation 254,
+thereby establishing the JC optimality of ISC-1 for the asymmetric distortion setting.
+C.5.3
+SUMMARY
+We provide a simple two-frame Gaussian example to illustrate the behavior of the proposed ISC
+framework. Consider jointly Gaussian sources (X1, X2) with a quadratic distortion measure.
+Symmetric distortion.
+We first consider the symmetric setting D1 = D2 = D. Figure 12 (left)
+shows the rate-distortion curves for joint coding, causal sequential coding, and ISC-1. In this case,
+the sum-rate is denoted by Rsum(D2). As shown, ISC-1 achieves the same rate-distortion per-
+formance as joint coding in the high-resolution regime by introducing auxiliary variables through
+interpolation. Moreover, it strictly outperforms causal coding across the entire rate region.
+Asymmetric distortion.
+We next consider the case where D1 is fixed and vary D2. Figure 12
+(right) shows the corresponding rate-distortion curves, denoted by RD1,sum(D2). In this setting, the
+interpolation coefficients can be optimized according to the distortion constraint, and ISC achieves
+joint coding optimality across the entire feasible rate region.
+Discussion.
+This example illustrates how interpolation-based auxiliary variables enable ISC to
+capture delayed dependencies efficiently. While the exact optimality result is specific to Gaussian
+44
+
+
+sources, it provides a clear design principle for practical video coding: temporal dependencies can
+be exploited through local interpolation within a limited delay window without sacrificing coding
+efficiency.
+D
+EXPERIMENT DETAILS
+The proposed GFSC architecture is model-agnostic and can be integrated into different neural video
+compression (NVC) models. In this section, we provide more implementation details about model-
+training, evaluation, and baseline setups. We also explicitly show how GFSC can be incorporated
+into DCVC (Li et al., 2021) architecture, which serves as our primary baseline. The same integration
+principle can be applied to other NVC architectures, such as VCT and DHVC, with only minor
+modifications.
+D.1
+TRAINING SETUP AND OVERVIEW
+Training and evaluation. All models are trained on Vimeo-90K (Xue et al., 2019) using 7-frame
+sequences (GOP = 7), with the remaining training hyperparameters following the corresponding
+original implementations. In our implementation, we focus on evaluating the effectiveness of the
+proposed GFSC mechanism rather than optimizing for peak performance. Therefore, for VCT and
+DHVC, we adopt a simplified training procedure corresponding to the final stage of VCT, where all
+components (encoder, decoder, and entropy model) are trained jointly from scratch. Specifically, we
+train the models for 50 epochs using their original rate-distortion objectives and optimization set-
+tings. For DCVC, we adopt the full multi-stage training procedure of the original model as in Zhang
+& Zhu (2025) and introduce the delayed-frame modules only in the final training stage. For evalua-
+tion, we report results on UVG (Mercat et al., 2020) and MCL-JCV (Wang et al., 2016). Following
+standard evaluation protocols, we encode the first 96 frames of each sequence with GOP = 32. We
+evaluate rate-distortion performance using bitrate (bits-per-pixel, bpp) and PSNR computed in the
+RGB space. For conventional video codecs, reconstructed .YUV videos are first converted to RGB
+before computing MSE and PSNR to ensure a consistent comparison.
+Rate-distortion training.
+We follow the standard rate-distortion optimization used in DCVC Li
+et al. (2021). First, the rate-distortion loss function is defined as
+L = R + λD,
+where R denotes the bitrate and D denotes the distortion. Both are averaged across the video
+sequence batch during training. The trade-off hyperparameter λ is selected from λ ∈0.01 ×
+{2, 1, 2−1, 2−2, 2−3, 2−4}, covering both low- and high-rate regimes. For other settings, we use
+the Adam optimizer with a batch size of 8, an initial learning rate of 1 × 10−5 and aux learning rate
+of 1 × 10−3. Training is performed for 30 epochs with a linear learning rate schedule: the learning
+rate is warmed up for the first 2k steps and then linearly decayed to 1×10−6. All models are trained
+on a single NVIDIA RTX 5090 GPU using 2 days.
+Delayed coding baselines.
+As discussed in Section 4, we additionally compare ISC with practical
+delayed coding frameworks, including Random Access (RA) coding (i.e., bidirectional coding),
+under matched delay constraints (K ≤3). We first clarify the connection between sequential coding
+delay and RA coding configurations.
+I1
+B1
+B2
+· · ·
+· · ·
+BN−1
+IN
+N-length video clip
+Delay window
+with (N −2)-frame delay
+wait until
+IN arrives
+Figure 13: Illustration of the delay induced by B-frame coding over an N-length video clip.
+45
+
+
+(a) DCVC
+(b) DCVC + GFSC
+Motion branch
+Context branch
+Motion branch
+Context branch
+ˆXt−1
+Xt
+ME
+fm
+Q
+gm
+MC
+¯Xt
+Context
+¯Xt
+Xt
+fc
+Q
+gc
+ˆXt
+Reconstruction
+GFSC
+extension
+ˆXt−1
+Xt
+ˆXt−1
+Xt+1
+ME
+ME
+fm
+fm
+TJMm
+Q
+gm
+MC
+¯Xt
+Context
+¯Xt
+Xt
+¯Xt
+Xt+1
+fc
+fc
+TJMc
+Q
+gc
+ˆXt
+Reconstruction
+ME: motion estimation
+MC: motion compensation
+Q: quantization
+Figure 14: Simplified DCVC and GFSC architectures. GFSC introduces temporal joint modeling
+(TJM) modules to both motion and context branch, highlighted in orange and purple, respectively.
+One delayed frame case is shown. Additional delayed frames provide further inputs to these mod-
+ules. The mappings fm, fc and gm, gc denote motion/context encoders and decoders, respectively.
+Consider an L-frame video sequence. In RA coding, the encoder first buffers a short frame group
+and performs bidirectional prediction within the group. For example, in an I-B-B-B-I structure,
+intermediate B-frames depend on both past and future anchor frames. As a result, the encoder must
+wait for the arrival of the future I-frame before encoding the intermediate frames, leading to an
+effective practical delay determined by the distance between the first B-frame and the future anchor
+frame. The decoder then reconstructs frames in coding order and reorders them back to display
+order. Figure 13 illustrates the corresponding delay configurations.
+We consider two representative delayed coding baselines: DCVC-B Sheng et al. (2025) and HM-
+RA. For DCVC-B, the neural architecture allows flexible extension to delay settings. Therefore,
+both K = 1 and K = 2 are implemented by customizing the reference frame lists for each frame.
+For HM-RA, the hierarchical GOP structure is designed primarily for even GOP sizes. Accordingly,
+we modify the standard encoder_randomaccess_main.cfg to implement 1-delay and 3-
+delay settings using I-B-I and I-B-B-B-I structures, respectively. The intermediate I-B-B-I
+configuration is not directly supported under the standard HM-RA hierarchical coding structure.
+D.2
+NETWORK ARCHITECTURE
+We describe how GFSC is integrated into the causal DCVC architecture. The original DCVC codec
+contains separate I-frame and P-frame models. For P-frame coding, we distinguish two branches:
+a motion branch with analysis/synthesis transforms (fm, gm) and a context branch with transforms
+(fc, gc). Each branch retains its original entropy-coding module based on the CompressAI im-
+plementation (B´egaint et al., 2020). Generally, GFSC introduces temporal joint modeling (TJM)
+modules between the analysis transforms and the subsequent coding modules, while leaving the
+remaining DCVC pipeline unchanged. Figure 14 compares the original DCVC and DCVC-GFSC
+architectures for the one-frame-delay case.
+One-frame delay (K = 1).
+For every stage ℓ< L, GFSC jointly models the current representation
+and the available one-frame lookahead.
+1. For an I-frame stage, let fI and gI denote the corresponding analysis and synthesis trans-
+forms. Given current and delayed frame pair (xℓ, xℓ+1), we first compute yℓ= fI(xℓ) and
+yℓ+1 = fI(xℓ+1). Then we have the following joint representation
+˜yℓ= TJMc (yℓ, yℓ+1) .
+Here, TJMc is implemented using the window-based spatial-temporal attention module
+described below.
+46
+
+
+(a) TJMm
+(b) TJMc
+ym
+t
+ym
+t+1
+Motion features
+Concatenate
+ym
+ℓ, ym
+ℓ+1, |ym
+ℓ+1 −ym
+ℓ|
+1 × 1 Conv
+LeakyReLU
+ResBlock
+ResBlock
+3 × 3 Conv
++
+˜ym
+ℓ
+D×
+yc
+ℓ
+yc
+ℓ+1
+Context features
+Stack along time
+Windowed
+ST self-attention
+MLP
+3 × 3 Conv
+Select current frame
+3 × 3 Conv
++
+˜yc
+ℓ
+Figure 15: Temporal joint modeling modules for motion and context branches in DCVC architecture.
+Left: TJMm concatenates motion features and their absolute difference as input. Right: TJMc
+jointly updates the two context features using a spatial-temporal self attention module.
+2. For P-frames, DCVC contains separate motion and context representations. We therefore
+introduce two corresponding temporal modules, TJMm and TJMc. For each branch b ∈
+{m, c},
+˜yb
+ℓ= TJMb
+ yb
+ℓ, yb
+ℓ+1
+
+,
+yb
+ℓ= fb(·).
+The context module TJMc uses spatial-temporal self-attention to jointly learn delayed la-
+tent representations, whereas TJMm uses a lightweight convolutional module to jointly
+model the motion features. The resulting representations are then passed to the original
+entropy-coding and decoding pipeline. All P-frame stages share the same network.
+Note that at the final stage ℓ= L, no future frame is available. GFSC therefore bypasses temporal
+fusion and directly forwards the current latent representation ˜yb
+L = yb
+L for b ∈{m, c}. Because
+the TJM outputs preserve the original latent tensor dimensions, the subsequent entropy models and
+synthesis transforms can be used without modification.
+Extension to larger delays.
+The same construction extends directly to K > 1. For the context
+branch, the spatial-temporal attention module jointly processes all available latent representations
+within the delay window:
+˜yc
+ℓ= TJMc
+
+yc
+ℓ, · · · , yc
+min{ℓ+K,L}
+
+.
+The attention formulation naturally supports a variable number of available future frames near the
+sequence boundary. For the motion branch, TJMm uses a fixed-size input corresponding to the
+selected delay budget. For example, when K = 2,
+˜ym
+ℓ= TJMm
+ ym
+ℓ, ym
+ℓ+1, ym
+ℓ+2
+
+.
+If fewer than K future representations are available, the missing inputs are replaced by zero tensors
+of the same shape. The same padding rule is used during both training and inference.
+Coding and quantization. After joint modeling within the K-delay window, the learned represen-
+tation zℓis quantized and entropy-coded. Following the one-shot formulation in Section 3.2, we
+adopt universal quantization with shared randomness Gray & Stockham (2002); Ziv (2003); Theis
+& Agustsson (2021) to implement one-shot channel simulation. Specifically, the encoder computes
+zℓ= ∆
+ ˜yℓ+ w
+∆
+
+,
+where w ∼U(−∆/2, ∆/2) denotes shared randomness. At the decoder side, the quantized latent
+is reconstructed as
+uℓ= zℓ−w,
+(269)
+47
+
+
+0.05
+0.07
+0.09
+39
+40
+41
+Rate (bpp)
+PSNR (dB)
+BD-rate comparison.
+Model
+BD-rate (%)
+DCVC
+0.00
+DCVC-GFSC-1
+−3.78
+DCVC-GFSC-2
+−4.50
+DCVC-GFSC-3
+−5.11
+Figure 16: Left: Rate-PSNR curves on LIVE-HDR 4K. Right: BD-rate relative to causal DCVC.
+Negative values indicate rate savings.
+since the randomness w is shared between the encoder and decoder. Let gℓdenote the decoder
+network. The reconstructed frame is then obtained by:
+ˆxℓ= gℓ(uℓ).
+(270)
+D.3
+ADDITIONAL EXPERIMENTAL ANALYSIS
+We further evaluate GFSC-enhanced DCVC on the 4K LIVE-HDR dataset (Shang et al., 2022).
+Compared with causal DCVC, GFSC achieves BD-rate reductions of 3.78%, 4.50%, and 5.11%
+for delays K = 1, 2, 3, respectively. These results show that exploiting information from delayed
+frames also improves rate-distortion performance for 4K video.
+E
+LIMITATIONS
+Despite the theoretical and empirical results established in this work, several questions remain open.
+First, our joint-coding optimality result is characterized over a nontrivial distortion region. Extend-
+ing this characterization beyond the current region, and determining whether alternative auxiliary-
+variable constructions can enlarge the optimality regime, are important directions for future work.
+This limitation concerns only the extent of the characterized region and does not affect the estab-
+lished optimality guarantee within it.
+Second, while the general Markov analysis establishes the existence and graphical structure of JC-
+optimal clique-wise auxiliary variables, it does not yield a simple closed-form parameterization for
+arbitrary source distributions. For Gauss-Markov sources, the additional Gaussian structure makes
+this construction explicit and reduces the clique-wise interactions to pairwise linear interpolation.
+Developing similarly tractable constructions for broader non-Gaussian source families is an inter-
+esting theoretical direction.
+Finally, the computational cost of GFSC grows approximately with the delay budget because addi-
+tional future-frame interactions must be modeled. This overhead is moderate in the limited-delay
+regime studied in this work, but scaling GFSC to substantially longer delays while controlling com-
+putation and memory remains an important engineering direction.
+48

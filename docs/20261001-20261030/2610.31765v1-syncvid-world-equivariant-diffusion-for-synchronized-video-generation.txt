@@ -1,0 +1,1668 @@
+SyncVid: World-Equivariant Diffusion for
+Synchronized Video Generation
+Farhad G. Zanjani, Animesh Karnewar, Fatih Porikli, Amirhossein Habibian
+{fzanjani, karnewar, fporikli, ahabibia}@qti.qualcomm.com
+Generating multiple videos of a dynamic scene from a single reference video requires synthesizing
+both observed and unobserved content consistently across viewpoints. Existing camera-control
+methods for video diffusion typically rely on architectural mechanisms, including camera
+embeddings, cross-view attention, and geometric conditioning. Although effective for static scene
+content, these approaches often struggle with the fine-grained, dynamic geometry that must remain
+coherent across views and over time. We synchronize the diffusion process itself by sampling the
+Gaussian noise prior in a canonical 3D space derived from the source video and rasterizing it
+into target cameras, rather than sampling independently in each 2D image plane. Our method,
+SyncVid, lifts a monocular video into a canonical 4D representation, associates noise with scene
+geometry and unseen space, and rasterizes the resulting structured noise into arbitrary views.
+Because rendering can introduce local correlations, we further propose a cross-view-consistent
+whitening procedure that decorrelates neighboring pixels while preserving correspondence across
+views. The structured noise serves as the diffusion prior for a LoRA-adapted pretrained video
+diffusion model, requiring no architectural modifications. By enforcing spatiotemporal and
+cross-view coherence at the source of stochasticity, SyncVid generates synchronized videos and
+improves both perceptual quality and cross-view consistency in our experiments. Project page:
+https://qualcomm-ai-research.github.io/SyncVid-Webpage.
+1
+Introduction
+Video diffusion models have rapidly matured from generating a single plausible video to supporting fine-
+grained user control, including camera trajectories [1, 2, 3]. A natural extension of this control is synchronized
+video generation: producing multiple videos of the same dynamic scene from different viewpoints that
+remain consistent with one another. This capability is central to applications such as virtual reshooting and
+cinematography, multi-view content creation for AR/VR, and synthesizing training data for downstream 3D and
+4D vision tasks. Recent work approaches this problem through camera-conditioned reshooting, self-supervised
+pseudo-view training, or joint multi-view denoising with cross-view interaction modules [4, 5, 6, 7, 8]. These
+methods demonstrate that video diffusion models can produce multiple views with useful visual and geometric
+agreement, but rely primarily on architectural coupling, rendered conditioning, or specialized training data.
+A separate line of research has shown that the noise input to a video diffusion model is itself a powerful
+conditioning signal, rather than merely an initialization to be denoised away. Correlating noise across frames,
+instead of sampling it independently, improves temporal consistency and enables direct control over motion.
+PYoCo [9] introduces correlated noise priors for video diffusion, while How I Warped Your Noise [10]
+and Go-with-the-Flow [11] warp a continuous noise field according to optical flow. EquiVDM [12] further
+formalizes the resulting equivariance between noise transformations and generated motion. These results
+suggest that structured noise – noise with an explicit, non-trivial correlation structure tied to the underlying
+content – can serve as an effective and lightweight conditioning mechanism, complementing changes in model
+architecture or training data.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+1
+arXiv:2610.31765v1  [cs.CV]  22 Oct 2026
+
+
+4D Representation
+Source video
+Noise Rasterization
+Whitening
+Video DiT
+𝑧𝑖~𝒩(𝟎, 𝑰𝐻)
+Rasterized 
+latent noise
+Camera 
+novel poses
+{𝑔𝑖}𝑖=1
+𝑁
++
+Noise 4D space
+Gen. Video (Arc-Right) 
+Gen. Video (Dolly-out) 
+Gen. Video (Arc-Left) 
+Figure 1: Overview of SyncVid. Given a source video, SyncVid (1) lifts the observations into a canonical 4D
+point representation; (2) samples a Gaussian noise vector for each 3D primitive in the scene; and (3), after
+specifying novel camera trajectories, rasterizes and whitens the shared 3D noise into the corresponding views.
+These synchronized priors guide video diffusion to produce temporally and cross-view consistent videos from
+multiple cameras.
+Despite this progress, current approaches for constructing structured noise typically warp a 2D noise map
+using in-plane rotations and translations of 2D noise patches to propagate samples into future frames.
+Alternatively, they require the optical flow of the target video, which is impractical to obtain before generating
+that video. These limitations can substantially degrade video quality, particularly for dynamic objects
+undergoing out-of-plane rotations, partial occlusions, and subsequent reappearance.
+In this work, we show that synchronizing the diffusion prior in a canonical 3D space can induce world-
+equivariant video generation. Specifically, camera-induced changes in the 3D noise representation are
+reflected as consistent changes in the generated views. We achieve this by synchronizing the diffusion process
+at its source of randomness: we construct a canonical 3D noise representation that spans the reconstructed
+scene observed in the reference video as well as its surrounding unobserved space. We then rasterize
+this representation into each target camera to produce view-consistent noise priors, including for complex
+transformations such as out-of-plane rotations. Because all target views derive their stochastic initialization
+from the same canonical representation, the diffusion model is encouraged to generate correlated completions
+of unseen content, while conditioning on the reconstructed scene preserves consistency in observed regions.
+An overview of our method is shown in Fig. 1. We summarize our contributions as follows:
+• We propose a structured noise prior for video diffusion models by sampling and assigning noise vectors
+in the 3D space of the video content, rather than independently in each camera’s 2D image plane.
+Rasterizing this representation preserves dense spatiotemporal structure across views, without relying
+on 2D warping or editing of image-plane noise.
+• We introduce a view-consistent whitening procedure that reduces local spatial correlations introduced
+by rasterization while preserving cross-view correspondence, keeping the resulting noise close to the
+marginal distribution expected by the pretrained diffusion model.
+• We establish an automated benchmarking pipeline for synchronized video generation on the Mixkit
+subset of Open-Sora, enabling reliable and reproducible comparisons without manual or subjective
+selection of evaluation samples.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+2
+
+
+2
+Related Work
+2.1
+Structured Noise for Synchronized Video Generation
+Structured noise has emerged as an effective mechanism for improving temporal consistency and controlling
+motion in video diffusion models. PYoCo [9] observes that when an image diffusion model is adapted into a
+video model, the noise injected at different frames should preserve temporal correlation rather than being
+independent: independent per-frame noise lets the denoiser drift toward a slightly different appearance in
+each frame, causing jitter and flicker, whereas correlated noise starts neighboring frames from related latent
+structure and denoises them into consistent appearance and smoother motion. This gain requires no new
+architecture—no motion modules, optical-flow supervision, or video transformers—but only a modified noise
+prior, so a pretrained image model reaches strong temporal consistency by fine-tuning on comparatively little
+video data at low cost. Later work makes the correlation explicit: How I Warped Your Noise [10] transports
+a continuous Gaussian noise field across frames while preserving its distribution, Go-with-the-Flow [11]
+warps noise by real-time optical flow to control object and camera motion, and EquiVDM [12] shows that
+training with warped noise encourages equivariance between noise transformations and generated motion.
+All build correspondence through 2D motion warping, which suits consecutive frames of a single camera,
+where motion is well approximated by an in-plane flow field, but does not extend across cameras: a 2D warp
+expresses neither out-of-plane camera rotation nor correspondence for surfaces that a different viewpoint
+newly reveals or occludes.
+2.2
+Synchronized Camera-Controlled Video Generation
+Early camera-control methods such as CameraCtrl [1], MotionCtrl [2], and CamCo [3] condition single-
+view generation on camera trajectories, but do not explicitly enforce cross-view synchronization. Other
+methods couple denoising across views: SynCamMaster [6] adds a multi-view synchronization module for
+joint multi-camera generation, Collaborative Video Diffusion (CVD) [7] exchanges information through
+epipolar-guided cross-view attention, and CAVIA [8] uses spatial and temporal cross-attention for view
+consistency. A third line uses geometry as an indirect synchronization signal: ReCamMaster [4] reshoots
+videos along novel trajectories using video conditioning and synchronized synthetic multi-view training data,
+Reshoot-Anything [5] reduces dependence on paired multi-view data through self-supervised pseudo-view
+training around a 4D point-cloud anchor, and ViewCrafter [13] guides diffusion-based novel-view video
+synthesis with coarse rendered geometry. Diffusion-enhancement methods address related but different
+settings: ArtiFixer [14] couples video diffusion with 3D reconstruction, using opacity-aware latent mixing
+and autoregressive novel-view generation to enhance incomplete reconstructions, while SetDiff [15] enhances
+Gaussian-Splatting novel-view renderings in a multi-view setting by set-based diffusion over variable-size
+reference and target views grounded in pixel-aligned coordinate maps and pose-aware Plucker ray embeddings.
+Overall, existing methods synchronize through camera embeddings, cross-view interaction modules [6, 7, 8],
+or rendered geometric conditions [4, 5, 13, 15]. In contrast, we impose camera control with structured noise:
+instead of sampling prior Gaussian noise independently in each camera plane, we sample a canonical 3D
+field and project it into each view, providing both geometric conditioning and view-consistent diffusion
+initialization.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+3
+
+
+3
+Method
+3.1
+Preliminary: Noise Sampling in Video Diffusion Models
+Let x0 ∈R𝑡×𝐶×ℎ×𝑤denote a clean VAE latent features of a video v ∈R𝑇×3×𝐻×𝑊, where 𝐶is the channel
+dimension of the VAE latent, and 𝑡, ℎ, 𝑤are it’s compressed spatiotemporal resolutions. A video diffusion
+model defines a forward noising process:
+x𝑡=
+√︁
+¯𝛼𝑡x0 +
+√︁
+1 −¯𝛼𝑡ϵ,
+ϵ ∼N (0, I),
+(1)
+where ¯𝛼𝑡is determined by the noise schedule. The denoising network is commonly trained to predict either
+the sampled noise ϵ, the clean latent x0, or a velocity parameterization derived from the two. The standard
+formulation assumes that the entries of ϵ are independent and identically distributed (i.i.d.) standard Gaussian
+variables. In particular, for two different spatiotemporal latent locations 𝑝and 𝑞,
+E[ϵ𝑝] = 0,
+Cov(ϵ𝑝) = I𝐶,
+Cov(ϵ𝑝, ϵ𝑞) = 0
+for 𝑝≠𝑞.
+(2)
+This i.i.d. noise assumption is part of the training distribution seen by the pretrained diffusion model. Directly
+replacing the sampled noise with a strongly locally correlated noise pattern can therefore introduce a train–test
+mismatch, even when the denoiser is adapted using low-rank adaptation (LoRA).
+3.2
+Preliminary: Feed-Forward Dynamic Gaussian Splatting
+Given source video frames Isrc = {Isrc
+𝑡}𝑇
+𝑡=1, we employ an off-the-shelf feed-forward dynamic Gaussian
+Splatting model e.g. NoPo4D [16] to obtain a time-varying 3D representation:
+G, 𝚷src
+1:𝑇= FGS
+ Isrc
+1:𝑇
+ ,
+(3)
+where 𝚷src
+𝑡
+contains the estimated source-camera parameters and
+G = {G𝑖}𝑁
+𝑖=1,
+G𝑖= ( ¯µ𝑖, µ𝑖(𝑡), 𝚺𝑖(𝑡), 𝛼𝑖, c𝑖) ,
+(4)
+denotes the set of 4D Gaussian primitives. Each primitive has time-varying geometry and appearance together
+with a time-invariant, view-independent canonical anchor ¯µ𝑖∈R3 used to identify it across motion and views.
+For unobserved regions, we augment the reconstruction with a finite enclosing cubemap. Implementation
+details of this 4D representation are provided in Appendix A.5. Background samples are obtained by
+intersecting each target camera ray with this box, which assigns every background pixel an explicit 3D surface
+point
+Xcube
+𝑝
+= o𝑣+ 𝑠𝑝d𝑝,
+𝑠𝑝= min
+
+𝑠> 0 : o𝑣+ 𝑠d𝑝∈𝜕B
+	
+,
+(5)
+where o𝑣and d𝑝are the target-camera centre and ray direction. Given a target pose 𝚷tar
+𝑡, the novel-view RGB
+frame is obtained by compositing the rasterized Gaussian foreground with this background:
+eItar
+𝑡
+= CGS
+𝑡
++
+
+1 −AGS
+𝑡
+
+⊙Ccube
+𝑡
+,
+(6)
+where (CGS
+𝑡, AGS
+𝑡) are the rasterized foreground color and opacity. Rendering Eq. 6 over target poses produces
+the conditioning video used by our diffusion model.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+4
+
+
+3.3
+Canonical 3D Noise Latent
+We represent the source video by the set of 4D Gaussian primitives G = {G𝑖}𝑁
+𝑖=1 of Eq. 4, each carrying a
+canonical anchor position ¯µ𝑖∈R3 alongside its time-varying Gaussian Splatting attributes. We additionally
+assign each primitive an independent high-dimensional noise vector
+z𝑖∈R𝐻,
+z𝑖
+i.i.d.
+∼N (0, I𝐻),
+(7)
+where 𝐻denotes the dimension of the canonical 3D noise vectors and is chosen larger than the channel
+dimension 𝐶of the VAE latent features, whose typical values are 𝐶∈{16, 48}. The vectors {z𝑖} are sampled
+once and shared across all source and target views. Crucially, z𝑖is attached to the identity of primitive 𝑖and is
+a function of neither time nor viewpoint: a dynamic primitive whose center, covariance, or opacity varies
+over the sequence carries the same z𝑖throughout.
+Unobserved regions are handled by the same construction: we attach an i.i.d. noise vector zcube
+𝑗
+∈R𝐻to
+every texel 𝑗of the enclosing box of Sec. 3.2, and a background pixel reads the texel containing its ray–box
+intersection Xcube
+𝑝
+.
+Given the target camera pose at time 𝑡, rasterizing all primitive noise features, contributed into pixel 𝑝of 2D
+camera plane, gives the noise vector in camera view:
+Y𝑝= RGS(G(𝑡), 𝚷tar
+𝑡) =
+𝑁
+∑︁
+𝑖=1
+𝑤𝑝,𝑖z𝑖∈R𝐻,
+(8)
+where 𝑤𝑝,𝑖denotes the contribution of the 𝑖-th Gaussian point to pixel 𝑝. The corresponding pixel 𝑞in a
+different view that observes the same scene region shares contributing primitives and therefore depends on
+the same canonical noise vectors. In particular, their cross-covariance is
+Cov(Y𝑝, Y𝑞) =
+ 𝑁
+∑︁
+𝑖=1
+𝑤𝑝,𝑖𝑤𝑞,𝑖
+!
+I𝐻.
+(9)
+This shared dependence establishes cross-view noise consistency through the underlying 3D correspondence.
+The geometric correspondence underlying this result is proved for arbitrary camera poses and time-dependent
+4D deformations at a fixed timestamp (Appendix A.4). Since Y𝑝is a linear combination of independent
+Gaussian vectors, its marginal distribution and normalized feature are
+Y𝑝∼N  0, 𝑣𝑝I𝐻
+ ,
+𝑣𝑝=
+𝑁
+∑︁
+𝑖=1
+𝑤2
+𝑝,𝑖.
+(10)
+eY𝑝=
+Y𝑝
+√𝑣𝑝+ 𝜀=
+Í
+𝑖𝑤𝑝,𝑖z𝑖
+√︃Í
+𝑖𝑤2
+𝑝,𝑖+ 𝜀
+,
+(11)
+where Eq. 11 normalizes the rasterized feature using the variance factor 𝑣𝑝and 𝜀> 0 provides numerical
+stability. The eY𝑝has approximately zero mean and identity marginal covariance. Despite this normalization,
+as shown in Eq. 9, nearby pixels sharing Gaussian primitives remain correlated:
+Cov
+
+eY𝑝, eY𝑞
+
+= 𝜌𝑝𝑞I𝐻,
+𝜌𝑝𝑞=
+Í
+𝑖𝑤𝑝,𝑖𝑤𝑞,𝑖
+√︁
+(𝑣𝑝+ 𝜀)(𝑣𝑞+ 𝜀)
+.
+(12)
+While this shared structure provides the desired cross-view correspondence, overlapping Gaussian footprints
+also introduce undesirable local correlations within each rendered noise map. Neighboring pixels typically
+share several of the same contributing primitives, so their noise values remain far from independent even
+after the per-pixel normalization above. Because this spatial correlation deviates from the i.i.d. Gaussian
+distribution assumed by the pretrained diffusion model, it can degrade generation quality when the model
+is only lightly adapted via fine-tuning (e.g. using LoRA). We address this next with a 3D-aware whitening
+procedure that reduces local spatial correlations from the rasterized noise while preserving its cross-view and
+temporal consistency.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+5
+
+
+cubemap
+canonical 3D scene
+G = { ¯µ𝑖, z𝑖}, z𝑖∼N(0, I𝐻)
+𝚷tar
+1
+𝚷tar
+2
+𝑝
+eY(1) ∈R𝐻
+Eq. 11
+⊗
+Q⊤
+𝑝(·)
+𝑝
+ϵ3D,(1) ∈R𝐶
+Eq. 16
+𝑞
+eY(2)
+⊗
+𝑞
+ϵ3D,(2)
+spatially correlated
+𝜌𝑝𝑞≠0 for nearby 𝑝, 𝑞
+decorrelated
+Cov(ϵ3D
+𝑝) =I𝐶
+shared by all views
+X𝑝
+Eq. 13
+A𝑝
+Eq. 14
+A𝑝
+𝐻×𝐶
+Q𝑝
+Eq. 15
+𝑓
+QR
+view
+consistency
+𝑝and 𝑞see the
+same X, hence
+the same Q and
+matching noise
+Figure 2: View-consistent whitening Noise vectors z𝑖are attached to 3D primitives and the cubemap;
+rasterization therefore provides cross-view correspondence, while overlapping footprints induce local
+correlation. We reduce this correlation with a per-pixel orthonormal transformation Q𝑝derived from the
+rasterized canonical anchor position X𝑝using random Fourier features and reduced QR (dashed box).
+Because Q𝑝depends on X𝑝rather than screen coordinates, pixels observing the same surface point share the
+transformation across views and over time. The resulting noise pattern (right) is approximately i.i.d. Gaussian
+within each frame while remaining cross-view synchronized.
+3.4
+View-Consistent Whitening
+The rasterized noise from Sec. 3.3 is locally correlated because neighboring pixels may share several Gaussian
+primitives. We reduce this correlation with a spatially varying projection indexed by canonical 3D position
+rather than screen coordinates. Consequently, corresponding surface points in different views and at different
+times use approximately the same projection, while nearby pixels with distinct canonical positions can use
+different projections.
+To obtain the canonical 3D location of pixel 𝑝, we treat each canonical anchor position ¯µ𝑖as a rasterized
+attribute, in the same way that color is rasterized in Eq. 6. This gives the canonical-coordinate map in screen
+space:
+X𝑝=
+Í𝑁
+𝑖=1 𝑤𝑝,𝑖¯µ𝑖
+Í𝑁
+𝑖=1 𝑤𝑝,𝑖+ 𝜀
+∈R3.
+(13)
+The weights 𝑤𝑝,𝑖come from the deformed geometry at time 𝑡, so X𝑝describes the observed surface in
+canonical rather than time-varying world space. Using µ𝑖(𝑡) would make a moving surface traverse the
+transformation field and change its whitened noise over time; canonical anchors instead tie X𝑝to primitive
+identity.
+For regions outside the source-video coverage that contain no reconstructed primitives, we get X𝑝from the
+ray–box intersection Xcube
+𝑝
+defined in Eq. 5; corresponding pixels therefore approximately share the same
+canonical coordinate.
+The rasterized coordinate map from Eq. 13 has only three channels, representing 3D positions projected into
+the camera plane. Since the rasterized noise usually has many more channels than three, we construct a higher-
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+6
+
+
+dimensional representation of X𝑝using fixed Random Fourier Features (RFF) [17]. The implementation
+forms the projection frame directly from fixed frequency vectors and per-output-channel phases:
+[A𝑝]𝑎,𝑐=
+√︂
+2
+𝐻sin 2𝜋𝑠ω⊤
+𝑎X𝑝+ 𝜙𝑎,𝑐
+ ,
+A𝑝∈R𝐻×𝐶,
+(14)
+where ω𝑎∈R3 are fixed frequency vectors, 𝜙∈[0, 2𝜋)𝐻×𝐶contains fixed phases, and 𝑠is a scene-dependent
+frequency scale. The resulting matrix provides multiple fixed sinusoidal responses to the same canonical
+position. Because the frequencies and phases are view- and time-independent, the resulting representation is
+consistent across views and over time. We compute the reduced QR factorization:
+A𝑝= Q𝑝R𝑝,
+Q⊤
+𝑝Q𝑝= I𝐶,
+(15)
+and use Q𝑝as the local transformation which is applied on rasterized noise eY𝑝(see Figure 2). The
+frequency scale controls the trade-off between decorrelation and stability: higher frequencies improve local
+decorrelation but increase sensitivity to reconstruction and rasterization errors. When canonical positions
+are sufficiently separated relative to the Fourier wavelengths, the high-dimensional feature (𝐻≫𝐶) gives
+neighboring projection subspaces room to become nearly orthogonal while retaining shared 3D structure. The
+local-decorrelation behavior of this transformation field is formalized in Appendix A.3, under an idealized
+assumption that distinct canonical anchors induce generic, approximately independent projection bases. The
+final structured noise at pixel 𝑝is defined as
+ϵ3D
+𝑝= Q⊤
+𝑝eY𝑝=
+Q⊤
+𝑝
+Í
+𝑖𝑤𝑝,𝑖z𝑖
+√︃Í
+𝑖𝑤2
+𝑝,𝑖+ 𝜀
+∈R𝐶.
+(16)
+Since Q𝑝has orthonormal columns, the marginal covariance is approximately
+Cov
+
+ϵ3D
+𝑝
+
+= Q⊤
+𝑝Q𝑝= I𝐶,
+(17)
+up to the numerical stabilization and rasterization approximations in Eq. 11. Each projected noise vector
+therefore has the standard Gaussian marginal expected by the pretrained diffusion model. The remaining
+cross-pixel covariance is
+Cov
+
+ϵ3D
+𝑝, ϵ3D
+𝑞
+
+= 𝜌𝑝𝑞Q⊤
+𝑝Q𝑞.
+(18)
+Eq. 18 separates the correlation into the primitive-overlap term 𝜌𝑝𝑞and the projection term Q⊤
+𝑝Q𝑞. A varying
+canonical-position field (and consequently varying A𝑝) can make the latter small for nearby pixels, whereas
+a constant or screen-space-dependent field would not provide view-consistent decorrelation. The method
+is therefore view-consistent approximate whitening, not exact covariance whitening: shared primitives still
+prevent guaranteed independence, but the marginal remains close to the pretrained model’s standard Gaussian
+distribution. The construction provides three properties. View consistency follows because corresponding
+views use approximately the same anchor blend, projection, and mixture of primitive noise vectors. Temporal
+consistency follows because tracked primitives retain their anchors and noise vectors, so the whitened noise
+follows the object rather than the image plane. The correspondence is exact when the same primitives
+dominate the rasterization; visibility changes or primitive re-instantiation can still introduce gradual variation
+in the noise mixture and projection. Local decorrelation follows because neighboring pixels generally use
+different transformations.
+3.5
+Synchronized Video Generation
+We perform synchronized video generation by LoRA fine-tuning a pretrained I2V diffusion model while
+replacing its i.i.d. Gaussian noise with the view-consistent whitened rasterized noise (Eq. 16). This
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+7
+
+
+preserves the pretrained model’s standard-Gaussian marginal noise statistics while injecting a shared 3D
+correspondence signal across views and frames. The video Diffusion Transformer (DiT) uses the Rectified
+Flow framework [18], where noising follows straight paths between the clean latent distribution and the
+structured noise distribution:
+x𝜏= (1 −𝜏)x0 + 𝜏ϵ3D,
+𝑑x𝜏= D𝜃,𝜙(Concat𝑇(x𝜏, x𝑐) , 𝜏) 𝑑𝜏
+(19)
+Here D𝜃,𝜙denotes the DiT with frozen pretrained parameters 𝜃and learnable LoRA parameters 𝜙. The tensors
+x0, ϵ3D ∈R𝑡×𝐶×ℎ×𝑤are the clean target-video VAE latent and its associated rasterized noise, respectively.
+The conditioning tokens x𝑐contain the source-video latent, the rendered RGB-video latent, or both, and are
+temporally concatenated to the target tokens with extended rotary position encoding. After the DiT blocks,
+the conditioning tokens are discarded and the output head is applied only to the noised target tokens. Thus,
+the conditioning stream provides context but is never denoised and never enters the training objective. Only
+the LoRA parameters 𝜙are optimized.
+4
+Experiments
+4.1
+Datasets
+Because real-world datasets rarely provide synchronized videos of dynamic scenes, we train on synthetic
+dynamic videos and real-world static videos. For synthetic training, we use 36K video pairs from Mul-
+tiCamVideo (MCV), introduced by ReCamMaster [4], which provides synchronized videos and camera
+trajectories rendered from dynamic scenes in Unreal Engine 5. To reduce the synthetic-to-real domain gap,
+we additionally sample 2K DL3DV-10K videos [19] for real-world training.
+DL3DV contains monocular videos of static scenes rather than synchronized multi-view captures, so we
+construct pseudo-synchronized pairs via temporal folding, following CVD [7]. For each 2𝑙−1-frame clip,
+we split at the center frame (𝑙+ 1) and reverse the first segment, yielding two segments that share their
+starting frame and then follow different temporal trajectories. Since the scenes are static, this reversal is
+physically valid, and each folded pair provides two temporally aligned observations of the same scene along
+distinct trajectories, with separate associated camera poses. Applying this procedure to the first two buckets
+of DL3DV yields about 13.5K video pairs.
+Multi-ViewBench. For evaluation on real-world videos we curate Multi-ViewBench, a 200-clip benchmark
+drawn from the Mixkit subset of Open-Sora-Plan [20]. Because reshooting a real video admits no ground-truth
+target view, the composition of such a set is easy to bias by hand and hard for others to reproduce, so we select
+it automatically: a vision-language model judges every candidate clip once against six fixed admissibility
+gates and four semantic attributes, and every subsequent decision is a deterministic function of those recorded
+judgements. Admissible clips must be a single continuous real-time shot, landscape, and captured by a
+physically moving camera; survivors are ranked by a richness index rewarding depth layering, occlusion,
+and non-rigid motion. We report two disjoint splits of 100 clips each, defined by the model’s composition
+judgement: standard holds the richest single-subject scenes, and complex the richest multi-subject scenes
+with cluttered geometry, drawn from a category-balanced pool so that no Mixkit category monopolizes
+the candidates. The complex split is the harder of the two by construction, with a mean richness of 71.2
+against 30.9 for standard. We release the code, the per-clip judgements, and the frozen split CSVs; Sec. A.1
+documents the pipeline, the per-stage counts, and its limitations in full.
+All training and evaluation videos are standardized to 5 sec. clips at 15 fps and a resolution of 480P.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+8
+
+
+Table 1: Quantitative comparison on view synchronization, temporal consistency and camera accuracy
+on Multi-ViewBench videos. Metrics are defined in Sec. 4.2.
+View Synchronization
+Temporal Consistency
+Camera Accuracy
+Method
+Generation
+Length
+Mat. Pix. ↑
+FVD-V ↓
+CLIP-V ↑
+CLIP-F ↑
+RotErr ↓
+TransErr ↓
+Dynamic
+Static
+DaS [22]
+49
+494
+1251
+315.69
+86.01
+97.40
+0.1549
+0.2164
+Go-with-the-Flow [11]
+49
+687
+1277
+296.30
+87.44
+96.78
+0.1225
+0.1109
+ReCamMaster [4]
+75
+1073
+1428
+233.70
+88.06
+97.39
+0.1665
+0.1778
+ArtiFixer-14B [14]
+75
+1128
+1937
+195.55
+88.99
+97.55
+0.0780
+0.0529
+Reshoot-Anything [5]
+69
+1268
+1989
+202.22
+89.96
+97.82
+0.1120
+0.0838
+SyncVid (Ours)
+75
+1332
+1834
+146.99
+91.66
+97.87
+0.151
+0.121
+Table 2: Quantitative comparison on VBench [21] metrics.
+Method
+Aesthetic
+Quality ↑
+Imaging
+Quality ↑
+Temporal
+Flickering ↑
+Motion
+Smoothness ↑
+Subject
+Consistency ↑
+Background
+Consistency ↑
+DaS [22]
+49.15
+50.34
+96.70
+98.54
+84.74
+90.81
+Go-with-the-Flow [11]
+49.91
+51.98
+95.63
+98.00
+84.87
+90.69
+ReCamMaster [4]
+48.12
+49.51
+97.22
+98.89
+85.41
+89.91
+ArtiFixer [14]
+48.10
+52.61
+96.54
+98.81
+85.67
+90.41
+Reshoot-Anything [5]
+47.85
+51.72
+96.16
+98.45
+85.94
+92.01
+SyncVid (Ours)
+52.07
+56.03
+96.45
+98.71
+88.66
+91.24
+Table 3: Human preference evaluations. Percentage of blind pairwise comparisons.
+SyncVid (Ours)
+Tie
+ArtiFixer [14]
+SyncVid (Ours)
+Tie
+Reshoot-Any. [5]
+78%
+15%
+7%
+47%
+31%
+22%
+4.2
+Metrics
+We evaluate cross-view synchronization, visual quality, camera accuracy, and perceptual consistency.
+Synchronization uses high-confidence matched pixels in corresponding regions (Mat. Pix.), cross-view FVD
+(FVD-V), and cross-view CLIP similarity (CLIP-V). Temporal consistency uses frame consistency (CLIP-F);
+following ReCamMaster [4], camera accuracy is measured by rotation and translation errors (RotErr/TransErr)
+between the conditioning and recovered trajectories. We also report six no-reference VBench [21] scores
+for aesthetic and imaging quality, temporal flickering and motion smoothness, and subject/background
+consistency. Finally, a blind pairwise study presents the source and two methods’ renderings of the same
+target trajectory in randomized left/right order; participants select the better result or no preference, covering
+50 / 200 comparisons on two disjoint sets of 25 Multi-ViewBench scenes (SyncVid vs. Artifixer and SyncVid
+vs. Reshoot-Anything).
+4.3
+Main results
+Following the evaluation protocol of ReCamMaster [4], we compare SyncVid with recent state-of-the-art
+methods on the real-world Multi-ViewBench test set. Table 1 shows that our method provides the strongest
+overall cross-view synchronization. It achieves the highest number of matched pixels in dynamic regions
+(1,332) and the second-highest number in static regions (1,834), behind Reshoot-Anything. It also obtains
+the lowest cross-view FVD (146.99) and the highest cross-view CLIP similarity (91.66), indicating that
+its generated views are both perceptually aligned and visually similar. In addition, it achieves the highest
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+9
+
+
+Figure 3: Qualitative comparison on a Multi-ViewBench example with an Arc-right trajectory.
+temporal-consistency score (CLIP-F = 97.87). Camera accuracy is not its main advantage: ArtiFixer obtains
+the lowest rotation and translation errors, while our method remains competitive.
+The VBench results in Table 2 show a similar advantage in perceptual quality. Our method achieves the highest
+aesthetic quality (52.07), imaging quality (56.03), and subject consistency (88.66). Its temporal-flickering
+and motion-smoothness scores are close to the best reported values, and its background consistency (91.24)
+is second only to Reshoot-Anything. Overall, these results suggest that the proposed view-consistent
+noise improves cross-view alignment and content fidelity without substantially compromising temporal or
+background stability. Table 3 shows the user study results.
+4.4
+Ablations
+We ablate the main design choices of our method on a held-out set of OpenSora videos, using the lighter
+Wan2.2-5B backbone to keep the study computationally affordable. Results are reported in Table 4. Whitening
+improves all four reported metrics over both standard noise and unwhitened noise: it increases Mat. Pix. from
+222 to 267, reduces FVD-V from 518.77 to 461.44, and raises CLIP-V from 88.76 to 91.05, while slightly
+improving CLIP-F. The conditioning ablation reveals a complementary trade-off. Adding the source view
+yields the strongest direct synchronization, with the highest Mat. Pix. (319), CLIP-V (91.41), and CLIP-F
+(97.95). Using both the rendered and source views instead gives the lowest FVD-V (461.44), suggesting
+that the additional rendered view improves distributional visual similarity even though it does not maximize
+pixel-level matching. We favor this configuration because FVD-V, which compares the distributions of
+generated and reference views, better reflects the overall quality of the generated videos than pixel-level
+matching.
+LoRA 256 is the best rank on all four metrics, and the larger DiT improves almost every metric. Our final
+model therefore uses whitening, joint source- and rendered-view conditioning, LoRA 256, and the larger
+backbone.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+10
+
+
+Table 4: Ablations. Visual-quality and view-synchronization metrics on various factors.
+Variant
+View Synchronization
+Temporal Consistency
+Mat. Pix. ↑
+FVD-V ↓
+CLIP-V ↑
+CLIP-F ↑
+Noise
+standard
+222
+518.77
+88.76
+97.34
+w/o whitening
+208
+468.39
+88.53
+96.92
+w/ whitening
+267
+461.44
+91.05
+97.61
+Conditioning
++none (I2V)
+224
+830.00
+87.53
+97.80
++render view
+231
+574.50
+89.34
+97.59
++source view
+319
+530.42
+91.41
+97.95
++both
+267
+461.44
+91.05
+97.61
+Fine tuning
+LoRA 128
+214
+494.43
+88.33
+96.97
+LoRA 256
+267
+461.44
+91.05
+97.61
+LoRA 512
+206
+490.21
+88.38
+96.92
+Backbone
+Wan2.1-1.3B
+217
+689.30
+88.23
+97.25
+Wan2.2-5B
+267
+461.44
+91.05
+97.61
+Wan2.1-14B
+308
+442.20
+90.88
+97.49
+Wan2.2-14B
+313
+438.69
+91.17
+97.75
+5
+Conclusion
+We presented SyncVid, a framework for synchronized novel-view video generation that coordinates diffusion
+at the source of its stochasticity. By attaching persistent noise to a canonical 4D representation and rasterizing
+it into target cameras, SyncVid turns scene correspondence into a property of the diffusion prior rather than a
+responsibility of image-plane warping or additional cross-view architecture. A view-consistent whitening step
+keeps this structured prior compatible with the distribution expected by the pretrained model, allowing the
+approach to be integrated through lightweight adaptation without modifying the diffusion backbone. These
+findings suggest that synchronized generation can benefit from treating noise as a world-level representation:
+the same stochastic ingredients can follow content across viewpoints and time while leaving the model free to
+synthesize newly revealed regions.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+11
+
+
+References
+[1] Hao He, Yinghao Xu, Yuwei Guo, Gordon Wetzstein, Bo Dai, Hongsheng Li, and Ceyuan Yang.
+Cameractrl: Enabling camera control for video diffusion models. In International Conference on
+Learning Representations, volume 2025, pages 100433–100464, 2025.
+[2] Zhouxia Wang, Ziyang Yuan, Xintao Wang, Yaowei Li, Tianshui Chen, Menghan Xia, Ping Luo,
+and Ying Shan. Motionctrl: A unified and flexible motion controller for video generation. In ACM
+SIGGRAPH 2024 Conference Papers, pages 1–11, 2024.
+[3] Dejia Xu, Weili Nie, Chao Liu, Sifei Liu, Jan Kautz, Zhangyang Wang, and Arash Vahdat. Camco:
+Camera-controllable 3d-consistent image-to-video generation. arXiv preprint arXiv:2406.02509, 2024.
+[4] Jianhong Bai, Menghan Xia, Xiao Fu, Xintao Wang, Lianrui Mu, Jinwen Cao, Zuozhu Liu, Haoji Hu,
+Xiang Bai, Pengfei Wan, et al. Recammaster: Camera-controlled generative rendering from a single
+video. In 2025 IEEE/CVF International Conference on Computer Vision (ICCV), pages 14834–14844.
+IEEE, 2025.
+[5] Avinash Paliwal, Adithya Iyer, Shivin Yadav, Muhammad Afridi, and Midhun Harikumar. Reshoot-
+anything: A self-supervised model for in-the-wild video reshooting. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, pages 11596–11606, 2026.
+[6] Jianhong Bai, Menghan Xia, Xintao Wang, Ziyang Yuan, Zuozhu Liu, Haoji Hu, Pengfei Wan, and
+Di Zhang. Syncammaster: Synchronizing multi-camera video generation from diverse viewpoints. In
+International Conference on Learning Representations, volume 2025, pages 58038–58060, 2025.
+[7] Zhengfei Kuang, Shengqu Cai, Hao He, Yinghao Xu, Hongsheng Li, Leonidas J Guibas, and Gordon
+Wetzstein. Collaborative video diffusion: Consistent multi-video generation with camera control.
+Advances in Neural Information Processing Systems, 37:16240–16271, 2024.
+[8] Dejia Xu, Yifan Jiang, Chen Huang, Liangchen Song, Thorsten Gernoth, Liangliang Cao, Zhangyang
+Wang, and Hao Tang. Cavia: Camera-controllable multi-view video diffusion with view-integrated
+attention. arXiv preprint arXiv:2410.10774, 2024.
+[9] Songwei Ge, Seungjun Nah, Guilin Liu, Tyler Poon, Andrew Tao, Bryan Catanzaro, David Jacobs,
+Jia-Bin Huang, Ming-Yu Liu, and Yogesh Balaji. Preserve your own correlation: A noise prior for video
+diffusion models. In 2023 IEEE/CVF International Conference on Computer Vision (ICCV), pages
+22873–22884. IEEE, 2023.
+[10] Pascal Chang, Jingwei Tang, Markus Gross, and Vinicius Da Costa De Azevedo. How i warped your
+noise: a temporally-correlated noise prior for diffusion models. In International Conference on Learning
+Representations, volume 2024, pages 30015–30046, 2024.
+[11] Ryan Burgert, Yuancheng Xu, Wenqi Xian, Oliver Pilarski, Pascal Clausen, Mingming He, Li Ma,
+Yitong Deng, Lingxiao Li, Mohsen Mousavi, et al. Go-with-the-flow: Motion-controllable video
+diffusion models using real-time warped noise. In 2025 IEEE/CVF Conference on Computer Vision and
+Pattern Recognition (CVPR), pages 13–23. IEEE, 2025.
+[12] Chao Liu and Arash Vahdat. On equivariance and fast sampling in video diffusion models trained with
+warped noise. arXiv preprint arXiv:2504.09789, 2025.
+[13] Wangbo Yu, Jinbo Xing, Li Yuan, Wenbo Hu, Xiaoyu Li, Zhipeng Huang, Xiangjun Gao, Tien-Tsin
+Wong, Ying Shan, and Yonghong Tian. Viewcrafter: Taming video diffusion models for high-fidelity
+novel view synthesis. arXiv preprint arXiv:2409.02048, 2024.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+12
+
+
+[14] Riccardo De Lutio, Tobias Fischer, Yen-Yu Chang, Yuxuan Zhang, Zhangjie Wu, Xuanchi Ren, Tianchang
+Shen, Katarína Tóthová, Zan Gojcic, and Haithem Turki. Artifixer: Enhancing and extending 3d
+reconstruction with auto-regressive diffusion models. In Proceedings of the Special Interest Group on
+Computer Graphics and Interactive Techniques Conference Conference Papers, pages 1–12, 2026.
+[15] Farhad G Zanjani, Hong Cai, and Amirhossein Habibian. Enhancing novel view synthesis via geometry
+grounded set diffusion. arXiv preprint arXiv:2601.07540, 2026.
+[16] Matteo Balice, Yanik Kunzi, Chenyangguang Zhang, Matteo Matteucci, Marc Pollefeys, and Sungwhan
+Hong. No pose, no problem in 4d: Feed-forward dynamic gaussians from unposed multi-view videos.
+arXiv preprint arXiv:2605.22190, 2026.
+[17] Matthew Tancik, Pratul Srinivasan, Ben Mildenhall, Sara Fridovich-Keil, Nithin Raghavan, Utkarsh
+Singhal, Ravi Ramamoorthi, Jonathan Barron, and Ren Ng. Fourier features let networks learn high
+frequency functions in low dimensional domains. Advances in neural information processing systems,
+33:7537–7547, 2020.
+[18] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Müller, Harry Saini, Yam
+Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling rectified flow transformers for
+high-resolution image synthesis. In Forty-first international conference on machine learning, 2024.
+[19] Lu Ling, Yichen Sheng, Zhi Tu, Wentian Zhao, Cheng Xin, Kun Wan, Lantao Yu, Qianyu Guo, Zixun
+Yu, Yawen Lu, et al. Dl3dv-10k: A large-scale scene dataset for deep learning-based 3d vision. In
+2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pages 22160–22169.
+IEEE, 2024.
+[20] Bin Lin, Yunyang Ge, Xinhua Cheng, Zongjian Li, Bin Zhu, Shaodong Wang, Xianyi He, Yang Ye,
+Shenghai Yuan, Liuhan Chen, et al. Open-sora plan: Open-source large video generation model. arXiv
+preprint arXiv:2412.00131, 2024.
+[21] Ziqi Huang, Yinan He, Jiashuo Yu, Fan Zhang, Chenyang Si, Yuming Jiang, Yuanhan Zhang, Tianxing
+Wu, Qingyang Jin, Nattapol Chanpaisit, et al. Vbench: Comprehensive benchmark suite for video
+generative models. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR),
+pages 21807–21818. IEEE, 2024.
+[22] Zekai Gu, Rui Yan, Jiahao Lu, Peng Li, Zhiyang Dou, Chenyang Si, Zhen Dong, Qifeng Liu, Cheng Lin,
+Ziwei Liu, et al. Diffusion as shader: 3d-aware video diffusion for versatile video generation control. In
+Proceedings of the Special Interest Group on Computer Graphics and Interactive Techniques Conference
+Conference Papers, pages 1–12, 2025.
+[23] Ali Rahimi and Benjamin Recht. Random features for large-scale kernel machines. Advances in neural
+information processing systems, 20, 2007.
+[24] Richard Hartley, Andrew Zisserman, et al. Multiple view geometry in computer vision, volume 2.
+Cambridge university press Cambridge, 2003.
+[25] J Edstedt, D Nordström, Y Zhang, G Bökman, J Astermark, V Larsson, A Heyden, F Kahl, M Wadenbäck,
+and M Felsberg. Roma v2: Harder better faster denser feature matching. arxiv 2025. arXiv preprint
+arXiv:2511.15706.
+[26] Nicolas Carion, Laura Gustafson, Yuan-Ting Hu, Shoubhik Debnath, Ronghang Hu, Didac Suris
+Coll-Vinent, Chaitanya Ryali, Kalyan Vasudev Alwala, Haitham Khedr, Andrew Huang, et al. Sam 3:
+Segment anything with concepts. In International conference on learning representations, volume 2026,
+pages 138846–138923, 2026.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+13
+
+
+A
+Supplementary
+A.1
+Automated Evaluation Set Curation for OpenSora
+Reshooting a real video admits no ground-truth target view, so the only thing a real-world benchmark can
+measure is behavior on the clips it happens to contain. That makes the composition of the test set part of the
+result. A set assembled by hand can flatter a method through nothing more than which scenes its author found
+compelling, and it cannot be reproduced by anyone else. We therefore built Multi-ViewBench, the 200-clip
+evaluation set used in Sec. 4.3, so that every accept or reject decision is either a recorded model judgement or a
+deterministic function of recorded judgements. No clip was ever chosen, dropped, or reordered by inspection.
+The pipeline has two stages. Stage 1 asks a vision-language model to judge each candidate clip once and
+writes the judgement to disk. Stage 2 never calls a model again: it filters, de-duplicates, and ranks using only
+the fields Stage 1 already recorded, so the entire path from corpus to final CSV can be replayed offline from
+the released judgements.
+A.1.1
+Source corpus
+Candidates come from the Mixkit subset of Open-Sora-Plan v1.1.0 [20], which contains 9,194 stock-footage
+.mp4 clips filed under 40 topical category folders (forest, Street, Couple, Bicycle, and so on). Two
+properties of this corpus shape the pipeline. First, the category folders are editorial tags rather than a partition:
+the same physical clip is frequently filed under several categories, so the corpus contains substantially
+fewer distinct videos than files. Second, the clips are heterogeneous in exactly the ways that matter for
+camera-controlled generation, mixing locked-off tripod shots, time-lapses, portrait-orientation footage, and
+heavy optical effects with the moving-camera material we actually want.
+A.1.2
+Stage 1: structured vision-language judgement
+Each clip is judged independently by Gemini 3.1 Pro (gemini-3.1-pro-preview), accessed through an
+OpenAI-compatible inference gateway. We sample 12 uniformly spaced frames per clip, rescale each so its
+longest side is at most 512 pixels, JPEG-encode them, and submit the sequence with a fixed system prompt at
+temperature 0.2. The response is constrained to a JSON schema, so the model cannot answer in prose or omit
+a field, and every reply is machine-readable without parsing heuristics. One JSON file is written per clip,
+which makes the pass resumable: an interrupted run skips clips whose output already exists.
+The schema, summarized in Table 5, has four parts. Six boolean gates encode hard admissibility requirements.
+A composition bucket assigns the clip to simple or complex and is the field that later defines our two splits:
+simple denotes a single subject under smooth tracking against a clean background, and complex denotes
+multiple subjects, cluttered environments, distinct depth layers, or dynamic backgrounds. Four semantic
+scores rate the properties that make a clip informative for view synthesis. Finally, three free-text reasoning
+fields record why the model answered as it did; these are released, and Stage 2 consults them in exactly one
+narrow place (Sec. A.1.4).
+A.1.3
+The richness index
+Gates decide admissibility, but among admissible clips we still need an ordering, and we want it to prefer
+clips that actually exercise synchronized generation. A clip is informative to the degree that it has depth to be
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+1
+
+
+Table 5: Stage-1 judgement schema. The model must return every field. Gates are hard requirements: a clip
+is admissible only if all six are true. The composition bucket defines the standard/complex split, and the
+semantic scores feed the richness index of Sec. A.1.3.
+Field
+Range
+Requirement or meaning
+Gates (all must be true)
+is_single_continuous_shot
+bool
+No cuts or transitions.
+is_real_time_playback
+bool
+No time-lapse, hyper-lapse, or slow motion.
+is_physically_plausible
+bool
+No VFX blends, text overlays, or screen-in-screen.
+is_motion_blur_acceptable
+bool
+No motion blur severe enough to destroy structure.
+is_focal_blur_acceptable
+bool
+Not excessively out of focus.
+is_depth_of_field_acceptable
+bool
+No extreme shallow depth of field.
+Composition
+composition_bucket
+2 labels
+simple for a single tracked subject on a clean background,
+complex for multiple subjects, clutter, or depth layers.
+Semantic scores
+geometric_parallax
+1–5
+1 is flat, 5 is deep multi-layered depth.
+occlusion_potential
+1–5
+1 is no meaningful occlusion, 5 is heavy self-occlusion or
+disocclusion.
+camera_motion
+5 labels
+static, dynamic, or one of three optical-effect labels.
+non_rigid_motion
+4 labels
+none, low, mid, or high object articulation.
+Reasoning (released, used only as described in Sec. A.1.4)
+gates_reasoning
+text
+Justification for the six gate verdicts.
+composition_reasoning
+text
+Justification for the composition bucket.
+scores_reasoning
+text
+Justification for the four semantic scores.
+parallaxed, geometry that occludes and disoccludes as the viewpoint moves, a camera that moves at all, and
+subjects that deform rather than translate rigidly. We combine the four semantic scores into a single richness
+index
+𝜌=
+𝑔
+|{z}
+parallax
+·
+𝑜
+|{z}
+occlusion
+· 𝑤cam · 𝑤nr,
+(20)
+where 𝑔, 𝑜∈{1, . . . , 5} are geometric_parallax and occlusion_potential, and the two weights are
+read off the categorical labels: 𝑤cam = 2.0 for dynamic, 1.2 for any optical-effect label, and 1.0 for static;
+𝑤nr = 1.0, 1.2, 1.5, 2.0 for none, low, mid, high respectively. Richness ranges over [1, 100].
+The product form is deliberate. Depth without occlusion, or occlusion without camera motion, describes a clip
+that is easy for a single-view model and therefore uninformative here, and a product refuses to compensate for
+a low factor with a high one. Because Stage 2 admits only moving-camera clips, 𝑤cam = 2.0 holds throughout
+the final pool and richness is effectively 2𝑔𝑜𝑤nr there.
+A.1.4
+Stage 2: deterministic filtering
+Stage 2 reduces the scored corpus to a candidate pool through five filters applied in a fixed order. Table 6
+reports the count surviving each.
+Gate pass. A clip is kept only if all six gates are true.
+Landscape. We probe each survivor with a video decoder and keep clips whose frame width exceeds their
+height, discarding portrait and square footage that no baseline is trained to reshoot. This is the only filter that
+reads pixels; frame dimensions are cached so reruns do not repeat it.
+De-duplication.
+Because one clip may be filed under several categories, Stage 1 scored each copy
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+2
+
+
+Table 6: Curation funnel. Counts at the time the benchmark was frozen, when 7,561 of the 9,194 corpus clips
+had been scored. De-duplication runs after the gate and landscape filters but before static-source classification;
+see Sec. A.1.5 for why the order matters.
+#
+Stage
+Surviving
+Removed
+Stage-1 judgements available
+7,561
+1
+Gate pass (all six gates true)
+6,617
+944 gate failures
+2
+Landscape (width > height)
+5,973
+644 portrait or square
+3
+De-duplication (unique clips)
+4,541
+1,432 copies of 1,197 clips
+4
+Moving camera body
+2,231
+2,310 static-source
+5
+Optical-effect removal
+2,227
+4 optical-effect
+of which complex
+1,823
+of which simple
+404
+independently, and copies routinely disagree with one another. We collapse to one row per unique file name,
+keeping the highest-richness copy and breaking ties deterministically on (category, judgement filename) so
+the outcome does not depend on directory iteration order. The discarded copies’ categories are preserved in
+an alias_categories field rather than thrown away.
+Static-source removal. A clip whose camera body never moves gives a camera-controlled model no viewpoint
+baseline to reshoot from, so we keep only physically moving cameras. The camera_motion label carries this
+directly for static and dynamic. The optical-effect labels are genuinely ambiguous, since a rack focus or
+lens flare is usually captured on a locked-off tripod but occasionally accompanies a real dolly move. This
+is the one place where the reasoning text is consulted: a regular expression looks for explicit camera-body
+motion (pan, tilt, track, dolly, handheld) to adjudicate the optical-effect clips, and to demote the rare dynamic
+clip whose own justification states the camera is stationary. The text is never used to overrule an unambiguous
+label.
+Optical-effect removal. Any clip still carrying afocal_effects, aperture_effects, or sensor_effects
+label is dropped outright, since lens-driven apparent motion is not viewpoint change.
+A.1.5
+Why the filter order matters
+Two orderings in Table 6 are load-bearing rather than incidental.
+De-duplication runs after the gates so that a copy which fails a gate can never win the richness comparison and
+readmit a clip that should have been rejected. It runs before static-source classification so that each physical
+clip receives exactly one verdict. Were the order reversed, a clip could enter the pool through whichever of its
+category copies happened to be scored most favorably, which would let editorial filing decisions leak into the
+benchmark.
+Static-source removal precedes optical-effect removal because the two overlap: the adjudication step already
+reclassifies most optical-effect clips as static, so only 4 clips survive to be dropped by the explicit optical filter.
+Reversing the two would discard the handful of optical-effect clips that do accompany real camera motion.
+A.1.6
+Constructing the two splits
+The pool is strongly unbalanced, holding 1,823 complex clips against 404 simple ones, because static-source
+removal strips proportionally more single-subject tracking shots. The two splits are therefore built differently,
+and deliberately so.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+3
+
+
+Standard (100 clips). Simple compositions are the comparatively solved case, so this split is a compact
+reference rather than half the benchmark, and its specification is exactly take the 100 highest-richness simple
+clips. No category cap and no diversity heuristic apply. With only 404 candidates, imposing balance here
+would trade away richness for very little diversity.
+Complex (100 clips). A pure richness sort over 1,823 complex clips collapses onto whichever categories are
+largest, and the supply is severely skewed (150 clips for forest against 1 for Cats). We therefore construct
+this split in two steps. First we select a category-balanced set of 1,000 clips in which balance is a hard
+constraint and richness is maximized only within it. Because an equal quota of 1000/40 = 25 per category is
+unavailable from most categories, we allocate quotas by max-min fair water-filling: give every category the
+same quota, let categories that cannot meet it contribute everything they have, and redistribute the shortfall
+equally among categories that still have supply, repeating until the budget is spent. This maximizes the
+smallest category’s share, then the next smallest, and degenerates to an equal split when supply permits.
+Each category then contributes its own richest clips up to its quota, so balance is never traded for richness.
+The resulting 1,000 clips span all 40 categories with between 1 and 38 clips each, a mean of 25.0, and a
+normalized category entropy of 0.940 against a maximum of 1. Second, we take the 100 highest-richness
+clips from this balanced set to form the released split.
+The two-step construction is worth stating plainly, because balance and richness pull against each other and
+the second step partially undoes the first. Balancing at 1,000 determines which clips are available to be
+ranked, preventing the fat categories from monopolizing the candidate set; truncating to the richest 100 then
+concentrates on 19 of the 40 categories. What balance buys is that the final 100 is drawn from a category-fair
+pool rather than from a raw richness sort over the whole corpus, not that the final 100 is itself uniform over
+categories.
+Both selections sort by richness descending with ties broken deterministically on (category, file name), and in
+both cases the cut falls inside a tie group: the standard split cuts within the 𝜌= 24 tier, and the complex split
+takes 39 clips above 𝜌= 64 and then 61 of the 210 clips at exactly 𝜌= 64. The tie-break rule is what makes
+these selections reproducible, and it is the reason the released CSVs are byte-identical across reruns.
+A.1.7
+Resulting statistics
+Table 7 characterizes the two released splits. They are disjoint by construction, sharing no clip, and together
+form the 200 clips of Multi-ViewBench. The richness distributions are almost separated: every complex clip
+scores at least 64, a value that exactly one standard clip attains and none exceeds, against a standard mean of
+30.9. The gap is visible in the underlying attributes rather than being an artifact of the index, since every
+complex clip carries high non-rigid motion and a parallax rating of at least 4, whereas the standard split is
+concentrated at parallax 2 to 3.
+All 200 clips are natively 1920×1080, and are standardized to 5-second clips at 15 fps and 480p for evaluation
+as described in Sec. 4.1.
+A.1.8
+Reproducibility and release
+We release the complete curation trail, not only the final clip list, so that the benchmark can be audited and
+extended rather than merely consumed:
+• the Stage-1 and Stage-2 code, including the verbatim system prompt, the response schema, and the
+richness weights;
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+4
+
+
+Table 7: The two released splits of Multi-ViewBench. Both hold 100 clips, are disjoint, and are drawn from
+the 2,227-clip pool of Table 6. Richness 𝜌is defined in Eq. 20. Attribute rows give the distribution over the
+100 clips.
+Standard
+Complex
+Composition bucket
+simple
+complex
+Candidates in pool
+404
+1,823
+Selection
+top 100 by 𝜌
+balance to 1,000, then top 100 by 𝜌
+𝜌range
+24.0–64.0
+64.0–100.0
+𝜌mean
+30.9
+71.2
+𝜌median
+32.0
+64.0
+Categories represented
+19
+19
+Largest category
+Music (24)
+Couple (26)
+Clips with alias categories
+20
+47
+Geometric parallax
+2: 57 3: 36 4: 7
+4: 83 5: 17
+Occlusion potential
+2: 9 3: 63 4: 28
+4: 73 5: 27
+Non-rigid motion
+low: 1 mid: 4 high: 95
+high: 100
+Camera motion
+dynamic: 100
+dynamic: 100
+• the per-clip Stage-1 judgement JSONs, covering all gates, scores, and reasoning texts, for every clip
+scored, including those the pipeline rejected;
+• the intermediate pool CSV and both released split CSVs, each carrying all 18 columns, so a reader can
+recompute any count in Table 6 or reproduce either selection; and
+• the exact clip identities and source paths, together with a SHA-256 manifest over the frozen CSVs.
+The frozen CSVs are the integrity anchor for every number reported in Sec. 4.3: the splits were fixed before
+any baseline was evaluated and were not revised afterwards. Stage 2 is deterministic and seed-free, so given
+the released judgements the splits are recoverable exactly.
+A.2
+Novel-Trajectory Synthesis
+Figure 4: Schematic of the six synthesized evaluation
+trajectories; Every trajectory is a camera-local SE(3) delta
+Δ𝑡composed after the source camera’s pose at each frame
+(Eq. 21), so all six depart from the same source pose (Start)
+at 𝑡= 0 and diverge from it over the clip. Arc left/right
+(violet) sweep the camera around a pivot ahead of it in
+the local horizontal (right–forward) plane; Dolly in/out
+(orange) dolly along the local forward axis toward/away from
+that pivot; Pedestal-up-Tilt-down and Pedestal-down-Tilt-up
+(blue) shift the camera along its local down axis while tilting
+about its local right axis so the same pivot stays centred in
+frame.
+Pedestal ↑
+Tilt ↓
+Pedestal ↓
+Tilt ↑
+Arc left
+Arc right
+Dolly-out
+Dolly-in
+Start
+Because each OpenSora scene provides a single source camera, there is no held-out ground-truth viewpoint
+against which to evaluate reshoots on this data; we instead procedurally synthesize novel target trajectories
+𝚷tar
+1:𝑇that follow the source camera’s own motion rather than being anchored to its initial pose. Concretely,
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+5
+
+
+at every frame 𝑡we compose a time-varying SE(3) offset Δ𝑡after the source pose, expressed in the source
+camera’s own local axes (OpenCV convention):
+𝚷tar
+𝑡
+= 𝚷src
+𝑡
+Δ𝑡.
+(21)
+Since OpenSora sources are handheld or drone footage whose camera keeps moving throughout the clip,
+anchoring Δ𝑡to a fixed world pose would let the novel and source views drift apart in content over the clip;
+composing it on the current source pose instead keeps the novel view co-moving with the source, offset from
+it by a structured, time-varying amount. Every Δ𝑡is the identity at 𝑡= 0, so each synthesized trajectory has
+aligned initial pose with the source trajectory and diverges from it over the clip. We synthesize six trajectory
+families this way, illustrated schematically in Fig. 4:
+Arc left/right sweep Δ𝑡’s rotation up to 60◦about the source camera’s local down axis, pivoting around a
+point a distance 𝑑ahead of the camera.
+Dolly in/out shift Δ𝑡purely along the local forward axis, so the same pivot ends up three times closer or three
+times farther by the last frame.
+Pedestal-up-Tilt-down and Pedestal-down-Tilt-up translate Δ𝑡along the local down axis by up to 30% of
+the estimated distance to the surface being approached (e.g. the floor), while simultaneously tilting about the
+local right axis so the same pivot stays centred in frame throughout.
+The pivot distance 𝑑and the vertical hit-surface distance used to size the pedestal trajectories are both
+estimated per scene from the reconstructed Gaussians G (Sec. 3.2). For arc/dolly, 𝑑is the depth of the nearest
+surface in a small patch at the centre of frame 0; for pedestal trajectories, the hit-surface distance is the mean
+depth over the bottom band of frame 0. Both fall back to the median distance of the scene (based on { ¯µ𝑖})
+from the source camera when a per-pixel depth estimate is unavailable for example a video from a landscape,
+so trajectory magnitudes remain sensible regardless of the arbitrary metric scale a feed-forward backbone
+assigns to a given scene.
+A.3
+Local Decorrelation of the Whitening Projection
+Sec. 3.4 argues informally that the random-Fourier-feature (RFF) projection field Q𝑝(Eq. 15) suppresses the
+cross-pixel term Q⊤
+𝑝Q𝑞in the projected covariance (Eq. 18) whenever two pixels’ canonical anchors X𝑝, X𝑞
+are distinct. We make this precise with a short argument: two distinct 3D anchors are mapped, through the
+many-harmonic the fixed sinusoidal map of Eq. 14 produces essentially unrelated pre-projection matrices
+A𝑝, A𝑞; QR factorizing two unrelated matrices yields two unrelated orthonormal bases Q𝑝, Q𝑞of R𝐻; and
+two unrelated 𝐶-dimensional bases of a much larger 𝐻-dimensional space are nearly orthogonal to each other,
+i.e. Q⊤
+𝑝Q𝑞≈0. This is what should suppress the correlation 𝜌𝑝𝑞in Eq. 18. Note that the target here is
+the zero matrix, not the identity: Q⊤
+𝑝Q𝑝= I𝐶holds exactly by the reduced QR factorization in Eq. 15; it
+is only the 𝑝≠𝑞case that needs an argument. Together, an exact identity on the diagonal and a near-zero
+off-diagonal term is what makes the noise field as a whole resemble an i.i.d. (identity-covariance) Gaussian
+field, which is the property the pretrained diffusion model expects.
+Assumption 1 (Distinct anchors encode as generic bases). When X𝑝≠X𝑞, the direct Fourier map of Eq. 14
+uses 𝐻frequency vectors ω1, . . . , ω𝐻spanning many distinct, incommensurate harmonics (cf. random Fourier
+features [23]), so that the resulting A𝑝, A𝑞∈R𝐻×𝐶– carry no shared structure beyond what is forced by X𝑝
+being close to X𝑞. We formalize “no shared structure” by treating the orthonormal bases Q𝑝, Q𝑞obtained
+by QR-factorizing A𝑝, A𝑞(Eq. 15) as two independent, uniformly random 𝐶-dimensional subspaces of R𝐻
+(i.e. Haar-random on the Grassmannian) whenever X𝑝≠X𝑞. This is the sense in which “many harmonics”
+matters: it is what keeps two different points from being accidentally mapped to correlated bases.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+6
+
+
+Lemma 1 (Random bases in high dimension are nearly orthogonal). Let U, V ∈R𝐻×𝐶have orthonormal
+columns, with V Haar-random on the Grassmannian and independent of the fixed U. Then
+E
+
+U⊤V
+
+= 0,
+E
+
+∥U⊤V∥2
+𝐹
+
+= 𝐶2
+𝐻,
+(22)
+so, by Jensen’s inequality, E
+
+∥U⊤V∥𝐹
+
+≤𝐶/
+√
+𝐻, or equivalently E
+ 1
+√
+𝐶∥U⊤V∥𝐹
+
+≤
+√︁
+𝐶/𝐻→0 as 𝐻→∞
+for fixed 𝐶.
+Proof. Let u𝑖, v𝑗denote the unit-norm columns of U, V. Since v𝑗is a uniformly random unit vector in R𝐻
+independent of the fixed u𝑖, rotational symmetry gives E[u⊤
+𝑖v𝑗] = 0 and, since Í𝐻
+ℎ=1 E[𝑣2
+𝑗,ℎ] = 1 with every
+coordinate direction equivalent by symmetry, E
+
+(u⊤
+𝑖v𝑗)2
+= 1
+𝐻for every unit vector u𝑖. Summing over the
+𝐶2 entries of U⊤V gives Eq. 22. This is exact: each column v𝑗is marginally uniform on the unit sphere, so
+the orthogonality among the columns of V does not affect the second moment. The bound on E∥U⊤V∥𝐹then
+follows from E[𝑋] ≤
+√︁
+E[𝑋2].
+□
+Proposition 1 (Local decorrelation of the whitening projection). Under Assumption 1, for two pixels 𝑝≠𝑞
+with distinct anchors X𝑝≠X𝑞,
+E
+
+Q⊤
+𝑝Q𝑞
+
+= 0,
+1
+√
+𝐶
+E
+
+∥Q⊤
+𝑝Q𝑞∥𝐹
+
+≤
+√︂
+𝐶
+𝐻,
+(23)
+while Q⊤
+𝑝Q𝑝= I𝐶exactly, for which the same normalized norm equals 1. Consequently, in the projected
+cross-covariance of Eq. 18,
+1
+√
+𝐶
+E
+
+∥Cov(ϵ3D
+𝑝, ϵ3D
+𝑞)∥𝐹
+
+= |𝜌𝑝𝑞|
+√
+𝐶
+E
+
+∥Q⊤
+𝑝Q𝑞∥𝐹
+
+≤|𝜌𝑝𝑞|
+√︂
+𝐶
+𝐻−−−−−→
+𝐻→∞0,
+(24)
+so the rasterization-induced correlation 𝜌𝑝𝑞of Eq. 12 is suppressed for any two pixels whose canonical
+anchors differ, and increasingly so as the noise dimension 𝐻grows relative to 𝐶.
+Proof. Immediate from Lemma 1 applied under Assumption 1 (with U = Q𝑝, V = Q𝑞), together with
+Q⊤
+𝑝Q𝑝= I𝐶from the reduced QR factorization (Eq. 15), and the definition Cov(ϵ3D
+𝑝, ϵ3D
+𝑞) = 𝜌𝑝𝑞Q⊤
+𝑝Q𝑞of
+Eq. 18.
+□
+Remark 1. This argument explains why distinctness of the anchor helps, but not how far apart two anchors
+must be before Assumption 1 is a good approximation: two points much closer together than the shortest
+wavelength present in the fixed frequency vectors ω𝑎still produce almost the same A𝑝≈A𝑞and Q𝑝≈Q𝑞,
+so Q⊤
+𝑝Q𝑞≈I𝐶instead of 0 – this is exactly why Sec. 3.4 also needs high-frequency harmonics, not merely
+many of them: frequency sets the length scale below which Assumption 1 stops holding and decorrelation
+degrades toward the pre-projection correlation 𝜌𝑝𝑞. This is also why the occlusion-boundary case flagged in
+Sec. 3.4 is a genuine exception: the blended anchor of Eq. 13 can there be arbitrarily close to both surfaces’
+anchors, defeating the distinctness the argument relies on.
+Scope.
+This proposition addresses only the decorrelation induced by the canonical-position-dependent
+projection field. It does not establish exact whitening of the complete rasterized noise field, since shared
+primitives, occlusion-boundary blending, and visibility changes can preserve residual correlations. It also
+does not model correspondence errors in unobserved regions caused by the finite background proxy. Finally,
+Assumption 1 is an idealization: it treats the projection bases induced by distinct canonical positions as
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+7
+
+
+independent Haar-random subspaces, whereas in the actual method they are deterministic functions of the
+fixed frequencies ω𝑎, phases 𝜙𝑎,𝑐, and scale 𝑠. The quality of this approximation therefore depends on the
+separation of canonical positions relative to the frequencies used by the projection field. Empirically, we
+found that H=128 works fine and we keep it constant through all the experiments.
+A.4
+Noise Rasterization and View Consistency
+Sec. 3.3 claims that two cameras observing the same 3D content receive the same rasterized noise because
+both rasterize the same canonical anchor. We prove this exactly, for arbitrary pairs of camera poses – not
+only the pure-rotation special case – and for the general 4D (dynamic) setting, where a deformation module
+has already produced the time-dependent Gaussian parameters. In 4D Gaussian Splatting this result applies
+independently at each timestamp, after the deformation module has produced the time-dependent parameters
+of the 3D Gaussian primitives; we therefore fix a single timestamp 𝑡throughout and do not address temporal
+consistency here (that is a separate claim, discussed qualitatively in Sec. 3.4).
+Setup at a fixed time.
+Consider two time-dependent Gaussian centers
+p(𝑡), q(𝑡) ∈R3.
+(25)
+These centers may be generated by a 4D deformation field 𝐷from their canonical positions p0, q0 – i.e. p0, q0
+play the role of the canonical anchors ¯µ𝑖of Eq. 4:
+p(𝑡) = 𝐷(p0, 𝑡),
+q(𝑡) = 𝐷(q0, 𝑡).
+(26)
+Let the camera-to-world pose at timestamp 𝑡be
+𝑇𝑤𝑐(𝑡) =
+
+𝑅𝑤𝑐(𝑡)
+c(𝑡)
+0⊤
+1
+
+∈𝑆𝐸(3),
+(27)
+where 𝑅𝑤𝑐(𝑡) ∈𝑆𝑂(3) describes the camera orientation and c(𝑡) ∈R3 denotes the camera center in world
+coordinates. The corresponding world-to-camera transformation is
+𝑇𝑐𝑤(𝑡) = 𝑇𝑤𝑐(𝑡)−1 =
+
+𝑅𝑐𝑤(𝑡)
+t𝑐𝑤(𝑡)
+0⊤
+1
+
+,
+𝑅𝑐𝑤(𝑡) = 𝑅𝑤𝑐(𝑡)⊤,
+t𝑐𝑤(𝑡) = −𝑅𝑐𝑤(𝑡)c(𝑡).
+(28)
+The camera-space coordinate of p(𝑡) is therefore
+x𝑐
+𝑝(𝑡) = 𝑅𝑐𝑤(𝑡)p(𝑡) + t𝑐𝑤(𝑡) = 𝑅𝑐𝑤(𝑡) p(𝑡) −c(𝑡),
+(29)
+and, similarly, x𝑐
+𝑞(𝑡) = 𝑅𝑐𝑤(𝑡) q(𝑡) −c(𝑡). Let K denote the camera intrinsic matrix and 𝜋𝐾the perspective
+projection; for a camera-space point x = [𝑥, 𝑦, 𝑧]⊤,
+𝜋𝐾(x) =
+"
+𝑓𝑥𝑥
+𝑧+ 𝑐𝑥
+𝑓𝑦
+𝑦
+𝑧+ 𝑐𝑦
+#
+.
+(30)
+The projected pixel locations of p(𝑡) and q(𝑡) are thus
+u𝑝(𝑡) = 𝜋𝐾
+ 𝑅𝑐𝑤(𝑡)(p(𝑡) −c(𝑡)),
+u𝑞(𝑡) = 𝜋𝐾
+ 𝑅𝑐𝑤(𝑡)(q(𝑡) −c(𝑡)).
+(31)
+Both are governed by the same world-to-camera transformation 𝑇𝑐𝑤(𝑡), although their pixel locations generally
+differ, since perspective projection is depth- and position-dependent.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+8
+
+
+Two cameras observing the same primitive.
+Let Π1 = 𝑇(1)
+𝑤𝑐(𝑡) and Π2 = 𝑇(2)
+𝑤𝑐(𝑡) be any two camera poses
+at the same timestamp 𝑡– not necessarily related by a rotation, or by any other closed-form relationship. By
+Eq. 31, the same primitive’s center p(𝑡) projects to generally different pixels u(1)
+𝑝(𝑡) under Π1 and u(2)
+𝑝(𝑡)
+under Π2. What is invariant is not the pixel location but what gets attached to it: the primitive’s canonical
+anchor p0 and its identity noise vector z𝑖of Eq. 7 are attributes of the primitive itself, fixed once at construction
+time and never a function of 𝑡, of Π1, or of Π2 (Sec. 3.3).
+Assumption 2 (Well-resolved primitive). At pixel 𝑝under Π1, primitive 𝑖dominates the rasterization weight:
+𝑤𝑝,𝑖(Π1) > 0 and 𝑤𝑝, 𝑗(Π1) ≈0 for all 𝑗≠𝑖(and symmetrically for pixel 𝑝′ under Π2). This is the
+idealization underlying the statement in Sec. 3.4 that correspondence is exact when the same primitives
+dominate the rasterization; it fails at genuine multi-primitive blending, most notably at occlusion boundaries.
+Proposition 2 (View consistency of the rasterized noise). Let 𝑝be the pixel under Π1 and 𝑝′ the pixel under
+Π2 at which primitive 𝑖is rasterized (i.e. 𝑝= u(1)
+𝑝(𝑡), 𝑝′ = u(2)
+𝑝(𝑡) from Eq. 31). Under Assumption 2,
+X𝑝(Π1) = X𝑝′(Π2) = p0,
+Q𝑝(Π1) = Q𝑝′(Π2),
+ϵ3D
+𝑝(Π1) = ϵ3D
+𝑝′ (Π2),
+(32)
+for any two camera poses Π1, Π2 at the same timestamp 𝑡– no rotation, translation, or other structural
+relationship between Π1 and Π2 is required.
+Proof. Under Assumption 2, the canonical-position rasterization of Eq. 13 collapses to the single dominant
+term: X𝑝(Π1) = 𝑤𝑝,𝑖(Π1)p0
+𝑤𝑝,𝑖(Π1)+𝜀→p0 as 𝑤𝑝,𝑖(Π1) ≫𝜀, and identically X𝑝′(Π2) →p0, giving the first equality
+in Eq. 32; this uses only that p0 does not depend on Π1 or Π2. Since Q𝑝is a fixed deterministic function
+of the canonical position alone (Eq. 15), equal anchors give Q𝑝(Π1) = Q(p0) = Q𝑝′(Π2). Similarly, the
+normalized feature of Eq. 11 collapses to eY𝑝(Π1) =
+𝑤𝑝,𝑖(Π1)z𝑖
+√
+𝑤𝑝,𝑖(Π1)2+𝜀→z𝑖(using 𝑤𝑝,𝑖(Π1) > 0), independent
+of the specific value of 𝑤𝑝,𝑖(Π1), and identically eY𝑝′(Π2) →z𝑖; this uses only that z𝑖does not depend on
+Π1 or Π2 either. Combining the equal Q and eY through Eq. 16 gives ϵ3D
+𝑝(Π1) = Q(p0)⊤z𝑖= ϵ3D
+𝑝′ (Π2), the
+last equality of Eq. 32. At no point did the proof use a relationship between Π1 and Π2, a closed-form pixel
+correspondence, or the specific values of u(1)
+𝑝(𝑡), u(2)
+𝑝(𝑡) from Eq. 31 beyond their existence.
+□
+Corollary 1 (Pure rotation gives the correspondence in closed form). If Π2 is obtained from Π1 by a pure
+rotation R ∈𝑆𝑂(3) about its own optical center (same c(𝑡), 𝑅(2)
+𝑐𝑤(𝑡) = R𝑅(1)
+𝑐𝑤(𝑡), i.e. 𝑅(2)
+𝑤𝑐(𝑡) = 𝑅(1)
+𝑤𝑐(𝑡)R⊤,
+with R expressed in the first camera’s frame), the pixel 𝑝′ at which Prop. 2 applies is additionally known in
+closed form, independent of p0’s depth: writing homogeneous pixel coordinates eu,
+eu′ ∝ KRK−1eu.
+(33)
+Proof. Writing x𝑐= 𝑅(1)
+𝑐𝑤(𝑡)(p(𝑡) −c(𝑡)) and 𝑧= [x𝑐]3 > 0, so x𝑐= 𝑧K−1eu, the rotated camera’s coordinate
+is x𝑐′ = 𝑅(2)
+𝑐𝑤(𝑡)(p(𝑡) −c(𝑡)) = Rx𝑐= 𝑧RK−1eu, so eu′ ∝Kx𝑐′ = 𝑧KRK−1eu ∝KRK−1eu, the depth 𝑧being
+absorbed by the projective equivalence. Unlike Prop. 2, which needs no relationship between Π1, Π2 because
+it never has to locate 𝑝′ explicitly, this closed form exists only because a pure rotation about the optical center
+introduces no parallax (Hartley & Zisserman [24]); a general pair Π1, Π2 (translation included) has no such
+depth-independent map, which is exactly why Prop. 2 is stated without one.
+□
+Remark 2. Two points on scope. (i) Where Assumption 2 fails: at genuine multi-primitive blending – most
+notably a pixel straddling an occlusion boundary – X𝑝averages the anchors of unrelated surfaces (Eq. 13),
+so the clean collapse to p0 in the proof no longer holds exactly; this is the same exception already noted in
+Sec. 3.4 and in Prop. 1’s remark. (ii) Locus of the guarantee: as with Props. 1, this is a statement about
+the noise construction, exact under Assumption 2; it does not by itself imply the trained diffusion model’s
+generated frames inherit this consistency, which is what the view-synchronization metrics of Sec. 4.2 test
+empirically.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+9
+
+
+Table 8: Compute time breakdown for the four main components of SyncVid. Times are reported in seconds
+per input clip with 75 frames at 480×832 resolution on an Nvidia H100 GPU. The DiT time is reported per
+denoising step.
+4D representation
+(NoPo4D)
+Noise
+rasterization
+Whitening
+Video generation
+(WAN2.2-14B)
+DiT
+VAE decoder
+Total
+Compute time (sec.)
+4.18
+6.44
+0.53
+23.97 / step
+4.60
+1203.1
+A.5
+Experimental Details
+Training. We evaluate all baseline methods using their officially released checkpoints. We train SyncVid with
+the Wan2.2-14B backbone on eight H100 GPUs, using a per-GPU batch size of one and gradient accumulation
+over four steps, for an effective batch size of 32. The model is trained for 10K iterations with a learning rate
+of 1 × 10−4.
+4D representation. We use an off-the-shelf feed-forward Gaussian Splatting model, NoPo4D [16], which
+avoids per-video reconstruction optimization and produces dynamic primitives that are active over finite
+temporal windows. Each primitive has a time-varying center, covariance, opacity, and appearance, together
+with a time-invariant canonical anchor. To render noise for views not covered by the source video, we model
+unobserved background regions with an enclosing cubemap: a finite, axis-aligned box centered at the centroid
+of the canonical anchors, with a half-extent set to a fixed multiple of the reconstructed scene extent. The
+cubemap therefore lies at a depth comparable to the scene rather than at infinity, as in an environment map.
+We index background texels by the ray–box intersection point instead of ray direction alone, allowing pixels
+that observe the same proxy surface to share a canonical location. The cubemap has six square faces, each
+containing 𝑆× 𝑆texels with 𝑑channels; we use 𝑆= 1024 and 𝑑= 3.
+Inference. Unless stated otherwise, we use 50 denoising steps for all SyncVid experiments, matching the
+default inference configuration of the WAN video models. We use the same fixed template as the text prompt
+during training and inference. Table 8 reports the runtime of the main SyncVid components. Constructing
+the 4D representation takes 4.18 seconds and is inexpensive relative to total generation time; because it is
+performed once per source video, this cost can also be amortized across multiple reshoots. The reported
+noise-rasterization time was measured on a particularly large dynamic scene containing approximately 6.53M
+Gaussian points. Video generation uses the original WAN configuration. More efficient step-distillation
+methods could reduce this cost, but evaluating them is beyond the scope of this work.
+Metrics. For pixel matching (Pix. Mat.), we use RoMA-v2 [25] to estimate point correspondences and count
+matches with uncertainty below 0.5. We report the average number of matched pixels separately for dynamic
+and static regions. To identify dynamic foreground objects, we obtain a segmentation mask from the source
+video using SAM3 [26]. We use this mask to partition correspondences for each source–target frame pair,
+enabling separate evaluation of dynamic and static regions.
+A.6
+Qualitative Comparison
+For a more detailed qualitative comparison, we encourage readers to consult the HTML viewer provided
+in the supplemental materials. In the print version, Fig. 5 shows additional results from test scenes under
+a Dolly-out camera trajectory, while Figs. 6 and 7 show results under Arc-left and Arc-right trajectories,
+respectively. Each example contains six equally spaced frames from the source clip and from each method’s
+generated reshoot.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+10
+
+
+A.7
+Limitations and Failure Examples
+Although SyncVid is trained with varied errors in the 4D noise representation and is therefore less sensitive to
+reconstruction quality—the 4D representation is used primarily to rasterize a synchronized noise prior—it
+remains limited by the quality of the monocular reconstruction. Errors in geometry, tracking, or primitive
+re-instantiation can still appear as subject deformation or temporal drift, while disoccluded regions are only
+weakly constrained and may be hallucinated by the diffusion model. Figure 8 illustrates these failure modes:
+the Arc-right example exhibits severe foreground inconsistencies, whereas the Dolly-out example retains the
+main subject and setting but introduces unrealistic content in newly exposed regions.
+Although SyncVid excels on video-synchronization metrics and in preserving dynamic regions in the generated
+videos, it does not outperform state-of-the-art methods in camera-pose estimation; methods such as ArtiFixer
+perform well on this task. We speculate that this gap is partly due to the absence of explicit camera-pose
+conditioning, such as the Plücker embeddings used by ArtiFixer. Providing this additional conditioning could
+improve pose accuracy, but integrating it is orthogonal to the structured-noise formulation presented here and
+is left for future work.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+11
+
+
+Figure 5: Qualitative comparisons under a Dolly-out camera trajectory. For each example, six equally
+spaced frames are shown for the source video and each method’s generated reshoot.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+12
+
+
+Figure 6: Qualitative comparisons under an Arc-right camera trajectory. For each example, six equally
+spaced frames are shown for the source video and each method’s generated reshoot.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+13
+
+
+Figure 7: Qualitative comparisons under an Arc-left camera trajectory. For each example, six equally spaced
+frames are shown for the source video and each method’s generated reshoot.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+14
+
+
+Figure 8: Failure examples. Each example shows six equally spaced source frames in the first row, followed
+by the corresponding generated frames. The top example follows Arc-left and the bottom example shows
+Dolly-out trajectory.
+Qualcomm AI Research is an initiative of Qualcomm Technologies, Inc.
+15

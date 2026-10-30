@@ -1,0 +1,5825 @@
+End-to-End Learned Image Coding: From Rate–Distortion
+Optimization to Practical Deployment
+Ming Lu†, Junqi Shi†, Zhan Ma*
+School of Electronic Science and Engineering, Nanjing University, Nanjing, 210023,
+Jiangsu, China.
+*Corresponding author(s). E-mail(s): mazhan@nju.edu.cn;
+†These authors contributed equally to this work.
+Abstract
+End-to-end learned image coding (LIC) has achieved substantial improvements in rate–distortion (R–
+D) performance, yet practical deployment requires addressing a broader set of system-level constraints.
+This article provides a deployment-oriented review of LIC, with particular attention to the transition
+from high-performance neural compression models to practical codecs. We first summarize the basic
+end-to-end coding framework, including learned transforms, quantization, entropy modeling, and R–
+D optimization. We then review practical extensions that are increasingly important for deployment,
+including variable-rate coding and rate control, integer-precision inference and cross-platform con-
+sistency, robustness and communication resilience, lightweight and hardware-aware implementation,
+and standardization and interoperability. To study these issues under a common setting, we further
+introduce TinyLIC as an open benchmark and reproducible case study for rate–distortion–complexity
+analysis. Experimental results illustrate the trade-offs among compression efficiency, computational
+complexity, numerical consistency, and robustness. In particular, TinyLIC with approximately 10
+KMACs/pixel decoding complexity substantially outperforms the H.265/HEVC image-profile anchor
+on Kodak, while the 50 KMACs/pixel configuration achieves performance comparable to the
+H.266/VVC image-profile anchor on several test sets. The review highlights practical constraints and
+design trade-offs that remain central to the deployment and interoperability of learned image codecs.
+Materials are accessible at https://njuvision.github.io/TinyLIC.
+Keywords: learned image coding, rate–distortion optimization, practical deployment, open benchmark
+1 Introduction
+Image coding has long been a cornerstone of visual
+communication systems (Ivins Jr, 1969; Shannon
+& Weaver, 1948). It supports a wide range of
+visual communication and storage applications,
+including social photo sharing, digital archiving,
+mobile imaging, and remote sensing. For more
+than three decades, mainstream image coding
+standards have largely followed a modular and
+rule-driven design philosophy (Bellard, 2016; Pfaff
+et al., 2021; Wallace, 1991). Representative codecs
+improve compression efficiency by refining individ-
+ual components such as transform (Clarke, 1985),
+prediction (Kobayashi & Bahl, 1974), quantiza-
+tion (Gersho, 1978), and entropy coding (Senoo &
+Girod, 1992), while maintaining interoperability
+through carefully specified bitstream syntax and
+standardization procedures. This paradigm has
+achieved remarkable success, but its components
+1
+arXiv:2610.22421v1  [eess.IV]  15 Oct 2026
+
+
+are mostly hand-crafted and optimized within a
+constrained design space.
+Over the past decade, image compression has
+undergone a paradigm shift driven by deep learn-
+ing. By learning compact latent representations
+directly from data, end-to-end learned image cod-
+ing (LIC) frameworks (T. Chen et al., 2021; Duan
+et al., 2024; D. He, Yang, Peng, et al., 2022; J. Liu,
+Sun, & Katto, 2023; M. Lu, Guo, Shi, Cao, &
+Ma, 2022) have surpassed the Joint Photographic
+Experts Group (JPEG) standard (Wallace, 1991),
+JPEG 2000 (D.T. Lee, 2005), and even image-
+profile anchors derived from modern video cod-
+ing standards, including Better Portable Graph-
+ics (BPG, H.265/High Efficiency Video Coding
+(HEVC) image-profile anchor) and VTM Intra
+(H.266/Versatile Video Coding (VVC) image-
+profile anchor) (Bellard, 2016; Pfaff et al., 2021),
+on many public benchmarks in terms of rate–
+distortion (R–D) performance (Ding et al., 2021;
+Y. Hu, Yang, Ma, & Liu, 2021). At the same
+time, the flexibility of learned representations has
+extended image coding beyond conventional pixel-
+fidelity optimization toward perceptual recon-
+struction, ultra-low-bitrate communication (Ke et
+al., 2025), and machine-oriented visual represen-
+tation (Duan, Ma, & Zhu, 2023).
+However, as LIC matures, the field’s primary
+bottleneck is shifting. The central question is no
+longer only whether learned codecs can achieve
+better R–D curves, but also whether they can
+operate as reliable, controllable, efficient, and
+interoperable compression subsystems in real com-
+munication environments. Practical deployment
+imposes constraints that are often underrepre-
+sented in academic benchmarks, including compu-
+tational complexity, decoding latency, rate-control
+flexibility, robustness to content variation and per-
+turbations, and compatibility with heterogeneous
+hardware platforms (Sze, Chen, Emer, Suleiman,
+& Zhang, 2017).
+This
+shift
+has
+redirected
+attention
+from
+performance-driven
+model
+design
+to
+system-
+oriented
+codec
+design.
+Recent
+studies
+have
+explored lightweight architectures (Bao et al.,
+2025), low-complexity entropy models (D. He,
+Zheng, Sun, Wang, & Qin, 2021), variable-rate
+and multi-rate coding (T. Chen & Ma, 2020),
+robustness under distribution shifts and adversar-
+ial perturbations (T. Chen & Ma, 2023), model
+quantization and integer inference (Sun, Yu, &
+Katto, 2022), and hardware-friendly implementa-
+tions (C. Chen et al., 2024). In parallel, the stan-
+dardization of JPEG Artificial Intelligence (JPEG
+AI)1 (Ascenso, Alshina, & Ebrahimi, 2023) and
+IEEE 1857.112 (IEEE, 2024) indicates that LIC is
+moving from academic prototypes toward indus-
+trial validation. These developments motivate a
+survey that treats compression efficiency, deploy-
+ability, and interoperability as coupled design
+objectives.
+Existing surveys have provided valuable per-
+spectives on this rapidly evolving field. Early
+reviews focused on the transition from traditional
+coding tools to neural-network-based or end-to-
+end compression (Ding et al., 2021; D. Liu, Li,
+Lin, Li, & Wu, 2020; S. Ma et al., 2019), while
+later studies offered increasingly comprehensive
+coverage of learned transforms, entropy models,
+perceptual coding, rate control, and benchmark
+performance (B. Chen, Yin, Chen, Wang, & Ye,
+2024; Z. Chen, Sun, Zhang, & Zhang, 2024; Y. Hu
+et al., 2021; C.-H. Huang & Wu, 2024; Jamil,
+Piran, Rahman, & Kwon, 2023; Mishra, Singh, &
+Singh, 2022; Y. Zhang, Zhu, Jiang, Kwong, & Kuo,
+2023). These reviews provide valuable algorithmic
+and conceptual context, but deployment-oriented
+issues such as integer inference, decoder consis-
+tency, entropy-coder runtime, robustness, rate-
+control guarantees, lightweight implementation,
+and standard conformance are usually discussed
+separately or only as future challenges.
+This article therefore reviews LIC from a
+deployment-oriented
+perspective.
+Rather
+than
+providing another exhaustive taxonomy of neural
+architectures, we briefly summarize the core trans-
+form–quantization–entropy–optimization
+frame-
+work and focus primarily on the capabilities
+required to convert learned compression mod-
+els into practical codecs. In particular, we con-
+sider
+five
+closely
+related
+aspects:
+rate
+flex-
+ibility
+and
+control,
+which
+determine
+how
+a
+codec adapts to varying bitrate requirements;
+model quantization and cross-platform consis-
+tency, which affect low-precision implementation
+and deterministic decoding; robustness and com-
+munication resilience, which characterize codec
+behavior under perturbations and transmission
+1https://jpeg.org/jpegai/
+2https://standards.ieee.org/ieee/1857.11/10691/
+2
+
+
+errors; lightweight and hardware-aware deploy-
+ment, which determines computational feasibility
+on resource-constrained platforms; and standard-
+ization and interoperability, which provide the
+basis for reproducible and compatible codec imple-
+mentations.
+To complement the literature review, we fur-
+ther introduce TinyLIC as an open benchmark
+and reproducible case study for practical LIC
+under a shared architecture. TinyLIC provides a
+lightweight and configurable reference framework
+in which computational complexity and repre-
+sentative deployment functions can be system-
+atically varied. The framework supports multi-
+ple complexity levels together with variable-rate
+coding, quantization-aware consistent decoding,
+adversarially robust training, progressive trans-
+mission, and network-aware loss-resilient coding.
+This design enables controlled analysis of how
+additional system requirements affect rate, distor-
+tion, complexity, and robustness, and provides a
+common setting for observing trade-offs that are
+difficult to isolate when comparing independently
+developed codecs.
+The main contributions of this survey are
+summarized as follows.
+• A deployment-oriented view of LIC. We
+organize the field from the perspective of the
+transition from R–D-optimized neural com-
+pression models to practical codecs, while
+treating the core LIC architecture as a con-
+cise algorithmic foundation rather than the
+primary focus.
+• A systematic review of practical codec
+capabilities (Sec. 3). We examine rate
+flexibility and control, model quantization
+and cross-platform consistency, robustness
+and transmission resilience, lightweight and
+hardware-aware implementation, and stan-
+dardization, with particular attention
+to
+the interactions and trade-offs among these
+requirements.
+• A reproducible benchmark for practi-
+cal LIC (Sec. 4). We introduce TinyLIC as
+a lightweight and extensible reference frame-
+work for rate–distortion–complexity analysis
+and for controlled evaluation of variable-
+rate coding, consistent decoding, progressive
+transmission, adversarial robustness, and loss
+resilience.
+Analysis 
+Transform
+Quantization
+1 2 …
+Send/Receive
+discrete
+latent
+Entropy 
+Encoder
+Context
+𝑝(ො𝑦)
+bitstream
+Entropy 
+Decoder
+Synthesis
+Transform
+Discrete symbols ො𝑦
+𝑝(ො𝑦)
+symbols ො𝑦
+𝑦
+GT  𝑥
+Rec.  ො𝑥
+1
+2 …
+bitstream
+Fig. 1 A variational-autoencoder (VAE)-based LIC. The
+analysis transform maps the input image into latents that
+are then quantized and entropy-coded. The decoder recon-
+structs the image using the entropy-decoded latents and
+the synthesis transform.
+• A discussion of emerging directions
+beyond conventional R–D optimization
+(Sec. 5). We identify open challenges in
+hardware-efficient and interoperable learned
+codecs and discuss longer-term developments
+toward coding for machine intelligence, neu-
+ral scene representations, and foundation-
+model-assisted compression.
+2 Core Framework: A Brief
+Overview
+End-to-end
+learned
+image
+coding
+(LIC)
+fol-
+lows the classical principle of transform coding
+while replacing hand-crafted coding modules with
+jointly optimized neural components. As shown in
+Fig. 1, given an input image x, an analysis trans-
+form fθ maps the image into a compact latent
+representation
+y = fθ(x),
+(1)
+which is discretized into ˆy = Q(y) and compressed
+according to a learned probability model pψ(ˆy). At
+the decoder, a synthesis transform gϕ reconstructs
+the image as
+ˆx = gϕ(ˆy).
+(2)
+Most modern LIC methods instantiate this for-
+mulation within a variational-autoencoder (VAE)
+framework (Ball´e, Laparra, & Simoncelli, 2017;
+Ball´e, Minnen, Singh, Hwang, & Johnston, 2018;
+Kingma & Welling, 2013). Auxiliary latent vari-
+ables, such as hyperpriors, are commonly intro-
+duced to convey side information for probability
+estimation (Ball´e, Minnen, et al., 2018). The
+3
+
+
+CCA
+MPA
+SGA
+Transform
+Quantization
+Optimization
+Flexibility
+Consistency
+Robustness
+Lightweight
+Convolution
+Attention
+State-Space
+…
+SQ
+VQ
+Gradient
+Propagation
+Distribution
+Context
+Objective 
+Fidelity
+Perceptual 
+Realism
+Machine Task
+JPEG
+IEEE
+Arch.
+Quant. & Prune.
+Distillation
+TTA
+Attack
+Defense
+Model 
+Quant.
+Variable Rate
+Rate Control
+NIC
+Cross-
+Platform
+Entropy 
+Modeling
+Standard
+Hyperprior
+Factorized
+CAR
+SCAR
+NLAIC
+Checkerboard
+TIC
+Contextformer
+HPCM
+DHIC
+QARV
+MLIC
+GLLMM
+GGM
+GMM
+LoM
+VRIC-RNN
+CAE
+Entroformer
+STF
+Informer
+LALIC
+TCM
+Mamba-IC
+CMIC
+GABIC
+iWave
+AUN
+UQ
+NVTC
+PQ-MIM
+LVQAC
+LVQ
+SHVQ
+NLIC
+STH
+Dead-ZoneQ
+AuxT
+Balanced-RD
+R-D-P
+SIC
+SDPIC
+GAN-LIC
+HiFiC
+MRIC
+JND-LIC
+TACO
+R-D-A
+ICMH-Net
+TransTIC
+SABR
+SlimCAE
+MAE
+SFs
+AG-VAE
+QVRF
+YOTO
+DPICT
+ProgDTD
+RC-VAE
+RAQ
+RDO-PTQ
+QLIC
+IQ-LIC
+EVRC-Q
+FMPQ
+AWDB
+DynaQuant
+RLC
+CC-LC
+WeConvene
+ComDefend
+FTDA
+RDA
+LICCS
+BAvAFT
+MALICE
+LossResilientLIC
+ResiComp
+MGD
+MS-ILLM
+JPEG AI
+IEEE 1857.11
+KDIC
+EVC
+DCVC-RT
+AsymLLIC
+LS-TB
+ShiftLIC
+AdaNIC
+DUIC
+UDIC
+Dec-Adapter
+TTA-IC
+MP-PTQ
+ULIC
+Fig. 2 Taxonomy of end-to-end learned image coding from algorithmic foundations to practical deployment. The core
+framework consists of learned transforms, quantization, entropy modeling, and optimization objectives, while practical
+extensions address rate flexibility, numerical consistency, robustness, lightweight deployment, and standardization. The
+latter form the primary focus of this survey.
+expected coding rate is approximated by the neg-
+ative log-likelihood of the transmitted symbols,
+while reconstruction quality is measured by a dis-
+tortion function D(x, ˆx). The codec is typically
+optimized through the Lagrangian rate–distortion
+(R–D) objective
+L = R + λD(x, ˆx),
+(3)
+where R denotes the expected bitrate and λ con-
+trols the trade-off between compression rate and
+reconstruction quality. This formulation provides
+a common foundation on which different trans-
+forms, quantizers, entropy models, and reconstruc-
+tion objectives can be developed (Ball´e et al.,
+2020).
+As summarized in Fig. 2, the development
+of LIC can be viewed from two complemen-
+tary perspectives. The core framework consists
+of four tightly coupled components: transform,
+quantization, entropy modeling, and optimization.
+The practical extensions, reviewed in Sec. 3, con-
+cern the system properties required beyond the
+basic R–D formulation, including rate flexibil-
+ity, numerical consistency, robustness, lightweight
+deployment, and standardization.
+Transform. Learned transforms determine
+how visual information is mapped into compact
+latent representations. Early end-to-end codecs
+were dominated by convolutional architectures
+(Ball´e et al., 2017; Ball´e, Minnen, et al., 2018),
+which provide efficient local feature extraction
+and remain attractive for practical implementa-
+tions. Subsequent methods introduced non-local
+attention and Transformer-based architectures
+(T. Chen et al., 2021; H. Li et al., 2024; J. Liu et
+al., 2023; M. Lu et al., 2022) to capture longer-
+range spatial dependencies, while more recent
+studies have explored state-space models (Zeng
+et al., 2025) and hierarchical latent representa-
+tions (Cong et al., 2026; Duan et al., 2024; Y. Li,
+Zhang, Li, & Liu, 2025). These developments
+improve representation capacity, but also lead to
+different computational, memory, and paralleliza-
+tion characteristics. Transform design therefore
+increasingly reflects a trade-off between represen-
+tation capability and implementation efficiency
+rather than compression performance alone.
+Quantization. Quantization connects contin-
+uous neural representations with discrete sym-
+bols that can be entropy coded. Scalar quanti-
+zation remains the dominant choice because of
+4
+
+
+Table 1 Overview of representative learned image compression methods.
+Method
+Pub.
+Core Components
+Params
+(M) ↓
+KMACs/
+pixel ↓
+BD-rate
+(%) ↓
+Arch.
+Context
+Dist.
+Factorized (Ball´e et al., 2017)
+ICLR’17
+CNN
+Factorized
+UM
+7.03
+204.00
+67.80
+Hyperprior (Ball´e, Minnen, et al., 2018)
+ICLR’18
+CNN
+Hyperprior
+GM
+11.81
+208.97
+30.14
+JointAR (Minnen et al., 2018)
+NeurIPS’18
+CNN
+SAR
+GM
+25.50
+224.80
+10.61
+ChannelAR (Minnen & Singh, 2020)
+ICIP’20
+CNN
+CAR
+GM
+28.72
+243.00
+7.22
+NLAIC (T. Chen et al., 2021)
+TIP’20
+Attention
+SCAR (3D)
+GM
+65.50
+823.54
+5.92
+GMM (Cheng et al., 2020)
+CVPR’20
+CNN
+SAR
+GMM
+29.63
+512.80
+4.55
+ELIC (D. He, Yang, Peng, et al., 2022)
+CVPR’22
+CNN
+SCAR
+GM
+36.93
+573.88
+-3.22
+TIC (M. Lu et al., 2022)
+DCC’22
+Attention
+SCAR
+GM
+28.40
+506.72
+-4.58
+TCM (J. Liu et al., 2023)
+CVPR’23
+Attention
+CAR
+GM
+76.57
+1823.58
+-10.70
+QARV (Duan et al., 2024)
+TPAMI’24
+CNN
+HAR
+GM
+93.40
+718.96
+-5.81
+FLIC (H. Li et al., 2024)
+ICLR’24
+Attention
+CAR
+GM
+70.97
+1096.04
+-12.97
+MLIC++ (Jiang et al., 2025)
+TOMM’25
+CNN
+SCAR
+GM
+116.72
+1282.81
+-11.83
+MambaIC (Zeng et al., 2025)
+CVPR’25
+Mamba
+SCAR
+GM
+75.78
+1284.86
+-15.72
+HPCM (Y. Li, Zhang, Li, & Liu, 2025)
+ICCV’25
+CNN
+HAR
+GM
+89.71
+1261.29
+-19.19
+DHIC (Cong et al., 2026)
+ICLR’26
+CNN
+HAR
+GM
+106.93
+977.73
+-19.73
+Note: Pub.: publication venue and year; Arch.: main architecture; Dist.: distribution model. Because BD-rate
+and complexity values depend on anchor version, color pipeline, test-set split, interpolation protocol, and whether
+results are reproduced or reported by the original papers, the table should be read as a normalized high-level
+comparison rather than a bit-exact cross-paper leaderboard.
+its simplicity and compatibility with practical
+entropy coders. Since hard discretization is non-
+differentiable, early learned codecs typically rely
+on differentiable approximations such as addi-
+tive uniform noise during training (Ball´e et al.,
+2017; Theis, Shi, Cunningham, & Husz´ar, 2017).
+Alternative strategies include universal quantiza-
+tion and soft-to-hard relaxation (Agustsson et al.,
+2017; Agustsson & Theis, 2020; Guo, Zhang, Feng,
+& Chen, 2021). More expressive vector or struc-
+tured quantization schemes can exploit dependen-
+cies among latent dimensions, but generally intro-
+duce additional optimization or search complexity.
+It is important to distinguish the signal quanti-
+zation considered here from model quantization,
+which converts network weights and activations to
+low-precision representations for deployment and
+is discussed separately in Sec. 3.2.
+Entropy Modeling. Compression efficiency
+further depends on how accurately the probabil-
+ity distribution of quantized latents is modeled.
+Early end-to-end methods used factorized latent
+distributions (Ball´e et al., 2017), followed by
+hyperprior-based models (Ball´e, Minnen, et al.,
+2018) that transmit auxiliary side information to
+capture spatially varying latent statistics. Autore-
+gressive models subsequently exploit dependencies
+among previously decoded symbols and can oper-
+ate along spatial, channel, or joint spatial-channel
+dimensions (T. Chen et al., 2021; Minnen et
+al., 2018; Minnen & Singh, 2020). More recent
+approaches combine richer context models with
+hierarchical representations to further improve
+probability estimation (Cong et al., 2026; Jiang et
+al., 2025; Y. Li, Zhang, Li, & Liu, 2025). Stronger
+entropy models generally reduce statistical redun-
+dancy, but often introduce additional decoding
+steps, memory accesses, or sequential dependen-
+cies. The balance between probability-modeling
+accuracy and decoding efficiency is therefore par-
+ticularly important for practical deployment.
+Optimization Objective. The fourth com-
+ponent is the optimization objective. Classical
+learned codecs primarily optimize signal fidelity
+using distortion measures such as mean squared
+error (MSE), resulting in the conventional R–
+D formulation (Ball´e et al., 2020, 2017). The
+same end-to-end framework can, however, accom-
+modate other notions of reconstruction utility.
+Perceptual compression introduces feature-space
+or distribution-level objectives to improve visual
+realism
+at
+low
+bitrates,
+reflecting
+the
+rate–
+distortion–perception trade-off (Blau & Michaeli,
+2018, 2019; Mentzer, Toderici, Tschannen, &
+Agustsson, 2020). Machine-oriented coding fur-
+ther incorporates task-related objectives so that
+compressed
+representations
+retain
+information
+useful
+for
+recognition
+or
+analysis
+(Chamain,
+Racap´e, B´egaint, Pushparaja, & Feltman, 2021;
+X. Zhang, Guo, Lu, & Ma, 2024). These exten-
+sions broaden the objective of learned coding from
+faithful signal reconstruction toward perceptually
+and semantically useful representation, although
+their evaluation criteria and deployment require-
+ments remain less standardized than those of
+fidelity-oriented coding.
+The
+evolution
+of
+these
+components
+has
+substantially
+improved
+compression
+efficiency.
+5
+
+
+Table 1 provides a representative snapshot of
+this progression. Factorized and hyperprior mod-
+els established the early VAE-based framework,
+while autoregressive context models, attention-
+based transforms, hierarchical representations,
+and more expressive probability models progres-
+sively improved R–D performance. At the same
+time, the table reveals an important character-
+istic of modern LIC: improved coding perfor-
+mance is frequently accompanied by increased
+model size and computational complexity. Recent
+high-performance codecs commonly require sev-
+eral hundred to more than one thousand KMAC-
+s/pixel, whereas practical systems may oper-
+ate under substantially tighter computation and
+memory budgets. Because complexity measure-
+ments are also affected by implementation details,
+entropy-coding procedures, hardware platforms,
+and evaluation protocols, these values should
+be interpreted primarily as an architecture-level
+trend rather than a bit-exact cross-paper leader-
+board.
+This observation marks an important transi-
+tion in LIC. The transform-quantization-entropy-
+optimization framework has become increasingly
+mature, and further improvements in R–D per-
+formance alone do not guarantee practical usabil-
+ity. A deployable codec must additionally deter-
+mine how bitrate is controlled, whether decoding
+remains numerically consistent across heteroge-
+neous platforms, how the codec behaves under
+input or transmission perturbations, whether its
+computation maps efficiently to available hard-
+ware, and how interoperability is maintained
+across implementations.
+These properties are closely coupled with
+the underlying coding framework. For example,
+stronger autoregressive dependencies may improve
+entropy modeling but increase decoding latency
+and error propagation; low-precision inference
+may improve hardware efficiency while altering
+R–D behavior; and robustness-oriented mecha-
+nisms may sacrifice part of the coding efficiency
+to improve reliability. Practical LIC is therefore
+better viewed as a multi-objective system-design
+problem rather than an extension of R–D opti-
+mization alone.
+For this reason, the remainder of this survey
+treats the core LIC framework as the algorithmic
+foundation rather than the primary organizing
+dimension. Section 3 focuses on the practical
+extensions required to turn an R–D-optimized
+neural compression model into a deployable codec,
+including rate flexibility and control, model quan-
+tization and cross-platform consistency, robust-
+ness and communication resilience, lightweight
+and hardware-aware deployment, and standard-
+ization and interoperability.
+3 Practical Extensions for
+Deployable LIC
+The core framework reviewed in Sec. 2 defines
+how learned codecs represent, quantize, and com-
+press visual information. Practical deployment,
+however, imposes requirements that are not fully
+characterized by nominal R–D performance. A
+deployable codec must adapt to varying bitrate
+constraints, produce deterministic results across
+heterogeneous platforms, remain reliable under
+content and transmission perturbations, operate
+within computation and memory budgets, and
+maintain interoperability across implementations.
+These requirements arise at different levels of
+the coding pipeline and are often coupled with
+the underlying transform, entropy model, and
+optimization objective.
+Accordingly, we organize practical LIC around
+five closely related dimensions. Rate flexibility
+and control
+determine whether a codec can
+adapt its operating point to bandwidth or qual-
+ity requirements. Model quantization and cross-
+platform consistency address low-precision execu-
+tion and deterministic entropy decoding. Robust-
+ness and communication resilience characterize
+codec behavior under input perturbations, distri-
+bution shifts, and transmission errors. Lightweight
+and hardware-aware deployment concerns com-
+putational cost, memory, latency, and hardware
+efficiency. Finally, standardization and interoper-
+ability provide common bitstream, decoder, and
+conformance requirements for practical adoption.
+Rather than treating these capabilities as inde-
+pendent add-on modules, this section emphasizes
+their interactions with compression efficiency and
+with one another.
+3.1 Rate Flexibility and Control
+Practical LIC must adapt to varying bandwidth,
+storage, and quality requirements without main-
+taining multiple independently trained models.
+6
+
+
+E
+D
+E
+D
+E
+D
+…
+E
+D
+D
+D
+First
+Next
+Last
+…
+Global
+Channel-wise Element-wise
+E
+D
+Conditional 
+embedding
+mapping
+Quality factors / 
+Importance map
+Modulate
+E
+D
+Q
+(a) Recurrent Refinement
+(b) Latent Decomposition
+(c) Feature Modulation
+(d) Adaptive Quantization
+Fig. 3 Representative mechanisms for variable-rate learned image coding. Rate adaptability can be introduced through
+recurrent refinement, latent decomposition, feature modulation, or adaptive quantization. These mechanisms differ in achiev-
+able rate granularity, inference complexity, and compatibility with a fixed codec topology.
+Three related capabilities are particularly impor-
+tant. Variable-rate coding allows a single codec
+to cover multiple R–D operating points; progres-
+sive coding further requires these operating points
+to be nested within a common bitstream; and
+rate control selects coding parameters so that the
+actual bitrate approaches a prescribed target. We
+review these three capabilities in turn.
+3.1.1 Variable-rate Coding
+Variable-rate coding (VRC) aims to span a range
+of R–D operating points within a single model,
+rather than training an independent network for
+each bitrate or quality level. In contrast to con-
+ventional codecs, where bitrate can often be
+adjusted directly through a quantization parame-
+ter (QP), learned codecs couple bitrate with latent
+representations, entropy statistics, and network
+activations. Rate adaptation therefore requires
+an explicit mechanism for modifying the coding
+behavior of the learned model. As illustrated in
+Fig. 3, existing approaches can be broadly grouped
+into recurrent refinement, latent decomposition,
+feature modulation, and adaptive quantization.
+Recurrent Refinement. Early VRC meth-
+ods obtain scalability through iterative residual
+coding. Toderici et al. (Toderici et al., 2016, 2017)
+introduced recurrent neural codecs in which each
+iteration encodes additional information to pro-
+gressively refine the reconstruction. Subsequent
+studies improved spatially adaptive rate allocation
+and recurrent coding structures (Islam, Dang, Lee,
+& Moon, 2021; C. Jia, Liu, Wang, Ma, & Gao,
+2019; Johnston et al., 2018; Su, Cheng, Sun, &
+Katto, 2020). The number of iterations provides
+a natural rate-control variable, but higher rates
+require additional sequential inference, causing
+computation and latency to increase with bitrate.
+Latent Decomposition. A second strategy
+constructs scalable representations within a sin-
+gle forward pass. Rippel and Bourdev (Rippel
+& Bourdev, 2017) decompose latent representa-
+tions into ordered components, while multi-scale
+approaches generate hierarchical representations
+whose subsets correspond to different reconstruc-
+tion qualities (C. Cai, Chen, Zhang, & Gao,
+2018; Nakanishi, Maeda, Miyato, & Okanohara,
+2018). Compared with recurrent refinement, latent
+decomposition avoids repeatedly executing the
+complete codec and naturally supports multi-rate
+or progressive decoding. Nevertheless, the indi-
+vidual representation levels are jointly optimized
+and can be strongly coupled. Moreover, when rate
+adaptation is determined by discrete bitplanes,
+channels, or scales, the available operating points
+may remain relatively sparse, limiting fine-grained
+coverage of the R–D curve.
+Feature Modulation. A more flexible family
+of methods conditions the transform or latent rep-
+resentation on the desired operating point. Chen
+and Ma (T. Chen & Ma, 2020) showed that
+latent representations learned at different bitrates
+exhibit substantial structural similarity and can
+be adapted through learned scaling factors. This
+idea has subsequently been extended by condition-
+ing transform features, normalization parameters,
+or latent activations on the R–D trade-off param-
+eter (S. Cai et al., 2024, 2022; Choi, El-Khamy, &
+Lee, 2019; Cui et al., 2021; F. Yang et al., 2020).
+Typically, λ, a quality index, or another control
+variable is mapped to a learned embedding that
+modulates intermediate features.
+An
+important
+practical
+property
+of
+modulation-based VRC is that the codec topol-
+ogy remains unchanged across operating points.
+It can therefore provide dense or approximately
+continuous rate adaptation while maintaining
+7
+
+
+nearly constant computational complexity. The
+same principle can be extended spatially through
+quality or importance maps, allowing different
+regions to operate at different quality levels (Kao,
+Weng, Chen, Chiu, & Peng, 2023; Liang, Liu,
+Yao, Lin, & Zhao, 2023; Y. Ma et al., 2021; Song,
+Choi, & Han, 2021). Such spatial control is useful
+for region-of-interest (ROI) coding (C. Cai, Chen,
+Zhang, & Gao, 2019), although determining an
+optimal quality map introduces an additional
+rate-allocation problem.
+Adaptive Quantization. Rate adaptation
+can also be introduced directly at the quantization
+stage. The basic idea is to scale latent variables
+before quantization, thereby changing the effec-
+tive quantization step size and consequently the
+bitrate. This mechanism is closely related to QP-
+based control in conventional codecs and can
+often be integrated without modifying the main
+transform architecture.
+Existing methods differ mainly in the granular-
+ity and parameterization of the scaling operation.
+Global schemes apply a common scale or quan-
+tization parameter to a latent tensor (Dumas,
+Roumy, & Guillemot, 2018; Presta, Tartaglione,
+Fiandrotti, & Grangetto, 2025; Zhou et al., 2020),
+whereas finer-grained approaches assign different
+scales to channels or individual latent elements
+(Akbari, Liang, Han, & Tu, 2020, 2021; S. Li et
+al., 2025; Theis et al., 2017; Tong et al., 2023).
+The latter provide greater flexibility in adapting
+to heterogeneous latent statistics, at the cost of
+additional parameters or optimization complexity.
+In either case, the achievable rate range depends
+on whether the learned representation and entropy
+model remain well calibrated when the quantiza-
+tion behavior deviates from that seen at individual
+training points.
+Overall,
+recurrent
+refinement
+and
+latent
+decomposition provide explicit scalability but rely
+on sequential or discrete operating points, whereas
+feature modulation and adaptive quantization
+better preserve a fixed codec topology and pre-
+dictable inference complexity. The main remaining
+challenge is to maintain stable and monotonic
+R–D behavior over a sufficiently wide rate range.
+3.1.2 Progressive Coding
+Progressive coding imposes a stronger constraint
+than general variable-rate coding. While a VRC
+model only needs to provide multiple R–D oper-
+ating points, a progressive codec requires these
+operating points to be nested: a low-rate recon-
+struction should be obtained from a prefix or
+ordered subset of the same bitstream, and addi-
+tional transmitted symbols should progressively
+refine the reconstruction. This property is par-
+ticularly useful when the available bandwidth or
+transmission duration is not known in advance,
+since the sender can terminate transmission with-
+out re-encoding the image.
+Early neural codecs obtain progressiveness
+through iterative refinement, where additional
+coding stages successively improve reconstruction
+quality (Baig, Koltun, & Torresani, 2017; Toderici
+et al., 2017). Although conceptually simple, such
+approaches generally require repeated inference as
+more information is decoded. More recent meth-
+ods instead construct an ordered representation
+within a single coding framework, so that progres-
+sive reconstruction can be performed by decoding
+an increasing subset of the latent representation.
+Structured
+quantization
+and
+latent
+decomposition. One class of approaches explic-
+itly partitions the representation into ordered cod-
+ing units. DPICT and its context-based extension
+encode latents using trit planes, where succes-
+sive planes refine the reconstruction (S. Jeon,
+Choi, Park, & Kim, 2023; J.-H. Lee, Jeon, Choi,
+Park, & Kim, 2022). Nested quantization con-
+structs compatible quantization grids across qual-
+ity levels (J. Lee, Jeong, & Kim, 2026; Y. Lu,
+Zhu, Yang, Said, & Cohen, 2021), while channel-
+or resolution-structured representations provide
+alternative forms of scalability (Han, Duan, Tao,
+Xu, & Lu, 2020; D. Zhang et al., 2023). These
+methods provide an explicit progressive struc-
+ture and well-defined truncation points. However,
+enforcing nested representations constrains the
+optimization of individual operating points, which
+may introduce an R–D penalty compared with
+independently optimized fixed-rate coding.
+Importance-aware ordering and mask-
+ing. Another family of methods learns or esti-
+mates the relative importance of latent elements
+and transmits them accordingly. Importance can
+be inferred from latent statistics, learned impor-
+tance maps, or external feature priors (Baldas-
+sarre, El-Nouby, & J´egou, 2023; Caron et al., 2021;
+8
+
+
+J. Lee, Jeong, & Kim, 2022). ProgDTD (Hoj-
+jat, Haberer, & Landsiedel, 2023) encourages an
+intrinsic ordering of latent elements through tail-
+drop training, allowing a single representation to
+support multiple truncation points without sub-
+stantially changing the codec architecture. Presta
+et al. (Presta, Tartaglione, Fiandrotti, Grangetto,
+& Cosman, 2025) further use element-wise impor-
+tance ranking and variance-aware masking for
+efficient progressive decoding. Compared with
+explicitly layered representations, masking-based
+approaches are attractive because progressiveness
+can be introduced with relatively limited archi-
+tectural modification, although their performance
+depends on how accurately the ordering reflects
+the contribution of each latent element to recon-
+struction quality.
+Hierarchical
+and
+context-dependent
+progressiveness.
+Hierarchical
+representa-
+tions provide another natural mechanism for
+progressive
+coding.
+Different
+latent
+levels
+or
+autoregressive stages can be decoded successively,
+producing
+increasingly
+refined
+reconstructions
+(Cong et al., 2026; G. Zhang et al., 2025;
+Z. Zhang et al., 2026). Such designs can exploit
+dependencies across representation levels and
+achieve strong coding efficiency, but the result-
+ing dependency structure also reduces decoding
+independence between stages. This issue becomes
+particularly
+relevant
+in
+unreliable
+networks,
+where the loss of an early portion of the repre-
+sentation may affect subsequent decoding. Recent
+work therefore combines progressive representa-
+tion with network-aware training or loss-resilient
+coding (Sha et al., 2025), linking scalability with
+communication reliability.
+From a deployment perspective, progressive
+coding enables transmission to terminate or refine
+dynamically without re-encoding. Its main chal-
+lenge is to provide fine-grained truncation and
+stable partial reconstruction without introducing
+strong representation dependencies or substantial
+R–D loss. This trade-off is particularly relevant to
+bandwidth-limited and unreliable communication.
+3.1.3 Rate Control
+Variable-rate coding determines the set or range
+of R–D operating points that a codec can pro-
+vide, whereas rate control (RC) addresses the
+inverse problem: given a target bitrate, how should
+the available coding parameters be selected so
+that the resulting bitstream satisfies the rate con-
+straint with minimal distortion? This distinction
+is important in practical systems, where the avail-
+able bandwidth or storage budget is usually given
+explicitly rather than represented by an abstract
+quality parameter. Rate control can be formulated
+as
+min
+{αi} D,
+s.t.
+R ≤Rtarget,
+(4)
+where {αi} denotes adjustable coding parameters,
+such as quantization scales, modulation factors,
+or quality indices, and Rtarget is the prescribed
+rate budget. The main challenge is that the map-
+ping from these parameters to the actual bitrate is
+content-dependent and generally cannot be deter-
+mined analytically. Existing approaches therefore
+differ primarily in how this mapping is estimated
+and how much additional encoding overhead is
+introduced.
+Repeated
+encoding
+search.
+The
+most
+direct strategy is to encode the image repeatedly
+with different coding parameters and search for an
+operating point close to the target bitrate. JPEG
+AI adopts a coarse-to-fine rate-matching proce-
+dure, in which an appropriate model or operating
+range is first selected and the coding parameters
+are subsequently refined (Ascenso et al., 2023;
+P. Jia et al., 2025). Jia et al. (P. Jia et al., 2025)
+further describe a two-stage procedure in which a
+model near the desired rate is first identified, fol-
+lowed by local estimation of the bitrate–parameter
+relationship and iterative refinement toward the
+target.
+Search-based rate control is attractive because
+it directly evaluates the actual coded rate and can
+therefore provide accurate bitrate matching with-
+out requiring a highly accurate predictive model.
+Its disadvantage is the need for multiple encod-
+ing passes. Since neural encoding itself can be
+computationally expensive, repeated evaluation
+substantially increases encoding latency and lim-
+its its applicability when fast or real-time rate
+adaptation is required. Practical search strate-
+gies therefore need to balance the number of
+evaluations against rate-control accuracy.
+Bitrate-parameter
+mapping. To reduce
+repeated encoding, another line of work explic-
+itly models the relationship between the target
+bitrate and the codec control parameters. Shi et
+al. (Y. Shi, Zhang, Wang, Ling, & Yin, 2022)
+9
+
+
+investigate the relationship between bitrate and
+the Lagrange multiplier λ and use this relation-
+ship for rate selection. Zhang et al. (S. Zhang,
+Wang, Mao, Yang, & Wan, 2022) introduce a
+Rate-Feature-Level (RFL) model that predicts
+suitable coding parameters from both the tar-
+get bitrate and image content. Similarly, Xue
+and Zhang (N. Xue & Zhang, 2023) use shallow,
+high-resolution encoder features to estimate the
+mapping from the target rate to λ. Pan et al. (Pan,
+Ding, Chen, & Chen, 2025) formulate rate control
+as a prediction problem over discrete model and
+parameter indices, allowing an appropriate config-
+uration to be selected directly for a given image
+and target rate.
+Compared with repeated search, predictive
+mapping can substantially reduce the number of
+encoding passes and is therefore more suitable
+for latency-sensitive applications. The difficulty is
+shifted to the accuracy and generalization of the
+predictor: an inaccurate bitrate-parameter map-
+ping may lead to rate mismatch, particularly for
+image content or target rates that are insuffi-
+ciently represented during training. Effective rate
+control therefore requires the predictor to capture
+both the global behavior of the codec and the
+content-dependent variation of the actual bitrate.
+Block-level rate allocation. Global rate
+control assigns a single operating condition to
+the complete image and may therefore overlook
+substantial spatial variation in coding difficulty.
+Block-level rate allocation addresses this issue by
+distributing a global rate budget across spatial
+regions according to their local R–D character-
+istics. Wang et al. (X. Wang, Lu, & Ma, 2022)
+divide an image into blocks, estimate the bitrate–
+parameter relationship for individual blocks, and
+use a greedy optimization procedure to allocate
+bits under the global rate constraint. Because
+independently estimating such relationships for
+all blocks requires repeated encoding, Dong et
+al. (Dong, Lu, & Ma, 2024) exploit correla-
+tions among neighboring blocks and estimate the
+behavior of most blocks from a smaller set of
+sampled blocks, thereby reducing the number of
+required encoding operations.
+Block-level control provides finer adaptation
+to heterogeneous image content and creates an
+explicit connection between rate control and spa-
+tial bit allocation. However, it also introduces
+an additional optimization layer on top of the
+neural codec, and its practical value depends on
+whether the resulting R–D gain justifies the cost of
+local rate estimation and allocation. Similar con-
+siderations arise in ROI- and importance-aware
+coding, where spatial priorities must ultimately be
+translated into a global bit budget.
+Overall, rate control introduces an additional
+requirement beyond the rate flexibility discussed
+in Sec. 3.1.1: the operating point must be not only
+available, but also predictable and reachable under
+a prescribed rate budget. Repeated search favors
+accuracy but incurs encoding overhead, predic-
+tive mapping reduces computation but depends
+on generalization, and block-level allocation pro-
+vides finer spatial control at the cost of additional
+optimization. A practical RC scheme therefore
+needs to balance rate accuracy, encoding com-
+plexity, and R–D performance, while remaining
+compatible with the variable-rate mechanism of
+the underlying codec.
+3.1.4 Discussion and Perspective
+Practical rate adaptation should be evaluated
+beyond R–D performance alone. A deployable
+codec should provide sufficiently wide and smooth
+rate coverage, accurate target-rate matching, lim-
+ited control overhead, and predictable inference
+complexity. Modulation-based VRC and adaptive
+quantization are particularly attractive in this
+respect because they retain a fixed codec topology
+while providing dense operating-point adaptation
+(Duan et al., 2024; Z. Jia et al., 2025).
+A remaining challenge is the content depen-
+dence of the mapping between control parameters
+and actual bitrate. Spatial quality maps, ROI
+coding, and block-level allocation provide finer
+adaptation to heterogeneous image content (Dong
+et al., 2024; Kao et al., 2023; Y. Ma et al.,
+2021; X. Wang et al., 2022), but local decisions
+must ultimately satisfy a global bitrate constraint.
+Joint modeling of global rate budgets and spatial
+importance is therefore a promising direction.
+More generally, rate adaptation interacts with
+other
+deployment
+requirements.
+Low-precision
+inference should preserve the behavior of the rate-
+control mechanism, while robustness and trans-
+mission resilience may change both the available
+bitrate and its preferred allocation. Extending
+10
+
+
+these principles to video further introduces tempo-
+ral dependencies, buffer constraints, and sequen-
+tial allocation, as discussed in Sec. 5.
+3.2 Model Quantization and
+Cross-Platform Consistency
+As illustrated in Fig. 4, model quantization
+plays a particularly important role in practi-
+cal LIC. Unlike the signal quantization discussed
+in Sec. 2, which discretizes latent representa-
+tions for entropy coding, model quantization
+reduces the numerical precision of network weights
+and activations. It serves two closely related
+deployment objectives. First, low-precision arith-
+metic reduces model size, memory traffic, and
+computational cost, and facilitates execution on
+integer-oriented accelerators. Second, determinis-
+tic numerical behavior is required by a codec
+whose encoder and decoder may run on different
+hardware and software platforms.
+The latter requirement makes quantization in
+LIC fundamentally different from that in con-
+ventional recognition networks. In a classification
+model, small numerical differences usually result
+only in small changes in the output scores. In a
+learned codec, however, the entropy decoder relies
+on probability parameters reproduced at both the
+encoder and decoder. Small floating-point dis-
+crepancies in this shared probability-estimation
+path may produce different probability tables
+and eventually desynchronize entropy decoding.
+Model quantization is therefore not only a model-
+compression technique, but also an important
+mechanism for codec interoperability.
+Early work by Ball´e et al. (Ball´e, John-
+ston, & Minnen, 2018) demonstrated that learned
+compression can be implemented using integer
+arithmetic, providing a foundation for determin-
+istic execution. Subsequent studies have explored
+different quantization strategies for balancing
+R–D performance, computational efficiency, and
+numerical consistency. We review these methods
+from three perspectives: the optimization proce-
+dure, the precision granularity, and the level of
+cross-platform consistency required by the codec.
+3.2.1 Quantization-Aware Training
+and Post-Training Quantization
+From the optimization perspective, model quan-
+tization methods can be broadly divided into
+quantization-aware training (QAT) and post-
+training quantization (PTQ). The two approaches
+differ mainly in whether the model is allowed to
+adapt to low-precision arithmetic during training.
+Quantization-aware training. QAT simu-
+lates low-precision arithmetic during optimiza-
+tion so that model parameters can adapt to
+the resulting quantization error. Early studies
+first quantized convolutional weights (Sun, Cheng,
+Takeuchi, & Katto, 2020; Sun, Yu, & Katto,
+2021b) and later extended low-precision computa-
+tion to both weights and activations (Sun, Yu, &
+Katto, 2021a). Compared with directly quantiz-
+ing a pretrained network, QAT generally provides
+greater flexibility in compensating for numerical
+errors, but requires access to the training data and
+an additional training stage.
+LIC also introduces compression-specific dif-
+ficulties that are not fully captured by generic
+neural-network quantization. The transform and
+entropy models affect not only reconstruction fea-
+tures but also latent statistics and probability
+estimation. Consequently, quantization error may
+influence both distortion and coding rate. Hong
+et al. (Hong, Chen, Lu, Pu, & Ma, 2020) devel-
+oped fixed-point inference with adaptive numer-
+ical ranges for efficient neural image decoding.
+Q-LIC (Sun et al., 2022) reduces quantization
+error by splitting channels with large dynamic
+ranges, while IQ-LIC (G.-W. Jeon, Yu, & Lee,
+2023) introduces quantization-related supervision
+to improve integer inference. QAT has also been
+combined with structured pruning (Hossain &
+Zhu, 2024) and variable-rate coding (Ye, Li, & Liu,
+2025), illustrating that model precision must often
+be optimized together with other deployment con-
+straints.
+The main advantage of QAT is therefore its
+ability to preserve R–D performance under a
+prescribed numerical format. Its main limitation
+is deployment flexibility: every change in preci-
+sion configuration may require additional opti-
+mization, which becomes costly when multiple
+hardware targets or codec configurations must be
+supported.
+11
+
+
+Calibration
+/ Tuning
+QAT   Quantization-Aware Training
+1
+Pretrained 
+Model (FP32)
+PTQ   Post-Training Quantization
+Calibration 
+/ Tuning
+How to obtain
+the quantized model
+Training 
+Strategy
+Calibration
+/ Tuning
+Mixed-Precision  (e.g., layer-specific)
+INT8
+Fixed-Precision (e.g., 8-bit for all)
+How many bits for 
+each layer/parameter
+Bit-width
+Assignment
+2
+INT8
+INT8
+INT8
+INT8
+INT6
+INT8
+INT4
+Calibration
+/ Tuning
+Non-Uniform  (e.g., finer near zero)
+Evenly spaced quantization levels
+Uniform  (equal-width bins)
+How to map continuous 
+values to discrete values
+Quant.
+Functions
+3
+x
+Q(x)
+x
+Q(x)
+Unevenly spaced quantization levels
+The three dimensions are orthogonal 
+and can be freely combined
+Combinations
+Training Strategy
+Bit-width
+Assignment
+Quant.
+Functions
+Quantized 
+model
+Training
+with
+quantization 
+Fig. 4 Three complementary design dimensions of model quantization for LIC: optimization strategy (QAT or PTQ), bit-
+width assignment (fixed or mixed precision), and quantization function (uniform or non-uniform). These dimensions can be
+combined according to R–D sensitivity and hardware constraints, while cross-platform consistency introduces an additional
+codec-level requirement discussed in Sec. 3.2.2.
+Post-training quantization. PTQ converts
+a pretrained floating-point codec to low precision
+without full retraining. This substantially reduces
+deployment cost and makes it possible to quantize
+existing models after model development. Generic
+PTQ methods typically minimize the discrepancy
+between floating-point and quantized weights or
+activations (Y. Li et al., 2021; Nagel et al., 2021),
+but such criteria are not necessarily aligned with
+the objective of image compression.
+He et al. (D. He, Yang, Chen, et al., 2022)
+adapt PTQ to learned image compression and
+combine low-precision inference with determinis-
+tic entropy coding for cross-platform deployment.
+RDO-PTQ (J. Shi, Lu, & Ma, 2023) further shows
+that minimizing tensor-level quantization error
+does not necessarily minimize the degradation in
+compression performance. Instead, the quantiza-
+tion configuration should be optimized according
+to its effect on the R–D objective. This observation
+is particularly relevant to LIC because different
+modules affect rate and distortion in substantially
+different ways.
+QAT and PTQ therefore provide complemen-
+tary deployment strategies. QAT offers stronger
+adaptation to low precision and is attractive when
+the target hardware configuration is known during
+model development. PTQ preserves the original
+training pipeline and is more suitable for con-
+verting existing codecs or supporting multiple
+deployment targets. In both cases, however, deter-
+mining where and how aggressively to quantize the
+codec is as important as choosing the optimization
+procedure itself.
+3.2.2 Precision Granularity and
+Mixed-Precision Quantization
+A second design dimension concerns the granu-
+larity of numerical precision. The simplest strat-
+egy applies a uniform precision, such as INT8,
+throughout the network. Uniform quantization
+is straightforward to implement and maps well
+to commonly available low-precision hardware.
+However, different codec modules, layers, and
+channels can exhibit substantially different sensi-
+tivities to numerical error. Applying the same bit
+width everywhere may therefore allocate exces-
+sive precision to insensitive components while
+over-quantizing sensitive ones.
+Mixed-precision
+quantization
+(MPQ)
+addresses this issue by assigning different numer-
+ical precisions according to their impact on
+compression performance. FMPQ (Hossain, Duan,
+& Zhu, 2024) and mixed-precision PTQ (J. Yu,
+Mai, Zhang, Jiang, & Cheng, 2025b) evaluate the
+sensitivity of individual components to quanti-
+zation and allocate precision accordingly. Other
+approaches perform finer-grained selection over
+candidate bit widths (J. Yang, Wang, Li, Qiao, &
+Zhou, 2025), while DynaQuant (Bao et al., 2026)
+12
+
+
+introduces dynamic routing among different pre-
+cision configurations. These methods enlarge the
+design space from selecting a single bit width to
+jointly optimizing precision allocation and R–D
+performance.
+Another line of work modifies the numerical
+distribution before quantization. Long-tailed or
+highly non-uniform activations may lead to poor
+utilization of a uniformly spaced quantization
+range. Distribution balancing or transformation
+can reduce this mismatch and improve PTQ per-
+formance. For example, Yu et al. (J. Yu, Mai,
+Zhang, Jiang, & Cheng, 2025a) adapt weight and
+activation distributions to reduce quantization
+error before low-precision inference.
+From an algorithmic perspective, fine-grained
+MPQ
+provides
+an
+attractive
+performance–
+precision
+trade-off.
+From
+a
+deployment
+perspective, however, the effective benefit depends
+on hardware support. A theoretically favorable
+combination of, for example, 4-, 6-, and 8-bit
+operations does not necessarily translate into
+lower latency if the target accelerator executes
+these data types inefficiently or requires frequent
+precision conversion. Thus, precision allocation
+should ultimately be evaluated using both R–D
+sensitivity and the operator support of the target
+hardware, rather than bit width alone.
+3.2.3 Cross-Platform Consistency
+For a codec, low-precision inference and cross-
+platform consistency are related but not identical
+objectives. Quantizing the complete network may
+improve hardware efficiency, but deterministic
+entropy decoding only requires numerical agree-
+ment in the computation that is shared between
+the encoder and decoder and affects symbol prob-
+abilities. This distinction provides an opportunity
+to achieve interoperability without unnecessarily
+quantizing every component of the codec.
+Koyuncu et al. (Koyuncu, Solovyev, Alshina,
+& Kaup, 2022) identify the learned probability
+model as a primary source of device-dependent
+entropy-decoding mismatch. Their results show
+that, for the studied still-image codecs, quantizing
+the shared entropy-related modules is sufficient
+to obtain consistent entropy decoding while leav-
+ing other parts of the transform in floating point.
+Subsequent work further quantizes decoder com-
+putation to provide deterministic reconstruction
+(Koyuncu, Solovyev, Sauer, Alshina, & Kaup,
+2024). These results suggest two different levels
+of numerical consistency: entropy-decoding con-
+sistency, which guarantees that the transmitted
+bitstream is decoded into the same latent symbols,
+and reconstruction consistency, which addition-
+ally requires the decoded pixels to be numerically
+reproducible across platforms.
+Alternative mechanisms attempt to tolerate or
+remove the source of numerical mismatch. Pang
+et al. (Pang, Lodhi, Ahn, Huang, & Tian, 2024)
+introduce auxiliary safeguarding information that
+allows the decoder to tolerate limited numerical
+deviations, although the additional information
+increases the bitstream overhead. Rather than
+forcing identical learned probability estimation,
+Yang et al. (R. Yang, Liu, Wu, & Gao, 2025)
+explore cross-platform entropy coding based on
+chain coding, providing another route toward
+reproducible decoding.
+This distinction between full-network quanti-
+zation and selective deterministic computation is
+important in practice. If interoperability is the
+primary goal, quantizing only the modules that
+affect entropy decoding can preserve most of the
+floating-point transform while minimizing the R–
+D penalty. If low-power or accelerator-oriented
+inference is also required, broader or full-network
+quantization becomes necessary. Practical codec
+design should therefore determine the required
+level of numerical consistency before deciding the
+scope of quantization.
+3.2.4 Discussion and Perspective
+Model quantization in learned image coding serves
+two related but distinct deployment objectives:
+efficient low-precision inference and determinis-
+tic codec operation. The former generally favors
+broader quantization of transforms and entropy
+models, whereas the latter may require deter-
+ministic computation only along the encoder–
+decoder shared probability-estimation path. Selec-
+tive quantization can therefore provide cross-
+platform entropy-decoding consistency with lim-
+ited
+R–D
+degradation,
+while
+full
+or
+mixed-
+precision quantization further targets runtime and
+energy efficiency.
+The practical benefit of a numerical for-
+mat also depends strongly on hardware sup-
+port. Although mixed-precision designs can reduce
+13
+
+
+quantization error, accelerators typically provide
+efficient kernels for only a limited set of data
+types. Consequently, precision selection should
+consider operator availability, memory behavior,
+and execution efficiency together with R–D sen-
+sitivity. This issue becomes more challenging in
+predictive video coding, where small numerical
+mismatches may accumulate along the prediction
+chain, making efficient deterministic decoding an
+important open problem (Concei¸c˜ao, Porto, Peng,
+& Agostini, 2025; Van Rozendaal et al., 2024).
+3.3 Robustness and Communication
+Resilience
+Beyond nominal R–D performance, practical LIC
+must remain reliable when the input distribution,
+numerical conditions, or communication environ-
+ment deviates from the ideal setting used during
+training and evaluation. This requirement is par-
+ticularly important for learned codecs because
+nonlinear transforms and data-driven entropy
+models may respond unpredictably to small per-
+turbations. A perturbed input may affect not only
+reconstruction quality, but also latent statistics,
+probability estimation, and ultimately the coded
+bitrate.
+In this survey, robustness is therefore consid-
+ered as a system-level property rather than only
+an adversarial-learning problem. It includes sensi-
+tivity to adversarial perturbations and backdoor
+attacks, but also repeated compression, benign
+distribution shifts, packet loss or bitstream cor-
+ruption, and the propagation of compression
+errors to downstream vision tasks. These fail-
+ure modes arise at different stages of the coding
+and communication pipeline and expose differ-
+ent trade-offs between compression efficiency and
+reliability.
+3.3.1 Adversarial Vulnerability
+Adversarial robustness has received increasing
+attention as learned codecs become part of larger
+visual-processing pipelines. Given an input image
+x, an adversarial example can be written as
+x∗= x + δ,
+∥δ∥≤ϵ,
+(5)
+where the perturbation δ is constrained to remain
+small while causing undesirable codec behavior.
+Inference-time 
+Defenses
+Preprocessing,
+Self-ensemble,
+etc.
+Training-time
+Defenses
+Adversarial training,
+Regularization,
+etc.
+Architecture
+Design
+Attention,
+Entropy Modeling,
+etc.
+( 𝛿
+≤𝜀)
+LIC
+Trigger
+LIC
+Evasion Attacks (Test-time)
+Backdoor Attacks (Training-time)
+(a) Attack
+(b) Defense
+Fig. 5 Illustration of attacks and defenses for LIC mod-
+els. Attacks include test-time evasion perturbations and
+training-time backdoor triggers, while defenses can be
+introduced through architecture design, robust training,
+and inference-time protection.
+Unlike attacks on conventional recognition net-
+works, the objective in LIC may target reconstruc-
+tion distortion, coding rate, or both.
+Evasion
+attacks.
+In
+the
+white-box
+set-
+ting, gradients through the learned codec can
+be
+used
+to
+directly
+optimize
+perturbations
+against compression-specific objectives. Chen and
+Ma (T. Chen & Ma, 2023) introduce a distortion-
+oriented attack that substantially degrades recon-
+struction quality under bounded input pertur-
+bations. Subsequent work explores more efficient
+adversarial optimization (Kurihara & Sun, 2025),
+bitstream-level failure modes (Madden, Dorje, &
+Li, 2025), transform-domain attacks (Kalmykov et
+al., 2026), and objectives that explicitly manipu-
+late the R–D behavior of the codec (Wu et al.,
+2026).
+In black-box settings, perturbations generated
+on surrogate models may transfer to unseen com-
+pression architectures (Y. Liu, Chen, Liu, & Song,
+2017; Papernot, McDaniel, & Goodfellow, 2016).
+Such transferability is particularly relevant to
+deployment because an attacker may not have
+access to the exact codec parameters. Recent work
+further shows that perturbations introduced at
+14
+
+
+the compression stage can propagate to down-
+stream machine vision systems (Sui et al., 2024),
+extending the impact from reconstruction quality
+to task-level reliability.
+Backdoor attacks. A different threat arises
+during model training or fine-tuning. Backdoor
+attacks insert hidden triggers into part of the
+training data so that the codec behaves nor-
+mally on clean inputs but exhibits abnormal
+behavior when the trigger is present. Frequency-
+domain triggers have been studied for learned
+image compression (Y. Yu et al., 2024, 2023),
+while compression-resistant trigger designs aim to
+preserve malicious behavior after image coding
+(M. Xue et al., 2023). These attacks are espe-
+cially relevant when models are trained, adapted,
+or distributed using data and checkpoints from
+untrusted sources.
+From a deployment perspective, adversarial
+vulnerability is important not only because a
+codec may be intentionally attacked, but also
+because these studies reveal regions of numerical
+and statistical instability in learned representa-
+tions. They therefore provide useful stress tests for
+evaluating codec reliability beyond conventional
+clean-image benchmarks.
+3.3.2 Robustification Strategies
+Existing defenses can be broadly categorized
+according to where robustness is introduced: in the
+codec architecture, during training, or at inference
+time.
+Architecture-level robustness. The struc-
+ture of the entropy model can strongly affect
+sensitivity to input perturbations. Highly expres-
+sive autoregressive models improve probability
+estimation under nominal conditions, but they
+also introduce stronger dependencies among coded
+symbols. Studies of manipulation attacks suggest
+that simplifying or stabilizing these dependencies
+can improve robustness (K. Liu et al., 2022, 2023).
+This reveals a recurring trade-off in practical LIC:
+stronger statistical modeling may improve R–D
+efficiency while increasing sensitivity to distribu-
+tion mismatch or error propagation.
+Training-time robustification. Adversarial
+training incorporates perturbed samples during
+optimization so that the codec learns to main-
+tain stable reconstruction under bounded input
+changes (T. Chen & Ma, 2023; Madry, Makelov,
+Schmidt, Tsipras, & Vladu, 2018). Compression-
+specific variants can combine robust optimiza-
+tion with representation consistency or knowledge
+transfer. For example, Cao et al. (Cao et al., 2024)
+integrate knowledge distillation with adversarial
+training, while successive-coding stability can be
+improved by constraining latent or reconstruction
+consistency across repeated compression cycles
+(J.-H. Kim, Jang, Choi, & Lee, 2020). Training-
+based methods generally provide stronger adap-
+tation to known perturbation models, but they
+increase training cost and may introduce a penalty
+on clean-image R–D performance.
+Inference-time protection. Robustness can
+also be improved without modifying the origi-
+nal training procedure. Representative strategies
+include input preprocessing, self-ensemble, ran-
+domized transformations, and test-time filtering
+(T. Chen & Ma, 2023; Song, Choi, & Han, 2024).
+Compression itself can also act as a preprocessing
+defense by removing high-frequency adversarial
+noise (X. Jia, Wei, Cao, & Foroosh, 2019). Such
+approaches are attractive because they can be
+applied to existing codecs, but their effectiveness
+may depend strongly on the attack model and can
+degrade against adaptive perturbations.
+These three classes of methods provide differ-
+ent practical trade-offs. Architecture-level design
+changes the codec itself, training-time defenses
+increase
+development
+cost
+but
+can
+provide
+stronger robustness, and inference-time defenses
+offer greater flexibility at the expense of less
+predictable protection.
+3.3.3 Practical Robustness and
+Communication Resilience
+Adversarial attacks represent only one form of
+non-ideal input. In deployed compression sys-
+tems, more common reliability problems arise
+from repeated processing, content variation, and
+imperfect communication channels.
+Repeated compression. Images are often
+compressed multiple times as they move across
+storage,
+editing,
+communication,
+and
+social-
+media pipelines. Learned codecs may exhibit
+accumulated reconstruction drift under succes-
+sive encoding–decoding cycles (J.-H. Kim et
+al., 2020). Unlike a single-pass R–D evaluation,
+repeated compression exposes whether reconstruc-
+tion errors alter the latent distribution in a way
+15
+
+
+that is amplified by subsequent coding stages.
+Robustness to such repeated processing is there-
+fore relevant to practical interoperability and
+long-term media reuse.
+Transmission errors. A more direct com-
+munication challenge is packet loss or bitstream
+corruption. Conventional coding systems typically
+rely on channel-side protection, such as forward
+error correction (FEC) (Mizuochi, 2006). Learned
+codecs provide an additional possibility: the rep-
+resentation and decoder can themselves be opti-
+mized for incomplete or corrupted observations.
+LossResilientLIC (Sha et al., 2025) incorpo-
+rates network perturbations during training and
+constructs representations that remain decodable
+when part of the transmitted information is lost.
+ResiComp (S. Wang et al., 2025) similarly stud-
+ies loss-resilient representations through masked
+visual-token modeling, while progressive probabil-
+ity models have been explored for streaming over
+unreliable channels (H. Zhang, Koyuncu, Ahonen,
+Zou, & Cricri, 2025). These approaches shift part
+of the reliability problem from channel coding to
+source representation.
+However, robustness to packet loss is closely
+coupled with entropy modeling. Autoregressive
+dependencies can improve coding efficiency under
+error-free
+transmission,
+but
+missing
+symbols
+may invalidate the context required for subse-
+quent decoding and amplify error propagation.
+More independent or hierarchical representations
+can reduce this dependency, but often at a
+cost in nominal R–D performance. Communi-
+cation resilience therefore introduces an explicit
+performance–reliability trade-off.
+Interaction
+with
+downstream
+tasks.
+Compression is increasingly used as a front-end
+component of recognition, detection, and other
+machine-vision pipelines. In such systems, codec
+robustness cannot be evaluated solely from recon-
+structed PSNR or perceptual quality. Compres-
+sion may suppress adversarial noise and improve
+downstream stability (X. Jia et al., 2019), but arti-
+facts or manipulated coding behavior may also
+propagate to later models (Y. Liu, Gu, Zhang, &
+Qin, 2024; Sui et al., 2024). The relevant system-
+level criterion is therefore whether the compressed
+representation preserves the information required
+by the downstream task under realistic perturba-
+tions.
+3.3.4 Discussion and Perspective
+Robustness in learned image coding should be
+viewed as a system-level reliability problem rather
+than an isolated adversarial-learning issue. Prac-
+tical evaluation should therefore consider not only
+performance under perturbations or packet loss,
+but also the clean-condition R–D cost introduced
+by the corresponding robustness mechanism. In
+particular, stronger protection may require addi-
+tional training, redundancy, simplified entropy
+dependencies, or error-resilient representations,
+each of which can affect bitrate, distortion, or
+complexity.
+A remaining challenge is the lack of common
+evaluation protocols across different robustness
+settings. Perturbation budgets, attack objectives,
+packetization strategies, and channel models vary
+substantially across studies, making direct com-
+parison difficult. Standardized test conditions that
+jointly report clean performance and degradation
+under specified impairments would therefore be
+valuable for deployment-oriented LIC. Overall, the
+desired codec should remain stable under input
+variation and degrade gracefully when transmitted
+information is incomplete.
+3.4 Lightweight and
+Hardware-Aware Deployment
+Recent LIC models have achieved substantial
+improvements in compression efficiency, with sev-
+eral methods approaching or surpassing conven-
+tional coding anchors under commonly used R–
+D benchmarks. These gains, however, are often
+accompanied by increasingly large neural trans-
+forms, complex entropy models, and substan-
+tial computational overhead. As illustrated in
+Table 1, many high-performance codecs require
+several hundred or even more than one thou-
+sand KMACs/pixel, which remains prohibitive for
+resource-constrained devices.
+Practical
+deployment
+therefore
+requires
+a
+broader notion of efficiency than model size or
+multiply–accumulate operations alone. Latency,
+memory footprint, parallelism, operator support,
+and entropy-coding overhead can all affect the
+actual runtime of a codec. Moreover, encoder and
+decoder complexities need not be symmetric: in
+many applications, additional computation can
+16
+
+
+1
+Knowledge Distillation
+Teacher  (Powerful codec)
+Transfer teacher knowledge
+Student (Lightweight codec)
+Distill
+Quantization   (e.g., weights)
+Remove model redundancy
+Model Compression
+2
+FP32
+INT8
+Pruning (e.g., channels/filters)
+Redesign network pipeline
+Architecture Design
+3
+Framework   (e.g., transform)
+Operator   (e.g., local attention )
+Adapt to each input image
+Test-Time Adaption
+4
+Original 
+Pruned
+Text
+Landscape
+Screen
+Latent
+Opti-
+mize
+Fixed decoder
+Fig. 6 A taxonomy of strategies for lightweight and hardware-aware deployment in LIC, including knowledge distillation,
+model compression, architecture design, and test-time adaptation.
+be tolerated at the encoder if it enables a sub-
+stantially lighter decoder. Existing work addresses
+these constraints through knowledge distillation,
+model compression, architecture-level redesign,
+and instance-specific adaptation, as summarized
+in Fig. 6.
+3.4.1 Knowledge Distillation
+Knowledge distillation (KD) transfers informa-
+tion from a high-capacity teacher model to a
+smaller student network (Gou, Yu, Maybank, &
+Tao, 2021). In learned image compression, this
+objective is more involved than matching class
+predictions in recognition networks, because the
+student must reproduce not only reconstruction
+behavior but also compact latent representations
+and accurate probability models.
+Early
+approaches
+use
+reconstruction-
+or
+entropy-related supervision to transfer coding
+behavior from the teacher (Fu et al., 2024). More
+recent studies introduce finer-grained supervision
+at intermediate features or latent representations
+(Allemand, Fiandrotti, Chaudhuri, & Mazouz,
+2025). Chen et al. (Y. Chen et al., 2025) further
+perform multi-level distillation across network
+blocks, allowing the lightweight student to inherit
+representation and reconstruction capability from
+a larger model.
+Rather than explicitly defining distillation
+losses, EVC (G.-H. Wang, Li, Li, & Lu, 2023)
+adopts a mask-decay strategy that progressively
+reduces the effective model capacity during train-
+ing, thereby transferring the behavior of a larger
+network into a compact architecture. CSLIC
+(S. Wang et al., 2026) further combines KD
+with neural architecture search to derive mul-
+tiple encoder–decoder configurations at different
+complexity levels.
+From a deployment perspective, KD is attrac-
+tive because complexity reduction is achieved
+mainly during model development and does not
+introduce additional inference-time modules. Its
+effectiveness, however, depends on how much of
+the teacher’s coding capability can be retained
+under a substantially smaller transform or entropy
+model. Distilling only reconstruction features may
+therefore be insufficient when the dominant per-
+formance loss originates from probability model-
+ing or latent representation capacity.
+3.4.2 Model Compression:
+Quantization and Pruning
+Model compression provides a second route to
+lightweight LIC by reducing the numerical or
+structural redundancy of a trained network. Quan-
+tization reduces the precision of weights and acti-
+vations and can substantially improve memory
+and arithmetic efficiency (Gholami et al., 2022).
+Because its implications for R–D performance and
+cross-platform consistency have been discussed in
+detail in Sec. 3.2, we focus here primarily on its
+role as a computational optimization.
+Pruning instead removes redundant parame-
+ters or computational structures from the network
+(Zhu & Gupta, 2017). For LIC, structured pruning
+is generally more relevant to practical deployment
+than unstructured sparsity because removing com-
+plete channels or filters can translate more directly
+into reduced computation. Liao et al. (Liao et al.,
+2022) apply structured pruning specifically to the
+17
+
+
+decoder, demonstrating that substantial complex-
+ity reduction can be achieved while retaining com-
+petitive reconstruction performance. Quantization
+and pruning can also be combined (Hossain &
+Zhu, 2024), jointly reducing arithmetic precision
+and network capacity.
+The practical effectiveness of model com-
+pression
+ultimately
+depends
+on
+whether
+the
+resulting sparsity or numerical precision is effi-
+ciently supported by the target platform. Param-
+eter reduction alone does not necessarily imply
+proportional runtime reduction. Consequently,
+hardware-oriented compression should consider
+deployable tensor shapes, supported numerical
+formats, and efficient operators rather than only
+nominal parameter counts.
+3.4.3 Architecture-Level Design
+A more direct strategy is to design the codec
+for efficiency from the beginning rather than
+compressing an already expensive model. This
+includes reducing transform complexity, simpli-
+fying
+entropy
+dependencies,
+improving
+paral-
+lelism, and allocating computation asymmetri-
+cally between the encoder and decoder. Such
+architecture-level
+optimization
+is
+particularly
+important because computational structures that
+provide strong R–D performance on GPUs may
+not map efficiently to mobile or edge accelerators.
+Efficient entropy modeling. Entropy mod-
+els are a major source of practical decoding over-
+head. Autoregressive contexts improve probabil-
+ity estimation by exploiting dependencies among
+latent symbols, but their sequential nature can
+restrict parallelism and increase latency. Ali et
+al. (Ali et al., 2023) explore efficient learned
+compression without conventional autoregressive
+dependencies, illustrating that part of the R–D
+gain from stronger context modeling can be traded
+for substantially improved execution efficiency.
+More generally, reducing the number and granu-
+larity of sequential context steps is an important
+design dimension when decoding throughput is a
+primary constraint.
+Asymmetric codec design. Encoder and
+decoder complexity need not be balanced. In many
+storage, delivery, or content-distribution scenar-
+ios, an image is encoded once but decoded repeat-
+edly on heterogeneous client devices. This moti-
+vates shifting computation toward the encoder
+while maintaining a lightweight decoder. Asym-
+LLIC
+(S.
+Wang
+et
+al.,
+2024),
+for
+example,
+explicitly adopts an asymmetric encoder–decoder
+architecture to reduce decoding complexity. Shal-
+lowNTC (Y. Yang & Mandt, 2023) pushes this
+principle further by using a shallow, nearly linear
+synthesis transform, achieving performance com-
+petitive with BPG at less than 50 KMACs/pixel
+decoding complexity.
+Efficient operators and dynamic com-
+putation. Another direction replaces expensive
+neural operations with more hardware-friendly
+alternatives. Lightweight attention (X. Chen et
+al., 2026; Z. He, Huang, Luo, Yang, & Zhu,
+2024), efficient convolutions (M. Li et al., 2022),
+and shift-based processing have all been explored
+to reduce redundant computation. ShiftLIC (Bao
+et al., 2025), for example, replaces computation-
+ally expensive spatial operations with spatial–
+channel shifts and small convolutions. ULIC
+(Dong, Sha, Lu, & Ma, 2023) similarly tar-
+gets highly constrained wearable-device settings
+through an explicitly lightweight codec design.
+FastNIC (H. Zhang, Li, Li, & Liu, 2025) jointly
+considers transform and prior complexity through
+switchable entropy priors, achieving BPG-level or
+better performance on Kodak with encoding and
+decoding complexities below approximately 12
+and 10 KMACs/pixel, respectively. Beyond fixed
+architectures, AdaNIC (Tao, Gao, Li, & Zhang,
+2023) uses dynamic transform routing to adapt
+computational paths according to image content.
+Such conditional computation provides another
+dimension of flexibility: instead of assigning the
+same complexity to every image, the codec can
+allocate computation according to coding diffi-
+culty.
+These examples suggest that lightweight LIC
+increasingly requires joint optimization of the
+transform and entropy-model execution paths.
+Reducing the complexity of only one component
+may leave another component as the runtime
+bottleneck, while nominal MAC reduction may
+provide limited benefit if the resulting operators
+are poorly supported by the target hardware.
+3.4.4 Test-Time Adaptation
+Test-time adaptation (TTA) provides a different
+approach to the performance–complexity trade-
+off. Rather than permanently increasing model
+18
+
+
+capacity, TTA spends additional computation or
+transmits a small number of instance-specific
+parameters to adapt a shared codec to the cur-
+rent image or domain (D. Chen, Wang, Darrell,
+& Ebrahimi, 2022; Liang, He, & Tan, 2025).
+In learned compression, this strategy is closely
+related to the amortization gap of VAE-based
+models, where a fixed encoder may not produce
+the optimal latent representation for every input
+(Y. Yang, Bamler, & Mandt, 2020).
+Latent refinement. Encoder-side adaptation
+directly optimizes the latent representation for the
+current image under the R–D objective. Campos
+et al. (Campos, Meierhans, Djelouah, & Schroers,
+2019) refine latent variables through iterative opti-
+mization, while Yang et al. (Y. Yang et al., 2020)
+jointly optimize latent representations and associ-
+ated side information to reduce the amortization
+gap and discretization error. These approaches
+can improve compression performance without
+increasing decoder complexity or model size, but
+require additional optimization iterations during
+encoding.
+Decoder-side
+adaptation. Another fam-
+ily of methods adapts part of the decoder and
+transmits the corresponding parameter updates
+together with the bitstream. Instance-adaptive
+compression (van Rozendaal, Huijben, & Cohen,
+2021)
+optimizes
+decoder
+and
+entropy-model
+parameters for individual inputs, while related
+work restricts adaptation to a smaller subset of
+parameters, such as biases or multiplicative coeffi-
+cients (Lam, Zare, Cricri, Lainema, & Hannuksela,
+2020; Zou et al., 2021). The additional adaptation
+can improve coding efficiency, but its benefit must
+compensate for both the optimization cost and the
+bits required to signal the parameter updates.
+Parameter-efficient transfer learning provides
+a more lightweight alternative. Inspired by tech-
+niques such as LoRA (E.J. Hu et al., 2022), recent
+compression methods introduce compact adapters
+or low-rank updates instead of modifying the full
+decoder (Lv et al., 2023; Shen, Yue, & Yang, 2023;
+Tsubota, Akutsu, & Aizawa, 2023). Such modules
+are particularly attractive for adapting a com-
+mon codec to different content domains. Chen et
+al. (K. Chen et al., 2025) further study test-time
+adaptation under distribution shifts and regular-
+ize adaptation of the probability model to improve
+cross-domain compression.
+TTA therefore exposes a different form of
+resource allocation from lightweight architecture
+design. A compact shared model can recover part
+of the performance of a larger model by spending
+additional encoder-side computation or transmit-
+ting instance-specific information. This trade-off
+is attractive when decoding complexity and per-
+sistent model size are strictly constrained but
+additional encoding effort is acceptable.
+3.4.5 Discussion and Perspective
+Lightweight LIC should be evaluated as a system-
+level performance–complexity problem. Param-
+eter
+count
+and
+KMACs/pixel
+provide
+useful
+architecture-level proxies, but they do not fully
+characterize
+deployment
+efficiency.
+Sequential
+entropy decoding, memory movement, intermedi-
+ate feature size, operator availability, and hard-
+ware utilization can cause models with similar
+arithmetic complexity to exhibit substantially dif-
+ferent runtime behavior. Actual latency, mem-
+ory consumption, and target hardware should
+therefore be considered together with algorithmic
+complexity.
+More
+broadly,
+reducing
+model
+complexity
+is useful only when the resulting computation
+maps efficiently to the target platform. Distil-
+lation, pruning, quantization, architecture-level
+redesign, and test-time adaptation provide com-
+plementary ways to trade model capacity, numer-
+ical precision, and encoder-side computation for
+efficiency. Practical LIC should therefore opti-
+mize the R–D–complexity trade-off jointly with
+entropy-model dependencies, numerical precision,
+memory behavior, parallelism, and hardware-
+supported operators. The TinyLIC benchmark in
+Sec. 4 follows this perspective by exposing multi-
+ple computational budgets under a common codec
+topology.
+3.5 Standardization and
+Interoperability
+Standardization represents a critical step in the
+transition from high-performance learned com-
+pression models to deployable codecs. A practical
+coding standard must define not only compression
+performance, but also interoperable bitstreams,
+decoder behavior, operating profiles, complexity
+configurations, test conditions, and conformance
+19
+
+
+requirements. These issues are particularly impor-
+tant for LIC, where model architecture, numerical
+precision, entropy-model execution, and hard-
+ware implementation can all affect reproducibility
+across platforms.
+Recent standardization activities indicate that
+learned image coding is moving beyond isolated
+research prototypes toward interoperable coding
+systems (Gao, 2025b; D. Liu, Liu, Ascenso, Tian,
+& Yu, 2024). Two representative efforts are JPEG
+AI and IEEE 1857.11. Although their specific
+architectures and evaluation methodologies differ,
+both retain the basic learned transform-coding
+paradigm reviewed in Sec. 2: an analysis transform
+maps the input image to quantized latent repre-
+sentations, which are entropy coded and recon-
+structed by a learned decoder. More importantly,
+both standards extend this basic formulation with
+explicit considerations of complexity, functional-
+ity, and implementation.
+3.5.1 JPEG AI
+JPEG AI is an international standard for end-
+to-end learning-based image coding developed by
+the ISO/IEC Joint Photographic Experts Group
+(Alshina, Ascenso, & Ebrahimi, 2024; Ascenso
+et al., 2023). The activity was initiated in 2019
+and has subsequently evolved into the ISO/IEC
+6048 / ITU-T T.840 family of standards. Rather
+than specifying only a high-performance neu-
+ral model, JPEG AI addresses a broader set of
+system requirements, including multi-complexity
+decoding, rate adaptation, progressive and par-
+tial decoding, compressed-domain processing, and
+interoperable
+implementation
+(Esenlik
+et
+al.,
+2026).
+Multi-complexity
+coding
+architecture.
+An
+important
+characteristic
+of
+JPEG
+AI
+is
+the availability of decoder configurations span-
+ning substantially different computational bud-
+gets. Reported configurations range from approxi-
+mately 8 to more than 200 KMACs/pixel, allowing
+the same standardization framework to target dif-
+ferent hardware classes (Esenlik et al., 2026). A
+configuration of approximately 23 KMACs/pixel
+has also been demonstrated in mobile-oriented
+implementations, illustrating the importance of
+explicitly considering decoder complexity when
+defining a practical learned codec.
+The coding framework also adopts structured
+color processing to balance compression efficiency
+and memory consumption. Input images are con-
+verted to a YUV representation, where luminance
+is encoded using a dedicated neural path and
+chrominance components are coded conditionally
+on the reconstructed luminance. Such asymmet-
+ric processing exploits inter-channel correlation
+while reducing the computational and memory
+requirements of chrominance coding (Esenlik et
+al., 2026).
+Extended coding functionalities. JPEG
+AI incorporates several functionalities beyond
+conventional single-point image reconstruction.
+Progressive decoding is enabled by organizing
+transmitted representations according to their
+importance, so that reconstruction quality can
+improve as additional information becomes avail-
+able. Spatially partial decoding is supported
+through tiled representations, allowing selected
+image regions to be reconstructed without pro-
+cessing the complete image. These capabilities
+connect standardization with the variable-rate
+and progressive coding mechanisms discussed in
+Sec. 3.1.
+The standard also considers processing directly
+from compressed representations. Representative
+functionality includes image classification, super-
+resolution, and denoising (Ascenso et al., 2023;
+Esenlik et al., 2026). This direction extends the
+role of the coded representation beyond human-
+view reconstruction and provides an early stan-
+dardized interface between image compression
+and downstream visual processing. Recent stud-
+ies have further investigated compressed-domain
+analysis using JPEG AI representations (Alkha-
+teeb et al., 2024).
+Evaluation and implementation. JPEG
+AI places substantial emphasis on perceptual qual-
+ity and reproducible evaluation. Its Common Test
+and Training Conditions (CTTC) specify common
+datasets, coding conditions, and perceptual qual-
+ity measures. The evaluation framework includes
+metrics such as MS-SSIM, IW-SSIM, VMAF, VIF,
+NLPD, and FSIM, reflecting a broader quality
+criterion than conventional PSNR-oriented evalu-
+ation (Ascenso et al., 2023; Esenlik et al., 2026).
+Implementation is also explicitly considered. In
+representative implementations, entropy decoding
+can be executed on CPUs to preserve bit-exact
+20
+
+
+behavior, while computationally intensive neu-
+ral transforms are mapped to GPUs or NPUs.
+Such heterogeneous execution illustrates a prac-
+tical principle that also appears throughout this
+survey: the most efficient implementation need
+not execute the complete codec using a single
+numerical format or hardware backend. Instead,
+deterministic and computationally intensive com-
+ponents can be assigned to different processors
+according to their requirements.
+JPEG AI has consequently become an impor-
+tant platform for studying deployment-oriented
+LIC. Recent work has examined its variable-rate
+coding and bitrate matching mechanisms (P. Jia
+et al., 2025; Pan et al., 2025), robustness under
+distribution shifts and adversarial perturbations
+(Kovalev et al., 2024), adaptation to remote-
+sensing content (J. Zhang, Pan, Chen, & Liu,
+2025), and compressed-domain inference (Alkha-
+teeb et al., 2024). These studies show that stan-
+dardization does not terminate codec develop-
+ment; rather, it provides a common framework
+within which practical coding functions can be
+evaluated and extended.
+3.5.2 IEEE 1857.11
+IEEE 1857.11-2024 provides another standardiza-
+tion path for neural network-based image cod-
+ing (IEEE, 2024). The standard was developed
+through the IEEE 1857.11 Subworking Group
+and formally published in 2024. A distinguishing
+characteristic is its use of multiple profiles target-
+ing different complexity–performance operating
+regions.
+Complexity-oriented
+profiles.
+IEEE
+1857.11 defines Base, Main, and High profiles.
+The
+corresponding
+reference
+implementations
+include BEE, NIC, and iWave (T. Chen et al.,
+2021; H. Ma, Liu, Xiong, & Wu, 2019; H. Ma,
+Liu, Yan, Li, & Wu, 2020; Z. Zhang et al., 2023).
+These profiles illustrate different design points in
+the R–D–complexity space.
+The Base profile emphasizes low-complexity
+implementation and incorporates efficient mecha-
+nisms such as wavefront parallel processing, adap-
+tive quantization, and feature scaling. The Main
+profile adopts a more expressive learned coding
+architecture with non-local processing, hierarchi-
+cal priors, and context-based entropy modeling,
+providing a stronger balance between coding effi-
+ciency and complexity. The High profile employs a
+learned wavelet-like transform and targets higher
+compression performance. Rather than enforcing
+a single neural architecture for every deployment
+scenario, the profile structure explicitly recognizes
+that different applications have different compu-
+tational budgets.
+Common evaluation conditions. The ver-
+ification
+of
+IEEE
+1857.11
+considers
+images
+across multiple resolutions, including ultra-high-
+resolution content and commonly used benchmark
+material. Common training and evaluation condi-
+tions are used to reduce variations caused by train-
+ing data and testing protocols. Under its reported
+evaluation settings, the standard demonstrates
+substantial bitrate savings relative to BPG under
+PSNR and MS-SSIM-based comparison (IEEE,
+2024).
+This standardized evaluation environment is
+important because cross-paper comparison of LIC
+models can otherwise be strongly affected by
+training data, color conversion, resolution han-
+dling, entropy-coder implementation, and anchor
+configuration. The increasing use of IEEE 1857.11
+as a reference point in subsequent coding studies
+(Z. Li, Liao, et al., 2025; Ye, Liu, Li, & Liu, 2025)
+further illustrates the value of a common stan-
+dardized baseline beyond the individual models
+contained in the standard.
+3.5.3 Discussion and Perspective
+The emergence of JPEG AI and IEEE 1857.11
+marks an important transition from research-
+oriented neural compression models to interop-
+erable codec systems. Unlike cross-paper R–D
+evaluation, standardization requires reproducible
+bitstream syntax, decoder behavior, numerical
+consistency, complexity profiles, and conformance
+procedures. These requirements make implemen-
+tation constraints and interoperability first-class
+codec-design considerations rather than secondary
+engineering details.
+A remaining challenge is how to reconcile rapid
+model evolution with long-term decoding compat-
+ibility. Learned codecs can continue to improve
+through new architectures, training strategies,
+and model updates, whereas a coding standard
+must preserve stable decoder behavior across
+21
+
+
+Lightweight 
+structure
+Multi-complexity
+ options
+Objective 
+Fidelity 
+& 
+Perceptual 
+Realism
+Variable 
+bitrate
+Quantization
+& Cross-
+platform
+Progressive 
+coding
+Attack-
+resilient
+Loss-
+Resilient 
+Fig. 7 TinyLIC as a practical benchmark for learned
+image coding.
+deployment cycles. Future standardization there-
+fore needs mechanisms that accommodate model
+and functionality evolution without fragmenting
+the decoding ecosystem. Overall, the practical
+adoption of learned image coding will depend not
+only on compression efficiency, but also on repro-
+ducibility, compatibility, and sustainable codec
+evolution.
+4 TinyLIC: A Reproducible
+Practical Benchmark
+The practical requirements reviewed in Sec. 3 are
+typically studied in isolation and often evaluated
+using different codec architectures, training set-
+tings, and test protocols. This makes it difficult
+to determine whether an observed gain or degra-
+dation originates from the deployment mechanism
+itself or from differences in the underlying com-
+pression model. A common experimental platform
+is therefore useful for studying these system-level
+properties under controlled conditions.
+To this end, we introduce TinyLIC as an
+open and reproducible benchmark for deployment-
+oriented learned image coding. TinyLIC provides
+a lightweight reference architecture together with
+configurable complexity levels and modular sup-
+port for representative practical functions. Its pur-
+pose is to make the interactions among compres-
+sion efficiency, computational complexity, con-
+trollability, numerical consistency, and robustness
+measurable within a shared codec framework.
+As illustrated in Fig. 7, TinyLIC exposes
+three
+complementary
+dimensions
+of
+practical
+codec
+design.
+First,
+the
+backbone
+can
+be
+scaled across multiple computational budgets,
+enabling direct analysis of the R–D–complexity
+relationship. Second, both fidelity-oriented and
+perceptual-realism-oriented optimization are sup-
+ported, allowing the same framework to cover
+different reconstruction objectives. Third, prac-
+tical functions corresponding to the deployment
+issues reviewed in Sec. 3 can be enabled as con-
+figurable modules, including variable-rate coding,
+quantization-aware consistent decoding, adver-
+sarially robust training, progressive coding, and
+network-aware loss-resilient coding.
+This organization allows each practical func-
+tion to be evaluated against a common base-
+line rather than across independently developed
+codecs. In particular, we can examine not only
+whether a deployment mechanism works, but also
+what cost it introduces in bitrate, distortion,
+computational complexity, or clean-condition per-
+formance. TinyLIC therefore serves as a controlled
+experimental platform for studying the trade-offs
+that arise when a learned compression model is
+extended toward a practical codec.
+The remainder of this section first introduces
+the design philosophy and lightweight architec-
+ture of TinyLIC, followed by the implementa-
+tion of its deployment-oriented tools. We then
+evaluate the resulting rate–distortion–perception
+performance, practical functionality, and model
+complexity under a common experimental proto-
+col.
+4.1 Design Philosophy
+TinyLIC is designed around three principles: sim-
+plicity, diagnosability, and extensibility.
+Simplicity.
+The
+core
+codec
+is
+intention-
+ally kept compact so that its computational
+structure
+and
+major
+sources
+of
+coding
+gain
+remain transparent. Instead of relying on heav-
+ily over-parameterized transforms or complex
+attention modules, TinyLIC adopts a lightweight
+VAE-based backbone with a controlled entropy-
+modeling structure. This makes it possible to
+scale model complexity over a wide range with-
+out changing the fundamental coding pipeline and
+provides a common reference for rate–distortion–
+complexity analysis.
+Diagnosability. Deployment-oriented func-
+tions are implemented as configurable modules
+22
+
+
+Unshuffle ↓4
+EDN Block 
+64×64
+3
+Conv2d k2s2
+EDN Block 
+16×16
+48
+8×8
+𝐶!
+×𝑁!
+Conv2d k2s2
+EDN Block 
+×𝑁"
+4×4
+256
+Conv2d k2s2
+EDN Block 
+×𝑁#
+2×2
+𝐶"
+Conv2d k2s2
+EDN Block 
+1×1
+160
+AE
+AD
+SQ
+···0101···
+AE
+AD
+SQ
+···0101···
+CAR Context
+Y~𝑁𝜇, 𝜎!
+Upsample ↑2
+EDN Block 
+1×1
+160
+EDN Block 
+×𝑁#
+Upsample ↑2
+EDN Block 
+×𝑁$
+Upsample ↑2
+EDN Block 
+Shuffle ↑4
+EDN Block 
+16×16
+48
+8×8
+𝐶#
+4×4
+256
+2×2
+𝐶"
+y
+𝑦$
+z
+𝑧̂
+Upsample ↑2
+Factorized
+Z~𝑈
+x
+𝑥$
+64×64
+3
+Main Analysis Transform 𝒈𝒂
+Hyper Analysis Transform 𝒉𝒂
+Main Synthesis Transform 𝒈𝒔
+Hyper Synthesis Transform 𝒉𝒔
+③Adversarially Robust 
+Training
+①𝝀-Modulated Variable-Rate
+②Quantization-Aware
+Consistent Decoding
+⑤Network-Aware Loss-Resilient Coding
+④Variance-Aware Progressive Coding
+SQ：Scale Quantization
+AE/AD：Arithmetic Encoding/Decoding
+Fidelity-Oriented Version
+Perceptual-Realism-Oriented Version
+𝑦(
+qp
+①𝝀-Modulated Variable-Rate
+AE
+AD
+SQ
+···0101···
+ 𝑔%
+ℎ%
+AE
+AD
+SQ
+···0101···
+ℎ&
+𝑔&
+𝐶𝐴𝑅
+shared modules
+Encoding
+Decoding
+②Quantization-Aware Consistent Decoding
+Platform A
+Platform B
+V1: Quant-Shared Modules for Consistent Decoding
+V2: Quant-All Modules for INT Inference
+③Adversarially Robust Training 
+𝐶𝑜𝑑𝑒𝑐
+ 𝑥
+ 𝛿
+  𝑥∗
+  𝑥%∗
+Maximize discrepancy with 𝒏< 𝜺
+🔥
+❄
+𝐶𝑜𝑑𝑒𝑐
+ 𝑥
+𝛿
+  𝑥∗
+  𝑥%∗
+🔥
+❄
+V2: AR-Source Minimizes discrepancy with GT
+Adversarial Attack
+V1: AR-Noise Minimizes discrepancy with Noised
+Adversarial Defense
+Initialize
+④Variance-Aware Progressive Coding
+  𝑦"
+  𝑦#
+—
+  𝑟$
+  𝐶𝐴𝑅'
+Hyperprior
+Mask 
+Modeling
+variance
+qp
+mask
+SQ | AE | AD
+⑤Network-Aware Loss-Resilient Coding
+  𝑦%
+  𝑦&
+  𝑦'
+···
+  𝑦%
+  𝑦&
+  𝑦'
+···
+ 𝑧
+Factorized
+Hyperprior
+  𝑦%
+  𝑦&
+  𝑦'
+···
+ 𝑧
+Autoregressive
+Resilience 
+Performance 
+Context Modeling Comparison
+G
+1-k
+B
+1-h
+p
+r
+Transmission
+packets
+mask
+Prediction Network
+1-p
+1-r
+V1: LR-GE (Gilbert-Elliott) Network Model
+V2: LR-Random Network Model
+  𝑦"
+  𝑦#
+Base Latent
+Enhanced Latent
+Conv 1x1
+Shuffle ↓2
+Efficient Depthwise ConvNeXt (EDN)
+Conv 3x3
+RMSNorm
+SiLU
+Conv 1x1
+Conv 1x1
+Chunk
+FFN
+Upsample
+Conv 3x3
+RMSNorm
+FFN
+MLP
+MLP
+scale bias gate
+modulate
+PE
+embed
+EDN Block2, 3 ···
+EDN Block 
+Conv2d k2s2
+(
+!) × *
+!) ,
+256
+query
+key
+value
+scale
+modulate
+V1: VR-Dictionary
+V2: VR-Adaptive Layer
+𝑙𝑜𝑠𝑠= 𝑅+ 𝜆· 𝐷
+Fig. 8 TinyLIC employs a lightweight VAE-based architecture using a channel-autoregressive entropy model and efficient
+depthwise ConvNeXt-style blocks. It further integrates five configurable tools for variable-rate coding, consistent decoding,
+adversarially robust training, progressive transmission, and loss resilience.
+rather than being tightly coupled with the back-
+bone. Variable-rate coding, consistent decoding,
+adversarial robustness, progressive transmission,
+and loss resilience can therefore be activated inde-
+pendently or in combination. This design makes
+the cost of individual system requirements eas-
+ier to isolate. For example, the R–D degradation
+introduced by full integer inference can be dis-
+tinguished from that caused by resilience-oriented
+entropy modeling rather than being hidden by
+differences between unrelated codec architectures.
+Extensibility. TinyLIC provides a reusable
+experimental infrastructure rather than a closed
+architecture. Its transform, entropy model, rate-
+control
+mechanism,
+and
+deployment
+modules
+can be replaced or extended while preserving
+the overall evaluation pipeline. New lightweight
+23
+
+
+blocks, probability models, quantization strate-
+gies, robustness objectives, or communication-
+aware mechanisms can therefore be studied under
+the same benchmark setting.
+These
+principles
+motivate
+the
+separation
+between the core codec and the practical tools
+illustrated in Fig. 8. The core codec defines
+the representation and entropy-coding pipeline,
+whereas the optional tools introduce specific
+deployment capabilities. Keeping the underlying
+architecture fixed whenever possible allows their
+R–D and complexity costs to be measured directly.
+4.1.1 Efficient Architecture
+As illustrated in Fig. 8, TinyLIC follows a
+lightweight VAE-based coding pipeline.
+Lightweight transform. The main trans-
+forms are constructed primarily from convolu-
+tional operations rather than computationally
+intensive attention modules. The basic unit is an
+efficient depthwise ConvNeXt-style block, termed
+the EDN block, which combines lightweight spatial
+filtering, normalization, pointwise projection, and
+a compact feed-forward path. Downsampling and
+upsampling are implemented using simple convo-
+lutional and shuffle-based operations. The same
+basic topology is retained across different com-
+plexity configurations, making complexity scaling
+easier to interpret.
+Lightweight entropy modeling. TinyLIC
+models the main latent representation using a
+Gaussian likelihood together with a channel-
+autoregressive (CAR) context model (Minnen &
+Singh, 2020):
+p(ˆy | ˆz) =
+T
+Y
+t=1
+p(ˆyt | ˆy<t, hs(ˆz)) ,
+ˆyt ∼N(µt, σ2
+t ),
+(6)
+where ˆyt denotes the t-th channel group and T
+is the number of autoregressive steps. TinyLIC
+uses a four-step CAR configuration as the default
+operating point.
+CAR is adopted as a compromise between
+probability-modeling capacity and decoding com-
+plexity.
+In
+contrast
+to
+spatial
+autoregressive
+models based on masked convolutions, channel
+grouping exposes explicit control over the num-
+ber of sequential steps and allows computation
+associated with unused channel groups to be
+avoided. This property is particularly useful when
+constructing lightweight codecs with predictable
+decoding complexity.
+Complexity scaling. TinyLIC provides three
+configurations—Nano, Small, and Base—covering
+approximately 10, 20, and 50 KMACs/pixel of
+decoding complexity, respectively. The configura-
+tions are obtained by scaling channel width and
+block depth while preserving the overall codec
+topology. This creates a controlled complexity axis
+for studying how compression efficiency changes as
+additional computational capacity is introduced.
+Fidelity-
+and
+perceptual-realism-
+oriented
+variants.
+The
+same
+architecture
+supports
+two
+reconstruction
+objectives.
+The
+fidelity-oriented
+version
+follows
+conventional
+R–D optimization using MSE distortion and is
+evaluated primarily by PSNR. The perceptual-
+realism-oriented version additionally incorporates
+feature-space losses following LPIPS (R. Zhang,
+Isola, Efros, Shechtman, & Wang, 2018) and
+adversarial optimization to improve visual realism
+at low bitrates. These two variants allow the effect
+of computational complexity to be studied under
+both fidelity- and perception-oriented objectives
+without changing the basic codec architecture.
+4.1.2 Practical Tools
+Beyond the lightweight backbone, TinyLIC inte-
+grates five configurable tools corresponding to the
+deployment issues reviewed in Sec. 3: variable-rate
+coding, quantization-aware consistent decoding,
+adversarially robust training, progressive coding,
+and network-aware loss-resilient coding. These
+modules are optional rather than mandatory,
+reflecting the fact that practical functionality may
+introduce different R–D or implementation costs.
+Variable-rate coding. TinyLIC adopts λ-
+conditioned feature modulation to support multi-
+ple R–D operating points within a single model,
+following the general modulation paradigm dis-
+cussed in Sec. 3.1.1 (T. Chen & Ma, 2020).
+Given an intermediate feature f, the modulation
+is formulated as
+f ′ = f + γ(λ) ⊙[α(λ) ⊙f + β(λ)] ,
+(7)
+where α(λ), β(λ), and γ(λ) denote learned scale,
+bias, and gate parameters, respectively. Two
+implementations are considered.
+24
+
+
+• VR-Adaptive Layer. A lightweight multi-
+layer perceptron maps λ to the modulation
+parameters dynamically, providing continu-
+ous control over the operating point.
+• VR-Dictionary. A discrete dictionary of
+modulation parameters is indexed by a qual-
+ity parameter (QP), with each entry associ-
+ated with a predefined λ. This design pro-
+vides a simpler implementation while retain-
+ing effective variable-rate behavior.
+Quantization-aware
+consistent
+decod-
+ing. TinyLIC supports INT8 quantization with
+channel-wise weight quantization and layer-wise
+activation quantization. Two configurations are
+used to distinguish numerical consistency from full
+integer deployment.
+• Quant-Shared. Only the modules shared by
+encoder and decoder for entropy-parameter
+generation are quantized. This configura-
+tion targets deterministic entropy decoding
+while retaining most transform computation
+in floating point.
+• Quant-All. The complete codec is quantized
+for INT8 inference, targeting accelerator-
+oriented execution in addition to entropy-
+decoding consistency.
+This separation directly reflects the distinction
+discussed in Sec. 3.2: the numerical scope required
+for bitstream interoperability can be smaller than
+that required for full low-precision inference.
+Adversarially robust training. To exam-
+ine codec reliability under input perturbations,
+TinyLIC incorporates two adversarially robust
+training configurations inspired by compression-
+specific robustness studies (T. Chen & Ma,
+2023). Adversarial samples are generated under a
+bounded perturbation constraint, including CW-
+style optimization (Carlini & Wagner, 2017).
+• AR-Source. The reconstruction from the
+adversarial input is encouraged to remain
+close to the clean source image, explicitly
+promoting recovery of the original content.
+• AR-Noise. The reconstruction from the
+adversarial input is constrained to remain
+consistent with that obtained from a noise-
+perturbed reference, encouraging local stabil-
+ity around the source distribution.
+Both strategies modify training rather than
+inference and therefore do not introduce addi-
+tional runtime modules.
+Variance-aware
+progressive
+coding.
+TinyLIC
+introduces
+progressiveness
+through
+latent-element ordering rather than an indepen-
+dent multi-stage codec. Following variance-aware
+progressive coding (Presta, Tartaglione, Fian-
+drotti, Grangetto, & Cosman, 2025), the predicted
+variance of each latent element is used as a proxy
+for its coding importance. More informative ele-
+ments are transmitted first, while untransmitted
+elements are replaced by their predicted means:
+˜yi = miˆyi + (1 −mi)µi,
+mi ∈{0, 1},
+(8)
+where mi indicates whether the i-th latent element
+is available. Increasing the number of transmitted
+elements therefore progressively improves recon-
+struction quality without changing the basic VAE
+pipeline.
+Network-aware
+loss-resilient
+coding.
+Finally,
+TinyLIC
+considers
+unreliable
+trans-
+mission
+in
+which
+compressed
+representations
+may experience packet loss. In the loss-resilient
+configuration, the channel-autoregressive depen-
+dency is removed and a hyperprior-based entropy
+model is used instead. This choice reflects the
+performance–resilience
+trade-off
+discussed
+in
+Sec. 3.3: autoregressive context improves com-
+pression efficiency under error-free transmission
+but can propagate decoding failures when context
+symbols are missing (Sha et al., 2025; S. Wang et
+al., 2025).
+Packet loss is explicitly simulated during train-
+ing using two channel models.
+• LR-GE. A Gilbert–Elliott two-state Markov
+model is used to simulate bursty packet loss
+by alternating between good and bad channel
+states.
+• LR-Random. Packet losses are sampled
+independently according to a fixed loss prob-
+ability, providing a simpler stochastic-loss
+baseline.
+The five tools intentionally impose differ-
+ent constraints on the same underlying codec.
+Variable-rate
+modulation
+mainly
+changes
+the
+operating condition; selective and full quanti-
+zation modify numerical execution; adversarial
+25
+
+
+training changes the optimization distribution;
+progressive coding constrains latent ordering; and
+loss-resilient coding alters entropy dependencies.
+The benchmark evaluation in Sec. 4.2 uses these
+configurations to quantify how different deploy-
+ment requirements affect compression efficiency
+under a common architectural basis.
+4.2 Benchmark Evaluation
+We
+next
+evaluate
+TinyLIC
+as
+a
+common
+benchmark
+for
+studying
+the
+R–D–complexity
+trade-offs and deployment-oriented functionalities
+introduced above. The evaluation covers both
+fidelity- and perceptual-realism-oriented compres-
+sion, multiple computational budgets, and the
+practical tools for variable-rate coding, consistent
+decoding, progressive coding, adversarial robust-
+ness, and loss resilience. Unless otherwise spec-
+ified, these variants share the same underlying
+TinyLIC architecture, allowing the effect of indi-
+vidual deployment mechanisms to be examined
+under controlled conditions.
+4.2.1 Experimental Setup
+Training protocol. TinyLIC is trained on the
+MLIC-100K dataset (Jiang et al., 2025). Unless
+otherwise specified, all models are trained for
+400 epochs with a batch size of 32. The ini-
+tial learning rate is set to 2 × 10−4 and reduced
+to 2 × 10−5 after 300 epochs. Fidelity-oriented
+models are optimized using the conventional R–D
+objective with MSE as the distortion term. The
+perceptual-realism-oriented variants additionally
+incorporate feature-space and adversarial objec-
+tives, as described in Sec. 4.1.1.
+Test
+datasets. We evaluate TinyLIC on
+Kodak, Tecnick (Asuni, Giachetti, et al., 2014),
+CLIC Professional validation, and the JPEG AI
+test set (Ascenso et al., 2023). These datasets span
+different image resolutions and content character-
+istics. Kodak contains 24 images at 768 × 512
+resolution, Tecnick contains high-quality 1200 ×
+1200 images, CLIC Professional validation con-
+tains 41 images with approximately 2K resolution,
+and the JPEG AI test set contains 50 natural
+images ranging from approximately 1K to 4K
+resolution.
+For high-resolution JPEG AI images, TinyLIC
+performs inference using non-overlapping tiles no
+larger than 1024 × 1024 to satisfy memory con-
+straints. This should be noted when interpreting
+comparisons with conventional codecs that pro-
+cess the complete image at full resolution.
+Compared methods. For fidelity-oriented
+evaluation, we use VTM Intra 22.0 under the
+H.266/VVC image-profile configuration (Bross,
+Chen, Ohm, Sullivan, & Wang, 2021) and BPG,
+corresponding to an H.265/HEVC image-profile
+anchor (Bellard, 2016), as conventional refer-
+ences. Representative learned codecs include ELIC
+(D. He, Yang, Peng, et al., 2022) and recent
+lightweight approaches such as EVC (G.-H. Wang
+et al., 2023), AsymLLIC (S. Wang et al., 2024),
+ShiftLIC (Bao et al., 2025), CSLIC (S. Wang et
+al., 2026), ShallowNTC (Y. Yang & Mandt, 2023),
+and FastNIC (H. Zhang, Li, et al., 2025).
+For perceptual-realism-oriented compression,
+we compare against HiFiC (Mentzer et al., 2020)
+and MS-ILLM (Muckley et al., 2023). HiFiC
+represents a classical GAN-based neural codec
+optimized for perceptual reconstruction, while
+MS-ILLM serves as the reference method for the
+reported perceptual BD-rate comparisons.
+For fidelity-oriented evaluation, compression
+efficiency is reported using PSNR BD-rate with
+VTM Intra as the anchor. Perceptual-realism-
+oriented performance is evaluated using LPIPS
+and FID BD-rate with MS-ILLM as the anchor.
+Computational complexity is reported in KMAC-
+s/pixel.
+4.2.2 Rate–Distortion–Perception
+Performance
+Figure 9 and Table 2 summarize the perfor-
+mance of TinyLIC under different computational
+budgets. The results exhibit a clear performance–
+complexity scaling trend.
+Fidelity-oriented performance. Increasing
+the decoding complexity from approximately 10
+to 20 KMACs/pixel substantially improves com-
+pression efficiency. On Kodak, the PSNR BD-rate
+relative to VTM Intra decreases from 14.78%
+for TinyLIC-Nano to 5.43% for TinyLIC-Small.
+Increasing the complexity to approximately 50
+KMACs/pixel further brings TinyLIC-Base close
+to or beyond the VTM Intra anchor, with BD-
+rates of −0.79%, −1.76%, and −4.21% on Kodak,
+CLIC, and Tecnick, respectively. On the JPEG
+26
+
+
+Table 2 Performance of TinyLIC under different complexity budgets and practical tool configurations. Fidelity-oriented
+models are evaluated by PSNR BD-rate using VTM Intra as the H.266/VVC image-profile anchor, while
+perceptual-realism-oriented models are evaluated by LPIPS and FID BD-rate using MS-ILLM as the anchor. Lower values
+indicate better performance.
+Objective-Fidelity-Oriented
+Perceptual-Realism-Oriented
+PSNR BD-rate (%)
+LPIPS BD-rate (%)
+FID BD-rate (%)
+Methods
+KMACs/pixel
+Kodak
+CLIC
+Tecnick
+JPEG AI
+Kodak
+CLIC
+Tecnick
+JPEG AI
+Tecnick
+JPEG AI
+Anchor
+VTM Intra 22.0 (H.266/VVC image-profile anchor) (Bross, Wang, et al., 2021)
+0.00
+0.00
+0.00
+0.00
+/
+/
+/
+/
+/
+/
+BPG (H.265/HEVC image-profile anchor) (Bellard, 2016)
+30.10
+41.87
+33.94
+30.65
+/
+/
+/
+/
+/
+/
+ELIC (D. He, Yang, Peng, et al., 2022)
+573
+-3.22
+-3.89
+-4.57
+/
+/
+/
+/
+/
+/
+/
+EVC-small (G.-H. Wang et al., 2023)
+52
+6.9
+/
+/
+/
+/
+/
+/
+/
+/
+/
+AsymLLIC (S. Wang et al., 2024)
+130
+0.65
+/
+/
+/
+/
+/
+/
+/
+/
+/
+ShiftLIC-Small (Bao et al., 2025)
+114
+15.56
+11.18
+10.67
+/
+/
+/
+/
+/
+/
+/
+CSLIC-3 (S. Wang et al., 2026)
+125
+-0.94
+3.48
+2.75
+/
+/
+/
+/
+/
+/
+/
+CSLIC-1 (S. Wang et al., 2026)
+77
+5.37
+10.18
+10.12
+/
+/
+/
+/
+/
+/
+/
+ShallowNTC (Y. Yang & Mandt, 2023)
+20
+22.22
+30.36
+/
+/
+/
+/
+/
+/
+/
+/
+FastNIC (H. Zhang, Li, et al., 2025)
+10
+26.00
+34.26
+35.61
+/
+/
+/
+/
+/
+/
+/
+MS-ILLM (Muckley, El-Nouby, Ullrich, Jegou, & Verbeek, 2023)
+600
+/
+/
+/
+/
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+HiFiC (Mentzer et al., 2020)
+600
+/
+/
+/
+/
+50.30
+71.01
+50.22
+66.97
+74.05
+68.73
+Fixed-Rate TinyLIC
+Nano
+10
+14.78
+14.68
+12.76
+13.86
+30.92
+97.47
+83.49
+87.98
+91.57
+40.62
+Small
+20
+5.43
+4.63
+2.73
+6.33
+20.96
+78.66
+60.03
+63.81
+76.21
+41.86
+Base
+50
+-0.79
+-1.76
+-4.21
+0.91
+15.22
+51.09
+38.85
+44.95
+35.47
+30.72
+Variable-Rate TinyLIC
+VR-Adaptive Layer
+50
+-1.50
+-2.75
+-5.02
+0.29
+14.75
+49.17
+41.30
+40.02
+28.35
+26.47
+VR-Dictionary
+50
+-0.94
+-2.21
+-4.26
+0.96
+15.20
+49.80
+41.57
+40.66
+28.97
+28.75
+Variable-Rate (VR-Dictionary) + Consistent Decoding
+Quant-All (INT8)
+50
+2.21
+2.49
+-0.22
+4.74
+17.16
+60.02
+43.20
+51.52
+32.59
+28.60
+Quant-Shared (INT8)
+50
+-0.41
+-1.45
+-3.68
+1.52
+13.98
+50.06
+38.38
+45.32
+26.80
+29.22
+Variable-Rate (VR-Dictionary) + Consistent Decoding (Quant-Shared) + Progressive Coding / Attack-Resilient / Loss-Resilient
+PC-Variance Aware
+50
+3.15
+-1.04
+-1.71
+2.55
+21.88
+67.02
+52.24
+55.09
+44.01
+44.08
+AR-Source
+50
+0.75
+-0.84
+-2.69
+2.67
+15.45
+61.89
+42.41
+51.76
+37.63
+34.43
+AR-Noise
+50
+-0.20
+-1.36
+-3.36
+1.80
+14.55
+60.05
+41.07
+49.69
+35.19
+32.98
+LR-GE (20%)
+50
+9.78
+8.52
+6.22
+8.73
+33.85
+81.91
+72.88
+58.90
+56.35
+41.32
+LR-Random (20%)
+50
+9.69
+8.54
+6.01
+8.53
+33.52
+81.01
+71.41
+57.30
+54.54
+39.53
+AI test set, TinyLIC-Base achieves a BD-rate of
+0.91%.
+The 10-KMACs/pixel Nano model also pro-
+vides a useful low-complexity operating point. On
+Kodak, its 14.78% BD-rate relative to VTM Intra
+is substantially lower than the 30.10% of BPG,
+demonstrating that a compact learned codec can
+retain meaningful compression gains under a strin-
+gent computational budget.
+For the JPEG AI test set, TinyLIC uses
+tile-based coding because of memory constraints,
+whereas VTM Intra processes the complete image.
+This protocol difference places TinyLIC at a dis-
+advantage in the direct R–D comparison and
+should therefore be considered when interpreting
+the corresponding numbers.
+Overall, the results indicate that a com-
+pact
+convolutional
+transform
+combined
+with
+lightweight entropy modeling can provide a com-
+petitive R–D–complexity trade-off without relying
+on computationally intensive attention modules.
+At the same time, the incremental gain becomes
+smaller from the Small to Base configuration,
+suggesting diminishing returns as model capac-
+ity increases. A similar tendency has also been
+observed in recent scaling studies of substantially
+larger learned compression models (Y. Li, Zhang,
+Li, Liu, & Wu, 2025).
+Perceptual-realism-oriented
+perfor-
+mance. The same TinyLIC backbone can also
+be optimized for perceptual realism. Under the
+reported LPIPS and FID BD-rate protocol, the
+perceptual variants consistently improve as the
+computational budget increases. For example,
+the Tecnick FID BD-rate relative to MS-ILLM
+decreases from 91.57% for TinyLIC-Nano to
+76.21%
+for
+TinyLIC-Small
+and
+35.47%
+for
+TinyLIC-Base.
+TinyLIC also improves over HiFiC under the
+reported perceptual metrics, while a gap remains
+to the stronger MS-ILLM anchor. These results
+are not intended to establish a new perceptual-
+compression frontier; rather, they show that the
+same lightweight architecture can support both
+fidelity- and realism-oriented optimization, mak-
+ing it possible to study rate–distortion–perception
+behavior under controlled complexity budgets.
+4.2.3 Effect of Practical Tools
+The
+lower
+part
+of
+Table
+2
+evaluates
+the
+deployment-oriented
+tools
+introduced
+in
+Sec. 4.1.2. Because these variants are constructed
+on a common backbone, their results make the
+cost of additional practical functionality directly
+observable.
+27
+
+
+Perceptual-Realism-Oriented Version
+Fidelity-Oriented Version
+Kodak Attack-Resilient (PSNR)
+Kodak Loss-Resilient (PSNR)
+Kodak Attack-Resilient (LPIPS)
+Kodak Loss-Resilient (LPIPS)
+Kodak Compression (PSNR)
+CLIC Compression (PSNR)
+Kodak Compression (LPIPS)
+Tecnick Compression (LPIPS)
+Tecnick Compression (PSNR)
+JPEG AI Compression (PSNR)
+JPEG AI Compression (LPIPS)
+Tecnick Compression (FID)
+Fig. 9 R–D and perceptual performance of TinyLIC under different complexity budgets and practical tool configurations.
+Variable-rate
+coding. Both variable-rate
+configurations retain performance close to the
+corresponding fixed-rate model. The adaptive-
+layer variant achieves PSNR BD-rates of −1.50%,
+−2.75%, and −5.02% relative to VTM Intra on
+Kodak, CLIC, and Tecnick, respectively, while
+the dictionary-based variant obtains −0.94%,
+−2.21%, and −4.26%.
+The apparent improvement over the fixed-
+rate Base model should be interpreted carefully.
+BD-rate is obtained by interpolating a finite set
+of R–D operating points. The fixed-rate evalua-
+tion contains four operating points, whereas the
+variable-rate models are evaluated using 15 points,
+resulting in denser coverage of the R–D curve
+and potentially reducing interpolation error. The
+result therefore primarily demonstrates that rate
+flexibility can be introduced without a clear R–D
+penalty.
+Although
+the
+adaptive-layer
+variant
+pro-
+vides slightly better numerical performance, the
+dictionary-based variant offers a simpler imple-
+mentation and is used as the basis for the subse-
+quent practical configurations.
+Quantization-aware
+consistent
+decod-
+ing. Quant-Shared quantizes only the modules
+required for consistent entropy decoding and
+introduces a relatively small degradation relative
+to the variable-rate baseline. Its PSNR BD-rate on
+Kodak changes from −0.94% for VR-Dictionary
+to −0.41%, while maintaining consistent decoding
+across platforms.
+Quant-All applies INT8 quantization more
+broadly to support hardware-oriented integer
+inference. This produces a larger R–D penalty,
+with a Kodak BD-rate of 2.21%. The difference
+between Quant-Shared and Quant-All illustrates
+the distinction discussed in Sec. 3.2: selective
+quantization can provide codec consistency with
+limited performance loss, whereas full integer
+inference introduces a stronger numerical con-
+straint in exchange for broader hardware effi-
+ciency.
+28
+
+
+Ground Truth
+JPEG AI 215KMACs/pixel
+TinyLIC-Base (P)
+MS-ILLM
+JPEG AI 215KMACs/pixel
+TinyLIC-Nano (D)
+TinyLIC-Nano (P)
+HiFiC
+~0.1 bpp
+~0.5 bpp
+Ground Truth
+TinyLIC-Nano (D)
+TinyLIC-Base (D)
+JPEG AI 14KMACs/pixel
+HiFiC
+TinyLIC-Nano (P)
+TinyLIC-Base (P)
+JPEG AI 215KMACs/pixel
+~0.5 bpp
+Fig. 10 Qualitative comparison of TinyLIC with representative codecs. Fidelity-oriented variants (D) preserve structural
+fidelity, while perceptual-realism-oriented variants (P) recover sharper textures and more visually realistic details.
+Progressive
+coding. Variance-aware pro-
+gressive coding introduces an additional R–D
+cost because the latent representation must sup-
+port an importance-aware transmission order. The
+resulting Kodak PSNR BD-rate is 3.15%. This
+degradation reflects the cost of constraining a
+representation optimized for complete decoding
+to also support meaningful reconstruction from
+partial bitstreams.
+Importantly, this functionality is introduced
+without redesigning the overall codec backbone,
+allowing the cost of progressiveness to be mea-
+sured relative to the same underlying representa-
+tion.
+Adversarial
+robustness.
+Attack-resilient
+training introduces a smaller clean-image penalty
+than the progressive and loss-resilient configura-
+tions. AR-Source achieves a Kodak PSNR BD-
+rate of 0.75%, while AR-Noise reaches −0.20%.
+AR-Noise also consistently preserves better clean-
+image R–D performance than AR-Source across
+the reported datasets.
+These results illustrate an important property
+of robustness-oriented training: improved behav-
+ior under perturbations need not require addi-
+tional inference-time computation, but it may
+alter the clean-data optimum learned by the
+codec.
+Loss resilience. The loss-resilient variants
+introduce the largest clean-channel R–D degra-
+dation among the evaluated practical tools. At a
+training packet-loss rate of 20%, LR-GE and LR-
+Random achieve Kodak PSNR BD-rates of 9.78%
+and 9.69%, respectively.
+This degradation is largely attributable to the
+removal of the autoregressive entropy model in
+the loss-resilient configurations. While autoregres-
+sive dependencies improve probability estimation
+under reliable transmission, they can amplify error
+propagation when transmitted symbols are miss-
+ing. Replacing them with a more independent
+representation therefore trades nominal coding
+efficiency for transmission robustness. The sim-
+ilar clean-channel behavior of LR-GE and LR-
+Random further suggests that much of this cost
+29
+
+
+originates from the resilience-oriented entropy-
+model simplification rather than from the partic-
+ular packet-loss model used during training.
+Taken together, these results illustrate a recur-
+ring characteristic of deployment-oriented LIC:
+additional functionality is generally associated
+with a measurable cost, but the magnitude and
+source of that cost differ substantially across
+requirements. Variable-rate coding and selective
+quantization can be introduced with limited R–
+D degradation, whereas progressive and especially
+loss-resilient coding impose stronger structural
+constraints on the learned representation.
+4.2.4 Visual Comparison
+Figure 10 provides qualitative comparisons among
+TinyLIC configurations and representative codecs
+at
+different
+operating
+points.
+The
+examples
+include fidelity-oriented and perceptual-realism-
+oriented TinyLIC variants as well as JPEG AI,
+HiFiC, and MS-ILLM.
+The fidelity-oriented variants primarily pre-
+serve
+structural
+and
+pixel-level
+information,
+whereas perceptual-realism-oriented TinyLIC pro-
+duces
+sharper
+textures
+at
+low
+bitrates.
+As
+expected from perceptual optimization, these
+reconstructions may also introduce synthesized
+high-frequency details that are not explicitly pre-
+served by the fidelity-oriented models.
+Increasing model complexity from Nano to
+Base improves both structural fidelity and visual
+detail. The comparison further illustrates the
+intended role of TinyLIC: rather than relying on
+a separate architecture for each optimization tar-
+get, the same lightweight codec family can expose
+the visual consequences of changing the computa-
+tional budget and reconstruction objective.
+4.2.5 Model Complexity
+Table 3 summarizes the computational complex-
+ity and parameter distribution of TinyLIC. Nano,
+Small, and Base provide a controlled scaling path
+from approximately 10 to 50 KMACs/pixel decod-
+ing complexity while preserving the same codec
+topology. This enables the R–D improvements in
+Sec. 4.2.2 to be attributed directly to increasing
+model capacity rather than architectural differ-
+ences.
+Beyond theoretical complexity, we further
+evaluate the practical runtime throughput in
+Table 3 Complexity and parameter distribution of
+TinyLIC variants.
+TinyLIC Complexity
+Parameters (M)
+Enc.
+Dec.
+ga
+gs
+ha
+hs CAR LRP Sum
+Nano
+11.92
+9.99
+0.81 0.53 0.63 0.63
+0.42
+0.15
+3.16
+Small
+20.81
+19.99
+1.26 1.07 0.65 0.65
+0.97
+0.15
+4.76
+Base
+53.00
+50.76
+3.45 3.05 1.38 1.38
+1.17
+0.15 10.57
+Note: Complexity is measured in KMACs/pixel. Enc.
+and Dec. denote encoding and decoding complex-
+ity. ga/gs: main analysis/synthesis transforms; ha/hs:
+hyper analysis/synthesis transforms; CAR: channel
+autoregressive context model; LRP: latent residual pre-
+diction (Minnen & Singh, 2020).
+Fig. 11. Our optimized implementation incorpo-
+rates kernel fusion and hardware-specific high-
+performance kernels, including CUTLASS-based
+acceleration on GPUs (NVIDIA Corporation,
+2026) and AMX-assisted execution on CPUs (Intel
+Corporation, n.d.), and therefore better reflects
+the practical deployment potential of TinyLIC
+than the standard BF16 implementation. Notably,
+even the largest TinyLIC-Base model, which pro-
+vides the strongest R–D performance, remains
+highly practical at high resolutions. On an RTX
+5090, TinyLIC-Base achieves over 150 FPS for
+both encoding and decoding at 1080p, demon-
+strating sufficient throughput for high-refresh-rate
+120/144-FPS visual streams, such as interactive
+gaming and low-latency visual communication. At
+4K, it still reaches 35.5 FPS for encoding and 49.0
+FPS for decoding, maintaining real-time process-
+ing capability even for the most computationally
+demanding model variant. The smaller Nano and
+Small variants provide further throughput mar-
+gins, making them suitable for higher-frame-rate
+or more resource-constrained deployment scenar-
+ios.
+The practical significance is further reflected
+in comparison with conventional coding. TinyLIC-
+Base not only surpasses VTM-22 in R–D per-
+formance, but also achieves substantially higher
+runtime throughput, particularly for encoding and
+at commonly used resolutions such as 1080p.
+We note, however, that VTM-22 is reference
+software designed primarily for standard verifi-
+cation and algorithmic evaluation, rather than
+a highly optimized deployment implementation.
+30
+
+
+Fig. 11 Encoding and decoding throughput across resolutions and model scales. The optimized implementation differs
+from the standard BF16 path by incorporating hardware-aware acceleration, including kernel fusion and specialized high-
+performance kernels (e.g., CUTLASS on GPU and AMX-assisted execution on CPU), thereby reducing operator-launch and
+memory-access overheads. Results are reported for TinyLIC-10K (Nano), TinyLIC-20K (Small), and TinyLIC-50K (Base)
+from 512 × 768 to 4K. Values above the bars indicate FPS, while the dashed lines mark representative 30-FPS and 60-FPS
+real-time operating points. Broken y-axes are adopted where needed for clearer visualization of the wide throughput range.
+Therefore, this comparison should not be inter-
+preted as a comprehensive speed comparison
+against production-grade VVC codecs. Highly
+optimized and parallel VVC implementations,
+such as VVenC (Wieckowski et al., 2021) and
+VVdeC (Wieckowski et al., 2020), as well as com-
+mercial hardware/software codecs, can achieve
+considerably higher throughput than VTM-22.
+Nevertheless, the ability of TinyLIC to simulta-
+neously provide real-time 4K processing, high-
+frame-rate 1080p throughput, and superior R–D
+performance demonstrates its strong potential for
+practical deployment.
+4.3 Discussion and Perspective
+The TinyLIC benchmark illustrates that prac-
+tical
+learned
+image
+coding
+is
+inherently
+a
+multi-objective design problem. Compression effi-
+ciency, computational complexity, rate adaptabil-
+ity, numerical consistency, and robustness are cou-
+pled through the underlying representation and
+entropy model. Evaluating these properties under
+a shared architecture therefore makes their inter-
+actions more explicit than comparisons among
+independently developed codecs.
+Three observations emerge from the bench-
+mark. First, the R–D–complexity trade-off can
+be adjusted over a relatively wide range without
+changing the fundamental codec topology. The
+31
+
+
+Nano, Small, and Base configurations show that
+increasing model capacity consistently improves
+coding efficiency, although the marginal gain
+decreases at higher complexities. Complexity scal-
+ability should therefore be regarded as a codec-
+design dimension rather than merely an imple-
+mentation metric.
+Second,
+different
+deployment
+requirements
+introduce different costs. Variable-rate coding and
+selective quantization can be incorporated with
+limited R–D degradation, whereas full integer
+inference imposes a stronger numerical constraint.
+Progressive and loss-resilient coding further alter
+the structure or dependency of the transmitted
+representation and therefore introduce more vis-
+ible compromises in nominal coding efficiency.
+The cost of practical functionality thus depends
+strongly on where the corresponding constraint is
+introduced into the coding pipeline.
+Third, the experiments highlight the distinc-
+tion between algorithmic efficiency and practical
+usability. A codec with the strongest uncon-
+strained R–D performance is not necessarily the
+most suitable operating point once decoding com-
+plexity, numerical reproducibility, or communi-
+cation reliability is considered. Practical com-
+parison therefore extends beyond a conventional
+R–D curve toward a broader rate–distortion–
+complexity–reliability design space.
+TinyLIC provides a common reference for
+studying this design space rather than defining a
+single optimal solution. Different applications may
+prioritize different properties, such as low decod-
+ing complexity, bit-exact interoperability, flexible
+bitrate control, or resilience to unreliable trans-
+mission. The role of the benchmark is to make
+the corresponding trade-offs measurable under a
+controlled codec architecture.
+5 Concluding Remarks and
+Future Perspectives
+5.1 Concluding Remarks
+End-to-end
+LIC
+has
+progressed
+from
+proof-
+of-concept neural compression toward increas-
+ingly complete codec systems. Improvements in
+learned transforms, quantization, entropy model-
+ing, and end-to-end optimization have substan-
+tially advanced R–D performance, but practical
+adoption requires a broader set of properties. Rate
+adaptability, deterministic decoding, robustness,
+computational efficiency, and interoperability are
+becoming integral components of codec design
+rather than secondary implementation considera-
+tions.
+This survey has reviewed LIC from this
+deployment-oriented perspective, treating the core
+transform–quantization–entropy–optimization
+framework as the algorithmic foundation and
+focusing on the practical capabilities required
+beyond nominal R–D optimization. The TinyLIC
+benchmark further provides a common setting in
+which representative deployment constraints can
+be evaluated under controlled architectural and
+computational conditions.
+The standardization of JPEG AI and IEEE
+1857.11 further demonstrates that learned image
+coding is entering a stage of practical validation
+(Alshina et al., 2024; Ascenso et al., 2023; IEEE,
+2024). Bitstream conformance, decoder complex-
+ity, numerical reproducibility, and implementa-
+tion interoperability are becoming first-class codec
+requirements. These developments provide the
+basis for the broader evolution of learned coding
+discussed next.
+5.2 Future Perspectives
+While the preceding sections focus primarily on
+making current LIC architectures deployable, sev-
+eral emerging developments may further change
+what visual coding is expected to represent and
+support. We highlight four directions that are
+likely to influence the next stage of learned coding.
+5.2.1 Toward Coding for Intelligence
+The conventional objective of image coding is
+to
+reconstruct
+a
+signal
+for
+human
+viewing.
+Future visual communication systems, however,
+will increasingly deliver the same visual informa-
+tion to both humans and machines. This motivates
+coding for intelligence, in which the coded rep-
+resentation should support not only high-quality
+reconstruction but also recognition, analysis, and
+decision-making (W. Yang, Huang, Hu, Duan, &
+Liu, 2024; Q. Zhang et al., 2024).
+Existing studies have explored task-oriented
+compression and unified human–machine repre-
+sentations (X. Zhang et al., 2024; X. Zhang, Lu,
+Chen, & Ma, 2025). Nevertheless, many current
+32
+
+
+methods remain dependent on particular down-
+stream networks or tasks. Jointly training the
+codec with a detector or classifier can provide
+strong task performance, but it reduces generality
+and makes the representation sensitive to changes
+in downstream models.
+A more scalable objective is therefore to con-
+struct a common compressed representation that
+can serve multiple consumers. Instead of maintain-
+ing different bitstreams for human reconstruction,
+object recognition, and semantic understanding,
+future codecs may expose a shared representation
+that can be selectively decoded or adapted accord-
+ing to the requested task. Such a design would
+extend the scalability discussed in Sec. 3 from
+different rates toward different uses of the same
+coded information.
+The key challenge is determining what infor-
+mation should be preserved when the down-
+stream task is not known at encoding time.
+Signal fidelity, perceptual realism, and machine
+utility do not necessarily assign the same impor-
+tance to visual information. Developing repre-
+sentations and evaluation protocols that preserve
+broadly useful information while maintaining bit-
+stream interoperability therefore remains an open
+problem. Recent discussions connecting efficient
+representation with biological or machine intel-
+ligence provide an interesting conceptual moti-
+vation (Y. Huang, Zhang, Shan, & He, 2024;
+J. Zheng & Meister, 2025), but translating this
+idea into general-purpose coding systems requires
+substantially stronger empirical foundations.
+5.2.2 Beyond Latent-Grid
+Representations
+Most current LIC methods represent an image
+using spatial latent tensors decoded by a shared
+neural network. Emerging neural representations
+broaden this design space. Implicit neural rep-
+resentations (INRs), for example, encode a sig-
+nal through the parameters or latent variables
+of a coordinate-conditioned function (Sitzmann,
+Martel, Bergman, Lindell, & Wetzstein, 2020).
+This representation can provide continuous spatial
+querying and naturally support resolution-flexible
+reconstruction.
+Recent work has explored INRs and related
+overfitted neural representations for image, video,
+and scientific-data compression (H. Kim, Bauer,
+Theis, Schwarz, & Dupont, 2024; Ladune et al.,
+2026; J. Shi et al., 2025, 2024; Str¨umpler, Pos-
+tels, Yang, Gool, & Tombari, 2022). In parallel,
+explicit neural scene representations such as Gaus-
+sian primitives have become effective represen-
+tations for view synthesis and immersive media
+(Kerbl, Kopanas, Leimk¨uhler, Drettakis, et al.,
+2023). These developments suggest that future
+visual codecs may no longer be restricted to trans-
+mitting a conventional latent feature map, but
+may instead encode functions, primitives, or other
+scene-level representations.
+Such representations also introduce differ-
+ent deployment trade-offs. Instance-specific opti-
+mization can reduce the amount of transmitted
+data but increase encoding time; transmitting
+model or representation parameters requires new
+entropy models and numerical formats; and ran-
+dom access, hardware acceleration, and determin-
+istic decoding may differ substantially from those
+of conventional VAE-based codecs. Their practi-
+cal value should therefore be assessed using the
+same deployment criteria emphasized throughout
+this survey rather than compression performance
+alone.
+5.2.3 Foundation-Model-Assisted
+Compression
+Foundation models provide another possible shift
+in the coding paradigm. Large vision and multi-
+modal models contain powerful priors for visual
+structure and semantics, while continuing progress
+in model compression and edge inference is making
+their deployment increasingly feasible (Y. Zheng
+et al., 2025). Instead of explicitly transmitting
+every visual detail, a codec may transmit compact
+structural, semantic, or latent information and
+rely on a shared generative prior to reconstruct
+plausible content.
+Recent studies already demonstrate the poten-
+tial of this direction. Large models can provide
+strong probability models for lossless compression
+across different data modalities (Z. Li, Huang,
+et al., 2025), while generative image codecs can
+reconstruct visually realistic images at very low
+rates (Careil, Muckley, Verbeek, & Lathuili`ere,
+2024; Ke et al., 2025). Such approaches may be
+particularly attractive in extremely bandwidth-
+constrained scenarios, where preserving all pixel-
+level information is infeasible.
+33
+
+
+The resulting coding objective, however, dif-
+fers fundamentally from conventional fidelity-
+oriented compression. A generative reconstruction
+can be perceptually convincing while differing
+semantically from the original signal. Halluci-
+nation, semantic consistency, controllability, and
+uncertainty therefore become codec-level concerns
+rather than purely generative-model concerns. In
+applications such as archival storage, medical
+imaging, remote sensing, or machine decision-
+making, plausible reconstruction cannot automat-
+ically be treated as correct reconstruction.
+Foundation-model-assisted
+compression
+will
+consequently require evaluation beyond conven-
+tional R–D and perceptual quality. Future proto-
+cols may need to characterize semantic fidelity and
+reconstruction reliability together with bitrate
+and computational cost. Efficient deployment is
+equally important: a reduction in transmitted bits
+is of limited practical benefit if reconstruction
+requires an excessively large model or substantial
+inference latency.
+5.2.4 From Learned Image Coding to
+Deployable Video Coding
+Many principles reviewed in this article naturally
+extend from image to video coding, but their
+system implications become substantially more
+difficult. Video introduces temporal prediction,
+reference management, buffer constraints, random
+access, and continuous real-time processing. Con-
+sequently, numerical inconsistency or reconstruc-
+tion error is no longer confined to a single coding
+instance but may propagate through subsequent
+frames.
+Recent work has demonstrated increasingly
+practical neural video codecs, including real-time
+mobile implementations (Van Rozendaal et al.,
+2024) and initial studies of cross-platform deter-
+ministic execution (Concei¸c˜ao et al., 2025). Never-
+theless, practical learned video coding must simul-
+taneously satisfy substantially tighter constraints
+on latency, memory bandwidth, energy consump-
+tion, and temporal consistency than still-image
+coding.
+Rate adaptation also becomes a sequential sys-
+tem problem. Network conditions and frame-level
+coding decisions interact over time, connecting
+video compression with adaptive streaming and
+communication control (H. Chen, Xu, Wang, Cao,
+& Ma, 2024; Y. Li, Zhang, Chen, & Ma, 2023; Xu,
+Chen, & Ma, 2023). In addition, decoder complex-
+ity and reference dependencies limit the degree
+to which high-capacity image-coding architectures
+can be transferred directly to real-time video.
+For these reasons, still-image LIC is likely
+to remain an important testbed for deployment
+techniques before they become mature in learned
+video coding. Advances in efficient neural accel-
+erators, deterministic low-precision computation,
+lightweight temporal modeling, error control, and
+standardization will be central to closing this gap
+(Gao, 2025a).
+5.3 Closing Perspective
+Learned image coding is moving from optimiz-
+ing a neural compression model toward design-
+ing a complete visual communication system. In
+the near term, the most important challenge is
+to make compression gains reproducible, con-
+trollable, efficient, and interoperable under real
+deployment constraints. In the longer term, the
+representation itself may evolve as coding becomes
+increasingly integrated with machine perception,
+neural scene representations, and generative foun-
+dation models.
+These two directions should not be viewed
+independently. New representations and more
+powerful priors will only become useful coding
+technologies if their computational cost, numeri-
+cal behavior, robustness, and interoperability can
+also be controlled. Conversely, the deployment
+mechanisms developed for current LIC provide an
+important foundation for future AI-native visual
+coding systems. The next generation of learned
+codecs will therefore be shaped not by R–D per-
+formance alone, but by the joint optimization
+of compression efficiency, practical deployability,
+and intelligence compatibility.
+Declarations
+Availability of data and materials
+The datasets used in this study are publicly
+available from their respective sources. The imple-
+mentation, pretrained models, and benchmark
+materials of TinyLIC are available at https://
+njuvision.github.io/TinyLIC.
+34
+
+
+Competing interests
+The authors declare that they have no competing
+interests.
+Funding
+This work was supported in part by the National
+Natural Science Foundation of China under Grant
+No. 62431011.
+Authors’ contributions
+Ming Lu contributed to manuscript drafting.
+Junqi Shi contributed to experimental studies and
+the open benchmark. Zhan Ma contributed to
+manuscript polishing and resource support. All
+authors reviewed and approved the manuscript.
+Acknowledgements
+Not applicable.
+References
+Agustsson, E., Mentzer, F., Tschannen, M., Cav-
+igelli, L., Timofte, R., Benini, L., Gool, L.V.
+(2017). Soft-to-hard vector quantization for
+end-to-end learning compressible represen-
+tations.
+Advances in neural information
+processing systems (pp. 1141–1151).
+Agustsson, E., & Theis, L. (2020). Universally
+quantized neural compression. Advances in
+neural information processing systems, 33,
+12367–12376,
+Akbari, M., Liang, J., Han, J., Tu, C.
+(2020).
+Learned variable-rate image compression
+with residual divisive normalization.
+2020
+ieee international conference on multimedia
+and expo (icme) (pp. 1–6).
+Akbari, M., Liang, J., Han, J., Tu, C.
+(2021).
+Learned
+multi-resolution
+variable-rate
+image
+compression
+with
+octave-based
+residual blocks.
+IEEE Transactions on
+Multimedia, 23, 3013–3021,
+Ali, M.S., Kim, Y., Qamar, M., Lim, S.-C., Kim,
+D., Zhang, C., . . .
+Kim, H.Y.
+(2023).
+Towards efficient image compression with-
+out autoregressive models.
+Advances in
+Neural Information Processing Systems, 36,
+7392–7404,
+Alkhateeb, A., Gnutti, A., Guerrini, F., Leonardi,
+R., Ascenso, J., Pereira, F. (2024). JPEG AI
+compressed domain face detection. 2024 ieee
+26th international workshop on multimedia
+signal processing (mmsp) (pp. 1–6).
+Allemand, F., Fiandrotti, A., Chaudhuri, S.,
+Mazouz, A.E.
+(2025).
+Efficient learned
+image compression through knowledge distil-
+lation. (arXiv preprint arXiv:2509.10366)
+Alshina, E., Ascenso, J., Ebrahimi, T.
+(2024).
+JPEG AI: The first international standard
+for image coding based on an end-to-end
+learning-based approach. IEEE MultiMedia,
+31(4), 60–69,
+Ascenso, J., Alshina, E., Ebrahimi, T.
+(2023).
+The JPEG AI standard: Providing effi-
+cient human and machine visual data con-
+sumption.
+IEEE MultiMedia, 30(1), 100–
+111,
+https://doi.org/10.1109/MMUL.2023
+.3245919
+Asuni, N., Giachetti, A., et al.
+(2014).
+Tes-
+timages: a large-scale archive for testing
+visual devices and basic image processing
+algorithms. Stag (pp. 63–70).
+Baig, M.H., Koltun, V., Torresani, L.
+(2017).
+Learning to inpaint for image compression.
+Advances in neural information processing
+systems (Vol. 30).
+Baldassarre, F., El-Nouby, A., J´egou, H. (2023).
+Variable rate allocation for vector-quantized
+autoencoders. Icassp 2023-2023 ieee inter-
+national conference on acoustics, speech and
+signal processing (icassp) (pp. 1–5).
+Ball´e, J., Chou, P.A., Minnen, D., Singh, S.,
+Johnston, N., Agustsson, E., . . . Toderici,
+G.
+(2020).
+Nonlinear transform coding.
+IEEE Journal of Selected Topics in Signal
+35
+
+
+Processing, 15(2), 339–353,
+Ball´e, J., Johnston, N., Minnen, D. (2018). Integer
+networks for data compression with latent-
+variable models. International conference on
+learning representations.
+Ball´e, J., Laparra, V., Simoncelli, E.P.
+(2017).
+End-to-end optimized image compression.
+5th international conference on learning rep-
+resentations, iclr 2017.
+Ball´e, J., Minnen, D., Singh, S., Hwang, S.J.,
+Johnston, N.
+(2018).
+Variational image
+compression with a scale hyperprior. Inter-
+national conference on learning representa-
+tions.
+Bao, Y., Cheng, Y., Liu, Y., Yang, Y., Qin, P.,
+Li, M., Liang, Y.
+(2026).
+Dynaquant:
+Dynamic mixed-precision quantization for
+learned image compression. Proceedings of
+the aaai conference on artificial intelligence
+(Vol. 40, pp. 14475–14483).
+Bao, Y., Tan, W., Jia, C., Li, M., Liang, Y.,
+Tian, Y.
+(2025).
+ShiftLIC: Lightweight
+learned image compression with spatial-
+channel shift operations. IEEE Transactions
+on Circuits and Systems for Video Tech-
+nology, 35(9), 9428–9442,
+https://doi.org/
+10.1109/TCSVT.2025.3556708
+Bellard, F. (2016). BPG image format. Retrieved
+from https://bellard.org/bpg/
+Blau, Y., & Michaeli, T. (2018). The perception-
+distortion tradeoff. Proceedings of the ieee
+conference on computer vision and pattern
+recognition (pp. 6228–6237).
+Blau, Y., & Michaeli, T.
+(2019).
+Rethink-
+ing lossy compression: The rate-distortion-
+perception tradeoff.
+International confer-
+ence on machine learning (pp. 675–685).
+Bross, B., Chen, J., Ohm, J.-R., Sullivan, G.J.,
+Wang, Y.-K.
+(2021).
+Developments in
+international video coding standardization
+after avc, with an overview of versatile video
+coding (VVC).
+Proceedings of the IEEE,
+109(9), 1463–1493,
+Bross, B., Wang, Y.-K., Ye, Y., Liu, S., Chen, J.,
+Sullivan, G.J., Ohm, J.-R. (2021). Overview
+of the versatile video coding (VVC) stan-
+dard and its applications.
+IEEE Trans-
+actions on Circuits and Systems for Video
+Technology, 31(10), 3736–3764,
+Cai, C., Chen, L., Zhang, X., Gao, Z. (2018). Effi-
+cient variable rate image compression with
+multi-scale decomposition network.
+IEEE
+Transactions on Circuits and Systems for
+Video Technology, 29(12), 3687–3700,
+Cai, C., Chen, L., Zhang, X., Gao, Z. (2019). End-
+to-end optimized roi image compression.
+IEEE Transactions on Image Processing,
+29, 3442–3457,
+Cai, S., Chen, L., Zhang, Z., Zhao, X., Zhou, J.,
+Peng, Y., . . . Zou, X. (2024). I2c: Invertible
+continuous codec for high-fidelity variable-
+rate image compression. IEEE Transactions
+on Pattern Analysis and Machine Intelli-
+gence, 46(6), 4262–4279,
+Cai, S., Zhang, Z., Chen, L., Yan, L., Zhong, S.,
+Zou, X. (2022). High-fidelity variable-rate
+image compression via invertible activation
+transformation. Proceedings of the 30th acm
+international conference on multimedia (pp.
+2021–2031).
+Campos, J., Meierhans, S., Djelouah, A., Schroers,
+C. (2019). Content adaptive optimization
+for neural image compression. Proceedings of
+the ieee/cvf conference on computer vision
+and pattern recognition workshops.
+Cao, Z., Bao, Y., Meng, F., Li, C., Tan, W., Wang,
+G., Liang, Y. (2024). Enhancing adversarial
+training with prior knowledge distillation for
+robust image compression. Icassp 2024-2024
+ieee international conference on acoustics,
+speech and signal processing (icassp) (pp.
+36
+
+
+3430–3434).
+Careil, M., Muckley, M.J., Verbeek, J., Lath-
+uili`ere, S.
+(2024).
+Towards image com-
+pression with perfect realism at ultra-low
+bitrates.
+The twelfth international confer-
+ence on learning representations.
+Carlini, N., & Wagner, D. (2017). Towards eval-
+uating the robustness of neural networks.
+2017 ieee symposium on security and pri-
+vacy (sp) (pp. 39–57).
+Caron,
+M.,
+Touvron,
+H.,
+Misra,
+I.,
+J´egou,
+H.,
+Mairal,
+J.,
+Bojanowski,
+P.,
+Joulin,
+A.
+(2021).
+Emerging properties in self-
+supervised vision transformers. Proceedings
+of the ieee/cvf international conference on
+computer vision (pp. 9650–9660).
+Chamain, L.D., Racap´e, F., B´egaint, J., Push-
+paraja, A., Feltman, S. (2021). End-to-end
+optimized image compression for machines,
+a study. 2021 data compression conference
+(dcc) (pp. 163–172).
+Chen, B., Yin, S., Chen, P., Wang, S., Ye, Y.
+(2024).
+Generative visual compression: A
+review. 2024 ieee international conference
+on image processing (icip) (pp. 3709–3715).
+Chen, C., Zhang, H., Guo, K., Yu, X., Qiu,
+W., Qi, Z., Guan, H.
+(2024).
+Exploring
+efficient hardware accelerator for learning-
+based image compression.
+IEEE Transac-
+tions on Computer-Aided Design of Inte-
+grated Circuits and Systems, 44(6), 2204–
+2217,
+Chen, D., Wang, D., Darrell, T., Ebrahimi, S.
+(2022).
+Contrastive test-time adaptation.
+Proceedings of the ieee/cvf conference on
+computer vision and pattern recognition (pp.
+295–305).
+Chen, H., Xu, B., Wang, S., Cao, X., Ma, Z.
+(2024).
+Toward adaptive volumetric video
+streaming: A joint network-viewport adap-
+tation framework.
+IEEE Communications
+Magazine, 63(3), 197–203,
+Chen, K., Zhang, P., Qin, T., Wang, S., Yan,
+H., Li, H.
+(2025).
+Test-time adaptation
+for image compression with distribution reg-
+ularization.
+13th international conference
+on learning representations (iclr 2025) (pp.
+23686–23703).
+Chen, T., Liu, H., Ma, Z., Shen, Q., Cao, X.,
+Wang, Y. (2021). End-to-end learnt image
+compression via non-local attention opti-
+mization and improved context modeling.
+IEEE Transactions on Image Processing,
+30, 3179–3191,
+Chen, T., & Ma, Z.
+(2020).
+Variable bitrate
+image compression with quality scaling fac-
+tors.
+Icassp 2020-2020 ieee international
+conference on acoustics, speech and signal
+processing (icassp) (pp. 2163–2167).
+Chen, T., & Ma, Z. (2023). Toward robust neural
+image compression: Adversarial attack and
+model finetuning.
+IEEE Transactions on
+Circuits and Systems for Video Technology,
+33(12), 7842–7856,
+Chen, X., Xie, F., Li, Q., Zhu, F., Feng, A.,
+Pedrycz, W. (2026). A lightweight trans-
+former
+model
+with
+high-throughput
+for
+image compression in 6g-enabled intelligent
+transportation systems. IEEE Transactions
+on Intelligent Transportation Systems, ,
+Chen, Y., Lyu, Z., He, B., Cao, N., Chen, G., Lu,
+G., Zhang, W. (2025). Knowledge distilla-
+tion for learned image compression. Proceed-
+ings of the ieee/cvf international conference
+on computer vision (pp. 4996–5006).
+Chen, Z., Sun, H., Zhang, L., Zhang, F. (2024).
+Survey on visual signal coding and process-
+ing with generative models: Technologies,
+standards, and optimization. IEEE Journal
+on Emerging and Selected Topics in Circuits
+and Systems, 14(2), 149–171,
+Cheng, Z., Sun, H., Takeuchi, M., Katto, J. (2020).
+Learned image compression with discretized
+37
+
+
+gaussian mixture likelihoods and attention
+modules. Proceedings of the ieee/cvf confer-
+ence on computer vision and pattern recog-
+nition (pp. 7939–7948).
+Choi, Y., El-Khamy, M., Lee, J.
+(2019).
+Vari-
+able rate deep image compression with a
+conditional autoencoder. Proceedings of the
+ieee/cvf international conference on com-
+puter vision (pp. 3146–3154).
+Clarke, R. (1985). Transform coding of images.
+Academic Press Professional, Inc.
+Concei¸c˜ao, R., Porto, M., Peng, W.-H., Agostini,
+L. (2025). Cross-platform neural video cod-
+ing: A case study. 2025 ieee international
+symposium on circuits and systems (iscas)
+(pp. 1–5).
+Cong, W., Shi, J., Lu, M., Zhang, X., Ma, Z.
+(2026).
+Taming hierarchical image cod-
+ing optimization: A spectral regularization
+perspective.
+The fourteenth international
+conference on learning representations.
+Cui, Z., Wang, J., Gao, S., Guo, T., Feng, Y., Bai,
+B. (2021). Asymmetric gained deep image
+compression with continuous rate adapta-
+tion. Proceedings of the ieee/cvf conference
+on computer vision and pattern recognition
+(pp. 10532–10541).
+Ding, D., Ma, Z., Chen, D., Chen, Q., Liu, Z.,
+Zhu, F. (2021). Advances in video compres-
+sion system using deep neural network: A
+review and case studies. Proceedings of the
+IEEE, 109(9), 1494–1520, https://doi.org/
+10.1109/JPROC.2021.3059994
+Dong, M., Lu, M., Ma, Z.
+(2024).
+Acceler-
+ating block-level rate control for learned
+image compression. 2024 data compression
+conference (dcc) (pp. 552–552).
+Dong, M., Sha, H., Lu, M., Ma, Z.
+(2023).
+Ulic: Ultra lightweight image coder on wear-
+able devices. International forum on digital
+tv and wireless multimedia communications
+(pp. 99–113).
+Duan, Z., Lu, M., Ma, J., Huang, Y., Ma, Z.,
+Zhu, F.
+(2024).
+QARV: Quantization-
+aware ResNet VAE for lossy image com-
+pression.
+IEEE Transactions on Pattern
+Analysis and Machine Intelligence, 46(1),
+436–450,
+https://doi.org/10.1109/TPAMI
+.2023.3322904
+Duan, Z., Ma, Z., Zhu, F. (2023). Unified archi-
+tecture adaptation for compressed domain
+semantic inference. IEEE Transactions on
+Circuits and Systems for Video Technology,
+33(8), 4108–4121,
+Dumas, T., Roumy, A., Guillemot, C.
+(2018).
+Autoencoder based image compression: can
+the learning be quantization independent?
+Ieee international conference on acoustics,
+speech and signal processing (icassp) (pp.
+1188–1192).
+Esenlik, S., Wu, Y., Zhang, Z., Wang, Y.-K.,
+Zhang, K., Zhang, L., . . . Liu, S.
+(2026).
+An overview of the JPEG AI learning-based
+image coding standard. IEEE Transactions
+on Circuits and Systems for Video Tech-
+nology, 36(2), 2520–2537,
+https://doi.org/
+10.1109/TCSVT.2025.3613244
+Fu, H., Liang, F., Liang, J., Wang, Y., Fang,
+Z., Zhang, G., Han, J.
+(2024).
+Fast
+and high-performance learned image com-
+pression with improved checkerboard con-
+text model, deformable residual module, and
+knowledge distillation. IEEE Transactions
+on Image Processing, 33, 4702–4715,
+Gao, W. (2025a). Implementations for ai-based
+image and video coding.
+Ai-based image
+and video coding: Methods, standards, and
+applications (pp. 271–303). Springer.
+Gao, W. (2025b). Standards for ai-based image
+and video coding.
+Ai-based image and
+video coding: Methods, standards, and appli-
+cations (pp. 225–269). Springer.
+38
+
+
+Gersho, A.
+(1978).
+Principles of quantization.
+IEEE Transactions on circuits and systems,
+25(7), 427–436,
+Gholami, A., Kim, S., Dong, Z., Yao, Z., Mahoney,
+M.W., Keutzer, K. (2022). A survey of quan-
+tization methods for efficient neural network
+inference. Low-power computer vision (pp.
+291–326). Chapman and Hall/CRC.
+Gou, J., Yu, B., Maybank, S.J., Tao, D. (2021).
+Knowledge distillation: A survey. Interna-
+tional journal of computer vision, 129(6),
+1789–1819,
+Guo, Z., Zhang, Z., Feng, R., Chen, Z.
+(2021).
+Soft then hard: Rethinking the quantization
+in neural image compression. International
+conference on machine learning (pp. 3920–
+3929).
+Han, C., Duan, Y., Tao, X., Xu, M., Lu, J. (2020).
+Toward variable-rate generative compres-
+sion by reducing the channel redundancy.
+IEEE Transactions on Circuits and Systems
+for Video Technology, 30(7), 1789–1802,
+He, D., Yang, Z., Chen, Y., Zhang, Q., Qin, H.,
+Wang, Y. (2022). Post-training quantization
+for cross-platform learned image compres-
+sion. (arXiv preprint arXiv:2202.07513)
+He, D., Yang, Z., Peng, W., Ma, R., Qin, H.,
+Wang, Y.
+(2022).
+Elic: Efficient learned
+image compression with unevenly grouped
+space-channel contextual adaptive coding.
+Proceedings of the ieee/cvf conference on
+computer vision and pattern recognition (pp.
+5718–5727).
+He, D., Zheng, Y., Sun, B., Wang, Y., Qin, H.
+(2021).
+Checkerboard context model for
+efficient learned image compression.
+Pro-
+ceedings of the ieee/cvf conference on com-
+puter vision and pattern recognition (pp.
+14771–14780).
+He, Z., Huang, M., Luo, L., Yang, X., Zhu,
+C.
+(2024).
+Towards real-time practical
+image compression with lightweight atten-
+tion.
+Expert Systems with Applications,
+252, 124142,
+https://doi.org/10.1016/j
+.eswa.2024.124142
+Hojjat, A., Haberer, J., Landsiedel, O.
+(2023).
+Progdtd: Progressive learned image com-
+pression with double-tail-drop training. Pro-
+ceedings of the ieee/cvf conference on com-
+puter vision and pattern recognition (pp.
+1130–1139).
+Hong, W., Chen, T., Lu, M., Pu, S., Ma, Z.
+(2020). Efficient neural image decoding via
+fixed-point inference. IEEE Transactions on
+Circuits and Systems for Video Technology,
+31(9), 3618–3630,
+Hossain, M.A.F., Duan, Z., Zhu, F. (2024). Flex-
+ible mixed precision quantization for learne
+image compression. 2024 ieee international
+conference on multimedia and expo (icme)
+(pp. 1–8).
+Hossain, M.A.F., & Zhu, F.
+(2024).
+Struc-
+tured pruning and quantization for learned
+image compression. 2024 ieee international
+conference on image processing (icip) (pp.
+3730–3736).
+Hu, E.J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li,
+Y., Wang, S., . . . Chen, W. (2022). LoRA:
+Low-rank adaptation of large language mod-
+els.
+International conference on learning
+representations (iclr).
+Hu, Y., Yang, W., Ma, Z., Liu, J. (2021). Learn-
+ing end-to-end lossy image compression: A
+benchmark. IEEE Transactions on Pattern
+Analysis and Machine Intelligence, 44(8),
+4194–4211,
+Huang, C.-H., & Wu, J.-L.
+(2024).
+Unveiling
+the future of human and machine coding: A
+survey of end-to-end learned image compres-
+sion. Entropy, 26(5), 357,
+39
+
+
+Huang,
+Y.,
+Zhang,
+J.,
+Shan,
+Z.,
+He,
+J.
+(2024).
+Compression
+represents
+intel-
+ligence
+linearly.
+First
+conference
+on
+language
+modeling.
+Retrieved
+from
+https://openreview.net/forum?id=SHMj84U5SH
+IEEE (2024). IEEE standard for neural network-
+based image coding.
+(IEEE Std 1857.11-
+2024)
+Intel Corporation
+(n.d.).
+Intel architecture
+instruction set extensions and future fea-
+tures
+programming
+reference
+[Computer
+software manual]. (Intel Advanced Matrix
+Extensions (AMX))
+Islam, K., Dang, L.M., Lee, S., Moon, H. (2021).
+Image compression with recurrent neural
+network and generalized divisive normaliza-
+tion. Proceedings of the ieee/cvf conference
+on computer vision and pattern recognition
+(pp. 1875–1879).
+Ivins Jr, W.M. (1969). Prints and visual commu-
+nication (Vol. 131). mit Press.
+Jamil, S., Piran, M.J., Rahman, M., Kwon, O.-J.
+(2023).
+Learning-driven lossy image com-
+pression: A comprehensive survey. Engineer-
+ing Applications of Artificial Intelligence,
+123, 106361,
+Jeon, G.-W., Yu, S., Lee, J.-S.
+(2023).
+Inte-
+ger quantized learned image compression.
+2023 ieee international conference on image
+processing (icip) (pp. 2755–2759).
+Jeon, S., Choi, K.P., Park, Y., Kim, C.-S. (2023).
+Context-based trit-plane coding for progres-
+sive image compression. Proceedings of the
+ieee/cvf conference on computer vision and
+pattern recognition (pp. 14348–14357).
+Jia, C., Liu, Z., Wang, Y., Ma, S., Gao, W. (2019).
+Layered image compression using scalable
+auto-encoder. Ieee conference on multimedia
+information processing and retrieval (mipr)
+(pp. 431–436).
+Jia, P., Brand, F., Yu, D., Karabutov, A., Alshina,
+E., Kaup, A. (2025). Overview of variable
+rate coding in JPEG AI. IEEE Transactions
+on Circuits and Systems for Video Tech-
+nology, 35(9), 9460–9474,
+https://doi.org/
+10.1109/TCSVT.2025.3552971
+Jia, X., Wei, X., Cao, X., Foroosh, H.
+(2019).
+Comdefend: An efficient image compression
+model to defend adversarial examples. Pro-
+ceedings of the ieee/cvf conference on com-
+puter vision and pattern recognition (pp.
+6084–6092).
+Jia, Z., Li, B., Li, J., Xie, W., Qi, L., Li, H.,
+Lu, Y. (2025). Towards practical real-time
+neural video compression.
+Proceedings of
+the computer vision and pattern recognition
+conference (pp. 12543–12552).
+Jiang, W., Yang, J., Zhai, Y., Gao, F., Wang,
+R.
+(2025).
+Mlic++: Linear complex-
+ity multi-reference entropy modeling for
+learned image compression. ACM Transac-
+tions on Multimedia Computing, Communi-
+cations and Applications, 21(5), 1–25,
+Johnston, N., Vincent, D., Minnen, D., Covell,
+M., Singh, S., Chinen, T., . . . Toderici, G.
+(2018).
+Improved lossy image compres-
+sion with priming and spatially adaptive bit
+rates for recurrent networks. Ieee conference
+on computer vision and pattern recognition
+(cvpr) (pp. 4385–4393).
+Kalmykov, N.I., Dibo, R., Shen, K., Zhonghan, X.,
+Phan, A.-H., Liu, Y., Oseledets, I. (2026). T-
+mla: A targeted multiscale log–exponential
+attack framework for neural image compres-
+sion. Information Sciences, 123143,
+Kao, C.-H., Weng, Y.-C., Chen, Y.-H., Chiu,
+W.-C., Peng, W.-H. (2023). Transformer-
+based variable-rate image compression with
+region-of-interest control. 2023 ieee interna-
+tional conference on image processing (icip)
+(pp. 2960–2964).
+40
+
+
+Ke, A., Zhang, X., Chen, T., Lu, M., Zhou, C.,
+Gu, J., Ma, Z. (2025). Ultra lowrate image
+compression with semantic residual coding
+and compression-aware diffusion.
+Forty-
+second international conference on machine
+learning.
+Kerbl, B., Kopanas, G., Leimk¨uhler, T., Drettakis,
+G., et al.
+(2023).
+3d gaussian splatting
+for real-time radiance field rendering. ACM
+Trans. Graph., 42(4), 139–1,
+Kim, H., Bauer, M., Theis, L., Schwarz, J.R.,
+Dupont, E. (2024). C3: High-performance
+and low-complexity neural compression from
+a single image or video. Proceedings of the
+ieee/cvf conference on computer vision and
+pattern recognition (pp. 9347–9358).
+Kim, J.-H., Jang, S., Choi, J.-H., Lee, J.-S.
+(2020). Instability of successive deep image
+compression.
+Proceedings of the 28th acm
+international conference on multimedia (pp.
+247–255).
+Kingma, D.P., & Welling, M.
+(2013).
+Auto-
+encoding variational bayes. (arXiv preprint
+arXiv:1312.6114)
+Kobayashi, H., & Bahl, L.R. (1974). Image data
+compression by predictive coding i: Predic-
+tion algorithms. IBM Journal of Research
+and Development, 18(2), 164–171,
+Kovalev, E., Bychkov, G., Abud, K., Gushchin, A.,
+Chistyakova, A., Lavrushkin, S., . . . Antsif-
+erova, A.
+(2024).
+Exploring adversarial
+robustness of JPEG AI: methodology, com-
+parison and new methods. (arXiv preprint
+arXiv:2411.11795)
+Koyuncu, E., Solovyev, T., Alshina, E., Kaup, A.
+(2022). Device interoperability for learned
+image compression with weights and acti-
+vations quantization.
+2022 picture coding
+symposium (pcs) (pp. 151–155).
+Koyuncu, E., Solovyev, T., Sauer, J., Alshina, E.,
+Kaup, A.
+(2024).
+Quantized decoder in
+learned image compression for deterministic
+reconstruction. Icassp 2024-2024 ieee inter-
+national conference on acoustics, speech and
+signal processing (icassp) (pp. 3985–3989).
+Kurihara, J., & Sun, H. (2025). Efficient adver-
+sarial attack and training on learned image
+compression.
+2025 asia pacific signal and
+information processing association annual
+summit and conference (apsipa asc) (pp.
+2453–2458).
+Ladune, T., Philippe, P., Jaffuer, P., Blard,
+T., Kervadec, S., Henry, F., Clare, G.
+(2026). Cool-chic 5.0: Faster encoding and
+inter-feature entropy modeling for overfit-
+ted image compression.
+(arXiv preprint
+arXiv:2605.02726)
+Lam, Y.-H., Zare, A., Cricri, F., Lainema, J.,
+Hannuksela, M.M. (2020). Efficient adap-
+tation of neural network filter for video
+compression.
+Proceedings of the 28th acm
+international conference on multimedia (pp.
+358–366).
+Lee, D.T.
+(2005).
+JPEG 2000: Retrospective
+and new developments. Proceedings of the
+IEEE, 93(1), 32–41,
+https://doi.org/10
+.1109/JPROC.2004.839613
+Lee, J., Jeong, S., Kim, M.
+(2022).
+Selective
+compression learning of latent representa-
+tions for variable-rate image compression.
+Advances in Neural Information Processing
+Systems, 35, 13146–13157,
+Lee, J., Jeong, S.Y., Kim, M. (2026). Deephq:
+Learned hierarchical quantizer for progres-
+sive deep image coding.
+ACM Transac-
+tions on Multimedia Computing, Communi-
+cations and Applications, 22(1), 1–24,
+Lee, J.-H., Jeon, S., Choi, K.P., Park, Y., Kim,
+C.-S.
+(2022).
+Dpict: Deep progressive
+image compression using trit-planes.
+Pro-
+ceedings of the ieee/cvf conference on com-
+puter vision and pattern recognition (pp.
+16113–16122).
+41
+
+
+Li, H., Li, S., Dai, W., Li, C., Zou, J., Xiong,
+H.
+(2024).
+Frequency-aware transformer
+for learned image compression. The twelfth
+international conference on learning repre-
+sentations.
+Li, M., Wang, Z., Shen, L., Ding, Q., Yu, L.,
+Jiang, X. (2022). Lightweight image com-
+pression based on deep learning. Caai inter-
+national conference on artificial intelligence
+(pp. 106–116).
+Li, S., Dai, W., Kan, N., Li, C., Zou, J., Xiong,
+H.
+(2025).
+Learnable non-uniform quan-
+tization with sampling-based optimization
+for variable-rate learned image compres-
+sion.
+IEEE Transactions on Circuits and
+Systems for Video Technology, 35(8), 8314–
+8329,
+https://doi.org/10.1109/TCSVT
+.2025.3546765
+Li, Y., Gong, R., Tan, X., Yang, Y., Hu, P., Zhang,
+Q., . . . Gu, S. (2021). Brecq: Pushing the
+limit of post-training quantization by block
+reconstruction. International conference on
+learning representations.
+Li, Y., Zhang, H., Li, L., Liu, D.
+(2025).
+Learned image compression with hierarchi-
+cal progressive context modeling. Proceed-
+ings of the ieee/cvf international conference
+on computer vision (pp. 18834–18843).
+Li, Y., Zhang, H., Li, L., Liu, D., Wu, F.
+(2025). Scaling learned image compression
+models up to 1 billion.
+(arXiv preprint
+arXiv:2508.09075)
+Li, Y., Zhang, Z., Chen, H., Ma, Z.
+(2023).
+Mamba: Bringing multi-dimensional abr to
+webrtc. Proceedings of the 31st acm interna-
+tional conference on multimedia (pp. 9262–
+9270).
+Li, Z., Huang, C., Wang, X., Hu, H., Wyeth, C.,
+Bu, D., . . . Li, M. (2025). Lossless data com-
+pression by large models. Nature Machine
+Intelligence, 1–6,
+Li, Z., Liao, J., Tang, C., Zhang, H., Li, Y.,
+Bian, Y., . . . others
+(2025).
+Ustc-td: A
+test dataset and benchmark for image and
+video coding in 2020s. IEEE Transactions
+on Multimedia, ,
+Liang, J., He, R., Tan, T. (2025). A comprehen-
+sive survey on test-time adaptation under
+distribution shifts. International Journal of
+Computer Vision, 133(1), 31–64,
+Liang, J., Liu, M., Yao, C., Lin, C., Zhao,
+Y.
+(2023).
+Sigvic: Spatial importance
+guided
+variable-rate
+image
+compression.
+Icassp 2023-2023 ieee international confer-
+ence on acoustics, speech and signal process-
+ing (icassp) (pp. 1–5).
+Liao, L., Li, S., Luo, J., Dai, W., Li, C., Zou,
+J., Xiong, H. (2022). Efficient decoder for
+learned image compression via structured
+pruning. 2022 data compression conference
+(dcc) (pp. 464–464).
+Liu, D., Li, Y., Lin, J., Li, H., Wu, F.
+(2020).
+Deep learning-based video coding: A review
+and a case study. ACM Computing Surveys
+(CSUR), 53(1), 1–35,
+Liu, D., Liu, S., Ascenso, J., Tian, D., Yu, L.
+(2024).
+Guest editorial special section on
+recent standardization efforts for learning-
+based visual data coding.
+IEEE Transac-
+tions on Circuits and Systems for Video
+Technology, 34(5), 3063–3066,
+Liu, J., Sun, H., Katto, J. (2023). Learned image
+compression with mixed transformer-cnn
+architectures.
+Proceedings of the ieee/cvf
+conference on computer vision and pattern
+recognition (pp. 14388–14397).
+Liu, K., Wu, D., Wang, Y., Feng, D., Tan,
+B., Garg, S.
+(2022).
+Malice: Manipula-
+tion attacks on learned image compression.
+(arXiv preprint arXiv:2205.13253)
+42
+
+
+Liu, K., Wu, D., Wu, Y., Wang, Y., Feng, D.,
+Tan, B., Garg, S.
+(2023).
+Manipulation
+attacks on learned image compression. IEEE
+Transactions on Artificial Intelligence, 5(6),
+3083–3097,
+Liu, Y., Chen, X., Liu, C., Song, D.
+(2017).
+Delving into transferable adversarial exam-
+ples and black-box attacks.
+International
+conference on learning representations.
+Liu, Y., Gu, H., Zhang, A., Qin, P. (2024). Back-
+door attack based on lossy image compres-
+sion using discrete cosine transform. IEEE
+Access, 12, 196488–196497,
+Lu, M., Guo, P., Shi, H., Cao, C., Ma, Z. (2022).
+Transformer-based image compression. 2022
+data compression conference (dcc) (pp. 469–
+469).
+Lu, Y., Zhu, Y., Yang, Y., Said, A., Cohen, T.S.
+(2021). Progressive neural image compres-
+sion with nested quantization and latent
+ordering. 2021 ieee international conference
+on image processing (icip) (pp. 539–543).
+Lv, Y., Xiang, J., Zhang, J., Yang, W., Han,
+X., Yang, W.
+(2023).
+Dynamic low-rank
+instance adaptation for universal neural
+image compression. Proceedings of the 31st
+acm international conference on multimedia
+(pp. 632–642).
+Ma, H., Liu, D., Xiong, R., Wu, F.
+(2019).
+iwave: Cnn-based wavelet-like transform for
+image compression. IEEE Transactions on
+Multimedia, 22(7), 1667–1679,
+Ma, H., Liu, D., Yan, N., Li, H., Wu, F.
+(2020).
+End-to-end optimized versatile
+image compression with wavelet-like trans-
+form. IEEE Transactions on Pattern Anal-
+ysis and Machine Intelligence, 44(3), 1247–
+1263,
+Ma, S., Zhang, X., Jia, C., Zhao, Z., Wang, S.,
+Wang, S. (2019). Image and video compres-
+sion with neural networks: A review. IEEE
+Transactions on Circuits and Systems for
+Video Technology, 30(6), 1683–1698,
+Ma, Y., Zhai, Y., Yang, C., Yang, J., Wang, R.,
+Zhou, J., . . . Wang, R.
+(2021).
+Variable
+rate roi image compression optimized for
+visual quality.
+Proceedings of the ieee/cvf
+conference on computer vision and pattern
+recognition (pp. 1936–1940).
+Madden, J., Dorje, L., Li, X. (2025). Bitstream
+collisions in neural image compression via
+adversarial perturbations.
+(arXiv preprint
+arXiv:2503.19817)
+Madry, A., Makelov, A., Schmidt, L., Tsipras, D.,
+Vladu, A.
+(2018).
+Towards deep learn-
+ing models resistant to adversarial attacks.
+International conference on learning repre-
+sentations.
+Mentzer, F., Toderici, G.D., Tschannen, M.,
+Agustsson, E.
+(2020).
+High-fidelity gen-
+erative image compression.
+Advances in
+neural information processing systems, 33,
+11913–11924,
+Minnen, D., Ball´e, J., Toderici, G.D.
+(2018).
+Joint autoregressive and hierarchical priors
+for learned image compression.
+Advances
+in neural information processing systems
+(Vol. 31).
+Minnen, D., & Singh, S.
+(2020).
+Channel-wise
+autoregressive entropy models for learned
+image compression. 2020 ieee international
+conference on image processing (icip) (pp.
+3339–3343).
+Mishra, D., Singh, S.K., Singh, R.K.
+(2022).
+Deep architectures for image compression:
+a critical review.
+Signal Processing, 191,
+108346,
+Mizuochi, T.
+(2006).
+Recent progress in for-
+ward error correction and its interplay with
+43
+
+
+transmission impairments.
+IEEE Journal
+of Selected Topics in Quantum Electronics,
+12(4), 544–554,
+Muckley, M.J., El-Nouby, A., Ullrich, K., Jegou,
+H., Verbeek, J. (2023). Improving statistical
+fidelity for neural image compression with
+implicit local likelihood models.
+Interna-
+tional conference on machine learning (pp.
+25426–25443).
+Nagel, M., Fournarakis, M., Amjad, R.A., Bon-
+darenko, Y., Van Baalen, M., Blankevoort,
+T.
+(2021).
+A white paper on neu-
+ral network quantization.
+(arXiv preprint
+arXiv:2106.08295)
+Nakanishi,
+K.M.,
+Maeda,
+S.-i.,
+Miyato,
+T.,
+Okanohara, D. (2018). Neural multi-scale
+image compression.
+Asian conference on
+computer vision (pp. 718–732).
+NVIDIA Corporation (2026). CUTLASS: CUDA
+templates for high-performance linear alge-
+bra. https://github.com/NVIDIA/cutlass.
+Pan, X., Ding, G., Chen, Z., Chen, C.W. (2025).
+An efficient neural rate control for JPEG-AI.
+IEEE Transactions on Circuits and Systems
+for Video Technology, 1–1, https://doi.org/
+10.1109/TCSVT.2025.3614007
+Pang, J., Lodhi, M.A., Ahn, J., Huang, Y.,
+Tian, D.
+(2024).
+Towards reproducible
+learning-based compression. 2024 ieee 26th
+international workshop on multimedia signal
+processing (mmsp) (pp. 1–6).
+Papernot,
+N.,
+McDaniel,
+P.,
+Goodfellow,
+I.
+(2016).
+Transferability in machine learn-
+ing: from phenomena to black-box attacks
+using adversarial samples. (arXiv preprint
+arXiv:1605.07277)
+Pfaff, J., Filippov, A., Liu, S., Zhao, X., Chen,
+J., De-Lux´an-Hern´andez, S., . . . Van der
+Auwera, G.
+(2021).
+Intra prediction and
+mode coding in VVC. IEEE Transactions
+on Circuits and Systems for Video Technol-
+ogy, 31(10), 3834–3847,
+https://doi.org/
+10.1109/TCSVT.2021.3072430
+Presta,
+A.,
+Tartaglione,
+E.,
+Fiandrotti,
+A.,
+Grangetto, M. (2025). STanH: Parametric
+quantization for variable rate learned image
+compression. IEEE Transactions on Image
+Processing, 34, 639–651,
+https://doi.org/
+10.1109/TIP.2025.3527883
+Presta,
+A.,
+Tartaglione,
+E.,
+Fiandrotti,
+A.,
+Grangetto, M., Cosman, P.
+(2025).
+Effi-
+cient progressive image compression with
+variance-aware masking. 2025 ieee/cvf win-
+ter conference on applications of computer
+vision (wacv) (pp. 7692–7700).
+Rippel, O., & Bourdev, L.
+(2017).
+Real-time
+adaptive image compression. International
+conference on machine learning (pp. 2922–
+2930).
+Senoo, T., & Girod, B. (1992). Vector quantiza-
+tion for entropy coding of image subbands.
+IEEE Transactions on Image Processing,
+1(4), 526–533,
+https://doi.org/10.1109/
+83.199923
+Sha, H., Dong, M., Luo, Q., Lu, M., Chen, H.,
+Ma, Z. (2025). Towards loss-resilient image
+coding for unstable satellite networks. Pro-
+ceedings of the aaai conference on artificial
+intelligence (Vol. 39, pp. 12506–12514).
+Shannon, C.E., & Weaver, W. (1948). A math-
+ematic theory of communication. Bell Syst.
+Tech. J, 27(3), 379–423,
+Shen, S., Yue, H., Yang, J. (2023). Dec-adapter:
+Exploring efficient decoder-side adapter for
+bridging screen content and natural image
+compression.
+Proceedings of the ieee/cvf
+international conference on computer vision
+(pp. 12887–12896).
+Shi, J., Chen, Z., Li, H., Zhao, Q., Lu, M., Chen,
+T., Ma, Z.
+(2025).
+On quantizing neural
+representation for variable-rate video cod-
+ing. The thirteenth international conference
+44
+
+
+on learning representations.
+Shi, J., Jiang, M., Lu, M., Chen, T., Cao, X.,
+Ma, Z.
+(2024).
+Hiner: neural representa-
+tion for hyperspectral image.
+Proceedings
+of the 32nd acm international conference on
+multimedia (pp. 9837–9846).
+Shi,
+J.,
+Lu,
+M.,
+Ma,
+Z.
+(2023).
+Rate-
+distortion optimized post-training quantiza-
+tion for learned image compression. IEEE
+Transactions on Circuits and Systems for
+Video Technology, 34(5), 3082–3095,
+Shi, Y., Zhang, K., Wang, J., Ling, N., Yin,
+B.
+(2022).
+Variable-rate image compres-
+sion based on side information compensation
+and r-λ model rate control.
+IEEE Trans-
+actions on Circuits and Systems for Video
+Technology, 33(7), 3488–3501,
+Sitzmann, V., Martel, J., Bergman, A., Lindell,
+D., Wetzstein, G.
+(2020).
+Implicit neu-
+ral representations with periodic activation
+functions. Advances in neural information
+processing systems, 33, 7462–7473,
+Song, M., Choi, J., Han, B. (2021). Variable-rate
+deep image compression through spatially-
+adaptive feature transform.
+Proceedings
+of the ieee/cvf international conference on
+computer vision (pp. 2380–2389).
+Song, M., Choi, J., Han, B.
+(2024).
+A
+training-free defense framework for robust
+learned image compression. (arXiv preprint
+arXiv:2401.11902)
+Str¨umpler, Y., Postels, J., Yang, R., Gool, L.V.,
+Tombari, F. (2022). Implicit neural repre-
+sentations for image compression. European
+conference on computer vision (pp. 74–91).
+Su, R., Cheng, Z., Sun, H., Katto, J.
+(2020).
+Scalable learned image compression with a
+recurrent neural networks-based hyperprior.
+2020 ieee international conference on image
+processing (icip) (pp. 3369–3373).
+Sui, Y., Li, Z., Ding, D., Pan, X., Xu, X., Liu, S.,
+Chen, Z. (2024). Transferable learned image
+compression-resistant adversarial perturba-
+tions.
+2024 data compression conference
+(dcc) (p. 582).
+Sun, H., Cheng, Z., Takeuchi, M., Katto, J. (2020).
+End-to-end learned image compression with
+fixed point weight quantization. 2020 ieee
+international conference on image process-
+ing (icip) (pp. 3359–3363).
+Sun, H., Yu, L., Katto, J. (2021a). End-to-end
+learned image compression with quantized
+weights and activations.
+(arXiv preprint
+arXiv:2111.09348)
+Sun, H., Yu, L., Katto, J.
+(2021b).
+Learned
+image compression with fixed-point arith-
+metic. 2021 picture coding symposium (pcs)
+(pp. 1–5).
+Sun, H., Yu, L., Katto, J. (2022). Q-lic: Quantiz-
+ing learned image compression with channel
+splitting.
+IEEE Transactions on Circuits
+and Systems for Video Technology, 35(4),
+3798–3811,
+Sze,
+V.,
+Chen,
+Y.-H.,
+Emer,
+J.,
+Suleiman,
+A., Zhang, Z.
+(2017).
+Hardware for
+machine learning: Challenges and opportu-
+nities. 2017 ieee custom integrated circuits
+conference (cicc) (pp. 1–8).
+Tao, L., Gao, W., Li, G., Zhang, C.
+(2023).
+Adanic: towards practical neural image com-
+pression via dynamic transform routing.
+Proceedings of the ieee/cvf international
+conference on computer vision (pp. 16879–
+16888).
+Theis, L., Shi, W., Cunningham, A., Husz´ar,
+F.
+(2017).
+Lossy image compression with
+compressive autoencoders.
+(arXiv preprint
+arXiv:1703.00395)
+Toderici, G., O’Malley, S.M., Hwang, S.J., Vin-
+cent, D., Minnen, D., Baluja, S., . . . Suk-
+thankar, R.
+(2016).
+Variable rate image
+compression with recurrent neural networks.
+45
+
+
+International Conference on Learning Rep-
+resentations, ,
+Toderici,
+G.,
+Vincent,
+D.,
+Johnston,
+N.,
+Jin Hwang, S., Minnen, D., Shor, J., Covell,
+M. (2017). Full resolution image compres-
+sion with recurrent neural networks.
+Ieee
+conference on computer vision and pattern
+recognition (cvpr) (pp. 5306–5314).
+Tong, K., Wu, Y., Li, Y., Zhang, K., Zhang, L.,
+Jin, X. (2023). Qvrf: A quantization-error-
+aware variable rate framework for learned
+image compression. 2023 ieee international
+conference on image processing (icip) (pp.
+1310–1314).
+Tsubota, K., Akutsu, H., Aizawa, K. (2023). Uni-
+versal deep image compression via content-
+adaptive optimization with adapters. Pro-
+ceedings of the ieee/cvf winter conference on
+applications of computer vision (pp. 2529–
+2538).
+van Rozendaal, T., Huijben, I., Cohen, T.S.
+(2021).
+Overfitting for fun and profit:
+Instance-adaptive data compression.
+9th
+international conference on learning repre-
+sentations, iclr 2021.
+Van Rozendaal, T., Singhal, T., Le, H., Sautiere,
+G., Said, A., Buska, K., . . . others (2024).
+Mobilenvc: Real-time 1080p neural video
+compression on a mobile device. Proceedings
+of the ieee/cvf winter conference on applica-
+tions of computer vision (pp. 4323–4333).
+Wallace, G.K.
+(1991).
+The JPEG still picture
+compression standard. Communications of
+the ACM , 34(4), 30–44,
+Wang, G.-H., Li, J., Li, B., Lu, Y.
+(2023).
+Evc: Towards real-time neural image com-
+pression with mask decay. (arXiv preprint
+arXiv:2302.05071)
+Wang, S., Cheng, Z., Feng, D., Lu, G., Song, L.,
+Zhang, W. (2024). Asymllic: Asymmetric
+lightweight learned image compression. 2024
+ieee international conference on visual com-
+munications and image processing (vcip)
+(pp. 1–5).
+Wang, S., Cheng, Z., Feng, D., Wang, Q., Gu,
+Q., Song, L., Zhang, W. (2026). Distilling
+complexity-scalable learned image compres-
+sion models via neural architecture search.
+IEEE Transactions on Circuits and Sys-
+tems for Video Technology, 36(7), 9660–
+9675,
+https://doi.org/10.1109/TCSVT
+.2026.3670313
+Wang, S., Dai, J., Qin, X., Yang, K., Niu,
+K.,
+Zhang,
+P.
+(2025).
+ResiComp:
+Loss-resilient image compression via dual-
+functional masked visual token modeling.
+IEEE Transactions on Circuits and Sys-
+tems for Video Technology, 35(7), 7181–
+7195,
+https://doi.org/10.1109/TCSVT
+.2025.3539747
+Wang, X., Lu, M., Ma, Z. (2022). Block-level rate
+control for learnt image coding. 2022 picture
+coding symposium (pcs) (pp. 157–161).
+Wieckowski, A., Brandenburg, J., Hinz, T., Bart-
+nik, C., George, V., Hege, G., . . . Marpe,
+D.
+(2021).
+VVenC: An open and opti-
+mized VVC encoder implementation. 2021
+ieee international conference on multimedia
+& expo workshops (icmew) (pp. 1–2).
+Wieckowski, A., Hege, G., Bartnik, C., Lehmann,
+C., Stoffers, C., Bross, B., Marpe, D. (2020).
+Towards a live software decoder implemen-
+tation for the upcoming versatile video cod-
+ing (VVC) codec.
+2020 ieee international
+conference on image processing (icip) (pp.
+3124–3128).
+Wu, C., Wu, Q., Wei, H., Wang, L., Meng,
+F., Ngan, K.N., . . . Li, H.
+(2026).
+On
+the adversarial robustness of learning-based
+image compression against rate-distortion
+attacks. IEEE Transactions on Multimedia,
+28, 1715–1729,
+https://doi.org/10.1109/
+TMM.2025.3639935
+46
+
+
+Xu, B., Chen, H., Ma, Z. (2023). Karma: Adap-
+tive video streaming via causal sequence
+modeling.
+Proceedings of the 31st acm
+international conference on multimedia (pp.
+1527–1535).
+Xue, M., Wang, X., Sun, S., Zhang, Y., Wang, J.,
+Liu, W. (2023). Compression-resistant back-
+door attack against deep neural networks.
+Applied Intelligence, 53(17), 20402–20417,
+Xue, N., & Zhang, Y. (2023). Lambda-domain
+rate control for neural image compression.
+Proceedings of the 5th acm international
+conference on multimedia in asia (pp. 1–7).
+Yang, F., Herranz, L., Van De Weijer, J., Guiti´an,
+J.A.I., L´opez, A.M., Mozerov, M.G. (2020).
+Variable rate deep image compression with
+modulated autoencoder. IEEE Signal Pro-
+cessing Letters, 27, 331–335,
+Yang, J., Wang, X., Li, Q., Qiao, S., Zhou,
+Y.
+(2025).
+Subset-selection weight post-
+training quantization method for learned
+image compression task. IEEE Access, 13,
+5145–5153,
+Yang, R., Liu, D., Wu, F., Gao, W.
+(2025).
+Learned image compression with efficient
+cross-platform entropy coding. IEEE Jour-
+nal on Emerging and Selected Topics in
+Circuits and Systems, 15(1), 72–82,
+Yang, W., Huang, H., Hu, Y., Duan, L.-Y., Liu, J.
+(2024). Video coding for machines: Compact
+visual representation compression for intel-
+ligent collaborative analytics. IEEE Trans-
+actions on Pattern Analysis and Machine
+Intelligence, 46(7), 5174–5191,
+Yang, Y., Bamler, R., Mandt, S. (2020). Improv-
+ing inference for neural image compression.
+Advances in Neural Information Processing
+Systems, 33, 573–584,
+Yang, Y., & Mandt, S. (2023). Computationally-
+efficient neural image compression with shal-
+low decoders.
+Proceedings of the ieee/cvf
+international conference on computer vision
+(pp. 530–540).
+Ye, F., Li, L., Liu, D.
+(2025).
+Variable-rate
+learned image compression with integer-
+arithmetic-only inference. Journal of Visual
+Communication and Image Representation,
+104634,
+Ye, F., Liu, B., Li, L., Liu, D.
+(2025).
+Rate-
+distortion-optimized deep preprocessing for
+JPEG compression. IEEE Transactions on
+Circuits and Systems for Video Technology,
+35(8), 8330–8343, https://doi.org/10.1109/
+TCSVT.2025.3550872
+Yu, J., Mai, S., Zhang, P., Jiang, Y., Cheng,
+J.
+(2025a).
+Activation and weight distri-
+bution balancing for optimal post-training
+quantization in learned image compression.
+Proceedings of the 33rd acm international
+conference on multimedia (pp. 7959–7967).
+Yu, J., Mai, S., Zhang, P., Jiang, Y., Cheng,
+J.
+(2025b).
+Mixed-precision post-training
+quantization for learned image compres-
+sion.
+IEEE Internet of Things Journal,
+12(16), 34392–34405,
+https://doi.org/10
+.1109/JIOT.2025.3578318
+Yu, Y., Wang, Y., Yang, W., Guo, L., Lu,
+S., Duan, L.-Y., . . . Kot, A.C.
+(2024).
+Robust and transferable backdoor attacks
+against deep image compression with selec-
+tive frequency prior. IEEE Transactions on
+Pattern Analysis and Machine Intelligence,
+47(3), 1674–1693,
+Yu, Y., Wang, Y., Yang, W., Lu, S., Tan, Y.-P.,
+Kot, A.C. (2023). Backdoor attacks against
+deep image compression via adaptive fre-
+quency trigger. Proceedings of the ieee/cvf
+conference on computer vision and pattern
+recognition (pp. 12250–12259).
+47
+
+
+Zeng, F., Tang, H., Shao, Y., Chen, S., Shao, L.,
+Wang, Y.
+(2025).
+Mambaic: State space
+models for high-performance learned image
+compression.
+Proceedings of the computer
+vision and pattern recognition conference
+(pp. 18041–18050).
+Zhang, D., Li, F., Liu, M., Cong, R., Bai, H.,
+Wang, M., Zhao, Y. (2023). Exploring reso-
+lution fields for scalable image compression
+with uncertainty guidance.
+IEEE Trans-
+actions on Circuits and Systems for Video
+Technology, 34(4), 2934–2948,
+Zhang, G., Li, H., Cai, Y., Hu, Q., Yu, G., Qin,
+Z. (2025). Progressive learned image trans-
+mission for semantic communication using
+hierarchical VAE.
+IEEE Transactions on
+Cognitive Communications and Networking,
+11(6), 3640–3654, https://doi.org/10.1109/
+TCCN.2025.3546935
+Zhang, H., Koyuncu, A.B., Ahonen, J.I., Zou, N.,
+Cricri, F. (2025). Learned image codec with
+progressive multi-scale probability model
+for streaming in unreliable communication
+channels. 2025 ieee international workshop
+on multimedia signal processing (mmsp)
+(pp. 298–303).
+Zhang, H., Li, Y., Li, L., Liu, D.
+(2025).
+Learning switchable priors for neural image
+compression.
+IEEE Transactions on Cir-
+cuits and Systems for Video Technology,
+35(11), 11567–11582,
+https://doi.org/10
+.1109/TCSVT.2025.3577134
+Zhang, J., Pan, X., Chen, Z., Liu, S.
+(2025).
+Efficient JPEG-AI image coding for remote
+sensing semantic segmentation. IEEE Geo-
+science and Remote Sensing Letters, 22,
+1–5,
+https://doi.org/10.1109/LGRS.2025
+.3596235 (Art. no. 8003205)
+Zhang, Q., Mei, J., Guan, T., Sun, Z., Zhang, Z.,
+Yu, L. (2024). Recent advances in video cod-
+ing for machines standard and technologies.
+ZTE Communications, 22(1), 62,
+Zhang, R., Isola, P., Efros, A.A., Shechtman, E.,
+Wang, O. (2018). The unreasonable effec-
+tiveness of deep features as a perceptual
+metric.
+Proceedings of the ieee conference
+on computer vision and pattern recognition
+(pp. 586–595).
+Zhang, S., Wang, L., Mao, X., Yang, F., Wan,
+S. (2022). Rate controllable learned image
+compression based on rfl model. 2022 ieee
+international conference on visual commu-
+nications and image processing (vcip) (pp.
+1–5).
+Zhang, X., Guo, P., Lu, M., Ma, Z.
+(2024).
+All-in-one image coding for joint human-
+machine vision with multi-path aggregation.
+Advances in Neural Information Processing
+Systems, 37, 71465–71503,
+Zhang, X., Lu, M., Chen, Y., Ma, Z.
+(2025).
+Perception-oriented latent coding for high-
+performance compressed domain semantic
+inference. Ieee international conference on
+multimedia and expo (icme).
+Zhang, Y., Zhu, L., Jiang, G., Kwong, S., Kuo,
+C.-C.J. (2023). A survey on perceptually
+optimized video coding.
+ACM Computing
+Surveys, 55(12), 1–37,
+Zhang, Z., Esenlik, S., Wu, Y., Wang, M., Zhang,
+K., Zhang, L. (2023). End-to-end learning-
+based image compression with a decoupled
+framework.
+IEEE transactions on circuits
+and systems for video technology, 34(5),
+3067–3081,
+Zhang, Z., Xia, Y., Chen, B., Zhang, T., Wang, H.,
+Qiu, H. (2026). Autoregressive-based pro-
+gressive coding for ultra-low bitrate image
+compression.
+The fourteenth international
+conference on learning representations.
+Zheng, J., & Meister, M.
+(2025).
+The unbear-
+able slowness of being: Why do we live at 10
+bits/s? Neuron, 113(2), 192–204,
+48
+
+
+Zheng, Y., Chen, Y., Qian, B., Shi, X., Shu,
+Y., Chen, J.
+(2025).
+A review on edge
+large language models: Design, execution,
+and applications. ACM Computing Surveys,
+57(8), 1–35,
+Zhou, J., Nakagawa, A., Kato, K., Wen, S., Kazui,
+K., Tan, Z.
+(2020).
+Variable rate image
+compression method with dead-zone quan-
+tizer. Proceedings of the ieee/cvf conference
+on computer vision and pattern recognition
+workshops (pp. 162–163).
+Zhu, M., & Gupta, S.
+(2017).
+To prune, or
+not to prune: exploring the efficacy of prun-
+ing for model compression. (arXiv preprint
+arXiv:1710.01878)
+Zou, N., Zhang, H., Cricri, F., Youvalari, R.G.,
+Tavakoli, H.R., Lainema, J., . . . Rahtu, E.
+(2021). Adaptation and attention for neural
+video coding. 2021 ieee international sym-
+posium on multimedia (ism) (pp. 240–244).
+49
