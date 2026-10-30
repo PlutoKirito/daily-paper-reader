@@ -1,0 +1,2038 @@
+Preprint.
+FASTER: FAST ADJOINT STOCHASTIC TRANSPORT
+FOR ENDPOINT REFINEMENT IN REWARD-GUIDED IM-
+AGE EDITING
+Yimiao Zhou1∗
+Zejia Zhong1∗
+Jingya Wang1
+Ye Shi1†
+1ShanghaiTech University
+Shanghai, China
+{zhouym2025,zhongzj2025,wangjingya,shiye}@shanghaitech.edu.cn
+ABSTRACT
+Reward-guided image editing at test time seeks to improve a specified reward
+while preserving source content and visual plausibility. Many existing approaches
+optimize candidates through pretrained generation processes, making repeated ad-
+justment depend on costly large-model execution and, in some cases, backbone
+backpropagation. We develop a theoretical framework that jointly accounts for re-
+ward, source preservation, and pretrained-prior preferences, allowing the desired
+output distribution to be specified separately from the dynamics used to realize it.
+Based on this framework, we introduce FASTER, which trains a small network
+for each source and objective to perform inexpensive editing, while pretrained
+and reward models provide feedback on candidate outputs. By reusing each can-
+didate and its feedback across multiple small-network updates, FASTER reduces
+repeated sampling and supervision queries without placing the pretrained gener-
+ative backbone inside the inner optimization loop. On SD3, FASTER leads all
+four target metrics and several validation metrics among the evaluated methods.
+Compared with the evaluated baseline that optimizes controls along pretrained
+generation trajectories, FASTER achieves editing-time speedups of up to 6.91×
+on Stable Diffusion 3 and 24.14× on Stable Diffusion 1.5.
+1
+INTRODUCTION
+Pretrained diffusion and flow models provide rich visual priors for image generation (Ho et al.,
+2020; Song et al., 2021; Rombach et al., 2022; Lipman et al., 2023; Liu et al., 2023; Esser et al.,
+2024). However, their conditioning interfaces do not fully express every downstream objective: hu-
+man preferences, reference styles, and task-specific semantic requirements may instead be specified
+through rewards available at test time. Reward-guided inference adapts generated outputs to such
+objectives without retraining the pretrained model (Bansal et al., 2023; Yu et al., 2023; Ye et al.,
+2024; Tang et al., 2025; Eyring et al., 2024; Susladkar et al., 2026). We focus on reward-guided
+image editing at test time: given a source image and a reward objective, improve the objective while
+retaining content that need not change and maintaining visual plausibility (Chang et al., 2026). Un-
+like unconstrained reward maximization, this task requires meaningful, source-preserving changes;
+a higher reward alone does not establish a successful edit.
+Existing approaches typically inject reward guidance into pretrained generation or optimize candi-
+dates through a generation mapping or trajectory. Guidance methods use external gradients to adjust
+intermediate states, with refinements to the guidance geometry and update rules (Chung et al., 2023;
+Bansal et al., 2023; Yu et al., 2023; He et al., 2024; Yang et al., 2024; Ye et al., 2024; Susladkar
+et al., 2026). Optimization-based approaches instead adjust input noise, editable variables, or tra-
+jectory controls to improve the generated output (Wallace et al., 2023; Ben-Hamu et al., 2024; Tang
+et al., 2025; Eyring et al., 2024; Chang et al., 2026). Other advances improve efficiency through
+reward optimization of one-step models, flow-based editing, or efficient reward guidance (Eyring
+et al., 2024; Patel et al., 2025; Huang et al., 2026). Despite their different computational costs, many
+∗Equal contribution.
+†Corresponding author.
+1
+arXiv:2610.04538v1  [cs.CV]  3 Oct 2026
+
+
+Preprint.
+(a) Pretrained trajectory optimization
+(b) FASTER: learn a lightweight editor
+Pretrained generative backbone
+(frozen)
+Repeated
+backbone execution
+source
+Optimize the generation trajectory
+Pretrained generative backbone
+(frozen)
+Feedback
+bθ
+Train at test time
+source
+Edit with the small network
+Figure 1: Decoupling pretrained knowledge from editing dynamics. (a) Trajectory optimization
+repeatedly executes a frozen generative backbone. (b) FASTER learns a small per-image editor at
+test time, reusing frozen-model feedback across updates; the learned network then performs the edit.
+of these approaches couple the pretrained model’s role as a source of visual knowledge with its role
+in executing candidate updates. Repeated adjustment invokes the generator again, and some ap-
+proaches additionally backpropagate through its backbone; candidate evaluation introduces further
+decoding and reward-computation costs. Can pretrained knowledge continue to constrain desirable
+edits while a separate, lightweight process performs the actual adjustment?
+Figure 1 contrasts optimization along pretrained generation trajectories with FASTER’s lightweight
+editing process: the former repeatedly executes the large generative backbone, whereas the latter
+uses a small network to perform editing with feedback from frozen models. We establish a theo-
+retical basis for this separation by jointly analyzing reward improvement, source preservation, and
+pretrained-prior plausibility, specifying a target output distribution and constructing an independent
+editing process that realizes it under ideal conditions. Each task fixes a source and an objective, so
+the learned editor need only adapt the current instance rather than acquire general-purpose genera-
+tion capabilities.
+Based on this framework, we introduce FASTER: a small network trained at test time performs inex-
+pensive editing updates, while pretrained and reward models provide feedback at candidate outputs.
+Reusing each candidate and its feedback across multiple network updates reduces repeated sampling
+and costly supervision queries. To support explicit semantic changes that increasing an image–text
+score may fail to produce, we further introduce an editing term that obtains semantic directions from
+the pretrained model’s conditional predictions, without backpropagation through its backbone. This
+term enters the same feedback interface, allowing the lightweight editor to use pretrained semantic
+knowledge while retaining its inexpensive update process. On Stable Diffusion 3 (Esser et al., 2024),
+FASTER leads the target metric in all four tasks and several validation metrics among the evaluated
+methods. Relative to the evaluated baseline that optimizes controls along pretrained generation tra-
+jectories, it achieves editing-time speedups of up to 6.91× on Stable Diffusion 3 (Esser et al., 2024)
+and 24.14× on Stable Diffusion 1.5 (Rombach et al., 2022).
+Our contributions are threefold:
+• Decoupling the editing target from its dynamics. We combine reward, source preser-
+vation, and pretrained-prior preferences into a target distribution, and construct separate
+lightweight dynamics that realize it under proper conditions theoretically.
+• FASTER: inexpensive editing with a small network. A per-image small network exe-
+cutes inexpensive edits and reuses candidate feedback to reduce repeated computation. A
+semantic editing term supplies directions from conditional model predictions through the
+same interface, without generative-backbone backpropagation.
+• Editing quality and efficiency across tasks. FASTER leads all four target metrics and
+several validation metrics in the SD3 comparison, with up to 6.91× and 24.14× speedups
+on SD3 and SD1.5, respectively. A 768 × 768 SD3 ImageReward edit takes approximately
+7.7 seconds on a single consumer GPU.
+2
+
+
+Preprint.
+2
+RELATED WORK
+Inference-time guidance and alignment.
+Training-free guidance steers pretrained diffusion and
+flow models toward external objectives without updating model weights. DPS, Universal Guidance,
+and FreeDoM construct guidance from denoised predictions or external energies (Chung et al., 2023;
+Bansal et al., 2023; Yu et al., 2023), while MPGD, DSG, and TFG further improve the geometry
+and design of guidance (He et al., 2024; Yang et al., 2024; Ye et al., 2024). Alternatively, DOODL
+and D-Flow optimize latent variables through the pretrained generative mapping (Wallace et al.,
+2023; Ben-Hamu et al., 2024), with DNO and ReNO improving robustness or efficiency of direct
+optimization (Tang et al., 2025; Eyring et al., 2024). Distributional methods such as DAS and
+Feynman–Kac steering instead reshape inference through reweighting and resampling (Kim et al.,
+2025; Singhal et al., 2025). These approaches provide flexible test-time alignment, but generally
+remain coupled to pretrained generation during optimization.
+Training-free and reward-guided image editing.
+Training-free image editing must also preserve
+source correspondence. Existing methods use inversion and attention control (Hertz et al., 2023b;
+Mokady et al., 2023), controlled corruption (Meng et al., 2022), and feature reuse (Tumanyan et al.,
+2023; Cao et al., 2023). Other approaches rely on score differences (Hertz et al., 2023a) or directly
+model source-to-target editing dynamics (Xu et al., 2024; Kulikov et al., 2025). For reward-guided
+editing, ITOC optimizes controls along the pretrained trajectory (Chang et al., 2026). FlowChef
+exploits flow geometry (Patel et al., 2025), whereas RewardFlow combines multiple differentiable
+rewards (Susladkar et al., 2026). FMRG further improves guidance efficiency through flow-map
+lookahead (Huang et al., 2026). FASTER instead specifies a source-conditioned endpoint target and
+learns a separate lightweight transport to realize it.
+Generative priors and stochastic-control optimization.
+Frozen models provide priors for in-
+verse imaging (Feng et al., 2023; Feng & Bouman, 2024; Mardani et al., 2024) and score-distillation-
+based 3D optimization (Poole et al., 2023; Wang et al., 2023). UniDB formulates diffusion bridges
+as SOC with a tunable terminal penalty (Zhu et al., 2025), while UniDB++ accelerates sampling
+within this framework through a training-free solver (Pan et al., 2026). For SOC solvers, Adjoint
+Matching learns controls by regression (Domingo-Enrich et al., 2025), Adjoint Sampling reuses ter-
+minal information through reference bridges (Havens et al., 2025), and Efficient Adjoint Matching
+simplifies the reference dynamics and terminal cost (Shin et al., 2026). FASTER uses frozen-model
+endpoint supervision to learn a lightweight per-image editor.
+3
+PRELIMINARIES
+We edit in latent space: s and y denote source and output latents, D is a frozen decoder, and
+r(y) = R(D(y)) is a task reward. We write ppre for the pretrained latent prior. The control time
+λ ∈[0, 1] below is distinct from the pretrained model’s noise time t used for semantic queries in
+Sec. 4.
+3.1
+REFERENCE DYNAMICS AND STOCHASTIC CONTROL
+A reference process describes state evolution before applying a task-dependent control. From a fixed
+initial state xinit, its path law Q and a controlled path law P b are defined by
+Q :
+dxλ = a0(xλ, λ) dλ + σλ dwλ,
+(1a)
+P b :
+dxλ = [a0(xλ, λ) + b(xλ, λ)] dλ + σλ dwλ,
+x0 = xinit.
+(1b)
+Here a0 is the reference drift, b the control drift, and σλ > 0 the shared diffusion scale.
+In
+pretrained-trajectory control, a0 contains the frozen generator’s prediction, so each state update
+still invokes the large model even when the control branch is small. ITOC illustrates this compu-
+tational dependence (Chang et al., 2026); its fixed-noise trajectory optimization is distinct from the
+distributional formulation below.
+For a terminal cost g, stochastic optimal control minimizes
+J(b) = EP b
+Z 1
+0
+∥b(xλ, λ)∥2
+2σ2
+λ
+dλ + g(x1)
+
+= DKL(P b∥Q) + EP b[g(x1)].
+(2)
+3
+
+
+Preprint.
+The equality requires the usual Girsanov and integrability conditions (Domingo-Enrich et al., 2025;
+Havens et al., 2025). The reference process regularizes paths, while g specifies the preference over
+endpoints. These are separate design choices: the pretrained prior ppre can inform the endpoint
+preference without dictating the reference dynamics Q.
+3.2
+ADJOINT MATCHING
+Adjoint Matching (AM) trains a control by regressing it toward an adjoint-derived target (Domingo-
+Enrich et al., 2025). For a sampled trajectory held fixed during regression, its lean adjoint in the
+terminal-cost setting obeys
+deaλ
+dλ = −
+
+∇xa0(xλ, λ)
+⊤eaλ,
+ea1 = ∇g(x1),
+(3)
+and supplies the physical-drift regression target −σ2
+λeaλ. AM is a solver for the control problem,
+not another definition of its objective. Although its lean adjoint avoids differentiating the learned
+control, Eq. (3) retains derivatives of the reference drift. A pretrained reference can therefore incur
+large-model work both when sampling paths and when propagating supervision. This motivates the
+choice of reference dynamics in Sec. 4.
+4
+FASTER
+Pretrained-trajectory control repeatedly executes the large generator as the edit changes (Sec. 3).
+FASTER instead specifies a per-image endpoint target and learns a small controller to reach it,
+reusing endpoint feedback across controller updates (Fig. 2).
+4.1
+FROM A PER-IMAGE EDITING OBJECTIVE TO LIGHTWEIGHT CONTROL
+For a fixed source latent s, a successful edit should improve the task reward r(y), avoid unnecessary
+changes to the source, and favor plausible outputs under the pretrained prior ppre. Let D(s, y) mea-
+sure source change and ρ be an output density for this editing instance. We minimize the following
+functional over output densities:
+Fs(ρ) = DKL(ρ∥ppre) + αEρ[D(s, Y )] −βEρ[r(Y )],
+α ≥0,
+β > 0.
+(4)
+The KL term favors plausible outputs, while the preservation cost anchors them to s. The mini-
+mizer is the target below with γ = 1; an independent weight γ ≥0 controls the prior contribution
+(Appendix A):
+πs(y) = Z−1
+s ppre(y)γ exp[−αD(s, y) + βr(y)].
+(5)
+We assume 0 < Zs < ∞and use D(s, y) = ∥y −s∥2/2. This target specifies preferred outputs
+without prescribing their generation paths.
+For a fixed source and request, the source supplies content and frozen models supply feedback.
+A small per-image controller therefore need only learn the current edit, rather than the full image
+distribution.
+Let zλ be the residual from s and τ > 0 a noise scale. We choose a zero-drift Brownian reference
+Qτ. Its endpoint density and endpoint-conditioned bridge are analytic:
+dzλ = τ dwλ,
+z0 = 0,
+qτ(z) = N(z; 0, τ 2I),
+(6a)
+zλ | z1 ∼N(λz1, τ 2λ(1 −λ)I),
+0 < λ < 1.
+(6b)
+Adding the per-image controller gives the editing dynamics
+dzλ = bθ(zλ, λ; s) dλ + τ dwλ,
+yλ = s + zλ.
+(7)
+We implement the controller with a small network fitted separately for each source and objective:
+bθ(z, λ; s) = m + fψ(z, λ, s),
+θ = (m, ψ).
+(8)
+The latent-shaped offset m is independent of state and time. The three-layer convolutional network
+fψ takes the residual, source latent, and broadcast time as input and predicts a correction. Each
+4
+
+
+Preprint.
+(a) Training with reusable feedback
+Source image
+Edit prompt
+“A puppy wearing
+sunglasses”
+1  Controller rollout
+Small trainable network
+···
+···
+···
+Endpoint
+2  Regression target
+(detached)
+Reference + preservation
+Pretrained prior
+Reward
+3  Replace current cache
+Detached endpoint + target
+Refresh
+4  Endpoint adjoint regression
+M cheap updates
+Reuse
+Refresh after M updates
+(b) Editing after training
+Learned controller
+Fresh trajectory
+Decoder
+Edited image
+Figure 2: FASTER training and editing pipeline. (a) Each of K refreshes caches an endpoint and
+its detached preservation, prior, and reward target for M controller updates. (b) After training, a
+fresh controller rollout is decoded into the edited image.
+editing step evaluates only this small network; only θ is trained, with frozen pretrained models
+providing endpoint feedback. Architecture and initialization details are in Appendix E.
+The reference endpoint qτ is Gaussian, however, so it need not equal the desired residual density
+¯πs(z) = πs(s + z). We compensate with the terminal cost
+gs(z) = log qτ(z) −log ¯πs(z).
+(9)
+Since qτe−gs = ¯πs, the unrestricted optimum of Eq. (2) has y1 ∼πs under the conditions in
+Appendix B. The terminal cost cancels the reference endpoint preference and imposes the editing
+target; a finite controller with estimated feedback approximates this ideal law.
+4.2
+LEARNING FROM REUSABLE ENDPOINT SUPERVISION
+Endpoint feedback requires decoding, reward gradients, and pretrained-model queries. We reuse
+each evaluated endpoint for multiple small-network updates, reducing repeated rollouts and feed-
+back computation.
+The optimal path law P ⋆
+s for Eq. (9) has density ratio dP ⋆
+s /dQτ = ¯πs(z1)/qτ(z1), which de-
+pends only on the endpoint. Thus its conditional paths remain the reference bridges in Eq. (6)
+(Appendix B). This structure is useful before convergence as well. For a current path law P with
+endpoint density p1, the path-space objective decomposes as
+Js(P) = DKL(p1∥¯πs) + Ez1∼p1[DKL(P(· | z1)∥Qτ(· | z1))] .
+(10)
+Replacing the conditional paths by reference bridges preserves the endpoint distribution and re-
+moves the second term. This motivates pairing current endpoints with resampled bridge states. We
+adopt Reciprocal Adjoint Matching from Adjoint Sampling (Havens et al., 2025), whose reciprocal-
+projection analysis supports this construction.
+The Brownian reference in Eq. (6) has a0 = 0, hence ∇xa0 = 0; the lean-adjoint equation (3)
+therefore gives deaλ/dλ = 0 and eaλ = ∇gs(z1). Its physical-drift label is therefore −τ 2∇gs(z1),
+eliminating backward adjoint propagation. For quadratic preservation, the practical label at y =
+s + z1 is
+bbs(z1) = (1 −ατ 2)z1 + τ 2γ
+|{z}
+cp
+bspre(y) + τ 2β
+|{z}
+cr
+∇yr(y).
+(11)
+The first term combines reference correction and preservation; the remaining terms provide esti-
+mated prior and reward gradients. Here bspre is a prior-guidance estimate obtained from noisy model
+5
+
+
+Preprint.
+Algorithm 1 FASTER: per-image endpoint refinement
+Require: Source latent s; reward r; α, τ, cp, cr; refreshes K; updates M.
+1: Initialize m and the final layer of fψ to zero in Eq. (8).
+2: for k = 1, . . . , K do
+3:
+Roll out an endpoint z1 using Eq. (7).
+4:
+Evaluate Eq. (11); replace the cache with detached (z1,bbs(z1)).
+5:
+for j = 1, . . . , M do
+6:
+Draw a minibatch of independent (λ, ϵ) pairs.
+7:
+Form detached zλ = λz1 + τ
+p
+λ(1 −λ)ϵ.
+8:
+Update θ = (m, ψ) using the averaged loss in Eq. (12).
+9:
+end for
+10: end for
+11: Roll out a fresh endpoint z1 with the learned bθ; return D(s + z1).
+queries; Appendix D describes its surrogate-prior interpretation. Reward gradients pass through the
+frozen decoder and reward model at this endpoint. We evaluate the label once, then store it with the
+detached endpoint.
+For the stored pair, draw λ ∼U(0, 1) and independent ϵ ∼N(0, I). Sample the reference bridge
+as zλ = λz1 + τ
+p
+λ(1 −λ) ϵ and minimize
+Ls(θ; z1) = Eλ,ϵ
+bθ(zλ, λ; s) −sg[bbs(z1)]
+
+2
+.
+(12)
+The label and sampled states are detached. Resampling bridge states supplies new training inputs
+without new rollouts or feedback queries. Appendix C establishes population consistency under
+exact target endpoints and labels, and discusses finite-update limitations.
+Each of K refreshes replaces the cached endpoint–label pair and performs M controller updates.
+After fitting, a fresh controller sample is decoded as the output (Algorithm 1). Appendix H examines
+the effect of varying K and M.
+4.3
+SEMANTIC EDITING THROUGH A MODEL-DERIVED REWARD
+An image–text score can increase without fulfilling a specific editing request. We therefore use the
+pretrained model’s conditional information to define a semantic reward for the same endpoint solver.
+Prior work observes that text conditioning shapes semantic content and spatial structure during early
+denoising (Balaji et al., 2022; Hertz et al., 2023b). This motivates querying a higher-noise state
+xt = (1 −t)y + tϵ rather than only the clean candidate y. We draw t ∼ν from a fixed high-noise
+interval inside (0, 1) and independent ϵ ∼N(0, I). This direct construction avoids a pretrained
+sampling rollout.
+Inspired by classifier-free guidance (Ho & Salimans, 2022), we compare target and source descrip-
+tions ctgt and csrc at the same noisy candidate. Let pt(· | c) be the noisy conditional density. Define
+Eedit(y) = Et,ϵ
+
+log pt(xt | ctgt)
+pt(xt | csrc)
+
+.
+(13)
+Let st(x, c) = ∇x log pt(x | c) be the conditional score and vc the conditional velocity. Under
+SD3’s data-to-noise convention, their relation is
+st(x, c) = −x + (1 −t)vc(x, t)
+t
+.
+(14)
+Taking the target-minus-source score difference cancels xt. The linear Jacobian ∂xt/∂y = (1−t)I
+then gives
+gedit(y) := ∇yEedit(y) = Et,ϵ
+(1 −t)2
+t
+ vcsrc −vctgt
+
+(xt, t)
+
+.
+(15)
+Thus paired conditional forward predictions provide the gradient without backpropagation through
+the pretrained backbone; Appendix G gives the derivation.
+6
+
+
+Preprint.
+Adding the reward with weight η ≥0 subtracts ηEedit(s + z) from the terminal cost, giving the
+practical label
+bbedit
+s
+(z1) = bbs(z1) + τ 2η
+|{z}
+ce
+bgedit(s + z1).
+(16)
+Here bgedit estimates Eq. (15) using paired source/target model predictions. We cache and reuse the
+augmented label in the same bridge regression and refresh loop of Sec. 4.2.
+5
+EXPERIMENTS
+Following Chang et al. (2026), we evaluate four reward-guided editing tasks with 300 source–
+condition pairs each. Human preference optimizes ImageReward (Xu et al., 2023). Style transfer
+minimizes the Gram-matrix difference between output and reference-image features from CLIP ViT-
+B/16 (Radford et al., 2021). Counterfactual generation maximizes the target-class logit of a robust
+ResNet-50 classifier (Engstrom et al., 2019), using a class label as the reward condition. Text-guided
+facial editing maximizes CLIP ViT-L/14 image–text similarity for the requested attribute. Each task
+also reports validation metrics not directly optimized: HPSv2 (Wu et al., 2023), CLIPScore, and
+Aesthetic for human preference; reference-image CLIP-I and DINO (Caron et al., 2021) similarity
+for style; target-class text CLIPScore for counterfactual generation; and ImageReward and HPSv2
+for facial editing. These metrics assess whether target improvements generalize beyond the opti-
+mized reward.
+We use Stable Diffusion 3 Medium (SD3) (Esser et al., 2024) for the main quality comparison.
+The baselines are ITOC (Chang et al., 2026), gradient ascent (GA), DPS (Chung et al., 2023),
+FreeDoM (Yu et al., 2023), TFG (Ye et al., 2024), and MPGD (He et al., 2024); GA performs
+gradient ascent in latent space. Appendix F details the datasets, reward models, evaluation protocol,
+and baseline implementations, and provides the SD1.5 results.
+5.1
+MAIN RESULTS
+FASTER achieves the best target metric in all four SD3 tasks and leads several validation metrics
+(Table 1). For human preference, the ImageReward improvement is accompanied by the high-
+est HPSv2 and CLIPScore; for counterfactual generation, both the target-class logit and validation
+CLIPScore lead the comparison. Facial editing similarly combines the highest target CLIPScore
+with the best ImageReward. In style transfer, FASTER achieves the lowest GramDiff and highest
+reference CLIP-I, although its DINO similarity remains below the best result. These gains extend
+to multiple metrics that are not directly optimized, although FASTER does not lead every validation
+metric.
+Alongside these quality results, FASTER offers a substantial editing-time advantage over the base-
+line that optimizes controls along pretrained generation trajectories (Fig. 3). FASTER achieves
+speedups of up to 6.91× on SD3 and 24.14× on SD1.5. This advantage is consistent with assigning
+repeated updates to a small network and reusing costly endpoint feedback. A 768 × 768 SD3 Im-
+ageReward edit takes approximately 7.7 s of editing time on a single consumer GPU. Appendix F
+gives the timing protocol, memory measurements, and comparisons with all baselines.
+SD3
+SD1.5
+SD3
+SD1.5
+SD3
+SD1.5
+SD3
+SD1.5
+2
+5
+10
+20
+50
+100
+Editing time (s/image)
+42.0
+6.4
+78.3
+5.3
+41.5
+6.0
+77.9
+3.2
+41.0
+6.3
+78.2
+3.3
+41.5
+8.5
+78.3
+4.7
+Human
+Style
+Counterfactual
+Face
+ITOC
+FASTER
+Figure 3: Editing time of ITOC and FASTER across four tasks on SD3 and SD1.5.
+7
+
+
+Preprint.
+Table 1: Results on Stable Diffusion 3. Each task includes a target metric, which is directly op-
+timized, and validation metrics used to assess potential reward hacking. Arrows indicate whether
+higher (↑) or lower (↓) values are better. Bold values indicate the best result for each metric.
+Metric
+ITOC
+GA
+DPS FreeDoM
+TFG
+MPGD FASTER
+Human preference
+TARGET ImageReward↑
+1.8326
+1.8645
+1.4687
+1.6535
+1.5128
+0.9413
+1.8958
+VALIDATION HPSv2↑
+0.2619
+0.2608
+0.2579
+0.2576
+0.2580
+0.2563
+0.2624
+VALIDATION CLIPScore↑
+0.2734
+0.2776
+0.2566
+0.2388
+0.2539
+0.2655
+0.2783
+VALIDATION Aesthetic↑
+5.7933
+5.6329
+5.5978
+5.6719
+5.4951
+5.4667
+5.6991
+Style transfer
+TARGET GramDiff↓
+8.3341
+9.6810
+7.3644
+6.9180
+9.9923 10.2211
+4.9746
+VALIDATION CLIP-Isty↑
+0.5022
+0.4951
+0.5079
+0.5068
+0.5104
+0.4945
+0.5168
+VALIDATION DINOsty↑
+0.1727
+0.1233
+0.2361
+0.2460
+0.2013
+0.1478
+0.1442
+Counterfactual generation
+TARGET Logittgt↑
+18.8789 11.4157 20.5937
+21.6252 20.6566 16.0873
+29.8948
+VALIDATION CLIPScore↑
+0.1884
+0.1620
+0.1882
+0.1950
+0.1882
+0.1823
+0.2253
+Text-guided facial editing
+TARGET CLIPScore↑
+0.2654
+0.2121
+0.2544
+0.2495
+0.2509
+0.2093
+0.3538
+VALIDATION ImageReward↑-0.8159 -0.8309 -0.7610
+-0.7436 -0.7539 -0.9225
+-0.6027
+VALIDATION HPSv2↑
+0.2573
+0.2564
+0.2531
+0.2549
+0.2535
+0.2572
+0.2533
+The qualitative examples in Fig. 4 show how these edits retain source content while changing the re-
+quested attributes. In the text-guided example, it produces a smile while largely preserving the man’s
+facial appearance, hairstyle, and composition. The counterfactual example changes the lorikeet to-
+ward an African grey appearance while retaining the source bird’s head pose and outline. In the
+human-preference example, the frog and surrounding scene remain recognizable. For style transfer,
+the rabbit retains its overall silhouette and pose while acquiring the silver-grey palette and metal-
+lic appearance of the reference train. Together, these examples illustrate targeted changes without
+wholesale replacement of the source composition.
+GA
+DPS
+FreeDoM
+TFG
+ITOC
+FASTER(Ours)
+“Smiling man”
+“lorikeet”
+“African grey”
+MPGD
+Human 
+preference
+Style 
+transform
+Source
+Text-guided 
+image editing
+Counterfactual
+Figure 4: Qualitative comparisons on four SD3 editing tasks. Rows show text-guided image editing,
+counterfactual generation, human preference enhancement, and style transfer. For text-guided image
+editing, the target prompt is supplied to the pretrained generative model of each applicable method.
+The style reference is shown on the left.
+8
+
+
+Preprint.
+5.2
+EDITING BEYOND CLIPSCORE
+CLIPScore can assess image–text alignment, but maximizing it does not guarantee the requested
+semantic edit.
+In Fig. 5, optimization raises CLIPScore from 0.223 to 0.356 without adding sunglasses. The Editing
+Term (Sec. 4.3) produces visible sunglasses despite a lower score of 0.271, supplying semantic
+guidance beyond score maximization. Further Editing Term examples and parameter sweeps appear
+in Appendix G.
+Source Image
+CLIPScore Reward
+Editing Term
+“A puppy 
+   wearing
+ sunglasses”
+Target CLIP = 0.223
+Target CLIP = 0.356
+Target CLIP = 0.271
+Figure 5: FASTER with CLIPScore optimization or the Editing Term for the same sunglasses re-
+quest. Values are CLIPScore.
+5.3
+REWARD STRENGTH AND OUTER-LOOP BUDGET
+Figure 6 varies the outer-loop budget K and reward coefficient cr on the ImageReward task. For
+the tested source–prompt pairs, a suitable cr allows more outer-loop steps to improve ImageRe-
+ward while validation metrics recover or remain strong at later checkpoints. In contrast, the largest
+cr brings little additional ImageReward over the moderate settings, but HPSv2, CLIPScore, and
+Aesthetic all deteriorate as K grows. The gap between a saturated target reward and worsening val-
+idation metrics indicates reward hacking in these settings. These observations show that the benefit
+of increasing K depends on the reward strength. Appendix G also shows the visual progression with
+K when the Editing Term drives a larger semantic change.
+1
+5
+20
+100
+0.75
+1.00
+1.25
+1.50
+1.75
+2.00
+ImageReward (target)
+1
+5
+20
+100
+0.255
+0.260
+0.265
+0.270
+HPSv2 (validation)
+1
+5
+20
+100
+0.25
+0.26
+0.27
+0.28
+0.29
+CLIPScore (validation)
+1
+5
+20
+100
+6.4
+6.6
+6.8
+7.0
+Aesthetic (validation)
+Outer-loop iterations K
+cr = 1,280
+cr = 5,120
+cr = 20,480
+cr = 5,120, τ = 0.025
+Figure 6: Effect of K and four parameter settings on the SD3 ImageReward task. Each curve
+averages the same three source–prompt pairs at saved checkpoints from one run per setting. All
+settings use ατ 2 = 1 and cp = 0. Solid curves use τ = 0.0125; the dashed curve uses τ = 0.025.
+The dotted vertical line marks K = 20.
+6
+CONCLUSION
+We introduced a decoupled view of reward-guided image editing at test time, in which pretrained
+models provide visual knowledge while a separate lightweight process executes the edit. Our the-
+oretical framework jointly accounts for reward improvement, source preservation, and prior prefer-
+ences, establishing a basis for specifying desirable outputs independently of pretrained generation
+9
+
+
+Preprint.
+trajectories. Building on this framework, FASTER trains a small per-image network and reuses
+candidate outputs and their costly feedback across multiple inexpensive updates. A complementary
+editing term obtains semantic directions from conditional model predictions without backpropagat-
+ing through the pretrained backbone, supporting changes that image–text score maximization alone
+may fail to produce. Across four tasks, FASTER achieves competitive target and independent vali-
+dation metrics, with editing-time speedups of up to 6.91× on SD3 and 24.14× on SD1.5 relative to
+the evaluated baseline that optimizes controls along pretrained generation trajectories.
+ACKNOWLEDGMENTS
+This work was supported by the National Natural Science Foundation of China under Grant
+62406195, together with support from the HPC Platform of ShanghaiTech University, the MoE Key
+Laboratory of Intelligent Perception and Human-Machine Collaboration (ShanghaiTech University),
+and the Shanghai Engineering Research Center of Intelligent Vision and Imaging. Computational
+resources for this work were also provided in part by Fcloud CO., LTD.
+REFERENCES
+Yogesh Balaji, Seungjun Nah, Xun Huang, Arash Vahdat, Jiaming Song, Qinsheng Zhang, Karsten
+Kreis, Miika Aittala, Timo Aila, Samuli Laine, Bryan Catanzaro, Tero Karras, and Ming-Yu Liu.
+eDiff-I: Text-to-image diffusion models with an ensemble of expert denoisers. arXiv preprint
+arXiv:2211.01324, 2022. URL https://arxiv.org/abs/2211.01324.
+Arpit Bansal, Hong-Min Chu, Avi Schwarzschild, Soumyadip Sengupta, Micah Goldblum, Jonas
+Geiping, and Tom Goldstein. Universal guidance for diffusion models. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops, pp.
+843–852, 2023.
+URL https://openaccess.thecvf.com/content/CVPR2023W/
+GCV/html/Bansal_Universal_Guidance_for_Diffusion_Models_CVPRW_
+2023_paper.html.
+Heli Ben-Hamu, Omri Puny, Itai Gat, Brian Karrer, Uriel Singer, and Yaron Lipman. D-Flow:
+Differentiating through flows for controlled generation.
+In Forty-first International Confer-
+ence on Machine Learning, volume 235, pp. 3462–3483. PMLR, 2024.
+URL https://
+proceedings.mlr.press/v235/ben-hamu24a.html.
+Mingdeng Cao, Xintao Wang, Zhongang Qi, Ying Shan, Xiaohu Qie, and Yinqiang Zheng. MasaC-
+trl: Tuning-free mutual self-attention control for consistent image synthesis and editing. In 2023
+IEEE/CVF International Conference on Computer Vision (ICCV), pp. 22503–22513. IEEE, 2023.
+Mathilde Caron, Hugo Touvron, Ishan Misra, Herv´e J´egou, Julien Mairal, Piotr Bojanowski, and
+Armand Joulin. Emerging properties in self-supervised vision transformers. In Proceedings of
+the IEEE/CVF International Conference on Computer Vision, 2021. URL https://arxiv.
+org/abs/2104.14294.
+Jinho Chang, Jaemin Kim, and Jong Chul Ye. Training-free reward-guided image editing via trajec-
+tory optimal control. In The Fourteenth International Conference on Learning Representations,
+2026. URL https://openreview.net/forum?id=YL2NgqN3Vh.
+Hyungjin Chung, Jeongsol Kim, Michael Thompson Mccann, Marc Louis Klasky, and Jong Chul
+Ye. Diffusion posterior sampling for general noisy inverse problems. In The Eleventh Interna-
+tional Conference on Learning Representations, 2023. URL https://openreview.net/
+forum?id=OnD9zGAGT0k.
+Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. ImageNet: A large-scale
+hierarchical image database. In Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition, pp. 248–255, 2009. doi: 10.1109/CVPR.2009.5206848.
+Carles Domingo-Enrich, Michal Drozdzal, Brian Karrer, and Ricky T. Q. Chen. Adjoint matching:
+Fine-tuning flow and diffusion generative models with memoryless stochastic optimal control. In
+International Conference on Learning Representations, 2025. URL https://openreview.
+net/forum?id=xQBRrtQM8u.
+10
+
+
+Preprint.
+Logan Engstrom, Andrew Ilyas, Hadi Salman, Shibani Santurkar, and Dimitris Tsipras. Robustness
+(Python library), 2019. URL https://github.com/MadryLab/robustness.
+Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨uller, Harry Saini, Yam
+Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim Dockhorn, Zion En-
+glish, and Robin Rombach. Scaling rectified flow transformers for high-resolution image syn-
+thesis.
+In Proceedings of the 41st International Conference on Machine Learning, volume
+235, pp. 12606–12633. PMLR, 2024. URL https://proceedings.mlr.press/v235/
+esser24a.html.
+Luca Eyring, Shyamgopal Karthik, Karsten Roth, Alexey Dosovitskiy, and Zeynep Akata. ReNO:
+Enhancing one-step text-to-image models through reward-based noise optimization. In Advances
+in Neural Information Processing Systems, volume 37, pp. 125487–125519. Curran Associates,
+Inc., 2024.
+Berthy Feng and Katherine Bouman. Variational bayesian imaging with an efficient surrogate score-
+based prior. Transactions on Machine Learning Research, 2024. ISSN 2835-8856. URL https:
+//openreview.net/forum?id=db2pFKVcm1.
+Berthy T Feng, Jamie Smith, Michael Rubinstein, Huiwen Chang, Katherine L Bouman, and
+William T Freeman. Score-based diffusion models as principled priors for inverse imaging. In
+2023 IEEE/CVF International Conference on Computer Vision (ICCV), pp. 10486–10497. IEEE,
+2023.
+Aaron J Havens, Benjamin Kurt Miller, Bing Yan, Carles Domingo-Enrich, Anuroop Sriram,
+Daniel S. Levine, Brandon M Wood, Bin Hu, Brandon Amos, Brian Karrer, Xiang Fu, Guan-
+Horng Liu, and Ricky T. Q. Chen. Adjoint sampling: Highly scalable diffusion samplers via
+adjoint matching. In Forty-second International Conference on Machine Learning, 2025. URL
+https://openreview.net/forum?id=6Eg1OrHmg2.
+Yutong He, Naoki Murata, Chieh-Hsin Lai, Yuhta Takida, Toshimitsu Uesaka, Dongjun Kim, Wei-
+Hsiang Liao, Yuki Mitsufuji, J. Zico Kolter, Ruslan Salakhutdinov, and Stefano Ermon. Manifold
+preserving guided diffusion. In International Conference on Learning Representations, 2024.
+Amir Hertz, Kfir Aberman, and Daniel Cohen-Or.
+Delta denoising score.
+In 2023 IEEE/CVF
+International Conference on Computer Vision (ICCV), pp. 2328–2337. IEEE, 2023a.
+Amir Hertz, Ron Mokady, Jay Tenenbaum, Kfir Aberman, Yael Pritch, and Daniel Cohen-Or.
+Prompt-to-prompt image editing with cross-attention control. In The Eleventh International Con-
+ference on Learning Representations, 2023b. URL https://openreview.net/forum?
+id=_CDixzkzeyb.
+Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras, and Yejin Choi.
+CLIPScore: A
+reference-free evaluation metric for image captioning.
+In Proceedings of the 2021 Confer-
+ence on Empirical Methods in Natural Language Processing, pp. 7514–7528, 2021.
+URL
+https://aclanthology.org/2021.emnlp-main.595/.
+Jonathan Ho and Tim Salimans.
+Classifier-free diffusion guidance.
+arXiv preprint
+arXiv:2207.12598, 2022. URL https://arxiv.org/abs/2207.12598.
+Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances
+in Neural Information Processing Systems, volume 33, pp. 6840–6851. Curran Associates, Inc.,
+2020.
+Jerry Y Huang, Justin Lin, Sheel Shah, Kartik Nair, and Nicholas M Boffi. How to guide your flow:
+Few-step alignment via flow map reward guidance. In Proceedings of the 43rd International
+Conference on Machine Learning, 2026. URL https://github.com/jrrhuang/fmrg.
+Tero Karras, Timo Aila, Samuli Laine, and Jaakko Lehtinen. Progressive growing of GANs for im-
+proved quality, stability, and variation. In International Conference on Learning Representations,
+2018. URL https://arxiv.org/abs/1710.10196.
+11
+
+
+Preprint.
+Sunwoo Kim, Minkyu Kim, and Dongmin Park. Test-time alignment of diffusion models without
+reward over-optimization. In The Thirteenth International Conference on Learning Representa-
+tions, 2025. URL https://openreview.net/forum?id=vi3DjUhFVm.
+Yuval Kirstain, Adam Polyak, Uriel Singer, Shahbuland Matiana, Joe Penna, and Omer Levy.
+Pick-a-Pic: An open dataset of user preferences for text-to-image generation. In Advances in
+Neural Information Processing Systems, volume 36, pp. 36652–36663. Curran Associates, Inc.,
+2023.
+URL https://proceedings.neurips.cc/paper_files/paper/2023/
+hash/73aacd8b3b05b4b503d58310b523553c-Abstract-Conference.html.
+Vladimir Kulikov, Matan Kleiner, Inbar Huberman-Spiegelglas, and Tomer Michaeli. FlowEdit:
+Inversion-free text-based editing using pre-trained flow models. In 2025 IEEE/CVF International
+Conference on Computer Vision (ICCV), pp. 19721–19730. IEEE, 2025.
+Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. Flow
+matching for generative modeling. In The Eleventh International Conference on Learning Repre-
+sentations, 2023. URL https://openreview.net/forum?id=PqvMRDCJT9t.
+Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and
+transfer data with rectified flow. In International Conference on Learning Representations, 2023.
+Morteza Mardani, Jiaming Song, Jan Kautz, and Arash Vahdat. A variational perspective on solving
+inverse problems with diffusion models. In International Conference on Learning Representa-
+tions, 2024.
+Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and Stefano Ermon.
+SDEdit: Guided image synthesis and editing with stochastic differential equations. In Interna-
+tional Conference on Learning Representations, 2022.
+George A. Miller. WordNet: A lexical database for English. Communications of the ACM, 38(11):
+39–41, 1995. doi: 10.1145/219717.219748.
+Ron Mokady, Amir Hertz, Kfir Aberman, Yael Pritch, and Daniel Cohen-Or. Null-text inversion for
+editing real images using guided diffusion models. In 2023 IEEE/CVF Conference on Computer
+Vision and Pattern Recognition (CVPR), pp. 6038–6047. IEEE, 2023.
+Mokai Pan, Kaizhen Zhu, Yuexin Ma, Yanwei Fu, Jingyi Yu, Jingya Wang, and Ye Shi. A unified
+and fast-sampling diffusion bridge framework via stochastic optimal control. IEEE Transactions
+on Pattern Analysis and Machine Intelligence, 2026. doi: 10.1109/TPAMI.2026.3710696. URL
+https://doi.org/10.1109/TPAMI.2026.3710696.
+Maitreya Patel, Song Wen, Dimitris N Metaxas, and Yezhou Yang. FlowChef: Steering of rec-
+tified flow models for controlled generations. In 2025 IEEE/CVF International Conference on
+Computer Vision (ICCV), pp. 15308–15318. IEEE, 2025.
+Ben Poole, Ajay Jain, Jonathan T. Barron, and Ben Mildenhall. DreamFusion: Text-to-3D using 2D
+diffusion. In The Eleventh International Conference on Learning Representations, 2023. URL
+https://openreview.net/forum?id=FjNys5c7VyY.
+Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agar-
+wal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya
+Sutskever.
+Learning transferable visual models from natural language supervision.
+In Inter-
+national Conference on Machine Learning, volume 139, pp. 8748–8763. PMLR, 2021. URL
+https://proceedings.mlr.press/v139/radford21a.html.
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨orn Ommer. High-
+resolution image synthesis with latent diffusion models. In 2022 IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR), pp. 10674–10685. IEEE, 2022.
+Jeongwoo Shin, Dongsoo Shin, Yuchen Zhu, Wei Guo, Yongxin Chen, Joonseok Lee, Jaewoong
+Choi, and Jaemoo Choi.
+Efficient adjoint matching for fine-tuning diffusion models.
+arXiv
+preprint arXiv:2605.11480, 2026.
+12
+
+
+Preprint.
+Raghav Singhal, Zachary Horvitz, Ryan Teehan, Mengye Ren, Zhou Yu, Kathleen McKeown, and
+Rajesh Ranganath. A general framework for inference-time scaling and steering of diffusion
+models. In Forty-second International Conference on Machine Learning, 2025. URL https:
+//openreview.net/forum?id=Jp988ELppQ.
+Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben
+Poole. Score-based generative modeling through stochastic differential equations. In Interna-
+tional Conference on Learning Representations, 2021.
+Onkar Susladkar, Dong-Hwan Jang, Tushar Prakash, Adheesh Juvekar, Vedant Shah, Ayush Barik,
+Nabeel Bashir, Muntasir Wahed, Ritish Shrirao, and Ismini Lourentzou. RewardFlow: Generate
+images by optimizing what you reward. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR), pp. 20066–20076, June 2026.
+Zhiwei Tang, Jiangweizhi Peng, Jiasheng Tang, Mingyi Hong, Fan Wang, and Tsung-Hui Chang.
+Inference-time alignment of diffusion models with direct noise optimization. In Forty-second
+International Conference on Machine Learning, 2025. URL https://openreview.net/
+forum?id=JpbqiD7n9r.
+Narek Tumanyan, Michal Geyer, Shai Bagon, and Tali Dekel. Plug-and-play diffusion features for
+text-driven image-to-image translation. In 2023 IEEE/CVF Conference on Computer Vision and
+Pattern Recognition (CVPR), pp. 1921–1930. IEEE, 2023.
+Bram Wallace, Akash Gokul, Stefano Ermon, and Nikhil Naik. End-to-end diffusion latent opti-
+mization improves classifier guidance. In 2023 IEEE/CVF International Conference on Computer
+Vision (ICCV), pp. 7246–7256. IEEE, 2023.
+Zhengyi Wang, Cheng Lu, Yikai Wang, Fan Bao, Chongxuan Li, Hang Su, and Jun Zhu. Prolific-
+Dreamer: High-fidelity and diverse text-to-3D generation with variational score distillation. In
+Advances in Neural Information Processing Systems, volume 36, pp. 8406–8441. Curran Asso-
+ciates, Inc., 2023.
+Xiaoshi Wu, Yiming Hao, Keqiang Sun, Yixiong Chen, Feng Zhu, Rui Zhao, and Hongsheng Li.
+Human preference score v2: A solid benchmark for evaluating human preferences of text-to-
+image synthesis. arXiv preprint arXiv:2306.09341, 2023. URL https://arxiv.org/abs/
+2306.09341.
+Jiazheng
+Xu,
+Xiao
+Liu,
+Yuchen
+Wu,
+Yuxuan
+Tong,
+Qinkai
+Li,
+Ming
+Ding,
+Jie
+Tang,
+and
+Yuxiao
+Dong.
+ImageReward:
+Learning
+and
+evaluating
+human
+prefer-
+ences
+for
+text-to-image
+generation.
+In
+Advances
+in
+Neural
+Information
+Process-
+ing Systems,
+volume 36,
+pp. 15903–15935. Curran Associates,
+Inc.,
+2023.
+URL
+https://proceedings.neurips.cc/paper_files/paper/2023/hash/
+33646ef0ed554145eab65f6250fab0c9-Abstract-Conference.html.
+Sihan Xu, Yidong Huang, Jiayi Pan, Ziqiao Ma, and Joyce Chai. Inversion-free image editing with
+language-guided diffusion models. In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition (CVPR), pp. 9452–9461, June 2024.
+Lingxiao Yang, Shutong Ding, Yifan Cai, Jingyi Yu, Jingya Wang, and Ye Shi.
+Guidance
+with spherical gaussian constraint for conditional diffusion.
+In Forty-first International Con-
+ference on Machine Learning, volume 235, pp. 56071–56095. PMLR, 2024.
+URL https:
+//proceedings.mlr.press/v235/yang24h.html.
+Haotian Ye, Haowei Lin, Jiaqi Han, Minkai Xu, Sheng Liu, Yitao Liang, Jianzhu Ma, James Zou,
+and Stefano Ermon. TFG: Unified training-free guidance for diffusion models. In Advances in
+Neural Information Processing Systems, volume 37, pp. 22370–22417. Curran Associates, Inc.,
+2024.
+Jiwen Yu, Yinhuai Wang, Chen Zhao, Bernard Ghanem, and Jian Zhang.
+FreeDoM: Training-
+free energy-guided conditional diffusion model. In 2023 IEEE/CVF International Conference on
+Computer Vision (ICCV), pp. 23117–23127. IEEE, 2023.
+13
+
+
+Preprint.
+Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable
+effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition, pp. 586–595, 2018. URL https://arxiv.org/
+abs/1801.03924.
+Kaizhen Zhu, Mokai Pan, Yuexin Ma, Yanwei Fu, Jingyi Yu, Jingya Wang, and Ye Shi. UniDB:
+A unified diffusion bridge framework via stochastic optimal control. In Proceedings of the 42nd
+International Conference on Machine Learning, volume 267, pp. 79985–80012. PMLR, 2025.
+URL https://proceedings.mlr.press/v267/zhu25o.html.
+14
+
+
+Preprint.
+A
+SOURCE-CONDITIONED TARGET: DERIVATION AND SCOPE
+A.1
+PER-IMAGE VARIATIONAL OBJECTIVE
+For a fixed source s, consider Fs in Eq. (4). Assume ppre is a density and the following normalizer
+is finite and positive:
+Z(1)
+s
+=
+Z
+ppre(y) exp[−αD(s, y) + βr(y)]dy,
+(17a)
+π(1)
+s (y) = (Z(1)
+s )−1ppre(y) exp[−αD(s, y) + βr(y)].
+(17b)
+For densities with finite objective, substitution gives
+DKL(ρ∥π(1)
+s ) = DKL(ρ∥ppre) + αEρD(s, Y ) −βEρr(Y ) + log Z(1)
+s ,
+(18a)
+Fs(ρ) = DKL(ρ∥π(1)
+s ) −log Z(1)
+s .
+(18b)
+Nonnegativity of KL proves the unique minimizer, up to equality almost everywhere. The tempered
+target in Eq. (5) permits a separate prior weight. Its corresponding functional is
+F (γ)
+s
+(ρ) =
+Z
+ρ(y) log ρ(y)dy −γEρ log ppre(Y ) + αEρD(s, Y ) −βEρr(Y ),
+(19a)
+= DKL(ρ∥πs) −log Zs.
+(19b)
+This identity requires finite terms and a finite positive Zs; it does not require the prior power to be
+separately normalized.
+A.2
+CONDITIONAL REGULARIZATION VERSUS MARGINAL MATCHING
+For sources S ∼µ, let T(y | s) be the output density, jT (ds, dy) = µ(ds)T(y | s)dy, and pT its
+output marginal. Under integrability, source-wise minimizers also minimize ESFS(T(· | S)). The
+identity
+ESDKL(T(· | S)∥ppre) = IjT (S; Y ) + DKL(pT ∥ppre)
+(20)
+shows that conditional prior regularization includes both mutual information and marginal matching.
+The source-distance term supplies the explicit preservation preference, without imposing a hard per-
+sample distance bound.
+B
+ENDPOINT REALIZATION AND ITS SCOPE
+Proposition 1 (Endpoint realization). Let Qτ be the zero-drift Brownian path law from Eq. (6), qτ
+its endpoint density, and P b
+s the path law with drift b. Suppose the residual endpoint density ¯πs is
+positive, has finite DKL(¯πs∥qτ), and its tilted path law
+dP ⋆
+s
+dQτ
+= ¯πs(z1)
+qτ(z1)
+(21)
+is realizable by an admissible control. Under the Girsanov and integrability conditions in Ap-
+pendix B.1,
+Js(b) = DKL(P b
+s ∥P ⋆
+s ).
+(22)
+The unrestricted optimum therefore satisfies s + z1 ∼πs.
+B.1
+ASSUMPTIONS AND PROOF OF PROPOSITION 1
+Work on continuous residual paths starting at zero. Assume that ¯πs is positive and normalized, with
+finite DKL(¯πs∥qτ). For each candidate control, assume the Girsanov stochastic exponential is a true
+martingale, and the relevant energies and logarithmic expectations are finite. Attaining the optimum
+within a controlled SDE also requires realizability of the tilted law. Smoothness of a target alone
+does not establish these conditions.
+15
+
+
+Preprint.
+Set ws(z) = ¯πs(z)/qτ(z). Its expectation is
+EQτ [ws(z1)] =
+Z
+qτ(z) ¯πs(z)
+qτ(z) dz = 1.
+(23)
+Consequently dP ⋆
+s /dQτ = ws(z1) = e−gs(z1) defines a probability measure. For any measurable
+endpoint set A,
+P ⋆
+s (z1 ∈A) =
+Z
+A
+qτ(z)ws(z)dz =
+Z
+A
+¯πs(z)dz.
+(24)
+The tilt depends only on the endpoint, so the conditional path remains the reference bridge. Expand-
+ing the path KL gives
+DKL(P b
+s ∥P ⋆
+s ) = EP b
+s
+
+log dP b
+s
+dQτ
+−log dP ⋆
+s
+dQτ
+
+(25a)
+= DKL(P b
+s ∥Qτ) + EP b
+s gs(z1)
+(25b)
+= EP b
+s
+"Z 1
+0
+∥b(zλ, λ; s)∥2
+2τ 2
+dλ + gs(z1)
+#
+.
+(25c)
+The last equality uses Girsanov’s path-energy identity. KL is minimized at the target path law
+whenever that law is realizable. Translation by s has unit Jacobian, giving output density πs.
+We used normalized densities in gs. With the unnormalized energy Fs = αD(s, ·)−γ log ppre−βr,
+implementation may use g0
+s = log qτ +Fs(s+·). Then g0
+s = gs−log Zs and J0 = DKL(P b
+s ∥P ⋆
+s )−
+log Zs; gradients and minimizers are unchanged.
+B.2
+THE REALIZING DRIFT
+Assume
+hs(z, λ) = EQτ [e−gs(z1) | zλ = z]
+(26)
+is finite, positive and C1,2 at interior times, and its logarithmic gradient defines an admissible non-
+explosive diffusion. It solves the backward heat equation. Itˆo’s formula under Qτ gives
+dhs(zλ, λ) = τ∇hs(zλ, λ)⊤dwλ.
+(27)
+The normalized process is the conditional likelihood-ratio martingale for the endpoint tilt. Girsanov
+therefore adds drift
+b⋆(z, λ; s) = τ 2∇log hs(z, λ).
+(28)
+This realizes the desired path measure under the assumptions. A finite neural family need not contain
+this drift.
+B.3
+REFERENCE SCALE AND SOURCE DEPENDENCE
+For a fixed target, qτe−gs = ¯πs, so changing τ does not change the ideal endpoint. It does change
+the optimal drift, bridge geometry and numerical behavior. The source-distance penalty and condi-
+tional prior regularization have distinct roles, as shown by the mutual-information decomposition in
+Sec. A.2.
+C
+ADJOINT SAMPLING AND ENDPOINT REGRESSION
+Proposition 2 (Consistency of endpoint regression). Consider the population counterpart of
+Eq. (12): draw z1 from ¯πs, draw zλ from its Brownian bridge, and replace the cached approx-
+imate label by the exact clean-score label bclean
+s
+(z1) in Eq. (33).
+Assume the labels have fi-
+nite second moment and the target satisfies the regularity and tail conditions used below. With
+hs(z, λ) = EQτ [e−gs(z1) | zλ = z], the unrestricted population minimizer of this squared-error
+objective is
+b⋆(z, λ; s) = τ 2∇log hs(z, λ) = EP ⋆
+s [bclean
+s
+(z1) | zλ = z].
+(29)
+16
+
+
+Preprint.
+C.1
+RECIPROCAL PROJECTION AND PATH KL
+For a path law P with endpoint marginal P1, define
+RQτ (P)(dω) =
+Z
+Qτ(dω | Z1 = z) P1(dz),
+(30)
+where ω is a residual path starting at zero.
+Let P and Qτ share the deterministic initial state, with P ≪Qτ and finite path KL. Disintegrating
+over the terminal state gives
+DKL(P∥Qτ) = DKL(P1∥qτ) + Ez∼P1DKL(P(· | Z1 = z)∥Qτ(· | Z1 = z)).
+(31)
+For RQτ (P) the second term vanishes and the first is unchanged. Terminal expectations are also
+unchanged, so the path-space objective DKL(P∥Qτ) + EP gs(Z1) cannot increase. Interpreting the
+projected law as an admissible drift process additionally requires realizability and the usual Girsanov
+conditions. This is a property of the exact projection, not a monotonicity guarantee for finite neural
+regression steps.
+C.2
+CONTROL SCALING AND REFERENCE BRIDGES
+Adjoint Matching formulates control learning as squared-error regression onto a lean-adjoint tar-
+get (Domingo-Enrich et al., 2025).
+Using the normalized-control convention of Adjoint Sam-
+pling (Havens et al., 2025), let u = b/τ. The physical drift is τu and the energy is ∥u∥2 /2.
+Since the reference drift is zero and there is no running state cost, the lean reference adjoint has
+eaλ = ∇gs(z1) by Eq. (3). The corresponding control-matching residual is
+1
+2 ∥uθ + τ eaλ∥2 =
+1
+2τ 2
+bθ + τ 2∇gs(z1)
+2 .
+(32)
+Reciprocal Adjoint Matching replaces controlled intermediate states by reference-bridge samples
+conditional on endpoints from the current controller (Havens et al., 2025).
+Together with the
+physical-drift residual above, this gives Eq. (12) when endpoint gradients are cached and the ideal
+score is replaced by its estimator. The factor 1/(2τ 2) is fixed and positive, so we omit it in the
+main-text MSE; the unrestricted minimizer is unchanged. Dividing by the latent dimension d would
+likewise change only the overall loss scale. The adjoint refers to the zero-drift reference dynam-
+ics; it does not assert that the nonlinear learned controller has a constant exact adjoint. Expanding
+gs = log qτ −log ¯πs gives the exact clean-score label before introducing a practical score estimator:
+bclean
+s
+(z1) := −τ 2∇z1gs(z1)
+(33a)
+= z1 + τ 2[γ∇y log ppre(y) −α∇yD(s, y) + β∇yr(y)]y=s+z1 .
+(33b)
+The z1 term comes from −τ 2∇log qτ(z1); inserting the quadratic preservation cost gives the clean
+analogue of Eq. (11). Replacing the clean score by bspre yields the implemented label in that equa-
+tion.
+Under Qτ, Cov(zλ, z1) = τ 2λI, Var(zλ) = τ 2λI and Var(z1) = τ 2I. Gaussian conditioning
+gives mean λz1 and covariance τ 2λI −(τ 2λI)(τ 2I)−1(τ 2λI) = τ 2λ(1 −λ)I, proving Eq. (6).
+C.3
+PROOF OF PROPOSITION 2
+Let k(v −z) denote the Gaussian transition density with covariance τ 2(1 −λ)I. Then
+hs(z, λ) =
+Z
+k(v −z)e−gs(v)dv.
+(34)
+Assume differentiation may pass under the integral and boundary terms vanish. Using ∇zk =
+−∇vk and integrating by parts,
+∇zhs = −
+Z
+∇vk(v −z)e−gs(v)dv
+(35a)
+=
+Z
+k(v −z)∇ve−gs(v)dv
+(35b)
+= −
+Z
+k(v −z)e−gs(v)∇gs(v)dv.
+(35c)
+17
+
+
+Preprint.
+The conditional endpoint density under P ⋆
+s is k(v −z)e−gs(v)/hs(z, λ). Dividing by hs and mul-
+tiplying by τ 2 gives Eq. (29).
+The endpoint tilt leaves reference conditional bridges unchanged; hence sampling an endpoint from
+¯πs and a reference bridge produces the joint marginal of P ⋆
+s . For the square-integrable ideal label
+bclean
+s
+(z1), let m(zλ) = EP ⋆
+s [bclean
+s
+(z1) | zλ]. Conditional-variance decomposition writes the
+expected squared error as ∥b(zλ, λ; s) −m(zλ)∥2 plus a term independent of the predictor; the
+cross term vanishes by the definition of m. The optimal predictor is therefore the conditional mean
+derived above.
+C.4
+FINITE UPDATES AND REPLAY
+For a general frozen endpoint law ρk, the regression mean is taken under ρk(z1)Qτ(dzλ | z1).
+The proof establishes the target fixed point, not a one-step exact solution or global convergence.
+In practice, endpoints follow the current controller law and Eq. (11) uses an approximate prior
+score; either change breaks the exact fixed-point premise. Equation (12) conditions on one detached
+endpoint and label per refresh. This empirical objective need not have the population minimizer
+even if that endpoint came from the target. Resampling bridges supplies stochastic gradients of this
+frozen empirical objective, not new independent terminal information. The next refresh replaces the
+stored pair; retaining older endpoints would instead define a replay variant.
+D
+ENDPOINT PRIOR AND REWARD ORACLES
+The ideal theory uses the clean prior. A conservative surrogate replaces its energy −log ppre in
+Eq. (5). An exact clean score, a noisy diffusion score, and an arbitrary guidance vector are not
+interchangeable. One possible explicit surrogate is as follows. Let ℓbe a noise level sampled from
+a fixed distribution, aℓand νℓ> 0 fixed corruption coefficients, ppre
+ℓ
+the corresponding pretrained
+noisy density, and ϵ standard Gaussian noise. Define
+Pnoise(y) = Eℓ,ϵ[−log ppre
+ℓ
+(aℓy + νℓϵ)].
+(36)
+If differentiation and expectation may be exchanged, its gradient is −Eℓ,ϵ[aℓ∇log ppre
+ℓ
+(aℓy +νℓϵ)].
+A pretrained score predictor can supply a Monte Carlo estimate by forward evaluation. This avoids
+differentiating the score network, but targets Pnoise, not necessarily −log ppre. For example, when
+the score predictor returns ∇log ppre
+ℓ
+at the corrupted input, a single draw gives
+bspre(y; ℓ, ϵ) = aℓ∇log ppre
+ℓ
+(aℓy + νℓϵ),
+Eℓ,ϵ[bspre] = −∇Pnoise(y).
+(37)
+If this estimator is exact in expectation and the normalizer exists, it is associated with the surrogate
+endpoint density eπs(y) ∝exp[−γPnoise(y) −αD(s, y) + βr(y)]. The score estimator still varies
+between queries and the surrogate generally differs from the clean-prior target. For the quadratic
+cost D(s, y) = ∥y −s∥2 /2, we have ∇yD = z1. Together with ∇log qτ(z1) = −z1/τ 2, Eq. (33)
+reduces to Eq. (11) after the clean prior score is replaced by bspre. If the estimate is the Monte
+Carlo gradient of Eq. (36), its expectation is a gradient field, but it corresponds to a noisy-prior
+surrogate rather than the clean density in Eq. (5). A single sampled estimate has variance; the other
+approximations in the score predictor may add bias.
+The prior-query settings are given in Appendix F. Inexact score predictions need not recover the
+clean-prior target; Efficient Adjoint Matching also discusses the difficulty of obtaining endpoint
+scores (Shin et al., 2026).
+For image-space rewards, gradients must pass from R(D(y)) back to y even though both networks’
+weights are frozen. Intermediate activation graphs are released after obtaining the detached endpoint
+gradient. Source latents and fixed text features can be cached. Learned controller features can only
+be cached across updates if their producing parameters do not change.
+E
+CONTROLLER AND NUMERICAL IMPLEMENTATION
+The main-text parameterization in Eq. (8) combines a trainable latent offset with a state- and time-
+dependent convolutional correction. We give its architecture and numerical implementation here.
+18
+
+
+Preprint.
+For a latent tensor of shape C × H × W, the controller concatenates z, s and a broadcast scalar
+time into 2C + 1 channels. The nonlinear branch consists of three 3 × 3 convolutions with padding
+one, channel widths (2C + 1, h, h, C), and SiLU after the first two layers. The translation contains
+CHW trainable scalars. Including all biases, the total number of parameters is
+Nθ = CHW + 9h2 + 27Ch + 11h + C.
+(38)
+For example, C = 4, H = W = 64 and h = 16 give 20,596 parameters including the translation.
+This is an architecture example, not a claim that every experimental setting uses those dimensions.
+The translation and final convolution start at zero; other layers use their usual initialization.
+Euler–Maruyama simulates Eq. (7) with ∆λ = 1/N and N = 16 and independent ξn ∼N(0, I):
+zn+1 = zn + ∆λ bθ(zn, n∆λ; s) + τ
+√
+∆λ ξn.
+(39)
+Endpoint simulation is detached from controller optimization. The prior model remains frozen and
+is queried outside the SDE steps. Reward-input gradients still pass through the frozen decoder
+and reward network; freezing weights does not eliminate those derivatives. After fitting, a fresh
+independent trajectory produces the output, rather than selecting the best training endpoint.
+Experimental settings are listed in Appendix F and Table 2. Each refresh replaces the cached end-
+point and label; older endpoints are not retained.
+E.1
+ENDPOINT-QUERY REUSE
+With K endpoint refreshes and one candidate per refresh, the basic loop computes K endpoint tar-
+gets, up to the chosen number of noisy-score samples per candidate. Its KM controller updates
+reuse those targets and draw new bridge times and noises. Each refresh also requires N evalua-
+tions of the small controller for Euler–Maruyama simulation. These counts describe the algorithmic
+placement of expensive queries; actual runtime depends on decoder, score-model, controller, and
+optimizer costs. Differentiation through the decoder is confined to the endpoint-query step. Since
+the targets are detached, the inner regression loop does not build or retain computation graphs for
+the pretrained model.
+F
+EVALUATION PROTOCOL AND BASELINE DETAILS
+Frozen inputs.
+We instantiate the four tasks of Chang et al. (2026) with 300 frozen
+source/condition pairs per task. Human-preference sources use prompts from the Reward Feed-
+back Learning (ReFL) data released with ImageReward (Xu et al., 2023); style sources are from the
+Pick-a-Pic test split (Kirstain et al., 2023) and are paired with five fixed style-reference images; coun-
+terfactual sources are ImageNet-1k images (Deng et al., 2009); facial-edit sources are CelebA-HQ
+images (Karras et al., 2018) with single-attribute text requests. All methods for a given model/task
+use the same source-image hashes, target text or class, and style reference when applicable. For
+counterfactual targets, we select a nearby ImageNet class using a WordNet IS-A graph (Miller,
+1995).
+Baseline implementations.
+• ITOC (Chang et al., 2026) iteratively optimizes an image-conditioned sampling trajectory
+using reward adjoints.
+• Gradient Ascent (GA) directly updates the editable latent using the task-reward gradient.
+• DPS (Chung et al., 2023) applies posterior-style reward guidance during reverse sampling
+after source inversion. This is the source-editing adaptation used in the ITOC comparison
+suite.
+• FreeDoM (Yu et al., 2023) uses its training-free energy guidance after source inversion,
+with the same frozen source set.
+• TFG (Ye et al., 2024) uses training-free reward guidance during the corresponding
+inversion-conditioned reverse trajectory.
+19
+
+
+Preprint.
+• MPGD (He et al., 2024) updates a predicted clean endpoint with the reward gradient. On
+SD1.5 we use an MPGD-LDM source-edit variant; on SD3 we use a flow-edit adaptation.
+The model, source set, task reward, and evaluator are paired within each comparison. Differences in
+inversion and guidance mechanisms are intrinsic to the baselines. We report mean metric values.
+Target and validation definitions.
+Human preference directly optimizes ImageReward and addi-
+tionally reports HPSv2, image–text CLIPScore (Hessel et al., 2021), computed as the cosine sim-
+ilarity of CLIP ViT-L/14 image and text embeddings, and Aesthetic. Style directly minimizes the
+released positive GramDiff and validates with CLIP-I similarity to the style reference and DINO
+ViT-S/16 similarity. Counterfactual editing optimizes the robust classifier’s target-class logit and val-
+idates with CLIPScore for the target-class text. Facial editing optimizes CLIPScore for the attribute
+request and validates with ImageReward and HPSv2. Source preservation is additionally available
+as LPIPS (Zhang et al., 2018) and source–output CLIP-I in the per-image evaluator records; these
+auxiliary columns are kept separate from the target/validation tables.
+The reward implementations use ImageReward-v1.0 (Xu et al., 2023), OpenAI CLIP ViT-L/14
+for image–text cosine similarity (Radford et al., 2021), and the robust ResNet-50 checkpoint
+imagenet l2 3 0.pt distributed with the robustness library (Engstrom et al., 2019). The coun-
+terfactual reward is the target logit, not a target-text score.
+Style GramDiff uses non-class to-
+kens from hidden states[2] of openai/clip-vit-base-patch16; the optimization
+reward is the negative Frobenius difference between the output and reference Gram matrices,
+scaled by 1/100. The table reports the corresponding positive difference. DINO validation uses
+ViT-S/16 (Caron et al., 2021); HPSv2 follows Wu et al. (2023). The Aesthetic evaluator uses
+the released CLIP-feature predictor from https://github.com/christophschuhmann/
+improved-aesthetic-predictor.
+Paired comparison and selection.
+Every model–task comparison uses the same 300 source–
+condition pairs for all seven methods. FASTER parameters were selected using earlier pilot evalua-
+tions, before the full-set evaluation. In the tables, bold values indicate the best result for each metric.
+All required edited-image metrics are finite.
+FASTER configurations.
+The selected runs use K = 20 outer refreshes and M = 2 controller
+updates per refresh. The latent SDE uses 16 steps for both SD1.5 and SD3, at working resolutions
+of 5122 and 7682, respectively. Each refresh samples one endpoint; each controller update inde-
+pendently draws four control times λ and four Gaussian noises conditioned on that endpoint, then
+averages their regression losses for one optimizer step. The controller has 16 hidden channels, a
+trainable terminal translation, and a nonlinear branch. We fit it with mean-squared error and Adam,
+using learning rates 0.02 for the translation and 0.001 for the branch. Bridge times are uniform
+on [0, 1]; the seed is zero. Each enabled prior query uses one sample with antithetic sampling en-
+abled. The prior-score query window is diffusion steps [100, 400] for SD1.5 and flow noise times
+[0.1, 0.4] for SD3. The SD3 style objective uses symmetric bicubic preprocessing; the SD1.5 style
+objective uses the released preprocessing. The quantitative benchmark runs do not use the optional
+Editing Term; its separate noise-time windows are reported in Appendix G. For every row below,
+α = (ατ 2)/τ 2, β = cr/τ 2, and γ = cp/τ 2.
+Table 2: Selected FASTER settings for the quantitative benchmarks.
+Backbone
+Task
+ατ 2
+τ
+cr
+cp
+SD1.5
+Human
+1
+0.0125
+320
+0.1
+SD1.5
+Style
+0.01
+0.002
+10240
+0
+SD1.5
+Counterfactual
+1
+0.002
+2560
+0
+SD1.5
+Facial edit
+1
+0.00625
+1280
+0.01
+SD3
+Human
+1
+0.0125
+320
+0
+SD3
+Style
+0.01
+0.0125
+5120
+0
+SD3
+Counterfactual
+1
+0.0125
+20480
+0
+SD3
+Facial edit
+1
+0.0125
+20480
+0.1
+20
+
+
+Preprint.
+Baseline configurations.
+Table 3 lists the task-dependent settings. For ITOC, (n, w, ℓ) denotes
+trajectory-optimization iterations, reward weight, and learning rate; inversion depth is 0.5 on SD1.5
+and 0.7 on SD3. GA makes 100 gradient-ascent steps in latent space with the listed learning rate.
+DPS, FreeDoM, and TFG use inversion depth 0.7 and the listed reward-guidance base coefficient ρ.
+DPS makes one guided reverse pass; FreeDoM uses two recurrence steps; TFG uses one recurrence
+with four inner gradient steps, the listed base coefficient µ, and a constant noise parameter σ = 0.1.
+DPS, FreeDoM, and TFG all use the increasing ρ schedule; DPS and FreeDoM set µ = 0 and
+disable the optional guidance-noise schedule. TFG uses an increasing µ schedule, a constant-noise
+schedule with σ = 0.1, one noise draw per step, and unit gradient clipping scale. MPGD uses
+the listed clean-endpoint gradient step λ at every reverse step, with depth 0.7, constant guidance
+throughout the reverse interval, and no text classifier-free guidance. Its SD1.5 implementation uses
+the paper-style DDIM update; its SD3 implementation uses the flow adaptation described above. All
+baselines use 50 scheduler steps on SD1.5 or 28 on SD3, working resolutions of 5122 or 7682, and
+seed zero. All baselines use the same frozen source–condition pairs within each model and task.
+Table 3: Task-specific baseline settings used for the reported results. The notation and shared set-
+tings are defined in the text.
+Model Task
+ITOC (n, w, ℓ)
+GA ℓDPS ρ FreeDoM ρ TFG (ρ, µ) MPGD λ
+SD3
+Human
+(15, 500, 0.005)
+2
+5
+5
+(5, 1)
+1
+SD3
+Style
+(15, 1000, 0.005)
+3
+50
+20
+(40, 2.5)
+12
+SD3
+Counterfactual
+(15, 200, 0.005)
+1
+7
+3
+(7, 0.5)
+7
+SD3
+Face
+(15, 1000, 0.005)
+1.5
+75
+30
+(60, 2.5)
+10
+SD1.5 Human
+(20, 500, 0.005)
+2
+3
+1
+(1, 0.5)
+1
+SD1.5 Style
+(20, 200, 0.01)
+3
+15
+7.5
+(10, 1)
+12
+SD1.5 Counterfactual
+(20, 50, 0.005)
+1
+1
+0.4
+(1, 0.1)
+7
+SD1.5 Face
+(20, 1000, 0.005)
+1.5
+40
+20
+(30, 2.5)
+10
+SD1.5 results.
+Table 4 reports the full SD1.5 comparison. FASTER leads the human-preference
+CLIPScore and Aesthetic validation columns, while its ImageReward is within 1.2% of the best GA
+result. It leads both the optimized CLIPScore and ImageReward in facial editing. Style transfer
+attains the lowest GramDiff but trails the best style validation scores, especially DINO. In counter-
+factual editing its CLIPScore is close to MPGD, yet its target logit remains lower.
+Editing time and memory.
+Figure 7 extends Fig. 3 to all seven methods. All methods use the
+same timing scope: the GPU editing computation, including source inversion where required and
+all decoder and reward evaluations needed for optimization. We exclude model and image load-
+ing, input preprocessing and source encoding, final output decoding and saving, and offline metric
+evaluation. Timings are synchronized elapsed times for the editing routine, including its execution
+overhead rather than a sum of GPU-kernel durations. After excluding each worker’s first image, we
+average the same three source images per task on one H20; speedups use unrounded means.
+A separate 768 × 768 SD3 ImageReward edit with K = 20 on one RTX 4090 D takes 7.72 s and
+peaks at 18.75 GiB of live GPU tensor allocation. The text encoders are moved to CPU after prompt
+encoding, while the transformer, VAE, and ImageReward remain on the GPU. Peak memory is
+measured with PyTorch’s peak allocated-memory counter, excluding allocator cache; time follows
+the editing-only scope above.
+21
+
+
+Preprint.
+Table 4: Results on Stable Diffusion 1.5. Each task includes a target metric, which is directly
+optimized, and validation metrics used to assess potential reward hacking. Arrows indicate whether
+higher (↑) or lower (↓) values are better. Bold values indicate the best result for each metric.
+Metric
+ITOC
+GA
+DPS FreeDoM
+TFG
+MPGD FASTER
+Human preference
+TARGET ImageReward↑
+1.8981
+1.9532
+1.5374
+1.3118
+1.6908
+1.1938
+1.9316
+VALIDATION HPSv2↑
+0.2666
+0.2615
+0.2578
+0.2555
+0.2606
+0.2535
+0.2649
+VALIDATION CLIPScore↑
+0.2773
+0.2743
+0.2546
+0.2366
+0.2642
+0.2531
+0.2798
+VALIDATION Aesthetic↑
+5.8058
+5.5443
+5.4939
+5.4869
+5.5269
+5.2346
+5.8075
+Style transfer
+TARGET GramDiff↓
+9.0027
+7.7940
+5.8574
+5.4821
+6.0595
+6.9080
+5.0592
+VALIDATION CLIP-Isty↑
+0.4944
+0.5045
+0.5282
+0.5280
+0.5252
+0.5233
+0.5190
+VALIDATION DINOsty↑
+0.1585
+0.1491
+0.2471
+0.2645
+0.2460
+0.1875
+0.1895
+Counterfactual generation
+TARGET Logittgt↑
+19.7998 27.5803 17.0912
+14.9241 18.9315 31.7846
+28.8259
+VALIDATION CLIPScore↑
+0.1803
+0.2017
+0.1800
+0.1702
+0.1842
+0.2190
+0.2184
+Text-guided facial editing
+TARGET CLIPScore↑
+0.2886
+0.2544
+0.2763
+0.2716
+0.2831
+0.2554
+0.3266
+VALIDATION ImageReward↑-0.6209 -0.7547 -0.6610
+-0.5575 -0.5089 -0.7707
+-0.4492
+VALIDATION HPSv2↑
+0.2559
+0.2565
+0.2511
+0.2536
+0.2521
+0.2509
+0.2542
+2
+5
+10
+20
+50
+100
+SD3
+seconds / image
+42.0
+41.5
+41.0
+41.5
+9.1
+8.5
+8.2
+8.9
+6.4
+6.0
+6.3
+8.5
+Human
+Style
+Counterfactual
+Face
+2
+5
+10
+20
+50
+100
+SD1.5
+seconds / image
+78.3
+77.9
+78.2
+78.3
+9.7
+8.6
+8.1
+9.2
+5.3
+3.2
+3.3
+4.7
+ITOC
+GA
+DPS
+FreeDoM
+TFG
+MPGD
+FASTER
+Figure 7: Editing time on one H20 across four tasks and two model families, averaged over three
+images per setting. The data and timing scope match Fig. 3; the vertical axis is logarithmic.
+Additional visual results.
+Figures 8–11 show further counterfactual, facial, human-preference,
+and style-transfer edits, respectively.
+22
+
+
+Preprint.
+GA
+DPS
+FreeDoM
+TFG
+ITOC
+FASTER(Ours)
+MPGD
+Source
+“bulbul”
+“robin”
+“leatherback turtle”
+“loggerhead turtle”
+“guacamole”
+“chocolate sauce”
+Figure 8: Additional matched counterfactual edits. Source and target classes are shown at left;
+method columns follow Fig. 4.
+GA
+DPS
+FreeDoM
+TFG
+ITOC
+FASTER(Ours)
+MPGD
+Source
+“ A woman 
+wearing glasses”
+“an old man”
+“a young woman”
+Figure 9: Additional matched facial edits. The requested text prompts are shown at left; method
+columns follow Fig. 4.
+GA
+DPS
+FreeDoM
+TFG
+ITOC
+FASTER(Ours)
+MPGD
+Human 
+preference
+Source
+Figure 10: Additional matched human-preference examples, with the source image and outputs from
+each method.
+23
+
+
+Preprint.
+GA
+DPS
+FreeDoM
+TFG
+ITOC
+FASTER(Ours)
+MPGD
+Style 
+transform
+Source
+Reference
+Figure 11: Additional style-transfer examples. The style reference and source image occupy the first
+two columns; method columns follow Fig. 4.
+G
+EDITING TERM: CONDITIONAL-SCORE DIFFERENCE
+From velocity to an endpoint edit field.
+Use the source and target conditions csrc and ctgt from
+Sec. 4.3. For the SD3 flow convention, a clean latent Y and Gaussian noise ϵ produce xt = (1 −
+t)Y + tϵ, and the exact conditional velocity is vc(xt, t) = E[ϵ −Y | xt, c]. Rearranging the
+interpolation gives ϵ = xt + (1 −t)(ϵ −Y ). The Gaussian-mixture score identity therefore yields
+sc(xt, t) := ∇xt log pt(xt | c) = −E[ϵ | xt, c]
+t
+= −xt + (1 −t)vc(xt, t)
+t
+.
+(40)
+For t ∼ν in a fixed interval 0 < tmin < tmax < 1 and independent Gaussian noise, we use the
+target-to-source conditional log-density ratio as a smoothed edit potential at endpoint y:
+Eedit(y) = Et,ϵ[log pt((1 −t)y + tϵ | ctgt) −log pt((1 −t)y + tϵ | csrc)] .
+(41)
+Assume the conditional densities are positive and differentiable, with an integrable gradient bound
+permitting differentiation under the expectation. For fixed t and ϵ, the Jacobian of xt with respect to
+y is (1 −t)I. Consequently, the pullback of the target-minus-source score is
+∇yEedit(y) = Et,ϵ
+
+(1 −t)(sctgt −scsrc)(xt, t)
+
+(42a)
+= Et,ϵ
+(1 −t)2
+t
+(vcsrc −vctgt)(xt, t)
+
+.
+(42b)
+This proves Eq. (15). The velocity order reverses because Eq. (40) has a minus sign. This is analo-
+gous to a conditional-guidance residual, with the source prompt rather than an unconditional prompt
+as reference. The implementation estimates Eq. (42) using paired source/target velocity evalua-
+tions at the same xt and antithetic noise, then adds ce∇yEedit to the FASTER endpoint label. The
+pullback itself is linear and does not require backpropagation through the SD3 transformer. Equa-
+tion (42) is exact for exact conditional scores; learned velocities yield an approximate edit field in
+practice.
+Noise-window and strength sweep.
+Under this convention t increases with noise. Figure 12 uses
+one puppy source, one target prompt, a fixed checkpoint and two edit coefficients. Low-noise win-
+dows tend to produce local artifacts without the requested object; [0.75, 0.90] gives a clear sunglasses
+shape. The trend is not monotone: [0.85, 0.95] is weaker at ce = 100.
+For this visualization, the source prompt describes a small brown-and-white puppy on a plain white
+background, and the target adds realistic black sunglasses. Each SD3 cell runs to K = 120 with
+M = 2, 16 controller rollout steps, τ = 0.00125, ατ 2 = 1, and cr = cp = 0. The figure uses the
+saved K = 40 checkpoint from each cell. The rows set ce ∈{100, 250}; the columns use the six
+noise-time windows printed in the figure.
+24
+
+
+Preprint.
+Source
+t
+[0.10, 0.30]
+t
+[0.30, 0.50]
+t
+[0.50, 0.65]
+t
+[0.65, 0.80]
+t
+[0.75, 0.90]
+t
+[0.85, 0.95]
+ce = 100
+ce = 250
+Figure 12: Adding sunglasses to the same puppy with the Editing Term. Columns vary the noise-
+time interval and rows vary ce; the source is repeated for comparison.
+Figure 13 follows one of the same runs rather than restarting at each budget. The sunglasses form
+early and become more distinct as the controller receives further endpoint updates.
+Source
+K = 10
+K = 20
+K = 40
+K = 80
+K = 120
+Figure 13: Saved outer-loop checkpoints for the puppy sunglasses edit at ce = 250 and t ∈
+[0.75, 0.90].
+Additional semantic edits.
+Figure 14 uses two visibly effective facial-attribute cases from the
+completed SD3 Editing Term sweep. They show saved K = 20 checkpoints from runs with K = 40,
+M = 2, 16 controller rollout steps, τ = 0.0125, ατ 2 = 1, cr = cp = 0, and seed zero. The four
+output columns vary ce ∈{20, 50, 100, 200}; the two rows in each panel show noise-time intervals
+[0.55, 0.70] and [0.75, 0.90]. The source and target prompts are “A man without lipstick” and “A
+man wearing lipstick” for the first case, and “A young man” and “An old man” for the second.
+These visual sweeps use the Editing Term without CLIPScore reward optimization and are separate
+from the four-task quantitative benchmark.
+t
+[0.55, 0.70]
+Source
+ce = 20
+ce = 50
+ce = 100
+ce = 200
+t
+[0.75, 0.90]
+t
+[0.55, 0.70]
+Source
+ce = 20
+ce = 50
+ce = 100
+ce = 200
+t
+[0.75, 0.90]
+Figure 14: Editing Term strength and noise-time sweeps for lipstick (left) and apparent age (right).
+The source is repeated at left of each row.
+25
+
+
+Preprint.
+H
+ENDPOINT FEEDBACK REUSE
+We vary the number of controller updates per feedback refresh, M ∈{1, 2, 4, 8, 16}, and inspect
+checkpoints at K = 10, 20, . . . , 100 on four SD3 tasks. Each setting follows one continuous run on
+the same three source images per task, with the task-specific reward and preservation coefficients
+fixed. The cache holds only the latest endpoint–target pair. Thus, at fixed K, increasing M reuses
+the same number of expensive endpoint targets for more small-network updates (KM in total); this
+comparison varies supervision reuse rather than cache capacity or equal-time performance.
+Figure 15 reports target and validation metrics. Moderate reuse improves the target at some query
+budgets, but increasing M is not uniformly beneficial: at later checkpoints, M = 2 gives stronger
+ImageReward and face-editing targets than the largest reuse settings, while style transfer favors
+fewer updates. Counterfactual target logits benefit from more reuse, illustrating that the preferred
+setting depends on the task. These curves characterize the selected examples rather than the full
+benchmark.
+20
+60
+100
+K
+1.6
+1.8
+ImageReward ↑  [Target]
+20
+60
+100
+K
+0.256
+0.258
+0.260
+HPSv2 ↑  [Validation]
+20
+60
+100
+K
+0.28
+0.30
+CLIPScore ↑  [Validation]
+20
+60
+100
+K
+5.8
+6.0
+Aesthetic ↑  [Validation]
+20
+60
+100
+K
+5
+10
+Gram difference ↓  [Target]
+20
+60
+100
+K
+0.50
+0.52
+0.54
+CLIP-I (style) ↑  [Validation]
+20
+60
+100
+K
+0.20
+0.25
+DINO (style) ↑  [Validation]
+20
+60
+100
+K
+20
+40
+60
+Target logit ↑  [Target]
+20
+60
+100
+K
+0.20
+0.25
+CLIPScore ↑  [Validation]
+20
+60
+100
+K
+0.3
+0.4
+CLIPScore ↑  [Target]
+20
+60
+100
+K
+−1.0
+−0.5
+0.0
+ImageReward ↑  [Validation]
+20
+60
+100
+K
+0.250
+0.255
+HPSv2 ↑  [Validation]
+(a) Human preference
+(b) Style transfer
+(c) Counterfactual generation
+(d) Text-guided face editing
+M = 1
+M = 2
+M = 4
+M = 8
+M = 16
+Figure 15: Endpoint feedback reuse across four SD3 tasks. Curves show three-image means as
+the number of outer refreshes K increases; colors denote the number of controller updates M per
+refresh. The first panel in each row is the optimized target, and the remaining panels are validation
+metrics.
+26

@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-27 ~ 2026-10-26</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-01 ~ 2026-10-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 17 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-26 13:10:29 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-30 08:53:43 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,9 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读聚焦图像转代码、多视图工程图纸生成与代码视频生成评测三条前沿线。</p>
-<p>最值得先看用“中间渲染”做图像转代码的强化学习，以及覆盖 T2V/I2V/V2V 的 Code2Video-Compass 统一基准。</p>
-<p>普通读者建议先读这两篇的摘要、实验设置与评测指标，再判断是否跟进复现。</p>
+<p>本期共扫读 17 篇论文（精读 6 篇、速读 11 篇），聚焦视频生成与扩散模型的强化学习。最值得看的是两篇 9.0 分精读《Token-Level Video Reinforcement Learning》和《DiffusionART》，它们分别指向视频 token 级 RL 与扩散模型高效稳定 RL；速读中个性化世界模型、可控图像编辑和少步生成奖励对齐也值得关注。普通读者可先读这两篇 9 分精读建立主线，再按兴趣补看 8 分速读中的编辑与奖励对齐方向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -80,12 +78,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Token-Level Video Reinforcement Learning">Token-Level Video Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models">DiffusionART: Efficient, Stable and Scalable Reinforcement of Diffusion Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="VideoAWR: Reinforcing Video Flow Models with Decoupled-Timestep Advantage-Weighted Rectification">VideoAWR: Reinforcing Video Flow Models with Decoupled-Timestep Advantage-Weighted Rectification</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>6</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -93,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Reinforcement Learning from Intermediate Renders for Image-to-Code Generation">Reinforcement Learning from Intermediate Renders for Image-to-Code Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="DrawingsDreamer: A Unified Multi-View Engineering Drawings Generation Model">DrawingsDreamer: A Unified Multi-View Engineering Drawings Generation Model</span></li><li><span class="dpr-home-dashboard-paper-title" title="Code2Video-Compass: A Comprehensive Benchmark for General-Purpose Code-Based Video Generation across T2V, I2V, and V2V">Code2Video-Compass: A Comprehensive Benchmark for General-Purpose Code-Based Video Generation across T2V, I2V, and V2V</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PWM: Personalized World Models with Online Reinforcement Learning">PWM: Personalized World Models with Online Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Scalable Minimal-Change Learning for Controllable Image Editing">Scalable Minimal-Change Learning for Controllable Image Editing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Noise-Space Reward Alignment for Few-Step Generative Models">Noise-Space Reward Alignment for Few-Step Generative Models</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">svg-lottie <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">rve <strong>11</strong></span></div>
 </section>
 </div>
 

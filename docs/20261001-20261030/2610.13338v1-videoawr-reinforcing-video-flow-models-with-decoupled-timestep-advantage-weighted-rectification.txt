@@ -1,0 +1,1890 @@
+VideoAWR: Reinforcing Video Flow Models with
+Decoupled-Timestep Advantage-Weighted Rectification
+Zheming Fu1,2,3∗, Wenbin Ning1∗, Ruizhe He3,4, Wei Shang1, Xiaoxiao Ma3,5,
+Lianrui Mu3,4, Chang Liu2†, Lei Wang1†, Siming Fu3†
+1Beihang University, 2Zhongguancun Academy, 3Joy Future Academy
+4Zhejiang University, 5University of Science and Technology of China
+a dog jumping over a flaming hoop(w/o CFG)
+5 year old child sitting on the floor drawing an airplane on paper(w/o CFG) 5 year old child sitting on the floor drawing an airplane on paper(w/ CFG)
+a dog jumping over a flaming hoop(w/ CFG)
+R1
+-6.07
+R2
+-8.16
+R3
+-5.36
+R4
+-5.96
+R1
+5.52
+R2
+8.42
+R3
+7.63
+R4
+8.53
+R1
+-3.42
+R2
+-8.67
+R3
+-10.12
+R4
+-9.45
+R1
+3.48
+R2
+5.80
+R3
+1.01
+R4
+2.64
+      
+       
+   
+  
+ 
+ 
+  
+                      
+             
+              
+                          
+   
+   
+   
+                         
+ 
+ 
+ 
+ 
+ 
+            
+                                 
+                
+                 
+Figure 1: Why cold-start video RL needs guided rollouts. Left: rollouts from Wan2.1-1.3B on two prompts, with and without CFG,
+annotated with HPSv3 rewards Ri. Without CFG every rollout is corrupted (smearing, broken structure) yet the rewards remain widely
+spaced (−3.42 to −10.12 on the first prompt): these intra-group gaps track no perceptible quality difference and cannot serve as a
+relative signal. (a) Unguided samples concentrate where the reward model is least discriminative (per-prompt median −0.47 vs. 4.72).
+(b) Without CFG, the reward first drifts downward and recovers only after ∼150 GPU hours, while guided rollouts grow stably.
+Abstract
+Regression-based RL for flow models mandates sampling
+without classifier-free guidance (CFG) to align the rectifi-
+cation target with the reference marginal velocity. Extend-
+ing Advantage-Weighted Rectification (AWR), which dynam-
+ically scales this regression target based on reward, to video
+generation encounters a cold-start pathology: unguided roll-
+outs collapse into low-fidelity regions where intra-group re-
+ward gaps remain wide but no longer track perceptual quality,
+rendering the optimization target arbitrary. Conversely, utiliz-
+ing guided rollouts to restore fidelity, while keeping the regres-
+sion target tied to the guided sampling distribution, provably
+triggers a geometric guidance blow-up under exponential-
+moving-average (EMA) updates. We propose VideoAWR,
+which resolves this tension by untying sampling from the op-
+timization anchor. An EMA reference policy generates guided
+rollouts to restore reward separability, while the trainable pol-
+icy is rectified against the unguided conditional anchor. We
+∗These authors contributed equally.
+†Corresponding authors.
+prove this decoupled objective is mathematically exact: the
+centered advantage cancels the anchor in expectation, filter-
+ing out the reward-neutral guidance offset and retaining only
+the reward-correlated covariance increment. Consequently, in-
+ference runs single-branch and CFG-free, yet inference-time
+CFG preserves its original semantics. Furthermore, we in-
+troduce Decoupled Timestep Rectification, supervising each
+rollout at an independently sampled timestep without bias to
+improve sample efficiency. Experiments on Wan2.1-1.3B and
+14B demonstrate stable optimization and superior visual and
+motion quality in both CFG-free and CFG-enabled regimes.
+Code is available at VideoAWR.
+1
+Introduction
+Reinforcement learning for generative alignment (Black et al.
+2024; Fan et al. 2023; Rafailov et al. 2023) extends to text-
+to-video (Prabhudesai et al. 2024; Liu et al. 2024; Xing
+et al. 2024) primarily through policy-gradient (Shao et al.
+2024; Liu et al. 2026a; Xue et al. 2025) and regression-
+based methods (Zheng et al. 2025; Fu et al. 2026). The latter
+arXiv:2610.13338v1  [cs.CV]  9 Oct 2026
+
+
+embeds the reward directly into the velocity-matching ob-
+jective (Peters, Mulling, and Altun 2010; Peng et al. 2019),
+bypassing intractable trajectory-likelihood estimation over
+long rollouts. However, regression dictates strict data collec-
+tion constraints: the target anchor—the marginal velocity of
+a reference path (Lipman et al. 2022; Liu, Gong, and Liu
+2023)—doubles as the sampling field. Because CFG (Ho
+and Salimans 2022; Dhariwal and Nichol 2021) distorts this
+marginal, rollouts must theoretically remain unguided.
+In video generation, this unguided requirement de-
+grades optimization. Sampled without CFG, models like
+Wan2.1 (Wan et al. 2025) yield videos confined to a low-
+fidelity region where reward models (Wu et al. 2023; Ma
+et al. 2025; Liu et al. 2026b) lose discriminative capacity
+(Figure 1). The induced intra-group ranking becomes arbi-
+trary, causing initial reward degradation. Conversely, restor-
+ing fidelity via guided rollouts (Guo et al. 2025; Frans et al.
+2025) while anchoring on that same CFG field induces
+inter-round instability. We prove that under EMA updates,
+this coupling geometrically compounds the conditional–
+unconditional gap. Must guided exploration then be paid
+for with unstable training?
+We propose VideoAWR, which explicitly separates the
+sampling distribution from the optimization anchor. The
+EMA reference policy generates guided rollouts to maintain
+fidelity and reward separability, while the trainable policy
+is rectified against the unguided conditional anchor. Charac-
+terizing the population optimum of this decoupled objective
+demonstrates that the mismatch is mathematically exact: the
+centered advantage cancels the anchor in expectation. This
+isolates the unguided conditional velocity and the reward-
+correlated covariance increment, strictly filtering out the
+guidance offset. Consequently, inference operates via a sin-
+gle forward branch, and the conditional–unconditional gap
+shifts only by an advantage-bounded increment, preserving
+inference-time CFG semantics. This structurally contrasts
+with guidance distillation (Meng et al. 2023; Tang et al.
+2025), which forfeits inference-time guidance by baking the
+field directly into the network.
+Furthermore, the point-wise evaluation of the regression
+objective decouples the training timestep from the rollout
+schedule, bypassing limitations of single-step schemes that
+tie timesteps to the sampling discretization or share them
+across groups (Li et al. 2025; He et al. 2026, 2025). We
+introduce Decoupled Timestep Rectification, assigning an
+independent timestep per rollout without bias. The exact im-
+portance correction collapses to a scalar naturally absorbed
+by group normalization, a structural flexibility unique to re-
+gression objectives. Our contributions are as follows:
+• Guided rollout with a stable anchor. We identify the
+cold-start pathology of unguided video flow RL and prove
+that its conventional remedy—anchoring the target on
+the guided CFG field—diverges. Under EMA updates,
+the gap between the conditional and unconditional fields
+compounds geometrically.
+• Anchor invariance of the behavior-sampled optimum.
+We resolve this divergence by separating the guided sam-
+pling distribution from the unguided conditional anchor.
+We prove its population optimum is exactly the unguided
+field plus the reward-driven increment; the centered ad-
+vantage strictly filters out the guidance offset in expec-
+tation. This inherently enables CFG-free inference while
+preserving inference-time guidance semantics.
+• Decoupled Timestep Rectification. We introduce an un-
+biased per-rollout timestep estimator that improves sam-
+ple efficiency by allowing a single prompt group to super-
+vise multiple timesteps. We show its residual importance
+correction collapses to a scalar natively absorbed by group
+normalization.
+• Empirical validation under matched compute. Evalu-
+ated under equal GPU-hours on Wan2.1-1.3B and 14B,
+VideoAWR achieves higher visual and motion rewards
+than single-step baselines, optimizes stably throughout,
+and retains its gains under both CFG-free and CFG-
+enabled inference.
+2
+Related Work
+Alignment for Video Generation.
+Following the success
+of RLHF in language and image domains (Ouyang et al.
+2022; Black et al. 2024; Fan et al. 2023), aligning text-to-
+video models with human preferences has drawn increas-
+ing attention. Direct preference optimization has been ex-
+tended to video by constructing preference pairs at differ-
+ent granularities (Liu et al. 2024; Wu et al. 2026; Zhang
+et al. 2024). Parallelly, online RL formulations treat video
+diffusion and flow processes as multi-step Markov decision
+processes, optimizing reverse-process transitions via policy
+gradients (Black et al. 2024; Fan et al. 2023). For continu-
+ous flow-based video models, Flow-GRPO (Liu et al. 2026a)
+and DanceGRPO (Xue et al. 2025) introduce stochasticity
+into ODE integration to yield tractable transition probabili-
+ties and enable group-relative credit assignment. To mitigate
+the heavy computational overhead of long spatiotemporal
+trajectories, recent extensions adopt mixed ODE–SDE sam-
+pling or single-timestep trajectory supervision (Li et al. 2025;
+He et al. 2026). However, these policy-gradient derivatives
+struggle when the unguided generation quality is severely
+degraded at cold start.
+Classifier-Free
+Guidance
+and
+Flow
+Fine-tuning.
+Classifier-free guidance boosts conditional alignment by
+extrapolating conditional velocity fields away from uncon-
+ditional ones, at the expense of an additional evaluation
+branch (Ho and Salimans 2022); guidance distillation avoids
+this overhead by regressing the combined field into a single
+network (Meng et al. 2023). For flow-based preference
+alignment, DiffusionNFT (Zheng et al. 2025) models posi-
+tive and negative transitions on the forward process, while
+FlowAWR (Fu et al. 2026) anchors advantage-weighted
+rectification on the reference policy’s velocity field. These
+methods work for image generation without CFG at sam-
+pling time, but in video they meet the cold-start pathology
+above. VideoAWR instead confines CFG to the sampler.
+
+
+ 
+   
+   
+   
+   
+    
+                             
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+            
+             
+              
+ 
+   
+   
+   
+   
+    
+                             
+ 
+ 
+ 
+ 
+ 
+ 
+  
+            
+             
+              
+Figure 2: Decoupled Timestep Rectification and scaling to 14B. Left: DTR assigns each rollout in a prompt group its own
+independently drawn timestep on [0, N], so one group supervises the velocity field at several distinct points instead of a single
+shared timestep (Sec. 4.3). Right: HPSv3 reward of VideoAWR on Wan2.1-1.3B and Wan2.1-14B against training cost in GPU
+hours, for (a) training and (b) the held-out evaluation prompts. Both backbones improve under the same hyperparameters.
+3
+Preliminaries
+3.1
+Flow Matching and Rectified Flow
+Given a noise prior p0 = N(0, I) and a conditional data
+distribution p1(· | c) over video latents with prompt c, Flow
+Matching (Lipman et al. 2022) constructs a probability path
+transporting p0 to p1. Under the Rectified Flow formula-
+tion (Liu, Gong, and Liu 2023), the forward process interpo-
+lates linearly:
+xt = (1 −t) x0 + t x1,
+which induces the constant conditional velocity target ut(xt |
+x1) = x1 −x0
+=
+x1−xt
+1−t . A parameterized network
+vθ(xt, c, t) is trained to regress this target:
+LFM(θ) = Et, x0, x1
+
+∥vθ(xt, c, t) −ut(xt | x1)∥2
+,
+(1)
+with t
+∼
+U[0, 1], x0
+∼
+p0, x1
+∼
+p1(·
+|
+c). Its
+global minimum is the marginal velocity field v(xt, c, t) =
+Ep(x1|xt,c)[ut(xt | x1)], i.e. the posterior mean of the con-
+ditional targets (Lipman et al. 2022). Samples are generated
+by integrating the deterministic ODE dxt = vθ(xt, c, t) dt
+from x0 ∼p0 (Chen et al. 2018).
+3.2
+Reinforcement Learning as Flow Fine-tuning
+Since flow-based generative models sample trajectories via
+a deterministic ODE, direct computation of trajectory like-
+lihoods is intractable, which necessitates SDE reformula-
+tions of the generative process for policy gradient meth-
+ods (Liu et al. 2026a; Xue et al. 2025). Alternatively, a
+regression-based paradigm avoids trajectory-level likelihood
+estimation by embedding the reinforcement signal directly
+into the velocity matching objective. For instance, Diffusion-
+NFT (Zheng et al. 2025) constructs implicit positive and
+negative policies by mixing the trainable field vθ with the
+reference field vold via a scaling β, which is formulated as a
+reward-weighted regression problem:
+LNFT(θ) ∝E
+h
+r
+vθ −
+
+vold + 1
+β (ut −vold)
+ 2
++ (1 −r)
+vθ −
+
+vold −1
+β (ut −vold)
+ 2i
+,
+(2)
+where r ∈[0, 1] denotes the normalized terminal scalar re-
+ward, and spatiotemporal arguments are omitted for notation
+brevity. Pointwise minimization of Eq. (2) with respect to vθ
+yields the optimal target vold+ 2r−1
+β
+(ut−vold). This analyti-
+cal solution demonstrates that the reference field is modulated
+along the residual direction (ut−vold) by a reward-dependent
+weight restricted to the interval [−1/β, 1/β].
+FlowAWR (Fu et al. 2026) extends this discrete formula-
+tion into a generalized probabilistic framework. Under a KL-
+constrained reward maximization formulation with a tem-
+perature parameter γ > 0, the optimal terminal density cor-
+responds to the exponentially re-weighted reference distri-
+bution p∗
+1(x1 | c) ∝pold
+1 (x1 | c) exp(R/γ). The marginal
+velocity field that induces p∗
+1 can be explicitly derived as an
+advantage-weighted rectification of the reference field:
+v∗= vold + Epold(x1|xt,c)
+
+A (ut −vold)
+
+,
+(3)
+where A = exp(R/γ)/ϕ −1 represents the centered ad-
+vantage, and ϕ = Epold(x1|xt,c)[exp(R/γ)] is the time-
+dependent value function. In practice, following GRPO, ϕ is
+empirically approximated by the arithmetic mean of a group
+of G rollouts generated from distinct initial noises {x(i)
+0 }G
+i=1.
+For the i-th sample within the group, this formulation yields
+a Softmax-style empirical advantage:
+A(i) ≈
+exp(R(c, x(i)
+1 )/γ)
+1
+G
+PG
+j=1 exp(R(c, x(j)
+1 )/γ)
+−1.
+(4)
+Regressing vθ onto this group-estimated rectified target de-
+
+
+fines the practical training objective:
+LAWR(θ) =Et,x(i)
+0 ,x(i)
+1 ∼pold
+v(i)
+θ
+−
+ vold + A(i)(u(i)
+t
+−vold)
+2.
+(5)
+Thus, DiffusionNFT can be interpreted as a reward-bounded
+special case where the adjustment magnitude is constrained
+within the fixed interval ±1/β, whereas FlowAWR dynami-
+cally scales the rectification via the group-relative estimation.
+Both targets share the general form vanc + A (ut −vanc).
+We define vanc as theanchor of the rectification:it is detached
+from θ, defines the fallback trajectory when the advantage
+vanishes, and, because A is centered, serves as the baseline
+field retained by the learned policy. In FlowAWR, the anchor
+vold simultaneously generates the sampling trajectories.
+4
+Method
+VideoAWR adapts the advantage-weighted rectification
+paradigm to the alignment of text-to-video flow models,
+which presents two primary challenges. First, the reference
+field is structurally mismatched to the reward signal: drop-
+ping CFG destroys the reward separability that relative ad-
+vantage estimation depends on, yet anchoring the target on
+the amplified CFG field makes training diverge (Sec. 4.1).
+Second, the training timestep must be sampled cheaply and
+without bias, ideally decoupling the temporal supervision
+from the terminal reward, allowing optimization via point-
+wise regression to maximize sample efficiency (Sec. 4.3).
+4.1
+Behavior-Anchored Flow Alignment
+Applied directly to video generation, FlowAWR exhibits
+early-stage optimization instability. Without CFG, the pre-
+trained backbone produces low-fidelity samples that the re-
+ward model cannot reliably order. And the resulting advan-
+tages exhibit high variance, yielding marginal initial gains
+rather than effective alignment. We restore separability by
+rolling out with a guidance scale s > 1, which extrapolates
+the conditional branch away from the unconditional one:
+vcfg
+old(xt, c) = vold(xt, ∅) + s
+ vold(xt, c) −vold(xt, ∅)
+
+.
+(6)
+Integrating the deterministic ODE induced by vcfg
+old transports
+the noise prior to a guided terminal distribution qs(· | c),
+whose samples are separated in reward that tracks perceptible
+quality, supporting meaningful relative judgments.
+Why not anchoring on the CFG field?
+Guided rollouts
+raise a design question: which field should serve as the
+anchor of the rectification target in the sense of Sec. 3.2?
+The apparently natural answer is vcfg
+old itself, so that the tar-
+get and the sampler share a single field. This is consistent
+within one round but unstable across online updates. Let
+∆k = vold
+k (xt, c) −vold
+k (xt, ∅) denote the gap between the
+conditional and unconditional velocity field at iteration k.
+Proposition 1 (Guidance Explosion) Suppose each step
+drives the conditional branch to its CFG anchor while the un-
+conditional branch remains invariant, and suppose the EMA
+update θold
+k+1 ←µkθold
+k
++ (1 −µk)θk+1, which is linear in
+parameters, induces a linear update in the field space up to
+the first order. Then the gap evolves as
+∆k+1 ≈
+
+µk + (1 −µk)s
+
+∆k
+⇒∆k ∼
+ k−1
+Y
+i=0
+
+µi + (1 −µi)s
+
+!
+∆0,
+(7)
+where the step-wise factor is determined by the EMA sched-
+ule µk and guidance scale s. Because the EMA update is
+linear in parameter space, its first-order Taylor expansion
+linearly projects this update into the velocity field space, di-
+rectly preserving the state-independent hyperparameters as
+the amplification coefficients.
+Since µi + (1 −µi)s > 1 for any µi ∈(0, 1) whenever
+s > 1, the product strictly diverges, amplifying the gap geo-
+metrically as long as the first-order linearization holds. This
+theoretical divergence corresponds to the empirical obser-
+vation in Figure 5(a), where the evaluation reward mono-
+tonically degrades from the onset of training, preceding the
+numerical crash at 300 GPU hours. The sampler operates at
+an increasing effective guidance strength, driving the gener-
+ated video latents xt off the pre-trained data manifold and
+inducing training collapse (proof in Appendix A.1).
+VideoAWR therefore separates where guidance acts from
+what the policy learns: guidance is confined to the behavior
+sampler, while the rectification target is anchored on the
+unguided conditional field. Given a group of guided rollouts
+{x(i)
+1 }G
+i=1 ∼qs(· | c) with empirical advantages b
+A(i) from
+Eq. (4), the behavior-anchored target is
+y(i)
+t
+= vold(x(i)
+t , c) + b
+A(i) ut(x(i)
+t
+| x(i)
+1 ) −vold(x(i)
+t , c)
+
+,
+(8)
+where quantity in y(i)
+t
+is detached from θ. The trainable
+policy minimizes the squared error under the guided behavior
+distribution:
+LVideoAWR(θ) = E t, x(i)
+0 ∼p0
+x(i)
+1 ∼qs(·|c)
+hvθ(x(i)
+t , c, t) −y(i)
+t
+2
+2
+i
+.
+(9)
+Because the anchor vold and the sampling distribution qs
+are deliberately mismatched, it is not obvious what field this
+hybrid objective converges to, a question we settle next.
+4.2
+What the Behavior-Anchored Objective
+Learns
+To characterize the population optimum of Eq. (9), we define
+the value function ϕs(xt, c, t) = Eqs(x1|xt,c)[exp(R/γ)] and
+the centered advantage As = exp(R/γ)/ϕs −1 under the
+guided behavior flow, of which the group b
+A(i) is the empirical
+estimate. Let vs = Eqs(x1|xt,c)[ut] be the marginal behavior
+velocity, and v∗
+s = vs + Eqs[As(ut −vs)] the corresponding
+optimal field from Eq. (3).
+Proposition 2 (Anchor-Invariant Improvement) For
+a
+fixed state (xt, c, t), the population minimizer v† of Eq. (9),
+with b
+A(i) replaced by its population limit As, satisfies:
+v† = vold + (v∗
+s −vs).
+(10)
+
+
+Table 1: Detailed comparison of General Video Quality using VBench metrics. We evaluate aesthetic quality, image quality,
+subject consistency, and object class. We reproduce the official VBench results. Best scores are in Bold.
+Method
+GPU Hours
+Aesthetic
+Quality ↑
+Imaging
+Quality ↑
+Subject
+Consistency ↑
+Object
+Class ↑
+CogVideoX-2B (Yang et al. 2024)
+–
+61.07
+62.37
+96.52
+86.48
+Hunyuan-Video (Kong et al. 2024)
+–
+60.36
+67.56
+97.37
+86.10
+Wan2.1-T2V-1.3B (Wan et al. 2025)
+–
+65.63
+66.79
+94.58
+88.70
+Flow-GRPO
+1100
+66.05
+68.34
+94.99
+89.59
+Flow-GRPO-Fast1
+600
+65.66
+64.19
+95.45
+89.85
+Flash-GRPO
+600
+67.46
+68.10
+95.85
+90.36
+DiffusionNFT
+600
+68.30
+71.50
+97.49
+90.90
+VideoAWR
+600
+69.18
+71.01
+98.48
+92.53
+ 
+   
+   
+   
+   
+   
+   
+                             
+  
+ 
+ 
+ 
+ 
+ 
+            
+            
+               
+          
+            
+              
+ 
+   
+   
+   
+   
+   
+   
+                             
+ 
+ 
+ 
+ 
+ 
+            
+               
+               
+          
+            
+              
+ 
+   
+   
+   
+   
+   
+   
+                             
+ 
+ 
+ 
+ 
+ 
+            
+             
+               
+          
+            
+              
+ 
+  
+   
+   
+   
+   
+   
+                             
+    
+   
+   
+   
+   
+              
+            
+               
+          
+            
+              
+ 
+  
+   
+   
+   
+   
+   
+                             
+    
+   
+   
+   
+              
+               
+               
+          
+            
+              
+ 
+  
+   
+   
+   
+   
+   
+                             
+    
+   
+   
+   
+   
+              
+             
+               
+          
+            
+              
+Figure 3: Reward optimization on HPSv3 (top) and Motion Quality (bottom) against single-step baselines, plotted against
+training cost in GPU hours (shaded bands: raw traces). Panels (a, d) report training reward; evaluation on the held-out 300
+prompts is split into (b, e) CFG-free and (c, f) with CFG. VideoAWR attains the highest reward on both metrics, while Flow-
+GRPO-Fast1 and Flash-GRPO plateau earlier and DiffusionNFT remains below. The CFG-free panels (b, e) indicate that the
+guided-rollout gains are retained by the unguided policy; enabling CFG (c, f) improves it further.
+The proof (Appendix A.2) uses the zero-mean property
+Eqs[As] = 0, which makes any x1-independent anchor im-
+material in expectation.
+What v† represents.
+The field generating the tilted guided
+density q∗
+s(x1 | c) ∝qs(x1 | c) exp(R/γ) is v∗
+s, not v†:
+the two differ by v† −v∗
+s = vold −vs, exactly the reward-
+neutral guidance shift whose accumulation drives Proposi-
+tion 1. VideoAWR filters it out by construction, leaving
+v† =
+vold
+|{z}
+unguided backbone
++ Covqs(As, ut | xt, c)
+|
+{z
+}
+reward-correlated increment
+,
+where the increment follows from Eqs[As] = 0.
+This formulation yields two structural properties. First,
+by preserving the unguided conditional field as the back-
+bone, it enables single-forward-pass inference. Furthermore,
+the conditional–unconditional gap of the trained policy dif-
+fers from the base model solely by the advantage-bounded
+increment, circumventing the compounding effect of s. Con-
+sequently, inference-time CFG retains its original semantics,
+allowing the model to serve both regimes.
+According to Eq. (3) instantiated under qs, the covariance
+term is precisely the displacement required to shift the be-
+havior flow toward the field of its KL-regularized reward
+optimum q∗
+s. Applying this increment to vold instead of vs
+internalizes the reward-driven improvement without import-
+ing the guidance offset, allowing the increments to com-
+pound robustly under EMA. Since qs is intrinsically gener-
+ated by applying CFG to vold, the optimization loop is self-
+consistent, reaching a theoretical fixed point exactly when
+Covqs(As, ut | xt, c) = 0 (i.e., when guided rollouts can no
+longer separate high- from low-reward terminals).
+
+
+Prompt Following  
+VideoAWR
+FlashGRPO
+Vanilla
+Motion
+Aesthetic
+A motorcycle turning a corner
+A vintage steam locomotive travels through the green countryside
+A super cool giant robot in Cyberpunk Beijing
+Figure 4: Qualitative comparison of generated videos. Comparison across Aesthetic quality, Motion dynamics, and Prompt
+Following. Our VideoAWR achieves superior visual fidelity, temporal consistency, and prompt alignment compared to Flash-
+GRPO and Vanilla baselines.
+4.3
+Decoupled Timestep Rectification
+The behavior-anchored regression in Eq. (9) is evaluated at
+a single point (xt, c, t) and, unlike policy-gradient methods,
+never forms a trajectory likelihood. This frees the training
+timestep from the rollout schedule: it need not follow the
+sampling discretization, nor be shared across a prompt group.
+Decoupled Timestep Rectification (DTR) exploits this free-
+dom by drawing ti
+iid
+∼U[0, 1] for each rollout i = 1, . . . , G
+and supervising each sample at its own timestep:
+bLDTR = 1
+G
+G
+X
+i=1
+vθ(x(i)
+ti , c, ti) −y(i)
+ti
+2
+2.
+(11)
+Assigning distinct timesteps within a group is legitimate pre-
+cisely because no term in the objective couples the tempo-
+ral variable to the terminal outcome. With t ⊥(x1, R),
+the estimator remains unbiased: E[ bLDTR] = LVideoAWR
+(Appendix A.3). Compared to fixed-timestep sampling (eg.,
+Flash-GRPO (He et al. 2026)), DTR improves temporal
+coverage within each batch. While single-step SDE targets
+typically introduce severe gradient variance, our behavior-
+anchored regression formulation circumvents this, yield-
+ing faster convergence and higher final performance (Fig-
+ure 5(b)).
+Discarding the importance correction.
+Recovering the
+unguided FlowAWR objective exactly would reweight each
+sample by ρjoint = pold(x1, xt | c)/qs(x1, xt | c). Both
+flows share the forward kernel p(xt | x1), so it cancels and
+the correction collapses to ρ(c, x1) = pold
+1 (x1 | c)/qs(x1 |
+c), independent of t (Appendix A.4). We set ρ ≡1: such
+a trajectory-global prefactor is exactly what DTR’s point-
+wise objective cannot accommodate, and any prompt-level
+constant is absorbed by the group normalization in Eq. (4).
+5
+Experiments
+5.1
+Experimental Setup
+Datasets and Models. Following DanceGRPO (Xue et al.
+2025), we use their prompt set for training and the same
+split of 300 prompts in Flash-GRPO (He et al. 2026) for
+evaluation. We build on the Wan2.1 family (Wan et al. 2025),
+validating VideoAWR on both the 1.3B and the 14B variants.
+Implementation Details. Guided rollouts use a CFG scale
+of 4.5, 20 sampling steps and group size G = 8 for both
+backbones, with an EMA reference policy. Full training and
+evaluation details are in Appendix B.
+Baselines. We compare against Flow-GRPO (Liu et al.
+2026a), Flow-GRPO-Fast, Flash-GRPO (He et al. 2026), and
+DiffusionNFT (Zheng et al. 2025). Flow-GRPO uses its of-
+ficial video-RL configuration, which trains only on the first
+half of the denoising timesteps. As Flow-GRPO-Fast’s few-
+step training is conceptually aligned with MixGRPO (Li et al.
+2025), we evaluate it with single-step updates (Flow-GRPO-
+Fast1); Flash-GRPO likewise supervises one timestep per
+update but shares it across the prompt group.
+Rewards and Evaluation. We optimize two complemen-
+tary rewards. For visual quality we use HPSv3 (Ma et al.
+2025), scoring all sampled frames and averaging the top-
+30% following LongCat (Team et al. 2025), which mitigates
+spurious low scores caused by content inconsistency across
+temporal transitions. For motion quality we use the motion
+score of VideoAlign (Liu et al. 2026b). We additionally re-
+port VBench (Huang et al. 2024) for overall quality.
+5.2
+Main Results
+Reward Optimization. Figure 3 reports HPSv3 (top) and
+Motion Quality (bottom) against training cost. On HPSv3
+training reward (a), VideoAWR reaches 8.1 at 600 GPU hours
+
+
+ 
+   
+   
+   
+   
+   
+   
+                             
+  
+  
+ 
+ 
+ 
+ 
+ 
+            
+       
+               
+             
+    
+ 
+   
+   
+   
+   
+   
+   
+                             
+  
+ 
+ 
+ 
+ 
+ 
+            
+        
+          
+     
+    
+ 
+   
+   
+   
+   
+   
+   
+                             
+ 
+ 
+ 
+ 
+ 
+            
+         
+          
+         
+Figure 5: Ablations on Wan2.1-1.3B with the HPSv3 reward, plotted against training cost in GPU hours. (a) Rollout and
+anchor. Ours is highest throughout; no-CFG sampling falls behind during cold start and does not close the gap, while anchor-
+on-CFG decreases monotonically and diverges before 300 GPU hours, as predicted by Proposition 1. (b) Timestep scheme.
+Independent timesteps (DTR) versus a group-shared timestep (Flash), under our objective and under GRPO: ours exceeds GRPO
+at either scheme, and DTR helps within our objective (Ours > Ours-Flash) but hurts under GRPO (DTR-GRPO < Flash-GRPO).
+(c) Group size. At a matched GPU budget G=8 is the best trade-off.
+against 7.0 for DiffusionNFT, while Flash-GRPO and Flow-
+GRPO-Fast1 never exceed 4.4. Under CFG-free inference
+(b), Flash-GRPO improves fastest at first but saturates near
+5.5; VideoAWR overtakes it at roughly 350 GPU hours and
+ends at 6.75, so the gains explored under guided rollouts
+are retained by the unguided policy. Enabling CFG (c) lifts
+it to 8.1 while the policy-gradient baselines stay essentially
+unchanged, as predicted in Sec. 4.2. Motion Quality (e, f)
+reproduces this ordering, though DiffusionNFT closes most
+of the training-reward gap (d) by 300 GPU hours.
+General
+Video
+Quality.
+Table
+1
+reports
+VBench.
+VideoAWR is best on Aesthetic Quality (69.18), Subject
+Consistency (98.48) and Object Class (92.53), and second
+on Imaging Quality (71.01 vs. 71.50), at the same 600 GPU-
+hour budget as the other single-step methods. Subject con-
+sistency stays ≥94 throughout, so reward optimization pre-
+serves the structural integrity of the backbone in terms of
+subject consistency.
+Scaling to Wan2.1-14B. Figure 2(a, b) applies the same
+recipe—CFG scale, group size, clip ratio and EMA rate
+unchanged—to the 14B backbone under HPSv3. Training
+and held-out reward both increase monotonically, reaching
+9.7 versus 8.2 for 1.3B on the evaluation prompts. VBench
+and motion quality are on 1.3B only, where all baselines
+could be reproduced under a common budget.
+Qualitative Comparison. Relative to the vanilla Wan2.1
+backbone and Flash-GRPO, Figure 4 shows sharper frames,
+more coherent motion and closer prompt alignment.
+5.3
+Ablation Study
+We ablate the three design choices of VideoAWR on Wan2.1-
+1.3B with the HPSv3 reward.
+Guided Rollout. We compare our design against two alterna-
+tives with the identical objective but different sampling and
+anchoring: (i) no-CFG sampling, rolling out without guid-
+ance; and (ii) anchor-on-CFG, rolling out with guidance but
+anchoring the target on the CFG field (Proposition 1). In Fig-
+ure 5(a), no-CFG sampling falls behind during cold start and
+does not close the gap after recovering (6.1 vs. 7.1 at 600
+GPU hours), while anchor-on-CFG decreases from the first
+checkpoint and diverges before 300 GPU hours, as predicted
+by Proposition 1.
+Decoupled Timestep. We compare independent timesteps
+(DTR) against a group-shared timestep (Flash), each under
+our behavior-anchored objective and under a GRPO objec-
+tive. In Figure 5(b) both of our variants exceed both GRPO
+variants, but the effect of DTR itself is not uniform: it helps
+under our objective (Ours 7.1 vs. Ours-Flash 6.8) and hurts
+under GRPO (DTR-GRPO 2.3 vs. Flash-GRPO 4.2). This
+follows from Sec. 4.3: a policy-gradient objective weights
+each update by an importance ratio evaluated along the sam-
+pled trajectory, so its timestep must stay tied.
+Group Size. We vary G ∈{4, 8, 16} at a matched compute
+budget rather than a matched number of updates, since G
+scales rollout cost linearly. In Figure 5(c) the trade-off is
+non-monotone: G = 4 tracks G = 8 early but saturates near
+6.1, estimating ϕs in Eq. (4) too coarsely, while G = 16
+is more accurate per update but completes too few updates
+within 600 GPU hours (5.7). We adopt G = 8 as default.
+6
+Conclusion
+VideoAWR formulates “guided rollout, unguided training”
+as behavior-anchored advantage-weighted rectification. By
+restricting guidance strictly to the sampling phase, the op-
+timized policy isolates the reward-correlated velocity in-
+crement and filters out the guidance offset, thereby pre-
+venting the geometric divergence associated with CFG-
+anchored training. Consequently, the fine-tuned model sup-
+ports both inference regimes: it enables efficient CFG-free
+single-branch generation while preserving the original se-
+mantics of inference-time CFG. Integrated with Decoupled
+Timestep Rectification, VideoAWR provides a stable online
+optimization framework that maintains better inference flex-
+ibility for both CFG-free and CFG-enabled inference.
+Limitations and future work.
+Proposition 2 mathemat-
+ically permits arbitrary behavior distributions, establishing
+that the optimization anchor is invariant to the sampling pol-
+
+
+icy. Currently, VideoAWR solely utilizes CFG-guided roll-
+outs from the EMA backbone. Consequently, optimization
+is bounded by the base model’s inherent generation capa-
+bilities; prompts that the backbone fundamentally fails to
+render cannot yield informative reward gradients, regardless
+of the guidance scale. Because anchor invariance supports
+any behavior distribution, integrating off-policy or out-of-
+distribution terminals requires no modification to the under-
+lying objective. Investigating this off-policy data integration
+constitutes a primary direction for future work.
+References
+Black, K.; Janner, M.; Du, Y.; Kostrikov, I.; and Levine, S.
+2024. Training Diffusion Models with Reinforcement Learn-
+ing. In International Conference on Learning Representa-
+tions, volume 2024, 4965–4987.
+Chen, R. T.; Rubanova, Y.; Bettencourt, J.; and Duvenaud,
+D. K. 2018. Neural ordinary differential equations. Advances
+in neural information processing systems, 31.
+Dhariwal, P.; and Nichol, A. 2021. Diffusion models beat
+gans on image synthesis. Advances in neural information
+processing systems, 34: 8780–8794.
+Fan, Y.; Watkins, O.; Du, Y.; Liu, H.; Ryu, M.; Boutilier, C.;
+Abbeel, P.; Ghavamzadeh, M.; Lee, K.; and Lee, K. 2023.
+Dpok: Reinforcement learning for fine-tuning text-to-image
+diffusion models. Advances in Neural Information Process-
+ing Systems, 36: 79858–79885.
+Frans, K.; Park, S.; Abbeel, P.; and Levine, S. 2025. Diffu-
+sion guidance is a controllable policy improvement operator.
+arXiv preprint arXiv:2505.23458.
+Fu, Z.; He, R.; Shang, W.; Ma, X.; Wang, L.; Liu, C.; and
+Fu, S. 2026. FlowAWR: Online Adaptive Flow Reinforce-
+ment via Advantage-Weighted Rectification. arXiv preprint
+arXiv:2606.30376.
+Guo, Y.; Deng, W.; Cheng, Z.; and Tang, X. 2025.
+G 2
+RPO-A: Guided Group Relative Policy Optimization with
+Adaptive Guidance. arXiv preprint arXiv:2508.13023.
+He, X.; Fu, S.; Xue, Z.; Wang, W.; He, R.; Li, Y.; Yin, D.;
+Dong, S.; Huang, H.; Wang, H.; et al. 2026. Flash-GRPO:
+Efficient Alignment for Video Diffusion via One-Step Policy
+Optimization. arXiv preprint arXiv:2605.15980.
+He, X.; Fu, S.; Zhao, Y.; Li, W.; Yang, J.; Yin, D.; Rao, F.;
+and Zhang, B. 2025. Tempflow-grpo: When timing matters
+for grpo in flow models. arXiv preprint arXiv:2508.04324.
+Ho, J.; and Salimans, T. 2022. Classifier-free diffusion guid-
+ance. arXiv preprint arXiv:2207.12598.
+Huang, Z.; He, Y.; Yu, J.; Zhang, F.; Si, C.; Jiang, Y.; Zhang,
+Y.; Wu, T.; Jin, Q.; Chanpaisit, N.; et al. 2024. Vbench: Com-
+prehensive benchmark suite for video generative models. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, 21807–21818.
+Kong, W.; Tian, Q.; Zhang, Z.; Min, R.; Dai, Z.; Zhou, J.;
+Xiong, J.; Li, X.; Wu, B.; Zhang, J.; et al. 2024. Hunyuan-
+video: A systematic framework for large video generative
+models. arXiv preprint arXiv:2412.03603.
+Li, J.; Cui, Y.; Huang, T.; Ma, Y.; Fan, C.; Yang, M.;
+and Zhong, Z. 2025.
+Mixgrpo: Unlocking flow-based
+grpo efficiency with mixed ode-sde.
+arXiv preprint
+arXiv:2507.21802.
+Lipman, Y.; Chen, R. T.; Ben-Hamu, H.; Nickel, M.; and
+Le, M. 2022. Flow matching for generative modeling. In
+The eleventh international conference on learning represen-
+tations.
+Liu, J.; Liu, G.; Liang, J.; Li, Y.; Liu, J.; Wang, X.; Wan,
+P.; Zhang, D.; and Ouyang, W. 2026a. Flow-grpo: Training
+flow matching models via online rl.
+Advances in neural
+information processing systems, 38: 40783–40818.
+Liu, J.; Liu, G.; Liang, J.; Yuan, Z.; Liu, X.; Zheng, M.; Wu,
+X.; Wang, Q.; Xia, M.; Wang, X.; et al. 2026b. Improving
+video generation with human feedback. Advances in Neural
+Information Processing Systems, 38: 82155–82192.
+Liu, R.; Wu, H.; Ziqiang, Z.; Wei, C.; He, Y.; Pi, R.; and Chen,
+Q. 2024. Videodpo: Omni-preference alignment for video
+diffusion generation. arXiv preprint arXiv:2412.14167.
+Liu, X.; Gong, C.; and Liu, Q. 2023.
+Flow straight and
+fast: Learning to generate and transfer data with rectified
+flow. In International conference on learning representations
+(ICLR).
+Ma, Y.; Wu, X.; Sun, K.; and Li, H. 2025. Hpsv3: Towards
+wide-spectrum human preference score. In Proceedings of
+the IEEE/CVF International Conference on Computer Vi-
+sion, 15086–15095.
+Meng, C.; Rombach, R.; Gao, R.; Kingma, D.; Ermon, S.; Ho,
+J.; and Salimans, T. 2023. On distillation of guided diffusion
+models.
+In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, 14297–14306.
+Ouyang, L.; Wu, J.; Jiang, X.; Almeida, D.; Wainwright,
+C. L.; Mishkin, P.; Zhang, C.; Agarwal, S.; Slama, K.;
+Ray, A.; et al. 2022.
+Training language models to fol-
+low instructions with human feedback.
+arXiv preprint
+arXiv:2203.02155.
+Peng, X. B.; Kumar, A.; Zhang, G.; and Levine, S.
+2019.
+Advantage-weighted regression: Simple and scal-
+able off-policy reinforcement learning.
+arXiv preprint
+arXiv:1910.00177.
+Peters, J.; Mulling, K.; and Altun, Y. 2010. Relative entropy
+policy search. In Proceedings of the AAAI Conference on
+Artificial Intelligence, volume 24, 1607–1612.
+Prabhudesai, M.; Mendonca, R.; Qin, Z.; Fragkiadaki, K.;
+and Pathak, D. 2024. Video diffusion alignment via reward
+gradients. arXiv preprint arXiv:2407.08737.
+Rafailov, R.; Sharma, A.; Mitchell, E.; Manning, C. D.; Er-
+mon, S.; and Finn, C. 2023. Direct preference optimization:
+Your language model is secretly a reward model. Advances
+in neural information processing systems, 36: 53728–53741.
+Shao, Z.; Wang, P.; Zhu, Q.; Xu, R.; Song, J.; Bi, X.; Zhang,
+H.; Zhang, M.; Li, Y.; Wu, Y.; et al. 2024. Deepseekmath:
+Pushing the limits of mathematical reasoning in open lan-
+guage models. arXiv preprint arXiv:2402.03300.
+Tang, Z.; Bao, J.; Chen, D.; and Guo, B. 2025.
+Diffu-
+sion models without classifier-free guidance. arXiv preprint
+arXiv:2502.12154.
+
+
+Team, M. L.; Cai, X.; Huang, Q.; Kang, Z.; Li, H.; Liang, S.;
+Ma, L.; Ren, S.; Wei, X.; Xie, R.; et al. 2025. Longcat-video
+technical report. arXiv preprint arXiv:2510.22200.
+Wan, T.; Wang, A.; Ai, B.; Wen, B.; Mao, C.; Xie, C.-W.;
+Chen, D.; Yu, F.; Zhao, H.; Yang, J.; et al. 2025. Wan: Open
+and advanced large-scale video generative models. arXiv
+preprint arXiv:2503.20314.
+Wu, X.; Hao, Y.; Sun, K.; Chen, Y.; Zhu, F.; Zhao, R.; and
+Li, H. 2023. Human preference score v2: A solid benchmark
+for evaluating human preferences of text-to-image synthesis.
+arXiv preprint arXiv:2306.09341.
+Wu, Z.; Kag, A.; Skorokhodov, I.; Menapace, W.; Mirzaei,
+A.; Gilitschenski, I.; Tulyakov, S.; and Siarohin, A. 2026.
+Densedpo: Fine-grained temporal preference optimization
+for video diffusion models. Advances in Neural Information
+Processing Systems, 38: 171632–171668.
+Xing, Z.; Feng, Q.; Chen, H.; Dai, Q.; Hu, H.; Xu, H.; Wu, Z.;
+and Jiang, Y.-G. 2024. A survey on video diffusion models.
+ACM Computing Surveys, 57(2): 1–42.
+Xue, Z.; Wu, J.; Gao, Y.; Kong, F.; Zhu, L.; Chen, M.;
+Liu, Z.; Liu, W.; Guo, Q.; Huang, W.; et al. 2025. Dance-
+grpo: Unleashing grpo on visual generation. arXiv preprint
+arXiv:2505.07818.
+Yang, Z.; Teng, J.; Zheng, W.; Ding, M.; Huang, S.; Xu,
+J.; Yang, Y.; Hong, W.; Zhang, X.; Feng, G.; et al. 2024.
+Cogvideox: Text-to-video diffusion models with an expert
+transformer. arXiv preprint arXiv:2408.06072.
+Zhang, J.; Wu, J.; Chen, W.; Ji, Y.; Xiao, X.; Huang, W.; and
+Han, K. 2024. Onlinevpo: Align video diffusion model with
+online video-centric preference optimization. arXiv preprint
+arXiv:2412.15159.
+Zheng, K.; Chen, H.; Ye, H.; Wang, H.; Zhang, Q.; Jiang, K.;
+Su, H.; Ermon, S.; Zhu, J.; and Liu, M.-Y. 2025. Diffusionnft:
+Online diffusion reinforcement with forward process. arXiv
+preprint arXiv:2509.16117.
+
+
+A
+Theoretical Derivations and Proofs
+A.1
+Proof of Proposition 1 (Geometric Explosion)
+We analyze the evolution of the conditional–unconditional
+velocity gap ∆k(xt) = vold
+k (xt, c) −vold
+k (xt, ∅) under the
+CFG-anchored variant, in which the rectification target of
+round k is built upon the guided field
+vcfg
+k (xt, c) = vold
+k (xt, ∅) + s ∆k(xt).
+The argument operates in the linear-field regime, where the
+network parameterization is expressive enough that field-
+space targets translate into field-space updates to first order.
+This proof relies on two theoretical assumptions stated in the
+proposition: (a) within each round, the inner regression is
+run to convergence, ensuring the trained conditional branch
+reaches its anchor; (b) the unconditional branch receives no
+supervision and is treated as invariant across rounds.
+Step 1: within-round absorption (exact under (a)).
+By
+assumption (a), the trained conditional field at the end of
+round k satisfies
+vθk+1(xt, c) = vcfg
+k (xt, c)
+= vold
+k (xt, ∅) + s ∆k(xt),
+up to the advantage-weighted residual term, which is
+bounded by the advantage spread and independent of s. It
+contributes only an O(As) perturbation that does not alter
+the leading-order recursion derived below.
+Step 2: EMA merge in field space.
+This step requires a
+first-order linearization. The EMA update θold
+k+1 ←µkθold
+k
++
+(1 −µk)θk+1 is strictly linear in parameters. Linearizing
+the parameter-to-field map θ 7→vθ around θold
+k
+therefore
+transfers the same weights µk, 1 −µk to the field space,
+yielding an error of order O(∥θk+1 −θold
+k ∥2):
+vold
+k+1(xt, ·) ≈µk vold
+k (xt, ·)
++ (1 −µk) vθk+1(xt, ·).
+Applying this relationship to both branches and invoking
+assumption (b) for the unconditional field, vold
+k+1(xt, ∅) =
+vold
+k (xt, ∅), the updated gap evaluates to
+∆k+1 ≈µk ∆k + (1 −µk)s ∆k
+=
+
+µk + (1 −µk)s
+
+∆k.
+Step 3: geometric compounding.
+The step-wise factor
+[µk + (1 −µk)s] is determined entirely by the pre-defined
+EMA schedule and the guidance scale. Because it is indepen-
+dent of the model state θold
+k , the one-step recursive relation
+can be unrolled to yield
+∆k ≈
+ k−1
+Y
+i=0
+
+µi + (1 −µi)s
+
+!
+∆0,
+which remains valid as long as the Step-2 linearization holds.
+For any guidance scale s > 1 and valid EMA rate µi ∈[0, 1),
+the amplification factor strictly satisfies µi + (1 −µi)s > 1.
+Consequently, the gap exhibits geometric explosion.
+Because the effective guidance applied during rollout in
+round k scales with s ∆k, the sampler operates at an expo-
+nentially increasing effective guidance strength. This math-
+ematically drives the intermediate variables xt outside the
+pre-trained data manifold, which corresponds to the empiri-
+cal training collapse.
+In contrast, anchoring the target on the unguided condi-
+tional field eliminates the s-fold absorption in Step 1. The
+conditional branch is regressed toward vold
+k (xt, c) alongside
+the advantage-bounded residual, reducing the recursion mul-
+tiplier to µk +(1−µk)·1 = 1 at leading order. Thus, the gap
+evolves exclusively through the robust, reward-driven O(As)
+increments.
+□
+A.2
+Proof of Proposition 2 (Anchor-Invariant
+Improvement)
+Throughout, fix the spatio-temporal coordinate (xt, c, t); all
+expectations are taken with respect to the guided posterior
+qs(x1 | xt, c) induced by the behavior flow, and we abbrevi-
+ate Eqs[·] = Eqs(x1|xt,c)[·]. Recall the definitions
+ϕs = Eqs
+
+eR/γ
+,
+As = eR/γ
+ϕs
+−1,
+vs = Eqs[ut],
+v∗
+s = vs + Eqs
+
+As(ut −vs)
+
+.
+Step 1: the population minimizer is a conditional expec-
+tation.
+The behavior-anchored population objective stated
+in the main paper regresses vθ(xt, c, t), a deterministic
+function of the network input, onto the stochastic target
+y = vold +As(ut −vold), whose residual randomness given
+the input is carried entirely by x1 ∼qs(· | xt, c). By the stan-
+dard L2-projection property of the conditional expectation,
+the pointwise minimizer is
+v† = Eqs
+
+vold + As(ut −vold)
+
+= vold + Eqs
+
+As(ut −vold)
+
+,
+(12)
+where the second equality uses that vold is constant with
+respect to the integration variable x1 at fixed (xt, c, t).
+Step 2: zero mean of the centered advantage.
+Directly
+from the definitions,
+Eqs[As] = Eqs
+
+eR/γ
+ϕs
+−1
+= ϕs
+ϕs
+−1 = 0.
+(13)
+Note that this identity holds precisely because ϕs is the value
+function of the guided posterior—the same measure under
+which the expectation is taken. Consequently, for any vector
+w(xt, c, t) independent of x1,
+Eqs
+
+As w
+
+= w · Eqs[As]
+= 0.
+(14)
+
+
+Step 3: anchor exchange.
+Applying Eq. (14) with w =
+vold and then with w = vs,
+Eqs
+
+As(ut −vold)
+
+= Eqs
+
+As ut
+
+= Eqs
+
+As(ut −vs)
+
+,
+i.e., the anchor subtracted inside the residual is immaterial in
+expectation. Equivalently, since As is centered, the improve-
+ment term is a covariance, Eqs[As ut] = Covqs(As, ut |
+xt, c), which is invariant to constant shifts of ut; the guid-
+ance offset (vs −vold) is exactly such a shift at fixed xt.
+Step 4: identification with the guided-flow optimum.
+By
+the definition of v∗
+s,
+Eqs
+
+As(ut −vs)
+
+= v∗
+s −vs.
+Substituting into Eq. (12) yields
+v† = vold +
+ v∗
+s −vs
+
+,
+v† −v∗
+s = vold −vs,
+completing the proof.
+□
+A.3
+Unbiasedness of Decoupled Timestep
+Rectification
+The behavior-anchored population loss stated in the main
+paper is an expectation over the product measure of t ∼
+U[0, 1], x0 ∼p0, and x1 ∼qs(· | c); denote the integrand
+by ℓθ(t, x0, x1) = ∥vθ(xt, c, t) −yt∥2
+2, and abbreviate
+ℓ(i)
+θ
+:= ℓθ(ti, x(i)
+0 , x(i)
+1 ).
+In DTR, each rollout i draws ti ∼U[0, 1] independently
+of (x(i)
+0 , x(i)
+1 , R(i)), so the tuple (ti, x(i)
+0 , x(i)
+1 ) is distributed
+according to the same product measure. Hence, for each i,
+E
+
+ℓ(i)
+θ
+
+= LVideoAWR(θ),
+and by linearity of expectation over the group average,
+E
+ bLDTR
+
+= 1
+G
+G
+X
+i=1
+E
+
+ℓ(i)
+θ
+
+= LVideoAWR(θ).
+The independence t ⊥(x1, R) provides the theoretical jus-
+tification for distinct timesteps to distinct rollouts: no term
+in the objective couples the temporal variable to the termi-
+nal reward, unlike trajectory-likelihood methods in which
+the training timestep must follow the discretization of the
+sampled trajectory.
+□
+A.4
+Cancellation of the Forward Kernel in the
+Importance Weight
+Both the reference flow and the guided behavior flow
+share the identical forward noising process: given a ter-
+minal sample x1, the intermediate state is constructed as
+xt = (1−t)x0 +t x1 with x0 ∼p0, independently of which
+policy generated x1. Their joint densities over (x1, xt) there-
+fore factorize with a common conditional kernel:
+pold(x1, xt | c) = pold
+1 (x1 | c) p(xt | x1),
+qs(x1, xt | c) = qs(x1 | c) p(xt | x1).
+Define the terminal density ratio
+ρ(c, x1) := pold
+1 (x1 | c)
+qs(x1 | c) .
+Taking the joint ratio, the common kernel cancels:
+ρjoint(x1, xt) = ρ(c, x1)p(xt | x1)
+p(xt | x1)
+= ρ(c, x1),
+which depends only on the prompt–terminal pair and is con-
+stant along the entire noising trajectory, in particular inde-
+pendent of the training timestep t.
+□
+B
+Implementation Details
+Backbones and Data.
+We fine-tune the official Dif-
+fusers checkpoints of Wan2.1-T2V-1.3B and Wan2.1-T2V-
+14B (Wan et al. 2025). All videos are generated at 480×832
+resolution with 81 frames at 16 FPS. The text encoder pro-
+cesses a maximum of 512 tokens. Training is conducted in
+bfloat16 mixed precision.
+Parameter-Efficient Fine-Tuning.
+We employ rank-32
+LoRA adapters (α = 64, Gaussian initialization) on the
+query, key, value, and output projections of both the stan-
+dard and newly introduced attention blocks, while keeping
+the base network frozen.
+Rollout and Sampling.
+Guided rollouts are generated us-
+ing the frozen behavior policy adapter. We use the native
+flow-matching scheduler with 20 integration steps and a CFG
+scale of s = 4.5. The primary configuration uses a prompt
+group size of G = 8. A distributed repeat sampler ensures all
+G rollouts for a single prompt are constructed synchronously.
+For Decoupled Timestep Rectification (DTR), we align with
+Flash-GRPO (He et al. 2026) and restrict single-step super-
+vision to the first 51% of the rollout schedule (i.e., candidate
+indices {0, . . . , 9} for a 20-step schedule). For each sample,
+the training timestep index is drawn uniformly and indepen-
+dently.
+Reward Configuration.
+Video quality is evaluated using
+the HPSv3 reward (Ma et al. 2025). We score individual
+frames and average the top 30% to mitigate spurious vari-
+ance at temporal transitions (Team et al. 2025). For each
+prompt group of G rollouts sampled from the guided behav-
+ior distribution, we compute the group-centered advantage
+A(i)
+s
+= G
+exp(Ri/γ)
+PG
+j=1 exp(Rj/γ)
+−1,
+where Ri is the reward of the i-th rollout and γ > 0 is the
+temperature. This is the group estimate of As, computed as G
+times the group-wise Softmax weight minus one. The advan-
+tages have zero mean within each group and can be positive,
+negative, or zero. Zero-advantage filtering is disabled.
+Loss Formulation.
+The training utilizes the clean-latent
+prediction formulation. Defining the model’s clean latent es-
+timate as bz θ
+i = x(i)
+τi −τivθ (where τi denotes the forward time
+
+
+Table 2: CFG-free and CFG-enabled evaluation of the official DiffusionNFT checkpoint. All metrics are higher-is-better.
+Best values between the two inference modes are in bold.
+Method
+Task Metric
+DrawBench Metric
+GenEval OCR PickScore CLIPScore HPSv2.1 Aesthetic ImgRwd PickScore
+DiffusionNFT (CFG-free)
+0.93
+0.90
+23.36
+0.293
+0.330
+5.99
+1.48
+23.79
+DiffusionNFT (with CFG)
+0.84
+0.69
+20.99
+0.291
+0.273
+5.16
+1.03
+22.03
+   
+   
+   
+   
+   
+   
+                             
+ 
+ 
+ 
+ 
+            
+           
+                         
+                       
+   
+   
+   
+   
+   
+   
+                             
+ 
+ 
+ 
+ 
+ 
+            
+           
+                      
+                    
+Figure 6: CFG-free and CFG-enabled evaluation under different behavior samplers. We train Wan2.1-T2V-1.3B with
+HPSv3 while anchoring the rectification target on the unguided conditional field vold in both panels. (a) No-CFG behavior
+sampling. (b) CFG-guided behavior sampling. Each trained checkpoint is evaluated both CFG-free (red) and with CFG (blue).
+Guided behavior raises both curves and preserves a consistent inference-time CFG gain.
+parameterization), the unguided behavior reference as bz old
+i
+,
+and the base-model reference as vref, the target latent is con-
+structed as ztgt
+i
+= bz old
+i
++A(i)
+s (zi −bz old
+i
+). The final objective
+combines the rectified policy loss with a KL penalty:
+Lrect = Ei
+"
+ bz θ
+i −ztgt
+i
+2
+sg
+ max{E[|bz θ
+i −zi|], 10−5}
+
+#
+,
+LKL = E
+
+∥vθ −vref∥2
+2
+
+,
+L = Lrect + 0.0001LKL,
+where sg(·) denotes the stop-gradient operator acting as an
+adaptive normalizer.
+Optimization and Hardware.
+Training is executed on a
+cluster of 48 NVIDIA H200 GPUs. The 1.3B model utilizes
+DDP, while the 14B model employs FSDP (FULL_SHARD)
+with activation checkpointing. We optimize the LoRA pa-
+rameters using AdamW with a learning rate of 10−4, β =
+(0.9, 0.999), and weight decay of 10−4. The maximum gra-
+dient norm is clipped at 1.0, and the numerical stability term
+is ϵ = 10−8.
+Policy Synchronization and Evaluation.
+The behavior
+adapter (θold) is synchronized from the trainable policy via
+a scheduled EMA update: exact copies for the first 75 steps,
+a linear transition up to step 208, and an EMA decay of
+λ = 0.999 thereafter. Separately, an evaluation EMA with
+a 0.9 decay is maintained over the trainable parameters for
+checkpointing and inference.
+C
+Validation of CFG-Free and CFG-Enabled
+Inference
+Why a sampling-distribution anchor can impair CFG.
+Anchoring a regression target directly on the guided sampling
+field provides a straightforward route to CFG-free inference:
+the conditional branch internalizes the amplified behavior
+field and can therefore generate strong samples without eval-
+uating an unconditional branch. However, this changes the
+semantics of the conditional–unconditional gap. Applying
+CFG again may extrapolate from a conditional field that has
+already absorbed guidance, effectively amplifying the same
+offset twice.
+We first examine this effect using the official Diffusion-
+NFT checkpoint (Zheng et al. 2025). As shown in Table 2, the
+released model is strong under CFG-free inference, but en-
+abling CFG decreases every reported Task and DrawBench
+metric. The largest drops occur on OCR (0.90 →0.69),
+HPSv2.1 (0.330 →0.273), ImageReward (1.48 →1.03),
+and the two PickScore evaluations (23.36 →20.99 and
+23.79 →22.03). This consistent degradation is compatible
+with guidance having been absorbed into the learned condi-
+tional field, although the comparison alone does not identify
+the mechanism causally.
+This observation motivates the dual-mode requirement
+
+
+targeted by VideoAWR: guided behavior should improve
+exploration without being baked into the conditional an-
+chor. The resulting policy should retain the learned reward-
+driven improvement under CFG-free inference while pre-
+serving a meaningful conditional–unconditional gap for op-
+tional inference-time CFG.
+Video flow alignment.
+We next evaluate the same dual-
+mode requirement on Wan2.1-T2V-1.3B optimized with
+HPSv3. Figure 6 isolates the behavior sampling distribution
+while holding the optimization anchor fixed to the unguided
+conditional field vold in both settings. Panel (a) uses no-CFG
+behavior rollouts. Although inference-time CFG provides a
+large initial advantage, this benefit gradually vanishes dur-
+ing training. After convergence, applying CFG no longer
+improves the policy and instead yields a slightly lower eval-
+uation reward than CFG-free inference.
+Panel (b) uses guided behavior rollouts while retaining the
+same unguided conditional anchor. Both inference modes
+improve faster and reach higher rewards than their counter-
+parts in panel (a). Moreover, the CFG-enabled curve remains
+above the CFG-free curve as training converges. Thus, guided
+behavior improves the single-branch policy without requir-
+ing the guided field to enter the regression anchor, while
+preserving the benefit of optional inference-time CFG after
+training.
+Connection to Proposition 2.
+Proposition 2 characterizes
+the population minimizer as
+v† = vold + (v∗
+s −vs),
+namely, the unguided conditional anchor plus the reward-
+correlated improvement explored under the guided behavior
+distribution. The behavior guidance offset vs −vold is absent
+from the learned backbone. The results in Figure 6(b) are
+consistent with both consequences of this characterization:
+the guided rollouts yield a stronger CFG-free policy, while
+the retained gain from inference-time CFG indicates that the
+conditional–unconditional gap has not been absorbed into the
+conditional anchor. The figure therefore provides empirical
+support for the structural prediction of Proposition 2; the
+exact identity itself follows from the population argument in
+Appendix A.2.
+D
+More Qualitative Evaluation
+We qualitatively compare vanilla Wan2.1 with its Flash-
+GRPO and VideoAWR aligned variants at the 14B model
+scales. As shown in Figure 7, VideoAWR consistently gen-
+erates videos with higher visual fidelity, richer scene details,
+and smoother motion dynamics.
+As shown in Figure 7, VideoAWR shows consistent im-
+provements across diverse scenes. In the animated scenes,
+the little girl riding a bicycle and Bigfoot walking through
+the snow exhibit more plausible motion dynamics and higher
+aesthetic quality. The scenes depicting a middle-aged driver
+speeding along a rural road in a school bus and a blue-eyed
+man decelerating a black sports car demonstrate greater se-
+mantic consistency and more coherent motion. The scene
+featuring a green-furred panda playing a guitar beside a
+campfire against a snow-covered mountain backdrop presents
+richer visual details and an enhanced depth-of-field effect. Fi-
+nally, the scene depicting a modern art museum displaying
+abstract paintings exhibits higher visual fidelity and a better
+organized spatial layout.
+These results confirm that VideoAWR effectively im-
+proves visual aesthetics, temporal coherence, and prompt
+adherence across different model scales and content types.
+Prompts in Figure 4. The whole prompts in Figure 4 are as
+follows:
+1. CG animation concept art, a vintage steam locomotive
+slowly traveling down a narrow railway track. The train
+is adorned with intricate wooden carvings and painted
+with vibrant floral patterns. Smoke billows out from the
+chimney, creating a warm and nostalgic atmosphere. The
+engine driver, a rugged man with a mustache, stands at the
+front, looking determinedly forward. He wears a leather
+hat and a sturdy coat. The scenery along the track consists
+of lush greenery, small villages, and winding paths. The
+train moves at a leisurely pace, allowing passengers to
+enjoy the scenic views. The lighting is soft and golden,
+casting a gentle glow over everything. Low-angle view,
+focusing on the engine and the conductor, with medium
+shot of the interior and exterior of the train.
+2. A sleek black motorcycle weaving skillfully through a
+narrow city street corner. The rider, clad in tight leather
+gear, leans confidently into the turn with their helmet se-
+curely fastened. The motorcycle’s tires screech lightly as it
+navigates the tight curve, showcasing impressive handling
+skills. The background features bustling traffic and illumi-
+nated buildings, adding to the dynamic atmosphere. The
+scene captures the essence of urban racing and adrenaline-
+pumping moments. Low-angle shot focusing on the rider
+and motorcycle, medium shot of the corner, and a wide
+shot of the intersection.
+3. Cyberpunk-inspired visual style, a towering super cool
+giant robot standing in the heart of futuristic Cyberpunk
+Beijing. The robot has sleek, metallic body with glow-
+ing neon lights and intricate circuitry patterns. It stands
+tall amidst the bustling cityscape, towering over skyscrap-
+ers and neon-lit streets. The background features a blend
+of retro and modern elements, with neon signs, flying
+cars, and towering skyscrapers. The robot’s eyes glow in-
+tensely with a fierce determination, as it scans the city
+with its advanced sensors. It holds a large energy weapon
+in one hand, ready to defend the city from any threats. The
+robot’s mechanical limbs move smoothly, reflecting the
+high-tech and futuristic atmosphere. The scene captures
+a moment of intense action, with people rushing by in
+various directions. The lighting is dim, with soft shadows
+highlighting the robot’s imposing presence. The overall
+feel is gritty and exhilarating, showcasing the power and
+resilience of advanced technology in a dystopian future.
+Medium shot focusing on the robot’s face and arm, cap-
+turing its intense gaze and dynamic movement.
+Prompts in Figure 7. The prompts in Figure 7 are as follows:
+1. A whimsical winter scene captured in high-definition, a
+sleek black bicycle gracefully glides through a pristine
+
+
+VideoAWR
+FlashGRPO
+Vanilla
+A bicycle gliding through a snowy field
+A bus accelerating to gain speed
+A car slowing down to stop
+A bigfoot walking in the snowstorm
+A modern art museum, with colorful paintings
+A happy fuzzy panda playing guitar nearby a campfire, snow mountain in the background
+Figure 7: Qualitative comparison among VideoAWR, Flash-GRPO, and the Vanilla baseline fine-tuned with the HPSv3 reward
+on VBench prompts (Wan14B).
+snowy field. The snow-covered ground sparkles under
+the soft glow of a warm sunset. The bicycle has intricate
+patterns and accents in silver and gold, reflecting the sun-
+light beautifully. A young girl, with wavy blonde hair tied
+into a ponytail, is riding the bike, her expression filled
+with joy and excitement. She wears a cozy red coat and
+matching mittens, and a pair of stylish black boots. The
+field is dotted with small, colorful wildflowers, adding a
+pop of vibrant hues against the white backdrop. The sky is
+painted with soft, fluffy clouds, hinting at a gentle breeze.
+The background showcases a blend of natural and arti-
+ficial elements, including a few scattered wooden fences
+and a quaint wooden barn in the distance. The camera
+moves smoothly from a wide angle capturing the vast ex-
+panse of the snowy field to a closer perspective on the
+girl and the bicycle, emphasizing their dynamic interac-
+tion. The overall scene exudes a sense of tranquility and
+adventure, perfect for an animated winter tale.
+2. A massive bigfoot creature with shaggy fur and power-
+ful limbs, walking slowly and cautiously through a deep
+snowstorm. The bigfoot stands approximately 7 feet tall,
+with a broad chest and muscular build. It moves with de-
+liberate steps, its large feet sinking slightly into the heavy
+snow. The creature’s eyes are glowing with a fierce, deter-
+mined light, scanning the surroundings for any signs of
+danger. Snowflakes swirl around it, creating a dense and
+ominous atmosphere. The bigfoot’s fur is matted with
+frozen droplets and ice crystals, adding to its rugged ap-
+pearance. In the background, towering snowdrifts and
+jagged icicles contrast sharply against the pale moonlight.
+The scene captures the bigfoot’s silent progress through
+the treacherous winter landscape, with occasional bursts
+of movement as it shifts its weight or adjusts its balance.
+
+
+The lighting is stark and dramatic, emphasizing the big-
+foot’s imposing presence in the midst of the storm. Wide
+shot of the bigfoot in the middle of the snowy wilderness,
+with medium shots of its feet sinking into the snow and
+close-ups of its face and eyes.
+3. A vintage school bus speeding down a dusty rural road, its
+chrome accents reflecting sunlight as it gains momentum.
+The bus is filled with excited children, their backpacks
+slung over their shoulders and faces alight with anticipa-
+tion. The driver, a middle-aged man with a stern but kind
+expression, gazes out the front window with determina-
+tion. The children lean forward, holding onto the straps,
+while others sit quietly, lost in their own thoughts. The
+bus makes sharp turns around curves, the tires screech-
+ing slightly. Trees and fields blur past the windows as the
+bus accelerates rapidly. The countryside stretches out be-
+fore them, dotted with small houses and livestock. Aerial
+shot of the speeding bus from above, capturing the blur
+of the landscape and the determined face of the driver.
+Close-up shots of the children’s faces, focusing on their
+expressions of wonder and excitement. Medium shot of
+the bus interior, showing the rows of seats filled with ea-
+ger passengers. Low-angle shot of the bus as it speeds
+away, emphasizing the speed and power.
+4. A sleek black sports car with a racing stripe on its hood,
+gradually slowing down as it approaches a red traffic light.
+The driver, a ruggedly handsome man with short sandy-
+blonde hair and intense blue eyes, grips the steering wheel
+tightly. His expression shows determination and focus.
+The car’s interior is modern and luxurious, with dark
+wood trim and high-end leather seats. The passenger seat
+remains empty. As the car begins to decelerate, it emits
+a slight humming noise from its engine. The traffic light
+turns red, casting a warm amber glow over the scene.
+The surroundings include a busy city street with bustling
+pedestrians and vehicles, reflecting the urban atmosphere.
+The camera moves from a wide shot of the car coming to a
+halt, then zooms in to capture the moment the car comes to
+a complete stop, highlighting the car’s distinctive design
+and the driver’s focused expression. The final image is a
+close-up of the driver’s face, captured at a low angle, with
+the car’s taillights illuminating the scene. High dynamic
+range lighting, cinematic lighting. Medium shot, close-
+up, low-angle view.
+5. A joyful fuzzy panda playing a small electric guitar near
+a cozy campfire. The panda has bright green fur and
+twinkling blue eyes, surrounded by a warm glow from
+the flames. In the background, majestic snow mountains
+with soft, fluffy clouds contrast against a clear, starry
+night sky. The campfire creates a soft, flickering light,
+casting shadows on the snow-covered ground. The panda
+is positioned between the fire and the mountains, its arms
+gracefully moving as it strums the guitar. The scene is
+captured with a low-angle shot, emphasizing the serene
+atmosphere and the lively interaction between the panda
+and the campfire. Snowflakes gently fall, adding a touch
+of winter magic. Warm ambient lighting enhances the
+overall mood.
+6. Modern art museum interior, vibrant with colorful ab-
+stract paintings adorning the walls. Soft lighting casts a
+warm glow over the space, highlighting the bold brush-
+strokes and vibrant hues. Visitors wander among the
+works, captivated by the dynamic compositions. The cen-
+ter piece is a large mural painted on the ceiling, featuring
+swirling patterns and splashes of color. Surrounding it
+are smaller pieces arranged in a spiral pattern, each piece
+more striking than the last. The floor is covered in a soft,
+textured rug, adding depth and contrast to the surround-
+ing colors. Natural sunlight filters through large glass
+windows, creating an ethereal effect. The overall atmo-
+sphere is one of excitement and wonder, inviting viewers
+to explore and engage with the art.

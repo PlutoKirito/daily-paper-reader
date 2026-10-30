@@ -1,0 +1,1782 @@
+PWM: Personalized World Models with Online Reinforcement Learning
+PWM: PERSONALIZED WORLD MODELS WITH
+ONLINE REINFORCEMENT LEARNING
+Zhexin Lou1∗Guancheng Lu2∗Zeyu Zhang1∗† Yi Zhang1 Yang Zhao3
+Hao Tang1‡
+1School of Computer Science, Peking University
+2Northwestern University
+3La Trobe University
+∗Equal contribution. †Project lead. ‡Corresponding author: bjdxtanghao@gmail.com.
+Customize a world model to your scene
+Support video
+Train scene LoRA
+DanceGRPO /
+DiffusionNFT
+Frozen Yume-5B
+Generate
+New frame
++ actions
+A separate LoRA for each scene
+Indoor · courtyard view
+Support
+Yume
+PWM
+Courtyard
+view
+Courtyard view lost
+Courtyard view retained
+Gaming · terrain appearance
+Support
+Yume
+PWM
+Brown
+terrain
+Turns pale
+Brown terrain
+Outdoor · building and path
+Support
+Yume
+PWM
+Building
++ path
+Path disappears
+Path stays visible
+New initial frame + actions; learned LoRA fixed during generation
+Figure 1: Scene customization with PWM. A short support video trains a scene LoRA on a frozen
+world model. Results use DanceGRPO. Indoor and Outdoor show matched generation times; Gam-
+ing shows different steps at similar viewing distances.
+ABSTRACT
+Pretrained world models can generate diverse environments, yet users often want
+to explore a particular scene specified by their own video. This requires learn-
+ing the scene’s visual identity while retaining the quality of action-conditioned
+generation. We introduce Personalized World Models (PWM), a framework for
+customizing interactive world models from short scene videos through online
+reinforcement learning. In PWM, the support trajectory and its associated con-
+trols provide reward feedback on continuations sampled from the current pol-
+icy. In the GRPO instantiation, group-relative optimization updates a compact
+LoRA adapter using a unified reward for scene appearance, visual continuity,
+and motion, while base-policy anchoring regularizes changes to the pretrained
+generation prior of a frozen Yume-5B backbone.
+The same adaptation pro-
+cedure is applied across real and rendered environments.
+We also instantiate
+PWM with DiffusionNFT as an alternative reward-guided optimization method
+for learning the scene-specific adapter. We also introduce PWM-Bench, com-
+prising 150 customization tasks across Indoor, Outdoor, and Gaming, with paired
+evaluation on held-out continuations. The GRPO and DiffusionNFT instantia-
+tions of PWM improve customization over native Yume in 71.3% and 65.3% of
+the evaluated scenes, respectively, with positive mean gains across all three do-
+mains. For the GRPO instantiation, matched SFT comparisons further demon-
+strate higher mean customization gains and better mean image-quality scores
+in every domain, while retaining frame-level visual quality close to the pre-
+trained model. Code: https://github.com/AIGeeksGroup/PWM. Website:
+https://aigeeksgroup.github.io/PWM.
+1
+arXiv:2610.04920v1  [cs.CV]  4 Oct 2026
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+1
+INTRODUCTION
+Interactive world models enable users to explore environments through action-conditioned video
+generation. Recent systems combine pretrained visual generation priors with user controls and au-
+toregressive rollout, supporting interactive exploration across diverse environments (Yu et al., 2025;
+Mao et al., 2026). Personalizing this experience introduces a concrete requirement: the generated
+world should retain the identity of the environment provided by the user. For a particular interior,
+outdoor location, or game scene, its characteristic appearance and content should remain recogniz-
+able as the generated trajectory progresses.
+Personalization methods have demonstrated that pretrained generators can acquire visual identity
+from limited reference observations (Ruiz et al., 2023). Interactive world generation extends this
+objective to action-conditioned continuations. A short support video provides observations of a
+scene’s materials, lighting, visual style, and characteristic content. Successful customization should
+therefore strengthen fidelity to the target environment while retaining the visual quality of the un-
+derlying generator.
+Reward-based optimization provides a way to express preferences directly on generated images and
+videos (Xue et al., 2025). For scene customization, the support trajectory can supply the reference
+needed to evaluate those outputs: whether they match the environment’s appearance and whether
+their visual evolution is consistent with the observed trajectory.
+We introduce Personalized World Models (PWM), a framework for per-scene customization
+through online reinforcement learning. Given a short support trajectory and its controls, PWM
+learns a compact LoRA adapter on a frozen Yume-5B backbone. The current policy samples groups
+of candidate continuations, and reward feedback derived from the support trajectory guides updates
+to the scene-specific adapter. We instantiate this framework with GRPO and DiffusionNFT as alter-
+native reward-guided optimization methods. Online learning here refers to collecting fresh rollouts
+from the current policy during adaptation.
+Both instantiations use native generation windows, the same adapter capacity, and a shared reward
+for scene appearance, visual continuity, and motion. The GRPO instantiation additionally uses a
+base-policy anchor. Optimization and checkpoint-averaging settings are fixed across scenes within
+each instantiation.
+To evaluate this capability, we introduce PWM-Bench, a suite of 150 per-scene customization tasks
+spanning Indoor, Outdoor, and Gaming. Each task provides an 80-frame support segment and a
+temporally later, non-overlapping 145-frame test continuation. The benchmark evaluates scene fi-
+delity through appearance agreement and an entity-based hallucination penalty, complemented by
+frame-level image-quality measurements. Comparisons use three paired random seeds per scene
+under shared initial context, controls, and generation settings.
+Across PWM-Bench, the GRPO instantiation of PWM improves customization over native Yume in
+107 of 150 scenes, with a mean relative gain of 6.39%. The DiffusionNFT instantiation improves 98
+of 150 scenes, with a mean relative gain of 5.22%. Both instantiations achieve positive mean gains
+in every domain. Compared with matched SFT, the GRPO instantiation increases the fraction of
+scenes improved over Native from 57.3% to 71.3% and achieves higher mean customization gains
+across all three domains. It also obtains better domain-level means than SFT on MUSIQ, NIQE, and
+BRISQUE, while remaining close to native Yume in these frame-level quality measures.
+Our contributions are threefold:
+• We introduce PWM, a per-scene customization framework that learns a compact adapter
+from a short support trajectory through online reinforcement learning on a frozen interac-
+tive world model, instantiated with GRPO and DiffusionNFT.
+• We introduce PWM-Bench, comprising 150 customization tasks across three first-person
+domains, with held-out continuations and a shared protocol for evaluating scene fidelity
+and visual quality.
+• We demonstrate positive average customization gains over native Yume across all three
+domains with both optimization methods. Matched SFT comparisons show that the GRPO
+instantiation benefits more scenes and achieves better mean image-quality scores.
+2
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+2
+RELATED WORK
+Interactive world models.
+Interactive world generation combines visual synthesis with action
+control to produce trajectories that respond to user inputs. GameFactory (Yu et al., 2025) learns
+action control from game videos and uses a domain adapter with multi-phase training to transfer
+this capability to open-domain scenes. Yume (Mao et al., 2025) combines camera control with au-
+toregressive video generation, while Yume-1.5 (Mao et al., 2026) develops context compression and
+text-controlled interaction for continuous world exploration. These advances establish a foundation
+for generating and navigating diverse environments. PWM studies how to specialize such a pre-
+trained model to a particular observed scene. Given a short support trajectory, it learns a compact
+scene adapter for subsequent action-conditioned generation in the same environment.
+Personalization of generative models.
+Personalization adapts a generative prior to visual content
+specified by limited reference observations. DreamBooth (Ruiz et al., 2023) learns a subject from a
+few images and synthesizes that subject in new contexts. Tune-A-Video (Wu et al., 2023) extends
+adaptation from limited observations to video generation by tuning an image diffusion model on
+a single text–video pair. Parameter-efficient methods such as LoRA (Hu et al., 2022) support this
+adaptation through trainable low-rank updates to frozen pretrained weights. PWM applies scene-
+level personalization to an interactive world model: the support video provides observations of the
+target environment, and the learned adapter is evaluated on a temporally held-out continuation under
+action controls.
+Reinforcement learning for visual generation.
+Reward-based fine-tuning adapts visual gener-
+ators to objectives defined on their outputs. DDPO (Black et al., 2024) treats iterative denoising
+as a sequential decision process and applies policy gradients to optimize sample-level rewards.
+VADER (Prabhudesai et al., 2024) optimizes video generation by propagating gradients from differ-
+entiable reward models. DanceGRPO (Xue et al., 2025) applies group-relative policy optimization
+to diffusion and rectified-flow models across image and video generation. DiffusionNFT (Zheng
+et al., 2026) performs online reward-guided optimization through the forward noising process, in-
+corporating positive and negative learning signals into a flow-matching objective without requiring
+likelihood estimation. Building on this line of work, PWM obtains reward feedback from the target
+scene’s support trajectory and updates a scene-specific adapter using online rollouts. We instan-
+tiate PWM with GRPO and DiffusionNFT, using the same scene-level task, adapter capacity, and
+reward definition. The reward combines visual agreement with initial-frame consistency and motion
+magnitude matching, connecting reward-based optimization to the scene customization objective.
+Weight averaging.
+Weight averaging combines parameter states into a single model. Stochastic
+Weight Averaging (Izmailov et al., 2018) averages weights along a training trajectory, while Model
+Soups (Wortsman et al., 2022) averages models fine-tuned from a shared pretrained initialization.
+PWM uses this idea within each scene’s adaptation run, averaging adapter checkpoints to retain a
+single compact adapter for inference. Each optimization instantiation uses a checkpoint-averaging
+rule that is fixed across scenes and does not use held-out test frames.
+3
+METHOD
+We propose PWM, a per-scene personalization approach for interactive world models. Given a
+short preceding trajectory, PWM trains a scene-specific LoRA on frozen Yume-5B to transfer scene
+knowledge to a subsequent trajectory. The core objectives are visual identity tailored to the target
+scene, persistent spatial layout, and action responsiveness, while retaining the general action and
+control priors of the pretrained world model. For this reason, PWM combines scene-specific low-
+rank parameterization, online reward-guided optimization with GRPO or DiffusionNFT based on
+native generation windows, a unified reward that balances scene fidelity and motion, and a weight
+averaging strategy that does not require selecting a single checkpoint.
+Figure 2 summarizes the shared adaptation pipeline and the two online optimization instantiations.
+3
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+Learn a scene adapter
+Short support video
+80-frame support
+W
+A
+S
+D
+0
+79
+6 overlapping windows
+29 frames each · stride 9
+condition
+Yume-5B
+Frozen backbone
+Scene LoRA
+Pretrained world model
+sample
+Fresh online rollouts
+Rollout 1
+Rollout 2
+Rollout 3
+Rollout 4
+G = 4 candidates / window
+Choose one optimizer
+DanceGRPO
+DiffusionNFT
+or
+Group-relative
+clipped update
+Reward-weighted
+flow matching
+Shared support-grounded reward
+DINO
+0.50
+LPIPS
+0.30
+Boundary
+0.10
+Motion
+0.10
+Support reference
+Continue the scene with new controls
+Epoch checkpoints
+Average once
+Yume-5B
+Frozen backbone
+Fixed LoRA
+New initial frame
+W
+A
+S
+D
++
+Scene-specific continuation
+Figure 2: PWM with GRPO and DiffusionNFT. Support video and controls condition fresh roll-
+outs from frozen Yume-5B with a trainable scene LoRA. Rewards guide GRPO’s clipped objective
+with a base-policy anchor, or DiffusionNFT’s reward-weighted positive and negative flow-matching
+branches. Only LoRA parameters are updated. Eight epoch adapters are averaged for generation.
+Rollout icons are schematic.
+3.1
+PRELIMINARIES: YUME, GRPO, AND DIFFUSIONNFT
+Yume interactive world model.
+Yume-1.5 (Mao et al., 2026) extends a pretrained video generator
+into an action-command-controllable interactive world model. Given a compressed visual history
+ht and a sequence ut containing action commands for generation window t, the frozen Yume-5B
+model, parameterized by θ0, generates the next video segment according to
+Xt ∼pθ0(Xt | ht, ut).
+(1)
+The control sequence combines discrete translation and camera commands with continuous motion
+magnitudes. Each generated segment is incorporated into the visual history to condition the sub-
+sequent window, resulting in a segment-level autoregressive interaction trajectory. PWM keeps θ0
+frozen and learns only a scene-specific low-rank adapter.
+Group Relative Policy Optimization.
+Group Relative Policy Optimization (GRPO) estimates ad-
+vantages by comparing a group of samples generated under the same condition, thereby eliminating
+the need for a learned critic (Shao et al., 2024). Given a condition c, GRPO samples G trajectories
+from an old-policy snapshot and normalizes their outcome rewards within the group:
+τi ∼πθold(· | c),
+bAi = ri −r
+sr
+,
+i = 1, . . . , G,
+(2)
+where r and sr denote the mean and standard deviation of {rj}G
+j=1. Under outcome-level supervi-
+sion, the same bAi is assigned to every decision step along trajectory τi.
+Let Ki be the number of decision steps in τi. GRPO optimizes the empirical clipped surrogate
+bJclip(θ) = 1
+G
+G
+X
+i=1
+1
+Ki
+Ki
+X
+k=1
+min
+
+ρi,k(θ) bAi,
+clip
+ ρi,k(θ), 1 −εclip, 1 + εclip
+ bAi
+
+,
+ρi,k(θ) =
+πθ(ai,k | si,k)
+πθold(ai,k | si,k).
+(3)
+GRPO therefore replaces a learned critic with a group-reward baseline rather than removing the
+baseline altogether. Its original formulation additionally regularizes the policy toward a separate
+4
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+reference policy πref. The GRPO instantiation of PWM instead employs the base-policy anchor
+introduced in Section 3.2.
+Policy interpretation of diffusion and flow sampling.
+Following DDPO and DanceGRPO (Black
+et al., 2024; Xue et al., 2025), iterative diffusion and rectified-flow sampling can be formulated as
+a finite-horizon Markov decision process. Let ct = (ht, ut) denote the visual history and control
+condition for video window t. After stochasticizing the reverse-time transition, the state, action, and
+policy at denoising step k are defined as
+st,k = (ct, k, zt,k),
+at,k = zt,k−1,
+πθ(at,k | st,k) = pθ(zt,k−1 | zt,k, ct).
+(4)
+A complete latent trajectory τt = (zt,K, . . . , zt,0) produces one video segment and receives a termi-
+nal reward. Under group-relative optimization, the resulting trajectory advantage is assigned to each
+denoising transition. Here, k indexes the internal denoising process, whereas t indexes the external
+sequence of autoregressive video windows.
+We use online to mean that each data-collection round collects fresh trajectories from the latest
+behavior-policy snapshot. It does not refer to continual adaptation after deployment.
+DiffusionNFT.
+DiffusionNFT (Zheng et al., 2026) performs online reward-guided optimization
+through a forward-process flow-matching objective.
+Generated samples are assigned reward-
+dependent weights, which determine their contributions to positive and negative learning branches.
+These branches are constructed from the current model’s velocity prediction and a fixed behavior-
+policy prediction, allowing reward-guided updates without estimating sampling-trajectory likeli-
+hoods. PWM instantiates this objective for scene-specific LoRA adaptation, as described in Sec-
+tion 3.3.
+PROBLEM FORMULATION: PER-SCENE CUSTOMIZATION
+Let a scene s be a temporally ordered controlled trajectory Ds = {(xt, ut)}T
+t=1, where xt is a video
+frame and ut contains translation, camera, and continuous motion controls. A support prefix Dsup
+s
+is
+available for adaptation. The goal is to specialize the model to the persistent identity of s and transfer
+that knowledge to a later, unseen portion of the same scene. No frame from the future evaluation
+portion is used for optimization or checkpoint construction.
+We start from a frozen Yume-5B world model with parameters θ0. For each scene, PWM learns an
+independent rank-8 LoRA adapter ∆θs (20.2M trainable parameters), while all backbone parameters
+remain fixed. The resulting policy is πθ0+∆θs. This factorization assigns complementary roles to the
+two parameter sets: the frozen backbone supplies the general action-conditioned generation prior,
+whereas the adapter stores knowledge specific to the target scene. The current paper uses the same
+adapter capacity for both optimization methods, every scene, and every first-person domain.
+3.2
+PER-SCENE CUSTOMIZATION VIA ONLINE GRPO
+Learning in the deployment geometry.
+PWM trains directly with Yume’s native 29-frame gen-
+eration window. We cover the support trajectory with six overlapping windows whose start indices
+are [0, 9, 18, 27, 36, 45]. Each window is initialized by its real first frame and is conditioned on the
+controls measured for that window. Training and deployment therefore share the same temporal
+geometry; no auxiliary short-window policy is introduced.
+On-policy group-relative optimization.
+PWM instantiates the GRPO update in Eq. 3 with a
+group of G = 4 diffusion trajectories for each support window. The trajectories share the initial
+latent noise to control nuisance variation while retaining independent stochastic SDE transitions.
+Because the unified reward contains components with different numerical scales, we normalize each
+component separately before combining their advantages. For reward component m and rollout i,
+we compute
+Ai =
+X
+m
+αm
+Ri,m −µm
+σm + ε
+,
+(µm, σm) = MeanStdG
+j=1[Rj,m] ,
+(5)
+5
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+where αm is the weight of component m in Eq. (12). The resulting Ai replaces the scalar-reward ad-
+vantage bAi in Eq. (3). This component-wise normalization prevents a reward term from dominating
+the policy update merely because of its numerical scale.
+We use ε = 10−6 and set a component’s contribution to zero when its within-group standard devia-
+tion is below 10−3 (Appendix A.3).
+In the PWM implementation, the clipped surrogate uses eρi,k = ρ1/d
+i,k , computed from Gaussian log
+densities averaged over the d scalar latent elements in the generated region (Appendix A.3).
+Noise-robust score-on-mean.
+In few-step diffusion sampling, the final stochastic transition can
+inject visible noise into the decoded rollout. Scoring that sample directly can make the relative ad-
+vantage reflect the last noise draw rather than scene content. PWM therefore separates the trajectory
+used for policy learning from the video used for reward measurement. For the final transition
+z′
+i = µθ(zi, cs) + σϵi,
+(6)
+the policy likelihood is evaluated at the sampled state z′
+i, but the reward is evaluated on the decoded
+conditional mean exi = Dec(µθ(zi, cs)). Thus, exploration remains stochastic and on-policy, while
+rollout ranking is based on a noise-reduced estimate of scene content.
+Finally, the GRPO instantiation of PWM anchors every updated transition to the frozen base model.
+Let µθ(si,k) and µθ0(si,k) denote the transition means predicted with the adapter enabled and dis-
+abled, respectively, at the same denoising state. The GRPO objective used in PWM is
+LPWM = −bJclip(θ0 + ∆θs)
++ λ
+G
+G
+X
+i=1
+1
+Ki
+Ki
+X
+k=1
+1
+d ∥µθ0+∆θs(si,k) −µθ0(si,k)∥2
+2 .
+(7)
+This mean-matching anchor preserves the pretrained transition dynamics while the group-relative
+advantage moves the adapter toward better continuations for the target scene. We use four Euler
+denoising steps, four PPO passes per rollout group, λ = 0.1, a learning rate of 10−4, and SDE
+temperature β = 0.5. For the GRPO instantiation, every scene is trained for eight epochs with the
+same configuration.
+3.3
+PER-SCENE CUSTOMIZATION VIA DIFFUSIONNFT
+We also instantiate PWM with DiffusionNFT (Zheng et al., 2026), which incorporates reward feed-
+back through a forward-process flow-matching objective. This instantiation uses the same frozen
+Yume-5B backbone, LoRA capacity, six native support windows, and unified reward as the GRPO
+instantiation.
+Online sampling and reward normalization.
+For each support window, we sample G = 4 con-
+tinuations with independent initial latent noise and compute their rewards using the same score-on-
+mean procedure. Let Ri be the scalar reward from Eq. (12), and let R be its mean within the current
+window’s rollout group. We convert each reward into a bounded weight
+qi = 1
+2 + 1
+2 clip
+Ri −R
+Zs
+, −1, 1
+
+,
+(8)
+where Zs is the running standard deviation of rollout rewards collected during adaptation of scene
+s, with a lower bound of 10−3.
+Reward-guided flow matching.
+Let z0
+i denote the generated latent segment used for reward mea-
+surement. We sample a noise level σ from the four levels of the generation schedule and draw fresh
+Gaussian noise:
+zσ
+i = (1 −σ)z0
+i + σϵ,
+ϵ ∼N(0, I),
+v⋆
+i = ϵ −z0
+i .
+(9)
+6
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+The visual history and action condition are kept fixed. Let vθ be the current velocity prediction at
+(zσ
+i , σ, ct) and vold the prediction cached before the update. DiffusionNFT defines
+v+
+i = (1 −βNFT)vold + βNFTvθ,
+v−
+i = (1 + βNFT)vold −βNFTvθ,
+(10)
+and minimizes
+LNFT = Ei,σ,ϵ
+h
+qi MSE(v+
+i , v⋆
+i )
++ (1 −qi) MSE(v−
+i , v⋆
+i )
+i
+.
+(11)
+Here, MSE averages over latent elements, and gradients are taken only through vθ. The reward
+weights determine the contribution of the positive and negative branches to the adapter update.
+We collect 24 rollouts across the six support windows and draw two noise-level/noise pairs per
+rollout. We perform four optimization passes over this collected batch, accumulating gradients
+across windows. The cached behavior predictions remain fixed during these passes. We use βNFT =
+0.5, a learning rate of 5 × 10−5, and eight training epochs. This instantiation uses the current
+behavior-policy snapshot without an EMA teacher or an additional base-policy anchor.
+3.4
+A UNIFIED REWARD ACROSS DOMAINS
+Both the GRPO and DiffusionNFT instantiations of PWM use one reward for all scenes and first-
+person domains:
+R = 0.50 Rgt + 0.30 Rlpips + 0.10 Rcross + 0.10 Rdyn.
+(12)
+The four terms give the optimizer distinct responsibilities. Rgt measures spatially aligned DINO
+feature agreement between the generated segment and the real continuation of the support window.
+Rlpips is one minus their LPIPS (Zhang et al., 2018) distance and therefore preserves perceptual
+appearance. Both terms are computed per frame and aggregated as 0.7 times the temporal mean
+plus 0.3 times the minimum, so a short failure cannot be hidden by otherwise strong frames. Rcross
+measures DINO feature agreement between the first generated frame and the window’s ground-truth
+first frame. Finally, Rdyn rewards agreement between generated and real optical-flow magnitudes,
+so appearance fidelity cannot be obtained by suppressing motion. Together, the first two terms
+specify what the scene should look like, while the latter two constrain how a valid continuation
+should evolve.
+All reward references are drawn exclusively from the support trajectory. We do not tune reward
+weights per scene or per domain, and the evaluation metric is separate from this training reward
+(Section 4). This separation makes PWM a single customization procedure rather than a collection
+of scene-specific reward recipes.
+GRPO combines component-wise normalized advantages through Eq. (5), while DiffusionNFT uses
+the combined scalar reward through Eq. (8).
+3.5
+CHECKPOINT SOUP
+Small-data policy optimization can visit useful but different adapter states across epochs. Selecting
+one of them per scene would introduce an additional selection rule and could couple the delivered
+model to a noisy validation estimate. For both GRPO and DiffusionNFT, PWM instead saves the
+adapter at every epoch and averages all eight checkpoints element-wise:
+∆θs = 1
+8
+8
+X
+e=1
+∆θ(e)
+s .
+(13)
+Here, averaging is applied to the corresponding stored LoRA factor tensors.
+This checkpoint
+soup (Wortsman et al., 2022) is the final scene model. Because factor-wise averaging preserves
+the adapter’s rank and architecture, PWM still deploys one compact adapter and incurs no addi-
+tional inference cost. The delivery rule is fixed across scenes and does not inspect the future test
+trajectory.
+7
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+Indoor
+Real-world interiors
+50 scenes
+Outdoor
+Real-world environments
+50 scenes
+Gaming
+Minecraft worlds
+50 scenes
+Figure 3: Training scenes in PWM-Bench. Each domain contains 50 scenes; four representative
+training scenes are shown per domain. Each image is the full, unretouched frame at zero-based index
+40 of an 80-frame support clip.
+4
+PWM-BENCH
+Customization promises that the model reproduces the persistent identity of this scene — its layout,
+materials, and sense of place — on a continuation it has never observed. Our benchmark evaluates
+this promise directly: each generated rollout is scored against the held-out ground-truth continuation
+of its own scene.
+Figure 3 shows representative training-support frames from the three domains of PWM-Bench.
+4.1
+CUSTOMIZATION-FIDELITY SCORE
+For a generated rollout g1:T and the ground-truth test segment x1:T (T=145 frames), the score is
+S = Dpair + 0.5 Dhall,
+(14)
+Dpair = 1
+T
+T
+X
+t=1
+
+1 −cos
+ ϕ(gt), ϕ(xt)
+
+,
+(15)
+Dhall = 1
+T
+T
+X
+t=1
+1
+
+gt contains an entity class absent from x1
+
+,
+(16)
+where ϕ(·) is the DINOv2 class-token embedding (Oquab et al., 2024). Lower S indicates higher
+fidelity to the scene’s true continuation.
+Dpair measures appearance fidelity as the average feature distance between generated and ground-
+truth frames at the same timestep, in the DINO feature space commonly used to measure fidelity
+in personalized generation (Ruiz et al., 2023). We use a time-aligned comparison over the full
+horizon, rather than a distributional one, because distributional metrics can reward plausible but
+generic continuations; matching the specific scene as it unfolds is precisely what customization is
+expected to deliver.
+Dhall measures the fraction of generated frames containing an entity class (person, vehicle, or an-
+imal, detected by zero-shot CLIP (Radford et al., 2021)) that is absent from the first frame of the
+ground-truth test segment. It serves as a proxy for unexpected entity introduction relative to the
+initial scene. The detection rules and thresholds are specified in Appendix C.4.
+Both PWM instantiations and Yume are scored by the same pipeline, with identical captions, initial
+context, and generation horizon. For each instantiation m, we report the paired difference
+∆m = S(m) −S(Yume),
+(17)
+where m denotes PWM (GRPO) or PWM (DiffusionNFT). A negative ∆m indicates improved cus-
+tomization over Yume.
+8
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+4.2
+SCORING PROTOCOL
+Each scene is evaluated with three random seeds, shared across Yume and both PWM instantiations,
+under deterministic inference. For each instantiation, a scene counts as improved if its mean paired
+difference against Yume over the three seeds is negative. We report improvement rates and mean
+and maximum scene-level relative gains by domain.
+Adaptation uses only the support windows, and evaluation uses only the held-out test segment, so no
+evaluated frame is seen during training. Both PWM instantiations are evaluated on the same fixed
+set of scenes.
+5
+EXPERIMENTAL SETUP
+5.1
+CROSS-DOMAIN EVALUATION SUITE
+We evaluate 150 independent customization tasks across three first-person domains: 50 outdoor
+walking scenes, 50 indoor walking scenes, and 50 Minecraft scenes (Table 1). Each task has its own
+support trajectory, scene adapter, and held-out test trajectory.
+Table 1: Composition of the cross-domain evaluation suite. Each domain contains 50 independent
+per-scene customization tasks.
+Domain Tasks Video source
+Control source
+Outdoor
+50
+EgoVid-5M, YouTube
+VIO / visual motion
+Indoor
+50
+EgoVid-5M,
+InCrowd-VI,
+YouTube
+VIO / visual motion
+Gaming
+50
+MineDojo
+Scripted-agent logs
+Real-world videos come from the visual–inertial odometry (VIO) annotated subset of EgoVid-
+5M (Wang et al., 2025), YouTube, and, for Indoor, InCrowd-VI (Bamdad et al., 2024). YouTube
+camera motion is estimated from video and mapped to the shared control representation.
+Following GameFactory’s (Yu et al., 2025) automated collection paradigm, our scripted agents
+record Minecraft videos and synchronized locomotion and camera controls in MineDojo (Fan et al.,
+2022).
+5.2
+PER-SCENE TASK CONSTRUCTION
+Each task contains an 80-frame support segment and a temporally later, non-overlapping 145-frame
+test segment from the same scene. PWM adapts independently on each support segment and evalu-
+ates the resulting adapter on its held-out continuation.
+We use a shared control interface across all three domains. Each video window is conditioned on
+translation commands (W/A/S/D), a camera-direction token, and three continuous motion magni-
+tudes. For EgoVid-5M, these annotations are obtained from the associated VIO trajectory. For
+YouTube videos, they are derived from estimated camera motion. For Minecraft, they are recorded
+directly from the scripted agents.
+The same source-side quality criteria are applied across domains. The retained tasks provide con-
+tinuous and non-degenerate camera motion, consistent scene identity across the support and test
+segments, and agreement between the control annotations and observed visual motion.
+5.3
+CONTROLLED COMPARISONS
+We compare PWM with native Yume-5B using the same 29-frame autoregressive generation process,
+initial visual context, controls, decoding configuration, and rollout horizon. Native Yume uses the
+same inference pipeline with the scene adapter disabled, isolating the effect of per-scene adaptation.
+We additionally compare PWM with a matched SFT-LoRA baseline in the reinforcement-learning
+ablation. SFT-LoRA uses the same frozen Yume-5B backbone, LoRA capacity, support data, control
+9
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+GT
+Yume
+PWM
+(DanceGRPO)
+PWM
+(DiffusionNFT)
+f0
+W A S D
+·
+f21
+W A S D
+·
+f41
+W A S D
+·
+f62
+W A S D
+·
+f82
+W A S D
+·
+f103
+W A S D
+·
+f123
+W A S D
+·
+f144
+W A S D
+·
+Figure 4: Scene appearance in a shopping-mall continuation. Rows share the controls; columns
+show frames 0, 21, 41, 62, 82, 103, 123, and 144. Yume replaces shop displays with window-
+like structures; both PWM variants retain shop displays. Boxes mark selected regions; GT denotes
+ground truth.
+annotations, optimization budget, and evaluation protocol as PWM. This comparison isolates the
+contribution of online GRPO beyond scene-specific parameter updates alone.
+5.4
+SHARED TRAINING AND EVALUATION CONFIGURATION
+All videos are processed at a resolution of 832 × 480. Each scene is adapted independently with
+a rank-8 LoRA using α = 16, corresponding to 20.2M trainable parameters. We instantiate PWM
+with GRPO and DiffusionNFT, as described in Sections 3.2 and 3.3. Both instantiations use the same
+adapter capacity and unified reward in Eq. (12), with checkpoint averaging described in Section 3.5.
+Within each instantiation, the optimization configuration and checkpoint-averaging rule are fixed
+across all 150 tasks.
+Evaluation follows Section 4.2.
+Each scene is evaluated with three paired random seeds,
+{42, 123, 777}, shared between PWM and native Yume under deterministic inference. Both meth-
+ods generate the full 145-frame test trajectory. Seed-level paired differences are first averaged within
+each scene, and every scene contributes once to its domain and to the overall benchmark.
+6
+EXPERIMENTS
+Object hallucination
+f128
+Yume
+A face appears
+PWM
+(DanceGRPO)
+Equipment retained
+PWM
+(DiffusionNFT)
+Equipment retained
+Figure 5: Object hallucination indoors. Yume
+adds a face to blue equipment; both PWM vari-
+ants retain its appearance. Methods share the seed
+and controls (frame 128). Lower panels enlarge
+equally sized boxed crops.
+We evaluate PWM along three dimensions:
+customization gains over native Yume, the
+contribution of reinforcement learning beyond
+supervised adaptation, and visual quality af-
+ter customization. The evaluation covers 150
+scenes across Indoor, Outdoor, and Gaming,
+with three paired generation seeds per scene.
+All customization scores are computed over the
+complete 145-frame held-out continuation, fol-
+lowing Section 5.
+6.1
+SCENE
+CUSTOMIZATION ACROSS DOMAINS
+Scene appearance and content retention.
+Figure 4 illustrates scene customization in a
+shopping-mall continuation.
+Both PWM in-
+stantiations retain shop displays, while Yume
+replaces them with window-like structures in
+later frames.
+10
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+GT
+Yume
+PWM
+(DanceGRPO)
+PWM
+(DiffusionNFT)
+f0
+W A S D
+·
+f21
+W A S D
+·
+f41
+W A S D
+·
+f62
+W A S D
+·
+f82
+W A S D
+·
+f103
+W A S D
+·
+f123
+W A S D
+·
+f144
+W A S D
+·
+Figure 6: Snow-cover retention in Gaming. Both PWM variants retain snow-covered ground.
+Rows share controls and use the frame indices in Figure 4. GT denotes ground truth; boxes mark
+selected regions.
+GT
+Yume
+SFT
+PWM
+(DanceGRPO)
+PWM
+(DiffusionNFT)
+f0
+W A S D
+←
+f21
+W A S D
+←
+f41
+W A S D
+←
+f62
+W A S D
+←
+f82
+W A S D
+←
+f103
+W A S D
+·
+f123
+W A S D
+·
+f144
+W A S D
+·
+Figure 7: Scene adaptation outdoors. Methods share the seed, controls, and eight uniformly sam-
+pled frame indices. Yume shows a nearby wall and SFT close-ups of buildings and palms; both
+PWM variants retain visible passage space.
+Measuring customization benefit.
+We quantify customization benefit as the relative reduction in
+the score S defined in Eq. (14). For scene s and method m, let ¯Sm
+s denote the score averaged over
+the three generation seeds. The scene-level gain, expressed as a percentage, is
+gs(m) = 100
+¯SNative
+s
+−¯Sm
+s
+¯SNative
+s
+.
+(18)
+Positive values indicate improved customization over Native. We report the mean gain across all
+evaluated scenes, the maximum scene-level gain, and the fraction of scenes with gs(m) > 0. Every
+scene receives equal weight, and negative gains are included in the average. Both the mean and
+maximum are computed after averaging the three seeds within each scene.
+11
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+Table 2:
+PWM improves customization across all three do-
+mains. Both optimization instantiations are compared with na-
+tive Yume. Gains are relative reductions in S. Mean gain in-
+cludes all evaluated scenes. Maximum gain and improved-scene
+counts are computed after averaging three seeds within each
+scene.
+Method
+Mean gain
+(%) ↑
+Max. gain
+(%) ↑
+Improved
+scenes ↑
+Indoor
+PWM (DanceGRPO)
+5.14
+49.00
+36/50 (72.0%)
+PWM (DiffusionNFT)
+7.04
+58.54
+34/50 (68.0%)
+Outdoor
+PWM (DanceGRPO)
+6.11
+75.11
+34/50 (68.0%)
+PWM (DiffusionNFT)
+2.27
+46.38
+30/50 (60.0%)
+Gaming
+PWM (DanceGRPO)
+7.91
+28.66
+37/50 (74.0%)
+PWM (DiffusionNFT)
+6.35
+38.76
+34/50 (68.0%)
+Overall
+PWM (DanceGRPO)
+6.39
+75.11 107/150 (71.3%)
+PWM (DiffusionNFT)
+5.22
+58.54
+98/150 (65.3%)
+Positive gains across real and
+rendered environments.
+The
+GRPO and DiffusionNFT in-
+stantiations of PWM improve
+customization in 107 and 98
+of the 150 evaluated scenes,
+respectively,
+achieving
+mean
+relative gains of 6.39% and
+5.22% over native Yume (Ta-
+ble 2).
+The corresponding
+improvement rates are 71.3%
+and 65.3%.
+Both instanti-
+ations achieve positive mean
+gains across Indoor, Outdoor,
+and Gaming. These results sup-
+port the effectiveness of per-
+scene customization across real
+and rendered environments us-
+ing either online reward-guided
+optimization method.
+Benefits beyond the strongest
+examples.
+For the GRPO instantiation, the largest scene-level gains reach 49.00% in Indoor,
+75.11% in Outdoor, and 28.66% in Gaming. The median gains are also positive in all three domains:
+5.18%, 5.82%, and 8.18%, respectively. Together, the average gain, median gain, and improvement
+frequency show that the observed customization benefit extends beyond a few highly successful
+examples.
+Table 3:
+Both PWM instantiations achieve higher
+mean customization gains than SFT across all three
+domains. All methods are compared with native Yume.
+Improved scenes have a lower three-seed mean S than Na-
+tive. Bold indicates the best result within each domain.
+Method
+Mean gain
+(%) ↑
+Improved
+scenes ↑
+Indoor
+SFT
+−16.39
+27/50 (54.0%)
+PWM (DanceGRPO)
++5.14
+36/50 (72.0%)
+PWM (DiffusionNFT)
++7.04
+34/50 (68.0%)
+Outdoor
+SFT
+−14.86
+26/50 (52.0%)
+PWM (DanceGRPO)
++6.11
+34/50 (68.0%)
+PWM (DiffusionNFT)
++2.27
+30/50 (60.0%)
+Gaming
+SFT
++6.08
+33/50 (66.0%)
+PWM (DanceGRPO)
++7.91
+37/50 (74.0%)
+PWM (DiffusionNFT)
++6.35
+34/50 (68.0%)
+Overall
+SFT
+−8.39
+86/150 (57.3%)
+PWM (DanceGRPO)
++6.39 107/150 (71.3%)
+PWM (DiffusionNFT)
++5.22
+98/150 (65.3%)
+Snow-cover retention in Gaming.
+Figure 6 complements the indoor ex-
+ample with a rendered environment:
+both PWM instantiations retain snow-
+covered ground in the selected continu-
+ations.
+Object
+hallucination.
+Figure
+5
+shows a local object hallucination:
+a human face appears on the blue
+equipment in Yume, while both PWM
+instantiations
+retain
+its
+equipment
+appearance.
+6.2
+THE BENEFIT
+OF REINFORCEMENT LEARNING
+Comparison with matched super-
+vised adaptation.
+We assess online
+RL against matched SFT-LoRA under
+the settings in Section 5.3. Customiza-
+tion gains and improved-scene counts
+are measured against the same native
+Yume baseline.
+Figure 7 provides a qualitative comparison of Native Yume, SFT, and both PWM instantiations.
+In this outdoor example, both PWM instantiations retain visible passage space as generation pro-
+gresses.
+Higher average customization benefit.
+Both the DanceGRPO and DiffusionNFT instantiations
+of PWM achieve higher mean gains than SFT in every domain (Table 3). In Indoor and Outdoor,
+12
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+both instantiations achieve positive mean gains, compared with negative mean gains for SFT. In
+Gaming, the mean gain increases from 6.08% with SFT to 7.91% with DanceGRPO and 6.35%
+with DiffusionNFT. Across all 150 scenes, the mean gain rises from −8.39% with SFT to +6.39%
+with DanceGRPO and +5.22% with DiffusionNFT.
+Visual quality after adaptation
+SFT
+PWM (DanceGRPO)
+Indoor
+f112
+Blur and repeated textures
+Indoor
+f112
+Natural scene appearance
+Outdoor
+f112
+Mesh-like artifacts
+Outdoor
+f112
+Natural scene appearance
+Figure 8:
+Preserving visual quality af-
+ter adaptation.
+SFT exhibits blur and repeti-
+tive textures indoors and mesh-like artifacts out-
+doors, while PWM (DanceGRPO) retains natural-
+looking scene appearance.
+Each pair uses the
+same seed and control sequence at frame 112. All
+panels show complete, unretouched frames.
+Scene-level improvement coverage.
+Across
+all 150 scenes, the DanceGRPO and Diffusion-
+NFT instantiations of PWM improve over Na-
+tive in 107 and 98 scenes, respectively, com-
+pared with 86 scenes for SFT. The correspond-
+ing improvement rates are 71.3%, 65.3%, and
+57.3%. Together with the higher mean gains
+across all three domains, these results show that
+both PWM instantiations deliver stronger aver-
+age customization and benefit a larger fraction
+of the overall evaluation suite than SFT.
+The matched SFT comparison examines how
+support observations are converted into a scene-
+specific generation policy.
+SFT optimizes a
+supervised diffusion objective on the observed
+support windows. PWM instead samples con-
+tinuations from the current policy and uses
+their relative rewards to guide adaptation. The
+learning signal therefore depends on what the
+adapted model actually generates under the
+support conditions.
+6.3
+PRESERVING VISUAL QUALITY
+Figure 8 illustrates this contrast: SFT exhibits visible blur and repetitive texture artifacts, while
+PWM (DanceGRPO) retains natural-looking scene appearance in the selected examples.
+Table 4:
+Both PWM variants achieve better mean image-
+quality scores than SFT in every domain. Native Yume pro-
+vides the pretrained reference.
+Bold indicates the best mean
+within each domain. MUSIQ uses the SPAQ-trained checkpoint.
+Method
+MUSIQ ↑NIQE ↓BRISQUE ↓
+Indoor
+Yume
+58.93
+5.43
+44.46
+SFT
+47.26
+5.93
+45.73
+PWM (DanceGRPO)
+59.06
+5.40
+44.28
+PWM (DiffusionNFT)
+57.94
+5.49
+44.79
+Outdoor
+Yume
+71.33
+3.65
+22.66
+SFT
+63.06
+4.64
+33.58
+PWM (DanceGRPO)
+71.51
+3.68
+23.24
+PWM (DiffusionNFT)
+71.58
+3.67
+22.74
+Gaming
+Yume
+74.98
+3.81
+28.82
+SFT
+73.23
+5.90
+29.73
+PWM (DanceGRPO)
+75.16
+3.82
+28.11
+PWM (DiffusionNFT)
+75.40
+3.76
+27.99
+Quality assessment alongside
+customization.
+We
+com-
+plement
+the
+customization
+score with three no-reference
+image-quality metrics: MUSIQ-
+SPAQ
+(Ke
+et
+al.,
+2021),
+NIQE
+(Mittal
+et
+al.,
+2013),
+and BRISQUE (Mittal et al.,
+2012).
+These metrics char-
+acterize
+frame-level
+visual
+quality,
+while
+S
+evaluates
+scene-specific
+customization.
+MUSIQ uses all frames; NIQE
+and BRISQUE use 19 uniformly
+sampled frames, including the
+first and last. Scores are aver-
+aged over frames, seeds, and
+scenes, in that order.
+Native
+Yume provides a reference for
+the pretrained model’s visual
+quality.
+Quality close to Native after customization.
+PWM outperforms SFT on the domain means of all
+three reported image-quality metrics (Table 4). In Indoor, MUSIQ increases from 47.26 with SFT to
+59.06 with PWM, compared with 58.93 for Native. In Outdoor, BRISQUE improves from 33.58 to
+23.24, close to Native’s 22.66. In Gaming, NIQE improves from 5.90 to 3.82, compared with 3.81
+13
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+for Native. Across individual scenes, MUSIQ favors PWM over SFT in 123 of 150 cases, and NIQE
+does so in 132 cases.
+Scene identity and image quality provide complementary evidence. The customization score eval-
+uates agreement with the target scene, while the image-quality metrics characterize frame-level ap-
+pearance. Together, Tables 2 and 4 support the intended benefit of PWM: stronger fidelity to the
+target scene with frame-level quality close to native Yume.
+7
+CONCLUSION AND FUTURE WORK
+We introduced PWM, a framework for customizing a pretrained interactive world model to an in-
+dividual scene through online reinforcement learning. PWM turns a short support trajectory into a
+compact LoRA adapter using native-window generation, a shared reward, and a fixed checkpoint-
+averaging rule. We also introduced PWM-Bench to evaluate per-scene customization across Indoor,
+Outdoor, and Gaming. Across the evaluated suite, PWM improves customization over native Yume
+in 107 of 150 scenes. The matched SFT comparison further demonstrates higher mean customiza-
+tion gains and broader scene-level benefits, alongside visual quality close to the pretrained model.
+Future work will extend this approach to longer interaction horizons and richer support trajectories,
+enabling scene customization over more extensive exploration.
+REPRODUCIBILITY STATEMENT
+Section 5 specifies task construction and the shared experimental protocol. Appendices A–C provide
+optimization settings, reward definitions, and scoring details. Evaluation uses three paired seeds on
+held-out continuations, with no test frames used for adaptation or checkpoint construction.
+AI USE DECLARATION
+OpenAI ChatGPT was used to assist with language polishing and improving the clarity of the
+manuscript. The authors take full responsibility for the final content.
+14
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+REFERENCES
+Marziyeh Bamdad, Hans-Peter Hutter, and Alireza Darvishy. InCrowd-VI: A realistic visual–inertial
+dataset for evaluating simultaneous localization and mapping in indoor pedestrian-rich spaces for
+human navigation. Sensors, 24(24):8164, 2024. doi: 10.3390/s24248164.
+Kevin Black, Michael Janner, Yilun Du, Ilya Kostrikov, and Sergey Levine. Training diffusion
+models with reinforcement learning. In International Conference on Learning Representations,
+2024. URL https://proceedings.iclr.cc/paper_files/paper/2024/file/14f75513f0f1ca01de1e826b52
+e6b840-Paper-Conference.pdf.
+Linxi Fan, Guanzhi Wang, Yunfan Jiang, Ajay Mandlekar, Yuncong Yang, Haoyi Zhu, Andrew
+Tang, De-An Huang, Yuke Zhu, and Anima Anandkumar. MineDojo: Building open-ended em-
+bodied agents with internet-scale knowledge. In Thirty-sixth Conference on Neural Information
+Processing Systems Datasets and Benchmarks Track, 2022. URL https://openreview.net/forum?i
+d=rc8o_j8I8PX.
+Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang,
+and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In International Con-
+ference on Learning Representations, 2022. URL https://openreview.net/forum?id=nZeVKeeF
+Yf9.
+Pavel Izmailov, Dmitrii Podoprikhin, Timur Garipov, Dmitry Vetrov, and Andrew Gordon Wilson.
+Averaging weights leads to wider optima and better generalization. In Proceedings of the Thirty-
+Fourth Conference on Uncertainty in Artificial Intelligence, 2018. URL https://auai.org/uai2018
+/proceedings/papers/313.pdf.
+Junjie Ke, Qifei Wang, Yilin Wang, Peyman Milanfar, and Feng Yang. MUSIQ: Multi-scale image
+quality transformer. In Proceedings of the IEEE/CVF International Conference on Computer
+Vision, pp. 5148–5157, 2021. URL https://openaccess.thecvf.com/content/ICCV2021/html/Ke
+_MUSIQ_Multi-Scale_Image_Quality_Transformer_ICCV_2021_paper.html.
+Xiaofeng Mao, Shaoheng Lin, Zhen Li, Chuanhao Li, Wenshuo Peng, Tong He, Jiangmiao Pang,
+Mingmin Chi, Yu Qiao, and Kaipeng Zhang. Yume: An interactive world generation model. arXiv
+preprint arXiv:2507.17744, 2025. URL https://arxiv.org/abs/2507.17744.
+Xiaofeng Mao, Zhen Li, Chuanhao Li, Xiaojie Xu, Kaining Ying, and Kaipeng Zhang. Yume1.5: A
+text-controlled interactive world generation model. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pp. 7752–7761, 2026. URL https://openaccess.the
+cvf.com/content/CVPR2026/html/Mao_Yume1.5_A_Text-Controlled_Interactive_World_Gene
+ration_Model_CVPR_2026_paper.html.
+Anish Mittal, Anush Krishna Moorthy, and Alan C. Bovik. No-reference image quality assessment
+in the spatial domain. IEEE Transactions on Image Processing, 21(12):4695–4708, 2012. doi:
+10.1109/TIP.2012.2214050. URL https://doi.org/10.1109/TIP.2012.2214050.
+Anish Mittal, Rajiv Soundararajan, and Alan C. Bovik. Making a “completely blind” image quality
+analyzer. IEEE Signal Processing Letters, 20(3):209–212, 2013. doi: 10.1109/LSP.2012.22277
+26. URL https://doi.org/10.1109/LSP.2012.2227726.
+Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khali-
+dov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mahmoud As-
+sran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Is-
+han Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Hervé Jegou, Julien
+Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. DINOv2: Learning robust vi-
+sual features without supervision. Transactions on Machine Learning Research, 2024. URL
+https://openreview.net/forum?id=a68SUt6zFt.
+Mihir Prabhudesai, Russell Mendonca, Zheyang Qin, Katerina Fragkiadaki, and Deepak Pathak.
+Video diffusion alignment via reward gradients. arXiv preprint arXiv:2407.08737, 2024. URL
+https://arxiv.org/abs/2407.08737.
+15
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agar-
+wal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya
+Sutskever. Learning transferable visual models from natural language supervision. In Proceed-
+ings of the 38th International Conference on Machine Learning, volume 139 of Proceedings of
+Machine Learning Research, pp. 8748–8763. PMLR, 2021. URL https://proceedings.mlr.press/
+v139/radford21a.html.
+Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch, Michael Rubinstein, and Kfir Aberman.
+DreamBooth: Fine tuning text-to-image diffusion models for subject-driven generation. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 22500–
+22510, 2023. URL https://openaccess.thecvf.com/content/CVPR2023/html/Ruiz_DreamBooth_
+Fine_Tuning_Text-to-Image_Diffusion_Models_for_Subject-Driven_Generation_CVPR_2023
+_paper.html.
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang,
+Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. DeepSeekMath: Pushing the limits of math-
+ematical reasoning in open language models.
+arXiv preprint arXiv:2402.03300, 2024.
+URL
+https://arxiv.org/abs/2402.03300.
+Zachary Teed and Jia Deng. RAFT: Recurrent all-pairs field transforms for optical flow. In European
+Conference on Computer Vision, 2020. URL https://www.ecva.net/papers/eccv_2020/papers_E
+CCV/html/3526_ECCV_2020_paper.php.
+Xiaofeng Wang, Kang Zhao, Feng Liu, Jiayu Wang, Guosheng Zhao, Xiaoyi Bao, Yingya Zhang,
+Xingang Wang, and Zheng Zhu. EgoVid-5M: A large-scale video-action dataset for egocentric
+video generation. In Advances in Neural Information Processing Systems, volume 38. Curran
+Associates, Inc., 2025. doi: 10.52202/085713-1480. URL https://proceedings.neurips.cc/paper_f
+iles/paper/2025/file/3ef2b740cb22dcce67c20989cb3d3fce-Paper-Datasets_and_Benchmarks_T
+rack.pdf.
+Mitchell Wortsman, Gabriel Ilharco, Samir Ya Gadre, Rebecca Roelofs, Raphael Gontijo-Lopes,
+Ari S. Morcos, Hongseok Namkoong, Ali Farhadi, Yair Carmon, Simon Kornblith, and Ludwig
+Schmidt. Model soups: Averaging weights of multiple fine-tuned models improves accuracy with-
+out increasing inference time. In Proceedings of the 39th International Conference on Machine
+Learning, volume 162 of Proceedings of Machine Learning Research, pp. 23965–23998. PMLR,
+2022. URL https://proceedings.mlr.press/v162/wortsman22a.html.
+Jay Zhangjie Wu, Yixiao Ge, Xintao Wang, Stan Weixian Lei, Yuchao Gu, Yufei Shi, Wynne Hsu,
+Ying Shan, Xiaohu Qie, and Mike Zheng Shou. Tune-A-Video: One-shot tuning of image diffu-
+sion models for text-to-video generation. In Proceedings of the IEEE/CVF International Confer-
+ence on Computer Vision, pp. 7623–7633, 2023. URL https://openaccess.thecvf.com/content/IC
+CV2023/html/Wu_Tune-A-Video_One-Shot_Tuning_of_Image_Diffusion_Models_for_Text-t
+o-Video_Generation_ICCV_2023_paper.html.
+Zeyue Xue, Jie Wu, Yu Gao, Fangyuan Kong, Lingting Zhu, Mengzhao Chen, Zhiheng Liu, Wei
+Liu, Qiushan Guo, Weilin Huang, and Ping Luo. DanceGRPO: Unleashing GRPO on visual
+generation. arXiv preprint arXiv:2505.07818, 2025. URL https://arxiv.org/abs/2505.07818.
+Jiwen Yu, Yiran Qin, Xintao Wang, Pengfei Wan, Di Zhang, and Xihui Liu. GameFactory: Creating
+new games with generative interactive videos. In Proceedings of the IEEE/CVF International
+Conference on Computer Vision, pp. 11590–11599, 2025. URL https://openaccess.thecvf.com/co
+ntent/ICCV2025/html/Yu_GameFactory_Creating_New_Games_with_Generative_Interactive_
+Videos_ICCV_2025_paper.html.
+Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable
+effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition, pp. 586–595, 2018. URL https://openaccess.thecvf.co
+m/content_cvpr_2018/html/Zhang_The_Unreasonable_Effectiveness_CVPR_2018_paper.html.
+Kaiwen Zheng, Huayu Chen, Haotian Ye, Haoxiang Wang, Qinsheng Zhang, Kai Jiang, Hang Su,
+Stefano Ermon, Jun Zhu, and Ming-Yu Liu. DiffusionNFT: Online diffusion reinforcement with
+forward process. In International Conference on Learning Representations, 2026. URL https:
+16
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+//proceedings.iclr.cc/paper_files/paper/2026/hash/d8e68ddfe22520b45b8fb8d5cbde5a21-Abstr
+act-Conference.html.
+17
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+A
+IMPLEMENTATION DETAILS
+This appendix describes the DanceGRPO implementation. DiffusionNFT follows Section 3.3. The
+checkpoint averaging procedure described below applies to both instantiations. The four reward
+components are specified in Appendix B.
+A.1
+ADAPTATION CONFIGURATION
+For each scene, we train one LoRA adapter on the frozen Yume-5B backbone.
+The adapter
+is shared across six overlapping support windows of 29 frames, starting at zero-based indices
+[0, 9, 18, 27, 36, 45]. Each window is conditioned on its own ground-truth first frame and corre-
+sponding control caption. Windows are processed in this order, with adapter updates carried forward
+within the scene.
+For each window, the current policy generates a group of G = 4 trajectories using K = 4 stochastic
+denoising steps. We compute the trajectory advantages and perform four optimization passes on
+the collected group. Each pass accumulates gradients over all GK transitions before taking one
+optimizer step. We train for eight epochs and save the adapter after each complete pass through the
+six windows. This gives 48 rollout groups and 192 optimizer updates per scene.
+Table 5 lists the shared configuration. Backbone forward passes use bfloat16, and trainable LoRA
+parameters are stored in float32. Reward networks are frozen and evaluated without gradient propa-
+gation through them.
+Table 5: PWM (DanceGRPO) adaptation configuration, fixed across scenes. Reward weights follow
+the order (gt, lpips, cross, dyn).
+Setting
+Value
+Frozen backbone
+Yume-5B
+LoRA rank / scaling α
+8 / 16
+LoRA target modules
+q, k, v, o,
+ffn.0, ffn.2
+LoRA dropout / trainable biases
+0 / none
+Trainable parameters
+Approximately 20.2M
+Window length
+29 frames
+Windows per epoch
+6
+Group size / denoising steps
+4 / 4
+Epochs / passes per group
+8 / 4
+Optimizer
+AdamW
+Learning rate / weight decay
+10−4 / 10−2
+Clipping εclip
+0.2
+Maximum gradient norm
+1.0
+Base-anchor coefficient λ
+0.1
+Stochastic coefficient β
+0.5
+Reward weights
+0.50, 0.30, 0.10, 0.10
+Checkpoint averaging
+Uniform over all eight epochs
+A.2
+TRAJECTORY SAMPLING AND REWARD MEASUREMENT
+Let zk denote the generated latent variables at denoising step k, c the conditioning information, and
+σk the noise schedule. The stochastic Euler transition is
+µθ(zk, c) = zk + (σk−1 −σk)vθ(zk, c, σk),
+(19)
+ηk = β
+p
+|σk−1 −σk| max(σk, 10−4) + 10−4,
+(20)
+zk−1 = µθ(zk, c) + ηkϵk,
+ϵk ∼N(0, I).
+(21)
+Trajectories within a group share their initial latent noise and use independent transition noise. We
+record the sampled transitions and their behavior-policy log densities for subsequent optimization.
+18
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+For reward measurement, we decode the conditional mean of the final transition. This excludes the
+final noise injection from the scored video while retaining the effects of earlier stochastic transitions.
+Policy optimization uses the recorded stochastic transitions.
+A.3
+ADVANTAGE COMPUTATION AND POLICY UPDATES
+Each reward component is normalized within the rollout group before the component advantages
+are combined. For component m, let
+µm = 1
+G
+G
+X
+i=1
+Ri,m,
+σm =
+v
+u
+u
+t 1
+G
+G
+X
+i=1
+(Ri,m −µm)2.
+(22)
+Using the fixed component weights αm, we compute
+Ai =
+X
+m
+αm 1[σm ≥10−3]Ri,m −µm
+σm + 10−6 .
+(23)
+Components with standard deviation below 10−3 contribute zero to that group’s advantage. The
+same Ai is assigned to all denoising steps of trajectory i.
+For a generation region containing d scalar latent variables, we use the mean Gaussian log density
+ℓθ(zk−1 | zk, c) = −1
+2d
+d
+X
+j=1
+(zk−1,j −µθ,j)2
+η2
+k
++ log(2πη2
+k)
+
+.
+(24)
+The ratio used in the clipped surrogate is
+eρi,k = exp(ℓθ −ℓθold) ,
+(25)
+with both densities evaluated at the same recorded transition. This is the 1/d power of the corre-
+sponding joint density ratio. Behavior-policy log densities remain fixed during all four optimization
+passes on a group.
+The resulting loss is
+LPWM = −
+1
+GK
+G
+X
+i=1
+K
+X
+k=1
+min(eρi,kAi, clip(eρi,k, 1 −εclip, 1 + εclip)Ai)
++
+λ
+GK
+G
+X
+i=1
+K
+X
+k=1
+∥µθ(si,k) −µθ0(si,k)∥2
+2
+d
+.
+(26)
+The anchor compares transition means at the same denoising state. The frozen-base mean is obtained
+with the adapter disabled.
+A.4
+ADAPTER CHECKPOINT AVERAGING
+We uniformly average the corresponding LoRA parameter tensors from the eight epoch checkpoints
+of each scene’s adaptation run. For a linear layer with pretrained weight W0, write its adapted weight
+as W0 + (α/r)BA. The delivered layer uses
+A = 1
+8
+8
+X
+e=1
+A(e),
+B = 1
+8
+8
+X
+e=1
+B(e),
+WPWM = W0 + α
+r B A.
+(27)
+Thus, averaging operates on the trainable adapter tensors; the resulting update is the product of their
+averages. The final model retains one rank-8 adapter. All eight checkpoints receive equal weight,
+and checkpoint construction uses no held-out test frames.
+B
+REWARD DEFINITIONS
+Let x1:L be the reference support window and y1:L the generated video used for reward measure-
+ment, with L = 29. We specify the four components of the shared reward below. All reference
+quantities are computed from the current support window.
+19
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+B.1
+FEATURE EXTRACTION AND TEMPORAL AGGREGATION
+We use DINOv2-small for visual features, AlexNet-based LPIPS for perceptual distance, and RAFT-
+small (Teed & Deng, 2020) for optical flow. Images are resized to 224 × 224 using bilinear interpo-
+lation with align_corners=False. DINOv2 inputs use ImageNet normalization with channel
+means (0.485, 0.456, 0.406) and standard deviations (0.229, 0.224, 0.225). LPIPS and RAFT inputs
+are mapped to [−1, 1].
+Frame-wise appearance scores are aggregated as
+A(a1:L) = 0.7
+L
+L
+X
+t=1
+at + 0.3 min
+1≤t≤L at.
+(28)
+The minimum term gives additional weight to the lowest-scoring frame within the window.
+B.2
+REWARD COMPONENTS
+Scene feature fidelity.
+Let fcls(u) and fp(u) denote the DINOv2 CLS feature and the feature at
+patch position p, respectively. With P patches, we compute
+qt = 0.3 cos(fcls(yt), fcls(xt))
++ 0.7
+P
+P
+X
+p=1
+cos(fp(yt), fp(xt)) ,
+(29)
+Rgt = A(q1:L).
+(30)
+Patch features are paired at the same grid positions, combining global visual agreement with spatially
+localized feature agreement.
+Perceptual appearance.
+The perceptual component is
+alpips
+t
+= 1 −LPIPS(yt, xt),
+Rlpips = A(alpips
+1:L ).
+(31)
+It assigns higher reward to frames with smaller perceptual distance from the reference.
+Initial-frame consistency.
+For the independent support windows used in adaptation, the reference
+visual state is the window’s ground-truth first frame:
+Rcross = cos(fcls(y1), fcls(x1)) .
+(32)
+This component anchors the generated window to its initial condition.
+Motion magnitude matching.
+Let F(ut, ut+1)p be RAFT’s final flow prediction at pixel p, and
+let Ωdenote the resized pixel grid. Define
+M(u1:L) =
+1
+(L −1)|Ω|
+L−1
+X
+t=1
+X
+p∈Ω
+∥F(ut, ut+1)p∥2,
+(33)
+Rdyn = clip
+
+1 −|M(y1:L) −M(x1:L)|
+M(x1:L) + 10−3
+, −1, 1
+
+.
+(34)
+This term rewards agreement in the average motion magnitude, penalizing both larger and smaller
+magnitudes relative to the support video. The four components enter the advantage calculation in
+Appendix A.3 with weights (0.50, 0.30, 0.10, 0.10).
+C
+EVALUATION DETAILS
+Our evaluation measures the benefit of adapting a pretrained world model to an individual scene. We
+compare each adapted model with native Yume on the same held-out continuation, then summarize
+both the magnitude and the distribution of scene-level benefits. This appendix specifies the paired
+evaluation, aggregation rules, and scoring implementation.
+20
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+C.1
+PAIRED SCENE CONTINUATIONS
+Each scene provides a support trajectory for adaptation and a later, non-overlapping test trajectory
+for evaluation. PWM and Native use the same initial visual context, control sequence, native gener-
+ation geometry, decoding configuration, and 145-frame evaluation horizon. Native is evaluated with
+the scene adapter disabled. In the SFT comparison, the SFT adapter is evaluated under the same
+conditions.
+We use the paired random seeds Q = {42, 123, 777} with deterministic inference for each seed.
+Predictions are scored against the corresponding ground-truth test frames over the full horizon. The
+scene is the unit of aggregation: seed-level scores are averaged within a scene before results are
+combined across scenes.
+C.2
+MEASURING CUSTOMIZATION BENEFIT
+Using Native as a common reference measures the value added by each adaptation method to the
+pretrained model. Let S(m)
+s,q denote the customization-fidelity score of method m on scene s with
+seed q, where lower scores indicate closer agreement with the reference. The scene-level score is
+S
+(m)
+s
+=
+1
+|Q|
+X
+q∈Q
+S(m)
+s,q .
+(35)
+For m ∈{PWM, SFT}, define the absolute benefit and relative benefit as
+B(m)
+s
+= S
+(Native)
+s
+−S
+(m)
+s
+,
+(36)
+G(m)
+s
+= 100 S
+(Native)
+s
+−S
+(m)
+s
+S
+(Native)
+s
+.
+(37)
+The relative benefit is defined for positive Native scores and is expressed as a percentage. Positive
+values indicate improvement; negative values indicate degradation. We first average the scores over
+seeds and then compute the relative benefit using that scene’s Native score. This expresses adaptation
+gains relative to the pretrained model’s error on each target scene.
+C.3
+AGGREGATION ACROSS SCENES
+For a domain containing the scene set D, we assign equal weight to every scene:
+G
+(m)
+D
+=
+1
+|D|
+X
+s∈D
+G(m)
+s
+.
+(38)
+Overall aggregation applies the same rule to the union of the domain scene sets. PWM and SFT are
+summarized over the same paired scene set.
+To define conditional summaries of degradation, consider the negative portion of each method’s
+scene-level benefit distribution. Let
+Nm = {s ∈D : G(m)
+s
+< 0}.
+(39)
+For nonempty Nm, the conditional mean and median are
+G(m)
+neg,mean =
+1
+|Nm|
+X
+s∈Nm
+G(m)
+s
+,
+(40)
+G(m)
+neg,median = medians∈Nm G(m)
+s
+.
+(41)
+These values retain their negative sign; values closer to zero indicate shallower degradation. The
+subset size |Nm| counts scenes with negative benefit and is determined separately for each method.
+If no scene has negative benefit, these conditional statistics are undefined. The mean benefit and
+these conditional summaries jointly describe the scale of gains and regressions across scene cus-
+tomization tasks.
+21
+
+
+PWM: Personalized World Models with Online Reinforcement Learning
+C.4
+SCORING IMPLEMENTATION
+Time-aligned
+appearance
+agreement.
+We
+extract
+CLS
+features
+with
+facebook/dinov2-base, using its associated image processor.
+Let ϕ(u) denote the ℓ2-
+normalized feature of frame u. For generated frames g1:T and ground-truth test frames x1:T , with
+T = 145, we compute
+Dpair = 1
+T
+T
+X
+t=1
+ 1 −ϕ(gt)⊤ϕ(xt)
+
+.
+(42)
+Each frame is compared with the reference at the same timestep and contributes equally. This
+evaluates scene appearance as the controlled continuation unfolds. The evaluation uses DINOv2-
+base CLS features; the training reward in Appendix B uses DINOv2-small CLS and patch features.
+Entity-class consistency.
+The entity component measures the introduction of selected entity
+classes relative to the initial test frame. We use openai/clip-vit-base-patch32 with its
+associated processor and the fixed prompt pairs in Table 6. Let v(u) be the normalized image embed-
+ding and e+
+c , e−
+c the normalized positive and negative text embeddings for class c. The two-prompt
+CLIP score is
+pc(u) =
+exp
+ 100 v(u)⊤e+
+c
+
+exp
+ 100 v(u)⊤e+
+c
+
++ exp
+ 100 v(u)⊤e−
+c
+.
+(43)
+Table 6: Fixed CLIP prompt pairs used for entity-class scoring.
+Class
+Positive prompt
+Negative prompt
+Person
+a photo containing a person
+a photo of an empty scene with no people
+Vehicle
+a photo containing a car or truck
+a photo of a street with no vehicles
+Animal
+a photo containing an animal
+a photo of a scene with no animals
+For C = {person, vehicle, animal}, the initial frame determines the known-class indicators
+bc = 1[pc(x1) > 0.30].
+(44)
+A generated frame is flagged if any class absent under this rule exceeds the generation threshold:
+ht = 1[∃c ∈C : bc = 0 ∧pc(gt) > 0.50] .
+(45)
+The entity term and final score are
+Dhall = 1
+T
+T
+X
+t=1
+ht,
+S = Dpair + 0.5Dhall.
+(46)
+Each frame contributes at most one entity flag, even if multiple classes trigger it. The same feature
+extractors, prompts, thresholds, and score weights are used for all compared methods.
+22
